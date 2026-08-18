@@ -4,6 +4,21 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-08-18
+
+- Add `sync pull` to incrementally reconcile Spotify edits into Neon and refresh
+  canonical analysis in one command.
+- Preserve stable Spotify account and playlist identities independently from
+  local account labels and mutable playlist names.
+- Track account-scoped observed, discovery-inbox, and managed playlist roles,
+  including provider-wins, Neon-wins, and manual drift policies.
+- Mark historically known playlists absent when they disappear from the latest
+  imported snapshot without deleting their history.
+- Add aggregate library summaries, cross-playlist overlap reports, and
+  within-playlist canonical duplicate reports.
+- Keep v0.0.3 pull-only: role and drift policy are durable preparation for a
+  later auditable dry-run/apply workflow and do not mutate Spotify.
+
 ## [0.0.2] - 2026-08-18
 
 - Add Spotify Authorization Code with PKCE using read-only playlist and library
@@ -37,7 +52,8 @@ All notable changes to Chordrift are documented here.
 
 - Reserve the Chordrift crate and repository namespaces.
 
-[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/orbyts/chordrift/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/orbyts/chordrift/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/orbyts/chordrift/compare/v0.0.0...v0.0.1
 [0.0.0]: https://github.com/orbyts/chordrift/releases/tag/v0.0.0

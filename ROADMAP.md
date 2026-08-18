@@ -42,7 +42,13 @@ Status: complete.
 ## v0.0.3 — Canonical model and playlist analysis
 
 Normalize tracks into provider-independent identities and report playlist
-overlap, duplicate memberships, and library statistics.
+overlap, duplicate memberships, and library statistics. Add an incremental
+Spotify-to-Neon pull that reconciles removals, keeps account identity dynamic,
+and refreshes derived state. Persist account-scoped observed, discovery-inbox,
+and managed playlist roles plus explicit drift authority, without remote
+provider mutations.
+
+Status: complete.
 
 ## v0.0.4 — Optional listening-history enrichment
 

@@ -6,6 +6,8 @@
 //! Chordrift owns its music domain and PostgreSQL schema. Storexa supplies the
 //! lower-level Neon/PostgreSQL connection, pooling, and migration primitives.
 
+/// Account-scoped canonical library analysis.
+pub mod analysis;
 /// Command-line parsing and execution.
 pub mod cli;
 /// Application-owned database configuration.
@@ -14,6 +16,8 @@ pub mod config;
 pub mod credentials;
 /// Storexa-backed database lifecycle and migration inspection.
 pub mod db;
+/// Account-scoped playlist roles and drift policy.
+pub mod playlists;
 /// Streaming-provider adapters.
 pub mod providers;
 

@@ -15,10 +15,11 @@ and synchronization will not wait for it; when available, the export will add
 signals such as play counts, listening duration, first play, and last play.
 
 > [!WARNING]
-> Chordrift is in very early development. Version 0.0.2 adds a read-only
-> Spotify inventory adapter. Provider synchronization is not yet implemented.
+> Chordrift is in very early development. Version 0.0.3 adds incremental
+> Spotify-to-Neon synchronization and canonical playlist analysis. Chordrift
+> still performs no remote Spotify mutations.
 
-## v0.0.2 capabilities
+## v0.0.3 capabilities
 
 - Storexa-backed Neon PostgreSQL connection management
 - an application-owned canonical music-library schema
@@ -30,13 +31,17 @@ signals such as play counts, listening duration, first play, and last play.
 - ordered playlist membership that preserves duplicate entries
 - saved-track snapshots kept separate from playlists
 - provider metadata and stable Spotify identities for later canonical matching
+- a one-command incremental pull that leaves Neon current with Spotify edits
+- account-scoped observed, inbox, and managed playlist roles
+- explicit provider-wins, Neon-wins, and manual drift policies
+- current overlap, duplicate-membership, and aggregate library reports
 
 Set the canonical Neon connection URL through the application-specific
 `CHORDRIFT_DATABASE_URL` environment variable. Chordrift never prints it.
 
 ```console
 $ chordrift --version
-chordrift 0.0.2
+chordrift 0.0.3
 
 $ chordrift db status
 database: chordrift-primary
@@ -71,6 +76,7 @@ $ chordrift spotify auth --account personal
 $ chordrift spotify status --account personal
 $ chordrift db migrate
 $ chordrift spotify import --account personal
+$ chordrift sync pull --account personal
 ```
 
 Authorization requests only `playlist-read-private`,
@@ -94,6 +100,30 @@ single newest-page probe; when its total and leading signature match, the prior
 saved-library snapshot is copied forward without downloading the remaining
 pages. A detected change triggers a complete reconciliation so removals are not
 silently missed.
+
+For routine use, `chordrift sync pull` imports the current Spotify state and
+then refreshes account-scoped canonical analysis in the same invocation. The
+local account label defaults to `personal`, while the stable Spotify user ID is
+persisted in Neon; playlist identities and roles are also scoped to that
+account. A playlist rename therefore does not create a new identity, and a
+playlist that disappears from the latest snapshot remains historically known
+but is marked absent.
+
+Imported playlists begin as `observed` with a `provider-wins` drift policy.
+Discovery surfaces can be marked as `inbox`, and future Chordrift outputs as
+`managed`:
+
+```console
+$ chordrift playlists configure --name "Discovery" --role inbox
+$ chordrift playlists list
+$ chordrift analyze summary
+$ chordrift analyze overlap --limit 25
+$ chordrift analyze duplicates --limit 25
+```
+
+Role and policy configuration is durable, but v0.0.3 remains pull-only. A
+future dry-run/apply milestone will use `neon-wins` for managed playlists and
+will require explicit, auditable approval before changing Spotify.
 
 Spotify Platform content is retained as provider inventory and provenance. It
 will not be used to train an ML or AI model. Later personal embeddings will use

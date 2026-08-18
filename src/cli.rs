@@ -1,8 +1,8 @@
 use std::io::{self, Write};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::{ChordriftError, Result, config, db, providers::spotify};
+use crate::{ChordriftError, Result, analysis, config, db, playlists, providers::spotify};
 
 /// Chordrift command-line interface.
 #[derive(Clone, Debug, Parser)]
@@ -27,6 +27,24 @@ pub enum Command {
         /// Spotify operation to perform.
         #[command(subcommand)]
         command: SpotifyCommand,
+    },
+    /// Pull provider changes into Neon and refresh derived state.
+    Sync {
+        /// Synchronization operation to perform.
+        #[command(subcommand)]
+        command: SyncCommand,
+    },
+    /// Calculate or inspect canonical library statistics.
+    Analyze {
+        /// Analysis operation to perform.
+        #[command(subcommand)]
+        command: AnalyzeCommand,
+    },
+    /// Inspect or configure account-scoped playlist roles.
+    Playlists {
+        /// Playlist operation to perform.
+        #[command(subcommand)]
+        command: PlaylistCommand,
     },
 }
 
@@ -66,6 +84,107 @@ pub enum SpotifyCommand {
         #[arg(long, default_value = "personal")]
         account: String,
     },
+}
+
+/// Provider-to-Neon synchronization commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum SyncCommand {
+    /// Import current Spotify state and refresh canonical analysis.
+    Pull {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+}
+
+/// Canonical analysis commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum AnalyzeCommand {
+    /// Recalculate account statistics from the latest immutable snapshot.
+    Refresh {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Show aggregate library and playlist statistics.
+    Summary {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List tracks appearing in multiple current playlists.
+    Overlap {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Maximum rows to report.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+    },
+    /// List duplicate canonical tracks within individual playlists.
+    Duplicates {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Maximum rows to report.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+    },
+}
+
+/// Account-scoped playlist configuration commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum PlaylistCommand {
+    /// List imported playlists with role, policy, and presence.
+    List {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Configure one playlist by exact name or stable Spotify ID.
+    Configure {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Case-insensitive current playlist name; must be unambiguous.
+        #[arg(
+            long,
+            required_unless_present = "spotify_id",
+            conflicts_with = "spotify_id"
+        )]
+        name: Option<String>,
+        /// Stable Spotify playlist ID.
+        #[arg(long, required_unless_present = "name", conflicts_with = "name")]
+        spotify_id: Option<String>,
+        /// Orchestration role.
+        #[arg(long, value_enum)]
+        role: PlaylistRoleArg,
+        /// Drift authority; defaults to neon-wins for managed, provider-wins otherwise.
+        #[arg(long, value_enum)]
+        drift_policy: Option<DriftPolicyArg>,
+    },
+}
+
+/// CLI representation of playlist orchestration roles.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum PlaylistRoleArg {
+    /// Provider-owned playlist mirrored into Neon.
+    Observed,
+    /// Provider-native discovery inbox.
+    Inbox,
+    /// Neon-owned canonical output playlist.
+    Managed,
+}
+
+/// CLI representation of drift authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum DriftPolicyArg {
+    /// Import provider edits.
+    ProviderWins,
+    /// Restore approved Neon state during a future apply operation.
+    NeonWins,
+    /// Require an explicit resolution.
+    Manual,
 }
 
 /// Runs a parsed CLI command and writes its report to standard output.
@@ -121,9 +240,191 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                 writeln!(output, "account: {account}")?;
             }
         },
+        Command::Sync { command } => match command {
+            SyncCommand::Pull { account } => {
+                let database = connect_current_database().await?;
+                let result = async {
+                    let import = spotify::import(&account, &database).await?;
+                    write_import_report(output, &import)?;
+                    let summary = analysis::refresh(&database, &account).await?;
+                    write_analysis_summary(output, &summary)
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+        },
+        Command::Analyze { command } => {
+            let database = connect_current_database().await?;
+            let result = run_analyze_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
+        Command::Playlists { command } => {
+            let database = connect_current_database().await?;
+            let result = run_playlist_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
     }
 
     Ok(())
+}
+
+async fn connect_current_database() -> Result<storexa::Database> {
+    let config = config::database_config_from_env()?;
+    let database = db::connect(config).await?;
+    let status = db::status(&database).await?;
+    if status.pending_migrations != 0 || status.failed_migrations != 0 {
+        database.close().await;
+        return Err(ChordriftError::Configuration(
+            "database migrations are not current; run `chordrift db migrate`".to_owned(),
+        ));
+    }
+    Ok(database)
+}
+
+async fn run_analyze_command(
+    command: AnalyzeCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        AnalyzeCommand::Refresh { account } => {
+            let summary = analysis::refresh(database, &account).await?;
+            write_analysis_summary(output, &summary)
+        }
+        AnalyzeCommand::Summary { account } => {
+            let summary = analysis::summary(database, &account).await?;
+            write_analysis_summary(output, &summary)
+        }
+        AnalyzeCommand::Overlap { account, limit } => {
+            let rows = analysis::overlap(database, &account, limit).await?;
+            writeln!(output, "playlists\tentries\tsaved\ttrack")?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{} — {}",
+                    row.playlist_count,
+                    row.total_entries,
+                    row.saved,
+                    clean_cell(&row.title),
+                    clean_cell(&row.artists)
+                )?;
+            }
+            Ok(())
+        }
+        AnalyzeCommand::Duplicates { account, limit } => {
+            let rows = analysis::duplicates(database, &account, limit).await?;
+            writeln!(output, "entries\tplaylist\ttrack")?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}",
+                    row.entries,
+                    clean_cell(&row.playlist_name),
+                    clean_cell(&row.track_title)
+                )?;
+            }
+            Ok(())
+        }
+    }
+}
+
+async fn run_playlist_command(
+    command: PlaylistCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        PlaylistCommand::List { account } => {
+            let rows = playlists::list(database, &account).await?;
+            writeln!(output, "role\tpolicy\tpresent\titems\tname\tspotify_id")?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}\t{}",
+                    row.role,
+                    row.drift_policy,
+                    row.present,
+                    row.total_items
+                        .map_or_else(|| "-".to_owned(), |value| value.to_string()),
+                    clean_cell(&row.name),
+                    row.provider_playlist_id
+                )?;
+            }
+            Ok(())
+        }
+        PlaylistCommand::Configure {
+            account,
+            name,
+            spotify_id,
+            role,
+            drift_policy,
+        } => {
+            let selector = match (name, spotify_id) {
+                (Some(name), None) => playlists::PlaylistSelector::Name(name),
+                (None, Some(id)) => playlists::PlaylistSelector::ProviderId(id),
+                _ => unreachable!("clap enforces exactly one playlist selector"),
+            };
+            let role = playlist_role(role);
+            let drift_policy =
+                drift_policy
+                    .map(playlist_drift_policy)
+                    .unwrap_or_else(|| match role {
+                        playlists::PlaylistRole::Managed => playlists::DriftPolicy::NeonWins,
+                        playlists::PlaylistRole::Observed | playlists::PlaylistRole::Inbox => {
+                            playlists::DriftPolicy::ProviderWins
+                        }
+                    });
+            let updated =
+                playlists::configure(database, &account, &selector, role, drift_policy).await?;
+            writeln!(output, "playlist: {}", updated.name)?;
+            writeln!(output, "spotify_id: {}", updated.provider_playlist_id)?;
+            writeln!(output, "role: {}", updated.role)?;
+            writeln!(output, "drift_policy: {}", updated.drift_policy)?;
+            Ok(())
+        }
+    }
+}
+
+fn playlist_role(value: PlaylistRoleArg) -> playlists::PlaylistRole {
+    match value {
+        PlaylistRoleArg::Observed => playlists::PlaylistRole::Observed,
+        PlaylistRoleArg::Inbox => playlists::PlaylistRole::Inbox,
+        PlaylistRoleArg::Managed => playlists::PlaylistRole::Managed,
+    }
+}
+
+fn playlist_drift_policy(value: DriftPolicyArg) -> playlists::DriftPolicy {
+    match value {
+        DriftPolicyArg::ProviderWins => playlists::DriftPolicy::ProviderWins,
+        DriftPolicyArg::NeonWins => playlists::DriftPolicy::NeonWins,
+        DriftPolicyArg::Manual => playlists::DriftPolicy::Manual,
+    }
+}
+
+fn write_analysis_summary(
+    output: &mut impl Write,
+    summary: &analysis::AnalysisSummary,
+) -> Result<()> {
+    writeln!(output, "analysis: current")?;
+    writeln!(output, "snapshot_id: {}", summary.snapshot_id)?;
+    writeln!(output, "playlists: {}", summary.playlists)?;
+    writeln!(output, "playlist_entries: {}", summary.playlist_entries)?;
+    writeln!(
+        output,
+        "unique_playlist_tracks: {}",
+        summary.unique_playlist_tracks
+    )?;
+    writeln!(output, "saved_tracks: {}", summary.saved_tracks)?;
+    writeln!(output, "overlapping_tracks: {}", summary.overlapping_tracks)?;
+    writeln!(output, "duplicate_entries: {}", summary.duplicate_entries)?;
+    Ok(())
+}
+
+fn clean_cell(value: &str) -> String {
+    value.replace(['\t', '\r', '\n'], " ")
 }
 
 fn write_auth_report(output: &mut impl Write, report: &spotify::AuthReport) -> Result<()> {
@@ -227,7 +528,10 @@ mod tests {
 
     use clap::Parser;
 
-    use super::{Cli, Command, DbCommand, SpotifyCommand, write_status};
+    use super::{
+        Cli, Command, DbCommand, PlaylistCommand, PlaylistRoleArg, SpotifyCommand, SyncCommand,
+        write_status,
+    };
     use crate::db::DatabaseStatus;
 
     #[test]
@@ -249,6 +553,42 @@ mod tests {
             Command::Spotify {
                 command: SpotifyCommand::Import { account }
             } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_simple_pull_sync() {
+        let cli = Cli::try_parse_from(["chordrift", "sync", "pull"]).expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Sync {
+                command: SyncCommand::Pull { account }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_account_scoped_inbox_configuration() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "playlists",
+            "configure",
+            "--name",
+            "Discovery",
+            "--role",
+            "inbox",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Playlists {
+                command: PlaylistCommand::Configure {
+                    account,
+                    name: Some(name),
+                    role: PlaylistRoleArg::Inbox,
+                    ..
+                }
+            } if account == "personal" && name == "Discovery"
         ));
     }
 

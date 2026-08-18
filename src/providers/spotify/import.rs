@@ -150,6 +150,14 @@ async fn persist(
 ) -> Result<ImportReport> {
     let mut transaction = database.pool().begin().await?;
     let account_id = upsert_account(account_label, &inventory, &mut transaction).await?;
+    sqlx::query(
+        "UPDATE provider_account_playlists
+         SET present_in_latest_snapshot = FALSE, updated_at = now()
+         WHERE provider_account_id = $1",
+    )
+    .bind(account_id)
+    .execute(&mut *transaction)
+    .await?;
     let snapshot_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO provider_library_snapshots
@@ -178,6 +186,18 @@ async fn persist(
         let playlist = &playlist_inventory.playlist;
         let playlist_name = nonempty_or(&playlist.name, "Untitled Spotify playlist");
         let provider_playlist_id = upsert_playlist(playlist, &mut transaction).await?;
+        sqlx::query(
+            "INSERT INTO provider_account_playlists
+             (provider_account_id, provider_playlist_id, present_in_latest_snapshot)
+             VALUES ($1, $2, TRUE)
+             ON CONFLICT (provider_account_id, provider_playlist_id) DO UPDATE SET
+               present_in_latest_snapshot = TRUE,
+               last_seen_at = now(), updated_at = now()",
+        )
+        .bind(account_id)
+        .bind(provider_playlist_id)
+        .execute(&mut *transaction)
+        .await?;
         sqlx::query(
             "INSERT INTO provider_playlist_snapshots
              (snapshot_id, provider_playlist_id, name, description,
@@ -708,7 +728,7 @@ mod tests {
         SpotifyInventory, clean_isrc, nonempty_or, normalize, parse_release_date, persist,
     };
     use crate::{
-        db,
+        analysis, db, playlists,
         providers::spotify::models::{
             CurrentUser, Page, PlaylistInventory, PlaylistItem, SavedTrack, SpotifyPlaylist,
         },
@@ -805,6 +825,22 @@ mod tests {
                 .await?;
         assert_eq!(playlist_rows, 1);
         assert_eq!(saved_rows, 1);
+
+        let summary = analysis::refresh(&database, "fixture").await?;
+        assert_eq!(summary.playlists, 1);
+        assert_eq!(summary.playlist_entries, 1);
+        assert_eq!(summary.unique_playlist_tracks, 1);
+        assert_eq!(summary.saved_tracks, 1);
+
+        let configured = playlists::configure(
+            &database,
+            "fixture",
+            &playlists::PlaylistSelector::Name("Morning Drift".to_owned()),
+            playlists::PlaylistRole::Inbox,
+            playlists::DriftPolicy::ProviderWins,
+        )
+        .await?;
+        assert_eq!(configured.role, "inbox");
 
         database.close().await;
         Ok(())
