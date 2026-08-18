@@ -1,6 +1,6 @@
 [package]
 name = "chordrift"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 rust-version = "1.94"
 description = "Personal music-library intelligence and synchronization across streaming services."
@@ -11,8 +11,19 @@ keywords = ["music-library", "spotify", "apple-music", "playlists", "synchroniza
 categories = ["multimedia::audio", "command-line-utilities"]
 
 [dependencies]
+base64 = "0.22.1"
+chrono = { version = "0.4.42", features = ["serde"] }
 clap = { version = "4.5.50", features = ["derive"] }
-sqlx = { version = "0.9.0", default-features = false, features = ["macros", "migrate", "postgres"] }
+keyring = "4.1.5"
+rand = "0.9.2"
+reqwest = { version = "0.13.1", default-features = false, features = ["form", "json", "query", "rustls"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+sha2 = "0.10.9"
+sqlx = { version = "0.9.0", default-features = false, features = ["chrono", "json", "macros", "migrate", "postgres", "uuid"] }
 storexa = "0.1.0"
 thiserror = "2.0.17"
-tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.49.0", features = ["io-util", "macros", "net", "rt-multi-thread", "time"] }
+url = "2.5.7"
+uuid = { version = "1.18.1", features = ["serde", "v4"] }
+webbrowser = "1.0.6"

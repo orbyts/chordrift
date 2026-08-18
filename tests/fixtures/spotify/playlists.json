@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "id": "playlist123",
+      "name": "Morning Drift",
+      "description": "A fixture playlist",
+      "owner": {
+        "id": "spotify-user",
+        "display_name": "Suhail",
+        "uri": "spotify:user:spotify-user"
+      },
+      "public": false,
+      "collaborative": false,
+      "snapshot_id": "snapshot-abc",
+      "uri": "spotify:playlist:playlist123",
+      "external_urls": {
+        "spotify": "https://open.spotify.com/playlist/playlist123"
+      },
+      "items": { "total": 2 }
+    }
+  ],
+  "next": null,
+  "total": 1
+}

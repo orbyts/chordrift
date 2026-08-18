@@ -39,4 +39,5 @@ jobs:
       - run: cargo test --all-targets
       - run: cargo test --doc
       - run: cargo test --test postgres_integration -- --ignored
+      - run: cargo test --lib spotify_persistence_round_trip -- --ignored
       - run: cargo package

@@ -1,0 +1,55 @@
+{
+  "items": [
+    {
+      "added_at": "2026-08-18T15:00:00Z",
+      "added_by": {
+        "id": "spotify-user",
+        "display_name": "Suhail",
+        "uri": "spotify:user:spotify-user"
+      },
+      "is_local": false,
+      "item": {
+        "id": "track123",
+        "name": "Northern Lights",
+        "duration_ms": 243000,
+        "explicit": false,
+        "uri": "spotify:track:track123",
+        "type": "track",
+        "is_local": false,
+        "artists": [
+          {
+            "id": "artist123",
+            "name": "Example Artist",
+            "uri": "spotify:artist:artist123",
+            "external_urls": {
+              "spotify": "https://open.spotify.com/artist/artist123"
+            }
+          }
+        ],
+        "album": {
+          "id": "album123",
+          "name": "Example Album",
+          "uri": "spotify:album:album123",
+          "album_type": "album",
+          "release_date": "2026-08",
+          "artists": [],
+          "external_urls": {
+            "spotify": "https://open.spotify.com/album/album123"
+          }
+        },
+        "external_ids": { "isrc": "USAAA2600001" },
+        "external_urls": {
+          "spotify": "https://open.spotify.com/track/track123"
+        }
+      }
+    },
+    {
+      "added_at": null,
+      "added_by": null,
+      "is_local": false,
+      "item": null
+    }
+  ],
+  "next": null,
+  "total": 2
+}

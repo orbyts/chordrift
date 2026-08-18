@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "added_at": "2026-08-18T15:30:00Z",
+      "track": {
+        "id": "track123",
+        "name": "Northern Lights",
+        "duration_ms": 243000,
+        "explicit": false,
+        "uri": "spotify:track:track123",
+        "type": "track",
+        "is_local": false,
+        "artists": [],
+        "album": null,
+        "external_ids": { "isrc": "USAAA2600001" },
+        "external_urls": {
+          "spotify": "https://open.spotify.com/track/track123"
+        }
+      }
+    },
+    {
+      "added_at": null,
+      "track": null
+    }
+  ],
+  "next": null,
+  "total": 2
+}

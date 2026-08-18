@@ -6,6 +6,21 @@ of truth throughout, while Spotify and Apple Music remain provider adapters.
 The Spotify downloadable history archive is an optional, independently
 importable enrichment source. No other milestone is blocked on receiving it.
 
+## Discovery and orchestration model
+
+Chordrift will become the canonical orchestrator of playlists, while song
+discovery remains native to each streaming platform. New provider playlists can
+act as discovery inboxes: Chordrift ingests their tracks, identifies songs
+already represented in the canonical library, and incorporates only the new
+material into its analysis. Repeated runs should leave those inbox surfaces
+clean and ready for further discovery without losing any tracks.
+
+Existing provider playlists and their names remain intact until Chordrift has
+clustered every track into an inspectable proposed structure and the user has
+approved the LLM-suggested names and organization. Retiring an old or inbox
+playlist must be an explicit, auditable synchronization operation performed
+only after all of its tracks are accounted for in approved canonical playlists.
+
 ## v0.0.0 — Namespace reservation
 
 Reserve the crate and repository names with a minimal, dependency-free package.
@@ -21,6 +36,8 @@ Status: complete.
 
 Authenticate with Spotify and snapshot playlists, ordered memberships, saved
 tracks, and provider metadata without remote mutations.
+
+Status: complete.
 
 ## v0.0.3 — Canonical model and playlist analysis
 
@@ -51,15 +68,22 @@ representatives, statistics, and support for unassigned tracks.
 ## v0.0.8 — Naming and proposed library
 
 Generate names, descriptions, and semantic tags, then expose a complete,
-inspectable, non-destructive proposed playlist structure.
+inspectable, non-destructive proposed playlist structure. Require user approval
+of generated names and organization, and prove that every track from each
+legacy or discovery playlist is represented before proposing its retirement.
 
 ## v0.0.9 — Full dry-run synchronization
 
 Plan idempotent Spotify and Apple Music diffs, unresolved matches, and Apple
-Music Spatial Audio variants without mutating either service.
+Music Spatial Audio variants without mutating either service. Include discovery
+inbox ingestion, cross-playlist duplicate removal, and explicit retirement plans
+for legacy and consumed inbox playlists, with track-preservation checks and no
+implicit deletions.
 
 ## v0.1.0 — Canonical music library
 
 Synchronize approved canonical playlists from Neon to both providers, create
 Spatial Audio companions in Apple Music, retain provenance and operation
-history, and converge to zero changes on repeated runs.
+history, and converge to zero changes on repeated runs. Remove legacy or
+consumed discovery playlists only as separately approved operations after their
+replacement playlists are published and verified.

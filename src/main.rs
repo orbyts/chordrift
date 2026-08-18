@@ -8,6 +8,9 @@ async fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error: {error}");
+            if let Some(diagnostic) = error.safe_diagnostic() {
+                eprintln!("diagnostic: {diagnostic}");
+            }
             ExitCode::FAILURE
         }
     }
