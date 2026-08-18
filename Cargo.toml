@@ -1,0 +1,11 @@
+[package]
+name = "chordrift"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Personal music-library intelligence and synchronization across streaming services."
+license = "MIT"
+repository = "https://github.com/orbyts/chordrift"
+readme = "README.md"
+keywords = ["music-library", "spotify", "apple-music", "playlists", "synchronization"]
+categories = ["multimedia::audio", "command-line-utilities"]
