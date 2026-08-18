@@ -1,11 +1,18 @@
 [package]
 name = "chordrift"
-version = "0.0.0"
+version = "0.0.1"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.94"
 description = "Personal music-library intelligence and synchronization across streaming services."
 license = "MIT"
 repository = "https://github.com/orbyts/chordrift"
 readme = "README.md"
 keywords = ["music-library", "spotify", "apple-music", "playlists", "synchronization"]
 categories = ["multimedia::audio", "command-line-utilities"]
+
+[dependencies]
+clap = { version = "4.5.50", features = ["derive"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["macros", "migrate", "postgres"] }
+storexa = "0.1.0"
+thiserror = "2.0.17"
+tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }

@@ -15,6 +15,8 @@ Reserve the crate and repository names with a minimal, dependency-free package.
 Add configuration, CLI boundaries, Storexa-backed Neon access, migrations, and
 the canonical schema. Provide version and database-status commands.
 
+Status: complete.
+
 ## v0.0.2 — Spotify read-only inventory
 
 Authenticate with Spotify and snapshot playlists, ordered memberships, saved
@@ -61,4 +63,3 @@ Music Spatial Audio variants without mutating either service.
 Synchronize approved canonical playlists from Neon to both providers, create
 Spatial Audio companions in Apple Music, retain provenance and operation
 history, and converge to zero changes on repeated runs.
-
