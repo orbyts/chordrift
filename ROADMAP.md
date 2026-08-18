@@ -56,6 +56,12 @@ Import Spotify history exports independently, preserve matched and unmatched
 events, and derive play-count, duration, recency, and skip statistics. The rest
 of Chordrift remains usable before or without this data.
 
+Add a basic read-only query surface for accounts and playlists, ordered songs
+within a playlist, saved tracks, canonical-track lookup, and import/analysis
+snapshot freshness. These commands should make it possible to verify that Neon
+is clean and current without writing SQL. Preserve duplicate entries and expose
+stable provider IDs whenever a mutable name is ambiguous.
+
 ## v0.0.5 — Apple Music matching
 
 Add Apple Music authentication and ISRC-first catalog matching with scored

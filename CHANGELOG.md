@@ -4,6 +4,11 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Add `playlists tracks` to inspect the ordered contents of a playlist's latest
+  imported Neon snapshot by unambiguous name or stable Spotify ID.
+- Add and link a canonical user-facing CLI guide with everyday sync and
+  verification examples.
+
 ## [0.0.3] - 2026-08-18
 
 - Add `sync pull` to incrementally reconcile Spotify edits into Neon and refresh

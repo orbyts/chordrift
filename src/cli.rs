@@ -141,6 +141,22 @@ pub enum PlaylistCommand {
         #[arg(long, default_value = "personal")]
         account: String,
     },
+    /// List ordered tracks from the latest imported playlist snapshot.
+    Tracks {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Case-insensitive current playlist name; must be unambiguous.
+        #[arg(
+            long,
+            required_unless_present = "spotify_id",
+            conflicts_with = "spotify_id"
+        )]
+        name: Option<String>,
+        /// Stable Spotify playlist ID.
+        #[arg(long, required_unless_present = "name", conflicts_with = "name")]
+        spotify_id: Option<String>,
+    },
     /// Configure one playlist by exact name or stable Spotify ID.
     Configure {
         /// Local label for this Spotify account.
@@ -355,6 +371,35 @@ async fn run_playlist_command(
             }
             Ok(())
         }
+        PlaylistCommand::Tracks {
+            account,
+            name,
+            spotify_id,
+        } => {
+            let selector = playlist_selector(name, spotify_id);
+            let report = playlists::tracks(database, &account, &selector).await?;
+            writeln!(output, "playlist: {}", report.playlist.name)?;
+            writeln!(
+                output,
+                "spotify_id: {}",
+                report.playlist.provider_playlist_id
+            )?;
+            writeln!(output, "snapshot_id: {}", report.snapshot_id)?;
+            writeln!(output, "tracks: {}", report.tracks.len())?;
+            writeln!(output, "position\ttrack\tartists\talbum\tspotify_track_id")?;
+            for row in report.tracks {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}",
+                    row.position + 1,
+                    clean_cell(&row.title),
+                    clean_cell(&row.artists),
+                    clean_cell(row.album.as_deref().unwrap_or("-")),
+                    row.provider_track_id
+                )?;
+            }
+            Ok(())
+        }
         PlaylistCommand::Configure {
             account,
             name,
@@ -362,11 +407,7 @@ async fn run_playlist_command(
             role,
             drift_policy,
         } => {
-            let selector = match (name, spotify_id) {
-                (Some(name), None) => playlists::PlaylistSelector::Name(name),
-                (None, Some(id)) => playlists::PlaylistSelector::ProviderId(id),
-                _ => unreachable!("clap enforces exactly one playlist selector"),
-            };
+            let selector = playlist_selector(name, spotify_id);
             let role = playlist_role(role);
             let drift_policy =
                 drift_policy
@@ -385,6 +426,17 @@ async fn run_playlist_command(
             writeln!(output, "drift_policy: {}", updated.drift_policy)?;
             Ok(())
         }
+    }
+}
+
+fn playlist_selector(
+    name: Option<String>,
+    spotify_id: Option<String>,
+) -> playlists::PlaylistSelector {
+    match (name, spotify_id) {
+        (Some(name), None) => playlists::PlaylistSelector::Name(name),
+        (None, Some(id)) => playlists::PlaylistSelector::ProviderId(id),
+        _ => unreachable!("clap enforces exactly one playlist selector"),
     }
 }
 
@@ -589,6 +641,28 @@ mod tests {
                     ..
                 }
             } if account == "personal" && name == "Discovery"
+        ));
+    }
+
+    #[test]
+    fn parses_playlist_tracks_by_name() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "playlists",
+            "tracks",
+            "--name",
+            "Smooth Morning Coffee (Curated)",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Playlists {
+                command: PlaylistCommand::Tracks {
+                    account,
+                    name: Some(name),
+                    ..
+                }
+            } if account == "personal" && name == "Smooth Morning Coffee (Curated)"
         ));
     }
 

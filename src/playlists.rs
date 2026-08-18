@@ -67,6 +67,32 @@ pub struct PlaylistRecord {
     pub total_items: Option<i32>,
 }
 
+/// One ordered track entry from a playlist's latest imported snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlaylistTrackRecord {
+    /// Zero-based provider position retained in Neon.
+    pub position: i32,
+    /// Canonical track title.
+    pub title: String,
+    /// Ordered display artist string.
+    pub artists: String,
+    /// Canonical album title, when Spotify supplied one.
+    pub album: Option<String>,
+    /// Stable Spotify track ID.
+    pub provider_track_id: String,
+}
+
+/// Current ordered contents of one account-scoped playlist.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlaylistTracks {
+    /// Playlist resolved from the user selector.
+    pub playlist: PlaylistRecord,
+    /// Immutable library snapshot supplying the entries.
+    pub snapshot_id: Uuid,
+    /// Ordered entries. Canonical duplicates remain separate rows.
+    pub tracks: Vec<PlaylistTrackRecord>,
+}
+
 /// Selects one playlist without relying exclusively on a mutable display name.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PlaylistSelector {
@@ -118,6 +144,70 @@ pub async fn list(database: &Database, account_label: &str) -> Result<Vec<Playli
         .collect()
 }
 
+/// Lists the ordered tracks in one playlist's latest imported snapshot.
+pub async fn tracks(
+    database: &Database,
+    account_label: &str,
+    selector: &PlaylistSelector,
+) -> Result<PlaylistTracks> {
+    let account_id = account_id(database, account_label).await?;
+    let playlist = resolve_selector(database, account_label, selector).await?;
+    if !playlist.present {
+        return Err(ChordriftError::Configuration(
+            "playlist is not present in this account's latest imported snapshot".to_owned(),
+        ));
+    }
+    let snapshot_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM provider_library_snapshots
+         WHERE provider_account_id = $1
+         ORDER BY captured_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    let rows = sqlx::query(
+        "SELECT membership.position, track.title,
+                COALESCE(string_agg(artist.name, ', ' ORDER BY track_artist.position), '') AS artists,
+                album.title AS album, provider_track.provider_track_id
+         FROM provider_playlist_tracks membership
+         JOIN provider_playlists provider_playlist
+           ON provider_playlist.id = membership.provider_playlist_id
+         JOIN provider_tracks provider_track
+           ON provider_track.id = membership.provider_track_id
+         JOIN tracks track ON track.id = provider_track.track_id
+         LEFT JOIN albums album ON album.id = track.album_id
+         LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
+         LEFT JOIN artists artist ON artist.id = track_artist.artist_id
+         WHERE membership.snapshot_id = $1
+           AND provider_playlist.provider = 'spotify'
+           AND provider_playlist.provider_playlist_id = $2
+         GROUP BY membership.position, track.title, album.title,
+                  provider_track.provider_track_id
+         ORDER BY membership.position",
+    )
+    .bind(snapshot_id)
+    .bind(&playlist.provider_playlist_id)
+    .fetch_all(database.pool())
+    .await?;
+    let tracks = rows
+        .into_iter()
+        .map(|row| {
+            Ok(PlaylistTrackRecord {
+                position: row.try_get("position")?,
+                title: row.try_get("title")?,
+                artists: row.try_get("artists")?,
+                album: row.try_get("album")?,
+                provider_track_id: row.try_get("provider_track_id")?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(PlaylistTracks {
+        playlist,
+        snapshot_id,
+        tracks,
+    })
+}
+
 /// Updates one playlist's role and drift policy.
 pub async fn configure(
     database: &Database,
@@ -127,21 +217,7 @@ pub async fn configure(
     drift_policy: DriftPolicy,
 ) -> Result<PlaylistRecord> {
     let account_id = account_id(database, account_label).await?;
-    let rows = list(database, account_label).await?;
-    let matches: Vec<_> = rows
-        .into_iter()
-        .filter(|playlist| match selector {
-            PlaylistSelector::ProviderId(id) => playlist.provider_playlist_id == *id,
-            PlaylistSelector::Name(name) => playlist.name.eq_ignore_ascii_case(name),
-        })
-        .collect();
-    let [selected] = matches.as_slice() else {
-        return Err(ChordriftError::Configuration(if matches.is_empty() {
-            "playlist selector did not match this account's imported playlists".to_owned()
-        } else {
-            "playlist name is ambiguous; select it by Spotify playlist ID".to_owned()
-        }));
-    };
+    let selected = resolve_selector(database, account_label, selector).await?;
     sqlx::query(
         "UPDATE provider_account_playlists account_playlist
          SET role = $3, drift_policy = $4, updated_at = now()
@@ -159,8 +235,31 @@ pub async fn configure(
     Ok(PlaylistRecord {
         role: role.as_str().to_owned(),
         drift_policy: drift_policy.as_str().to_owned(),
-        ..selected.clone()
+        ..selected
     })
+}
+
+async fn resolve_selector(
+    database: &Database,
+    account_label: &str,
+    selector: &PlaylistSelector,
+) -> Result<PlaylistRecord> {
+    let rows = list(database, account_label).await?;
+    let matches: Vec<_> = rows
+        .into_iter()
+        .filter(|playlist| match selector {
+            PlaylistSelector::ProviderId(id) => playlist.provider_playlist_id == *id,
+            PlaylistSelector::Name(name) => playlist.name.eq_ignore_ascii_case(name),
+        })
+        .collect();
+    let [selected] = matches.as_slice() else {
+        return Err(ChordriftError::Configuration(if matches.is_empty() {
+            "playlist selector did not match this account's imported playlists".to_owned()
+        } else {
+            "playlist name is ambiguous; select it by Spotify playlist ID".to_owned()
+        }));
+    };
+    Ok(selected.clone())
 }
 
 async fn account_id(database: &Database, account_label: &str) -> Result<Uuid> {

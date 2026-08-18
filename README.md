@@ -133,7 +133,8 @@ The downloadable listening-history archive remains optional. When it arrives,
 it will enrich the library with play counts and listening statistics without
 changing or replacing these Web API inventory snapshots.
 
-See [ROADMAP.md](ROADMAP.md) for the planned milestones and
+See [docs/HOW_TO_CHORDRIFT.md](docs/HOW_TO_CHORDRIFT.md) for the complete CLI
+guide, [ROADMAP.md](ROADMAP.md) for planned milestones, and
 [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
