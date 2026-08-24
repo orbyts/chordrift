@@ -211,6 +211,17 @@ retains provenance and a published canonical Spotify destination is verified.
 Do not feed Chordrift-managed output back into semantic training; use previous
 assignments only as stability constraints.
 
+The intended final Spotify surface contains the three intake playlists,
+Spotify-managed sources, multiple Chordrift-managed canonical playlists with
+approved generated names, and the temporary `Chordrift Spatial Audio`
+companion. All other user-created legacy vibe and utility playlists are to be
+retired only after their semantic evidence is consumed and every track has a
+published, verified canonical destination. The user explicitly added
+`Melodi(es)` and `Ambient Music Therapy – Indian Lounge - Relaxing Music for
+your Six Senses` to that retirement set; both currently remain
+`semantic_legacy` with weight 1.0. Retirement removes playlist containers, not
+tracks. Spotify Liked Songs remains a provider library surface.
+
 Migrations 0009-0011 and the CLI keep canonical `track_embeddings`
 separate from immutable account-scoped `embedding_generations` and
 `account_track_embeddings`. New commands cover input audit, playlist semantic

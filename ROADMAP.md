@@ -28,6 +28,17 @@ prompted playlists. Chordrift-managed outputs receive approved generated vibe
 names and must not be edited as intake surfaces. The temporary Atmos workaround
 uses `Chordrift Spatial Audio`.
 
+The intended final Spotify surface contains only those three user-managed
+intakes, Spotify-managed sources, Chordrift-managed canonical playlists, and
+the temporary `Chordrift Spatial Audio` companion. All other user-created
+legacy vibe and utility playlists are retirement candidates once their
+semantic evidence has been consumed and every track has a published, verified
+canonical destination. This explicitly includes `Melodi(es)` and
+`Ambient Music Therapy – Indian Lounge - Relaxing Music for your Six Senses`.
+Retirement removes the old playlist container, not its tracks from the library.
+Spotify Liked Songs is a provider library surface rather than a playlist and is
+not part of this retirement plan.
+
 ## v0.0.0 — Namespace reservation
 
 Reserve the crate and repository names with a minimal, dependency-free package.

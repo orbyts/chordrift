@@ -229,12 +229,31 @@ Apple Music adapter will use the same approved names. The temporary Spatial
 Audio companion is named `Chordrift Spatial Audio`.
 
 Legacy vibe playlists must remain until the dry-run proves that every track has
-an approved canonical destination. The following utility playlists are not
-intake names and are retired from the design: `Two Way Sync`,
-`My top tracks playlist`, and `All my saved songs`. `Collaboration Jessica` is
-explicitly ignored and must not contribute recommendation or similarity
-evidence. Deleting any existing playlist is still a manual Spotify action in
-v0.0.5; Chordrift will not do it remotely.
+an approved canonical destination. After that verification and separate user
+approval, all old user-created vibe and utility playlists are intended to be
+retired. This includes `Melodi(es)` and `Ambient Music Therapy – Indian Lounge
+- Relaxing Music for your Six Senses`, which remain semantic evidence until
+retirement. The utility playlists `Two Way Sync`, `My top tracks playlist`, and
+`All my saved songs` are not intake names and are also retired from the design.
+`Collaboration Jessica` is explicitly ignored and must not contribute
+recommendation or similarity evidence. Retirement removes the obsolete
+playlist container, not its tracks from the saved library or verified canonical
+destinations. Deleting any existing playlist is still a manual Spotify action
+in v0.0.5; Chordrift will not do it remotely.
+
+The target Spotify surface is therefore:
+
+1. `Inbox`, `From Friends`, and `Liked from Radio` as the only user-managed
+   intake playlists.
+2. Spotify-managed sources such as `On Repeat`, `Daily Mix`, and prompted
+   playlists.
+3. Multiple Chordrift-managed canonical playlists, each with an approved
+   generated vibe name.
+4. `Chordrift Spatial Audio` as a temporary companion until native Apple Music
+   integration replaces the workaround.
+
+Spotify Liked Songs remains a provider library surface and is not a playlist
+retirement candidate.
 
 List known playlists, their current presence, item count, role, drift policy,
 and stable Spotify ID:
