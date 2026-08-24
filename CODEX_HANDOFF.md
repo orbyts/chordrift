@@ -494,9 +494,14 @@ in Spotify, pull once to bookmark it, selectively listen in Spotify, add chosen
 songs to `Inbox` or `From Friends`, then run Chordrift normally. Bookmark tracks
 never become semantic inputs automatically.
 
-The crate version is prepared as 0.0.9. Repository artwork is intentionally
-excluded from the crates.io archive because the 14 approved full-resolution
-PNGs are review/publication assets rather than runtime data; they remain in Git.
+v0.0.9 was released on 2026-08-24 from merged `main` commit
+`6580ce8f5874f1c607f0e759484d6acb80979b8d`: crates.io publication, annotated
+Git tag `v0.0.9`, and the GitHub release all succeeded. Hosted CI run
+`32788740035` passed formatting, clippy, all ordinary and documentation tests,
+both disposable-PostgreSQL integration suites, and package verification.
+Repository artwork is intentionally excluded from the crates.io archive
+because the 14 approved full-resolution PNGs are review/publication assets
+rather than runtime data; they remain in Git.
 
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the
