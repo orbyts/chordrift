@@ -162,6 +162,13 @@ provenance. Reconciliation must distinguish intentional user removal from
 provider drift and prevent delete/re-add loops before propagating an action to
 another platform.
 
+The user approved the name **Excluded Tracks** for the provider-neutral view of
+intentional removals. Only removal from a Chordrift-managed playlist after its
+published state has been verified creates the account-level exclusion. Preserve
+provider, time, prior canonical assignment, and restore history. Removals from
+provider-curated, intake, transport, and legacy playlists are drift, not global
+exclusions. Do not create a Spotify playlist for this internal view.
+
 ## Current roadmap and next task
 
 Apple was removed from the critical release path. v0.0.5 is active on
@@ -180,6 +187,17 @@ plays, recency, completion, skips, `On Repeat`, inbox state, and recommendation
 provenance are preference/lifecycle signals for composition and ordering, not
 musical-similarity dimensions.
 
+Language and region are desired semantic dimensions, but Spotify does not
+provide authoritative track language or origin. Do not equate availability
+markets with origin and do not guess from titles. Plan provenance-aware
+MusicBrainz enrichment for recording/release language, release country, and
+artist area, retaining unknown values and confidence. Re-check Spotify's
+current Platform policy before clustering ships. The intended operation is not
+model training: independently resolve artist/title/ISRC, run a pretrained model
+or import external semantic tags, and cache the inference with provenance,
+model/version, confidence, and retrieval time. Spotify remains the sync and
+user-action adapter.
+
 Playlist policy has three distinct classes: provider-curated signal sources
 (`On Repeat`, Daily Mix, prompted playlists), user-owned intake surfaces
 (initially Inbox and From Friends), and Chordrift-managed canonical playlists.
@@ -188,18 +206,24 @@ retains provenance and a published canonical Spotify destination is verified.
 Do not feed Chordrift-managed output back into semantic training; use previous
 assignments only as stability constraints.
 
-Migration 0009 and the in-progress CLI keep canonical `track_embeddings`
+Migrations 0009-0011 and the CLI keep canonical `track_embeddings`
 separate from immutable account-scoped `embedding_generations` and
 `account_track_embeddings`. New commands cover input audit, playlist semantic
 weights, deterministic generation/status, and nearest-neighbor inspection.
-Unit, CLI, documentation, disposable PostgreSQL, Spotify persistence, package,
-and doc checks passed in GitHub Actions run `32748970657`. Migration 0009 is
-applied to live Neon (9/9 current). The first live audit found 2,005 eligible
-tracks: 1,203 playlist-connected, 1,469 artist-related, 1,015 album-related,
-and 1,554 with matched history. No embedding generation has been accepted yet.
-Before merging, revise the current personal generator because it still places
-listening values in its last three vector dimensions and still models playlist
-policy as one numeric weight.
+The live Neon database is current at 11/11. `Collaboration Jessica ` is ignored;
+`Liked from Radio` is discovery intake. Signal generation v2
+`4fa57f0d-fce1-4c95-8d85-bba9d206afe2` covers 2,005 tracks: 1,554 history,
+927 saved, 30 rotation, 102 discovery, 65 intake, and zero recommendation or
+prompted tracks. Semantic audit finds 666 playlist-connected, 1,469
+artist-related, and 1,015 album-related tracks.
+
+The 128-dimensional diagnostic generation exposed obvious hash collisions. A
+1,024-dimensional generation (`a33ef4ef-bd70-4375-9cc5-ca2f2ef59eb7`) embeds
+1,733 of 2,005 tracks and produced materially cleaner inspected neighbors:
+Nine Inch Nails remained with Nine Inch Nails/Trent Reznor, and the spurious
+A. R. Rahman collision disappeared. The code default is now 1,024. Treat this
+as an inspectable semantic fallback, not the final acoustic representation or
+authorization to publish/modify playlists.
 
 ## Verification and release discipline
 
@@ -235,8 +259,10 @@ At the end of each focused task:
 4. Confirm the handoff contains no secrets or unnecessary personal data.
 5. Leave the active branch and working tree state explicit for the next task.
 
-Current handoff state: active branch `codex/embeddings`, commit `ac8d262`, PR
-<https://github.com/orbyts/chordrift/pull/1>. CI is green and migration 0009 is
-live. There is one uncommitted handoff-only update recording that result.
-Continue by confirming utility playlist weights, generating and inspecting a
-personal fallback, then decide whether its evaluation is sufficient to merge.
+Current handoff state: active branch `codex/embeddings`, PR
+<https://github.com/orbyts/chordrift/pull/1>. CI run `32759966956` is green and
+migrations are live through 0011. The working tree contains the final
+1,024-dimension default and documentation updates described above until they
+are committed. Next, run the full local check suite, commit/push, wait for CI,
+then decide whether v0.0.5 is ready to merge. MusicBrainz language/region
+enrichment and the Excluded Tracks schema/apply behavior remain future work.

@@ -103,6 +103,15 @@ provenance from Neon. Reconciliation policy decides whether an intentional
 removal propagates to other providers and must prevent deletion/re-addition
 loops.
 
+Chordrift also maintains a durable, provider-neutral **Excluded Tracks** view.
+Removing a track from a published and subsequently verified Chordrift-managed
+playlist records a reversible account-level exclusion with its provider,
+timestamp, and previous canonical assignment. It must not hard-delete the track
+or listening history, and it prevents the track from silently reappearing in a
+future generated playlist. Removal from provider-curated, intake, transport, or
+legacy playlists is ordinary source drift and must not create a global
+exclusion. Restore is always explicit and audited.
+
 Until native Apple matching resumes, Spatial Audio curation uses an explicit
 manual workaround:
 
@@ -127,12 +136,24 @@ Build versioned hybrid representations. Use a pretrained music-audio foundation
 model (initially MERT, with MuQ evaluated as an alternative) as the reusable
 acoustic base whenever Chordrift has lawful access to locally owned, DRM-free
 audio. Add semantic context from explicitly semantic legacy playlists, artist
-and album relationships, and historical names. Store behavioral preference and
+and album relationships, and historical names. Add independently sourced
+recording/release language, release country, and artist-area evidence with
+source, confidence, and retrieval provenance; never infer origin from Spotify
+availability markets. Prefer MusicBrainz for this enrichment and keep unknown
+values unknown rather than guessing from titles. Store behavioral preference and
 lifecycle signals—plays, recency, completion, skips, provider-curated rotation,
 inbox status, and recommendation provenance—separately so unrelated favorites
 do not become acoustically similar merely because both are frequently played.
 Spotify-only tracks must retain a deterministic personal/metadata fallback
 rather than downloading or scraping provider audio.
+
+Chordrift does not train a music foundation model. It performs inference with
+pretrained models or imports independently sourced semantic tags for an
+identified recording, then caches the result with model/source, version,
+confidence, and retrieval time. Before clustering ships, review the then-current
+Spotify Platform policy and keep Spotify as the live synchronization and
+user-action provider; resolve the artist/title/ISRC identity independently for
+model inference and portable enrichment.
 
 ## v0.0.6 — Vibe clustering
 
@@ -151,7 +172,8 @@ legacy or discovery playlist is represented before proposing its retirement.
 Plan idempotent Spotify diffs without mutating the service. Include discovery
 inbox ingestion, cross-playlist duplicate removal, and explicit retirement
 plans for legacy and consumed inbox playlists, with track-preservation checks
-and no implicit deletions. Provider-neutral plan structures must allow Apple
+and no implicit deletions. Show proposed additions to and restorations from
+Excluded Tracks separately from provider drift. Provider-neutral plan structures must allow Apple
 Music diffs and Spatial Audio variants to be added later without changing the
 canonical model.
 

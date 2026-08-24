@@ -13,7 +13,9 @@ use crate::{ChordriftError, Result};
 
 const MODEL: &str = "semantic-feature-hash";
 const MODEL_VERSION: &str = "2";
-const DEFAULT_DIMENSIONS: usize = 128;
+// This library exposes enough distinct playlist, artist, and album features
+// that 128 slots create visible signed-hash collisions during neighbor review.
+const DEFAULT_DIMENSIONS: usize = 1024;
 const DEFAULT_SEED: i64 = 42;
 const PLAYLIST_WEIGHT: f64 = 1.0;
 const ARTIST_WEIGHT: f64 = 0.55;
