@@ -14,6 +14,8 @@ All notable changes to Chordrift are documented here.
 - Add strict naming-context export and naming-result import with generator
   provenance, revision history, reserved-name validation, and explicit
   generation approval gated by complete naming and track coverage.
+- Add a database-level current Spotify playlist projection so active queries
+  expose only latest-snapshot names while immutable snapshots retain history.
 - Define the stable intake names `Inbox`, `From Friends`, and
   `Liked from Radio`, including their distinct user-facing meanings and safe
   retirement rules for obsolete utility playlists.

@@ -185,32 +185,17 @@ pub enum PlaylistSelector {
     Name(String),
 }
 
-/// Lists every playlist observed for one local account label.
+/// Lists only playlists present in the account's latest imported snapshot.
 pub async fn list(database: &Database, account_label: &str) -> Result<Vec<PlaylistRecord>> {
     let account_id = account_id(database, account_label).await?;
     let rows = sqlx::query(
-        "SELECT provider.provider_playlist_id,
-                COALESCE(provider.metadata->>'name', canonical.name) AS name,
-                account_playlist.role, account_playlist.drift_policy,
-                account_playlist.signal_class, account_playlist.behavioral_signal,
-                account_playlist.semantic_weight, account_playlist.clear_policy,
-                account_playlist.present_in_latest_snapshot,
-                latest_playlist.total_items
-         FROM provider_account_playlists account_playlist
-         JOIN provider_playlists provider ON provider.id = account_playlist.provider_playlist_id
-         JOIN playlists canonical ON canonical.id = provider.playlist_id
-         LEFT JOIN LATERAL (
-             SELECT snapshots.total_items
-             FROM provider_playlist_snapshots snapshots
-             JOIN provider_library_snapshots library ON library.id = snapshots.snapshot_id
-             WHERE snapshots.provider_playlist_id = provider.id
-               AND library.provider_account_id = account_playlist.provider_account_id
-             ORDER BY library.captured_at DESC, library.id DESC
-             LIMIT 1
-         ) latest_playlist ON TRUE
-         WHERE account_playlist.provider_account_id = $1
-         ORDER BY lower(COALESCE(provider.metadata->>'name', canonical.name)),
-                  provider.provider_playlist_id",
+        "SELECT spotify_playlist_id AS provider_playlist_id, name,
+                role, drift_policy, signal_class, behavioral_signal,
+                semantic_weight, clear_policy, TRUE AS present_in_latest_snapshot,
+                total_items
+         FROM current_spotify_playlists
+         WHERE provider_account_id = $1
+         ORDER BY lower(name), spotify_playlist_id",
     )
     .bind(account_id)
     .fetch_all(database.pool())

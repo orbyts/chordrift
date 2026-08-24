@@ -114,6 +114,12 @@ review. After consolidation, SongShift can mirror multiple Chordrift-managed
 Spotify playlists to Apple Music using the same approved canonical names. No
 aggregate "two way sync" or transfer-relay playlist is required.
 
+The normal Neon library surface is a live projection of the latest successful
+provider snapshot: only current Spotify playlists and their current names are
+active. Older names and removed playlists remain solely in immutable sync/audit
+history. Proposed Chordrift playlists remain separate until approved and
+published.
+
 When both native providers are active, each platform is authoritative evidence
 for user actions on that platform. A user removal creates a provider-scoped
 tombstone/override; it does not erase the canonical track, history, or

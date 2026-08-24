@@ -255,12 +255,18 @@ The target Spotify surface is therefore:
 Spotify Liked Songs remains a provider library surface and is not a playlist
 retirement candidate.
 
-List known playlists, their current presence, item count, role, drift policy,
-and stable Spotify ID:
+List only playlists present in Spotify's latest successfully imported snapshot,
+using their current Spotify names, item count, role, drift policy, and stable
+Spotify ID:
 
 ```console
 $ chordrift playlists list --account personal
 ```
+
+Renames replace the active name on the next pull, and removed playlists vanish
+from this current-state list. Neon still retains immutable older snapshots for
+sync provenance and recovery, but historical names never appear as current
+playlists. Proposed Chordrift names live separately until an approved publish.
 
 List the latest imported contents of one playlist:
 

@@ -45,6 +45,10 @@ Before editing, inspect `git status --short`, the current branch, this file,
   files.
 - Minimize provider requests. Reuse Spotify playlist snapshots and saved-track
   baselines from Neon whenever their remote signatures are unchanged.
+- The normal Neon/CLI playlist surface contains only playlists present in the
+  latest successful Spotify snapshot and uses that snapshot's current names.
+  Older names and removed playlists remain only in immutable sync/audit history;
+  proposed Chordrift names remain separate until published.
 
 ## Product intent
 
@@ -343,8 +347,10 @@ acoustic classification or publish its machine labels. More independent
 semantic/acoustic coverage is still needed before these clusters should be
 published.
 
-v0.0.7 proposal work is implemented on `codex/semantic-enrichment`. Migration
-0016 is live and Neon is healthy at 16/16. The `proposals` commands provide a
+v0.0.7 proposal work is implemented on `codex/semantic-enrichment`. Migrations
+0016 and 0017 are live and Neon is healthy at 17/17. Migration 0017 provides
+the latest-snapshot-only Spotify playlist surface. The `proposals` commands
+provide a
 non-destructive workflow with stable `playlist-*` concepts, overlap-based
 lineage, strict naming artifacts, complete generator/hash provenance, and
 explicit approval. The first live proposal is
