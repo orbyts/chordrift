@@ -201,6 +201,26 @@ identity, and all playlist roles are scoped to that account.
 
 ## Playlists
 
+### External playlist bookmarks
+
+The intended clean account surface does not include playlists owned by friends,
+other users, or organizations merely because they were followed, added, or
+shared collaboratively. Chordrift will classify these as internal **External
+Playlist Bookmarks**, not active library playlists.
+
+Before a future cleanup removes one from Spotify or Apple Music, Chordrift will
+retain the provider ID, owner, link, relationship, metadata, and last-known
+contents when the provider makes them readable. An inaccessible playlist will
+be marked incomplete. The retained bookmark remains queryable in Neon, but it
+does not contribute to clustering, signals, canonical playlist counts, or
+legacy retirement.
+
+Cleanup means removing the external playlist from your provider library. It
+never means deleting or editing your friend's source playlist, and it always
+requires separate approval. The current Spotify importer skips ordinary
+followed playlists and reports their count; bookmark names, contents, and
+cleanup planning are scheduled for v0.0.9.
+
 ### Which playlist should receive a new song?
 
 The stable user-managed intake names and their meanings are:

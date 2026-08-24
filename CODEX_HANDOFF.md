@@ -226,6 +226,20 @@ your Six Senses` to that retirement set; both currently remain
 `semantic_legacy` with weight 1.0. Retirement removes playlist containers, not
 tracks. Spotify Liked Songs remains a provider library surface.
 
+The user also wants followed/shared playlists owned by other people removed
+from the visible Spotify and future Apple Music library surfaces. Treat these
+as provider-neutral **External Playlist Bookmarks**, including externally owned
+collaborative playlists. Before cleanup, retain provider ID, owner, link,
+relationship, metadata, and an immutable last-known content snapshot when
+accessible; explicitly mark inaccessible content. Bookmarks contribute no
+semantic or behavioral signal, do not count as active canonical library
+playlists, and are never legacy-retirement sources. A separately approved
+cleanup removes only the user's provider-library relationship, never edits or
+deletes the source owner's playlist. Neon keeps the bookmark for later
+inspection. v0.0.9 must add read-only bookmark list/content inspection and
+cleanup planning. The current Spotify importer only reports a skipped-followed
+count, so it does not yet satisfy this bookmark requirement.
+
 Migrations 0009-0011 and the CLI keep canonical `track_embeddings`
 separate from immutable account-scoped `embedding_generations` and
 `account_track_embeddings`. New commands cover input audit, playlist semantic

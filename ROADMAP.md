@@ -120,6 +120,23 @@ active. Older names and removed playlists remain solely in immutable sync/audit
 history. Proposed Chordrift playlists remain separate until approved and
 published.
 
+Provider membership and playlist ownership are separate facts. A playlist
+owned by another person or organization is an **External Playlist Bookmark**
+when it is followed, added to the library, or externally collaborative. It is
+not part of the active canonical library, contributes no clustering or
+behavioral signal by default, and is never a legacy-retirement source. Before
+account cleanup, Chordrift should retain its provider, stable ID, owner, public
+link, relationship, last-known metadata, and an immutable content snapshot when
+the provider permits access. If contents are inaccessible, record that fact
+rather than pretending the bookmark is complete.
+
+Account cleanup may then propose removing the external playlist from the
+user's provider library without deleting or modifying the original owner's
+playlist. This is always an explicitly approved operation. Neon retains the
+bookmark and last-known contents afterward so the user can inspect or revisit
+it even though the provider account surface stays clean. The same
+provider-neutral distinction applies to Spotify and Apple Music.
+
 When both native providers are active, each platform is authoritative evidence
 for user actions on that platform. A user removal creates a provider-scoped
 tombstone/override; it does not erase the canonical track, history, or
@@ -243,6 +260,13 @@ rate-limit handling, and convergence checks against Spotify fixtures and
 read-only probes. Continue to prohibit remote mutations while proving that an
 approved plan can be executed safely and audited completely.
 
+Inventory owned, provider-curated, collaborative-external, and followed-
+external playlists as distinct relationships. Add read-only bookmark list and
+content inspection, preserve accessible external contents before cleanup, and
+show provider-library removal as a separate explicitly approved plan category.
+External bookmarks must never be mistaken for owned legacy playlists or
+canonical inputs.
+
 Generate one simple original cover-art artifact for every approved canonical
 playlist before publication. Artwork should be derived from the approved name,
 description, and semantic tags; use a restrained shared visual system while
@@ -261,6 +285,9 @@ runs. Upload only explicitly approved cover artifacts after the corresponding
 playlist exists, with the same interruption and convergence protections as
 track operations. Remove legacy or consumed discovery playlists only as
 separately approved operations after their replacement playlists are published
-and verified. Apple
+and verified. Remove followed/shared external playlists from the user's
+provider library only after their bookmark snapshots are retained and the
+separate cleanup operations are approved; never mutate the source owner's
+playlist. Apple
 Music publishing and Spatial Audio companions remain a subsequent provider
 milestone unless the deferred provider track is completed earlier.

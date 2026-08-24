@@ -14,6 +14,9 @@ All notable changes to Chordrift are documented here.
   containers in the plan without duplicating existing intake surfaces.
 - Schedule deterministic, original, explicitly approved cover artwork for
   every canonical playlist in v0.0.9, before any v0.1.0 publication.
+- Define External Playlist Bookmarks for followed and externally collaborative
+  Spotify/Apple Music playlists so their metadata and accessible contents can
+  be retained in Neon before separately approved provider-library cleanup.
 - Add a provider-neutral reversible Excluded Tracks ledger and report restores
   separately from ordinary additions and provider drift.
 - Add immutable managed-playlist verification baselines so an expected user
