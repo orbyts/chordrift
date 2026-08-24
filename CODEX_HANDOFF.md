@@ -159,9 +159,12 @@ Migration 0009 and the in-progress CLI keep canonical `track_embeddings`
 separate from immutable account-scoped `embedding_generations` and
 `account_track_embeddings`. New commands cover input audit, playlist semantic
 weights, deterministic generation/status, and nearest-neighbor inspection.
-Unit, CLI, documentation, and non-database tests pass; disposable PostgreSQL CI
-and live Neon migration have not yet run. Do not apply migration 0009 to live
-Neon until disposable integration succeeds.
+Unit, CLI, documentation, disposable PostgreSQL, Spotify persistence, package,
+and doc checks passed in GitHub Actions run `32748970657`. Migration 0009 is
+applied to live Neon (9/9 current). The first live audit found 2,005 eligible
+tracks: 1,203 playlist-connected, 1,469 artist-related, 1,015 album-related,
+and 1,554 with matched history. No embedding generation has been accepted yet;
+first confirm which utility playlists should have semantic weight zero.
 
 ## Verification and release discipline
 
@@ -197,7 +200,8 @@ At the end of each focused task:
 4. Confirm the handoff contains no secrets or unnecessary personal data.
 5. Leave the active branch and working tree state explicit for the next task.
 
-Current handoff state: active branch `codex/embeddings`, with the v0.0.5
-implementation still uncommitted at the time of this handoff update. Continue
-by committing the reviewed work, running disposable PostgreSQL CI, then audit
-the real account's playlist weights before accepting a clustering input.
+Current handoff state: active branch `codex/embeddings`, commit `ac8d262`, PR
+<https://github.com/orbyts/chordrift/pull/1>. CI is green and migration 0009 is
+live. There is one uncommitted handoff-only update recording that result.
+Continue by confirming utility playlist weights, generating and inspecting a
+personal fallback, then decide whether its evaluation is sufficient to merge.
