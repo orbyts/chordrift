@@ -18,7 +18,8 @@ The branch contains tested foundations for:
 - batching catalog lookups for as many as 25 ISRCs per request;
 - searching the catalog for metadata fallback candidates; and
 - decoding the fields needed for future scored matching, including Apple
-  catalog ID, ISRC, duration, public URL, and Spatial Audio availability.
+  catalog ID, ISRC, duration, public URL, and the extended `audioVariants`
+  metadata whose `dolby-atmos` value identifies Spatial Audio availability.
 
 These components are fixture-tested but cannot be integration-tested against
 Apple until Chordrift has a Media ID and Media Services key.

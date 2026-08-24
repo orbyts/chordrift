@@ -55,9 +55,9 @@ pub struct CatalogSongAttributes {
     pub isrc: Option<String>,
     /// Public Apple Music URL.
     pub url: Option<String>,
-    /// Spatial-audio availability exposed by the catalog.
+    /// Extended audio variants exposed by the catalog, including `dolby-atmos`.
     #[serde(default)]
-    pub has_immersive_audio: bool,
+    pub audio_variants: Vec<String>,
 }
 
 impl AppleMusicClient {
@@ -110,7 +110,8 @@ impl AppleMusicClient {
         validate_storefront(storefront)?;
         let mut url = api_url(&format!("catalog/{storefront}/songs"))?;
         url.query_pairs_mut()
-            .append_pair("filter[isrc]", &isrcs.join(","));
+            .append_pair("filter[isrc]", &isrcs.join(","))
+            .append_pair("extend", "audioVariants");
         let response: ResourceResponse<CatalogSong> = self.get(url).await?;
         Ok(response.data)
     }
@@ -132,7 +133,8 @@ impl AppleMusicClient {
         url.query_pairs_mut()
             .append_pair("term", term)
             .append_pair("types", "songs")
-            .append_pair("limit", &limit.to_string());
+            .append_pair("limit", &limit.to_string())
+            .append_pair("extend", "audioVariants");
         let response: SearchResponse = self.get(url).await?;
         Ok(response
             .results
@@ -225,11 +227,16 @@ mod tests {
     #[test]
     fn decodes_matching_metadata() {
         let song: CatalogSong = serde_json::from_str(
-            r#"{"id":"1613600188","attributes":{"name":"Erase Me","artistName":"Lizzy McAlpine","albumName":"five seconds flat","durationInMillis":237000,"isrc":"USRC12103144","url":"https://music.apple.com/us/song/1613600188","hasImmersiveAudio":true}}"#,
+            r#"{"id":"1613600188","attributes":{"name":"Erase Me","artistName":"Lizzy McAlpine","albumName":"five seconds flat","durationInMillis":237000,"isrc":"USRC12103144","url":"https://music.apple.com/us/song/1613600188","audioVariants":["dolby-atmos","lossless"]}}"#,
         )
         .expect("valid fixture");
         assert_eq!(song.id, "1613600188");
-        assert!(song.attributes.has_immersive_audio);
+        assert!(
+            song.attributes
+                .audio_variants
+                .iter()
+                .any(|variant| variant == "dolby-atmos")
+        );
     }
 
     #[test]
