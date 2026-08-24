@@ -305,6 +305,12 @@ identical artifacts. Do not use provider artwork, copyrighted source images, or
 personal photos, and do not request Spotify image-upload scope or upload a
 cover during this read-only milestone.
 
+The first implementation uses the original **Drift Atlas v1** visual system:
+14 local 1254×1254 PNGs, one per stable canonical playlist key, plus a contact
+sheet and strict manifest. Import validates complete proposal coverage, names,
+dimensions, media types, and SHA-256 values before Neon records an immutable
+review batch; approval remains a separate local-only command.
+
 ## v0.1.0 — Canonical music library
 
 Synchronize approved canonical playlists from Neon to Spotify, retain

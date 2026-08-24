@@ -6,8 +6,9 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
-    ChordriftError, Result, analysis, bookmarks, clusters, config, db, embeddings, enrichment,
-    history, model_inference, playlists, proposals, providers::spotify, signals, sync_plan,
+    ChordriftError, Result, analysis, artwork, bookmarks, clusters, config, db, embeddings,
+    enrichment, history, model_inference, playlists, proposals, providers::spotify, signals,
+    sync_plan,
 };
 
 /// Chordrift command-line interface.
@@ -81,6 +82,12 @@ pub enum Command {
         /// Proposal operation to perform.
         #[command(subcommand)]
         command: ProposalCommand,
+    },
+    /// Validate, inspect, and explicitly approve local canonical playlist covers.
+    Artwork {
+        /// Artwork operation to perform.
+        #[command(subcommand)]
+        command: ArtworkCommand,
     },
     /// Generate and inspect account-specific preference and lifecycle signals.
     Signals {
@@ -543,6 +550,41 @@ pub enum ProposalCommand {
     },
 }
 
+/// Local canonical playlist artwork commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ArtworkCommand {
+    /// Validate a strict manifest and register an immutable local review set.
+    Import {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Strict artwork manifest and its sibling PNG files.
+        #[arg(long)]
+        manifest: PathBuf,
+    },
+    /// Show the latest artwork review state and contact sheet.
+    Status {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List the verified cover files and content hashes.
+    List {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Approve one exact immutable artwork batch without provider writes.
+    Approve {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact batch ID printed by `artwork import` or `artwork status`.
+        #[arg(long)]
+        confirm: uuid::Uuid,
+    },
+}
+
 /// Account-specific preference and lifecycle signal commands.
 #[derive(Clone, Debug, Subcommand)]
 pub enum SignalCommand {
@@ -980,6 +1022,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
             database.close().await;
             result?;
         }
+        Command::Artwork { command } => {
+            let database = connect_current_database().await?;
+            let result = run_artwork_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
         Command::Signals { command } => {
             let database = connect_current_database().await?;
             let result = run_signal_command(command, output, &database).await;
@@ -994,6 +1042,90 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+async fn run_artwork_command(
+    command: ArtworkCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        ArtworkCommand::Import { account, manifest } => {
+            let report = artwork::import(database, &account, &manifest).await?;
+            writeln!(
+                output,
+                "artwork: {}",
+                if report.reused {
+                    "already current"
+                } else {
+                    "verified"
+                }
+            )?;
+            writeln!(output, "batch_id: {}", report.batch_id)?;
+            writeln!(
+                output,
+                "proposal_generation_id: {}",
+                report.proposal_generation_id
+            )?;
+            writeln!(output, "state: {}", report.state)?;
+            writeln!(output, "artifacts: {}", report.artifact_count)?;
+            writeln!(output, "input_hash: {}", report.input_hash)?;
+            writeln!(output, "contact_sheet: {}", report.contact_sheet_path)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        ArtworkCommand::Status { account } => {
+            let status = artwork::status(database, &account).await?;
+            write_artwork_status(output, &status)
+        }
+        ArtworkCommand::List { account } => {
+            let rows = artwork::list(database, &account).await?;
+            writeln!(output, "dimensions\tbytes\tname\tstable_key\tsha256\tpath")?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}x{}\t{}\t{}\t{}\t{}\t{}",
+                    row.width,
+                    row.height,
+                    row.byte_size,
+                    clean_cell(&row.name),
+                    row.stable_key,
+                    row.sha256,
+                    clean_cell(&row.path)
+                )?;
+            }
+            Ok(())
+        }
+        ArtworkCommand::Approve { account, confirm } => {
+            let status = artwork::approve(database, &account, confirm).await?;
+            write_artwork_status(output, &status)
+        }
+    }
+}
+
+fn write_artwork_status(output: &mut impl Write, status: &artwork::Status) -> Result<()> {
+    writeln!(output, "artwork: {}", status.state)?;
+    writeln!(output, "batch_id: {}", status.batch_id)?;
+    writeln!(
+        output,
+        "proposal_generation_id: {}",
+        status.proposal_generation_id
+    )?;
+    writeln!(output, "visual_system: {}", status.visual_system)?;
+    writeln!(output, "generator: {}", status.generator)?;
+    writeln!(output, "artifacts: {}", status.artifact_count)?;
+    writeln!(output, "input_hash: {}", status.input_hash)?;
+    writeln!(output, "contact_sheet: {}", status.contact_sheet_path)?;
+    writeln!(
+        output,
+        "approved_at: {}",
+        status
+            .approved_at
+            .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+    )?;
+    writeln!(output, "created_at: {}", status.created_at.to_rfc3339())?;
+    writeln!(output, "spotify_writes: disabled")?;
     Ok(())
 }
 
@@ -2290,9 +2422,10 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        BehavioralSignalArg, BookmarkCommand, Cli, ClusterCommand, Command, DbCommand,
-        EmbeddingCommand, EnrichmentCommand, HistoryCommand, PlaylistCommand, PlaylistRoleArg,
-        PlaylistSignalClassArg, SignalCommand, SpotifyCommand, SyncCommand, write_status,
+        ArtworkCommand, BehavioralSignalArg, BookmarkCommand, Cli, ClusterCommand, Command,
+        DbCommand, EmbeddingCommand, EnrichmentCommand, HistoryCommand, PlaylistCommand,
+        PlaylistRoleArg, PlaylistSignalClassArg, SignalCommand, SpotifyCommand, SyncCommand,
+        write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -2362,6 +2495,24 @@ mod tests {
                     plan: None,
                     details: true
                 }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_exact_artwork_approval() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "artwork",
+            "approve",
+            "--confirm",
+            "ca81d1b2-e56b-41e6-8846-cdb379cb039b",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Artwork {
+                command: ArtworkCommand::Approve { account, .. }
             } if account == "personal"
         ));
     }

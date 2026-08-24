@@ -14,6 +14,12 @@ All notable changes to Chordrift are documented here.
   containers in the plan without duplicating existing intake surfaces.
 - Schedule deterministic, original, explicitly approved cover artwork for
   every canonical playlist in v0.0.9, before any v0.1.0 publication.
+- Add the original Drift Atlas v1 cover set for all 14 approved canonical
+  playlists, including a darker user-selected Open-Sky Anthems revision and a
+  local contact-sheet preview.
+- Add strict artwork-manifest validation, content hashes, immutable Neon review
+  batches, and explicit `artwork import|status|list|approve` commands without
+  requesting Spotify image-upload scope or performing provider writes.
 - Define External Playlist Bookmarks for followed and externally collaborative
   Spotify/Apple Music playlists so their metadata and accessible contents can
   be retained in Neon before separately approved provider-library cleanup.

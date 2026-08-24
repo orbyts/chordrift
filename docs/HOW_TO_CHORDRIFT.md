@@ -605,6 +605,26 @@ for explicit approval while remaining read-only against Spotify. Cover upload
 belongs to v0.1.0 and will never reuse provider artwork or silently publish an
 unapproved image.
 
+The approved v1 files live under `artwork/canonical/drift-atlas-v1`. Validate
+the strict manifest, inspect its contact sheet and hashes, and approve the
+exact immutable batch:
+
+```console
+$ chordrift db migrate
+$ chordrift artwork import --account personal \
+    --manifest artwork/canonical/drift-atlas-v1/manifest.json
+$ chordrift artwork status --account personal
+$ chordrift artwork list --account personal
+$ chordrift artwork approve --account personal --confirm ARTWORK_BATCH_UUID
+```
+
+`artwork import` verifies the proposal identity, complete playlist coverage,
+approved names, every PNG's media type and dimensions, and every content hash.
+An identical manifest reuses the existing batch. A changed candidate creates a
+new pending review and supersedes any older pending batch. Approval records the
+decision in Neon but reports `spotify_writes: disabled`; it neither requests an
+image-upload scope nor contacts Spotify.
+
 When exercising unreleased source from a machine-wide shared Cargo target,
 isolate the branch build so another clone of the same crate/version cannot
 overwrite the executable:

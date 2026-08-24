@@ -8,6 +8,8 @@
 
 /// Account-scoped canonical library analysis.
 pub mod analysis;
+/// Local-only, content-addressed playlist artwork approval records.
+pub mod artwork;
 /// Durable metadata and last-known contents for externally owned playlists.
 pub mod bookmarks;
 /// Command-line parsing and execution.

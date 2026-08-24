@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "proposal_generation_id": "ca81d1b2-e56b-41e6-8846-cdb379cb039b",
+  "visual_system": "Drift Atlas",
+  "generator": {
+    "provider": "OpenAI",
+    "model": "imagegen",
+    "version": "drift-atlas-v1"
+  },
+  "contact_sheet": "contact-sheet.png",
+  "artifacts": [
+    {
+      "stable_key": "playlist-d3c6c6f62a9a",
+      "name": "Afterlight Score",
+      "file": "playlist-d3c6c6f62a9a.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "6ec6e60bd9b01f420618b29594e64c8765f416fe0bc22ac574d46588afbe0d00",
+      "tags": ["neoclassical", "soundtrack", "piano", "afterglow"],
+      "prompt": "Drift Atlas square cover for Afterlight Score: a dark indigo atmospheric field with an ivory-gold horizon glow, delicate piano-string contours, and one restrained cinematic afterlight gesture."
+    },
+    {
+      "stable_key": "playlist-444678928139",
+      "name": "Constellations at Rest",
+      "file": "playlist-444678928139.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "2f2a0456fa8ebc89a045427f0405b053d5efd6d748681f4703ad1b7bb3468a38",
+      "tags": ["ambient", "modern classical", "stillness", "night"],
+      "prompt": "Drift Atlas square cover for Constellations at Rest: sparse luminous constellations and quiet orbit lines resting in deep midnight blue, with still modern-classical calm."
+    },
+    {
+      "stable_key": "playlist-548a2b9655cc",
+      "name": "Elysium Transit",
+      "file": "playlist-548a2b9655cc.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "28ebed7d6bcb3d53494453edac290330b8d28e6950574be1a5c537f365757022",
+      "tags": ["cinematic ambient", "meditative", "instrumental", "journey"],
+      "prompt": "Drift Atlas square cover for Elysium Transit: a meditative luminous passage through layered cinematic mist, pale transit arcs, and a distant tranquil destination."
+    },
+    {
+      "stable_key": "playlist-30296401a829",
+      "name": "Lightleak Reverie",
+      "file": "playlist-30296401a829.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "96b8458f7d0ffeb70f4d2852edcfc99b0732cba59553acf81669c2306158b606",
+      "tags": ["indie", "art pop", "soft electronic", "reverie"],
+      "prompt": "Drift Atlas square cover for Lightleak Reverie: dreamy art-pop veils interrupted by a soft prismatic light leak, with dusky violet, coral, and electronic cyan accents."
+    },
+    {
+      "stable_key": "playlist-78f894373cd7",
+      "name": "Midnight Niagara",
+      "file": "playlist-78f894373cd7.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "1ff6c543dc8cd9645d5b7bce92e04895d262e4b02f1291e0e6d8be7cc4785fa5",
+      "tags": ["M83", "synth", "widescreen", "melancholic"],
+      "prompt": "Drift Atlas square cover for Midnight Niagara: a monumental nocturnal cascade of electric blue and magenta light, widescreen synth atmosphere, and melancholic mist."
+    },
+    {
+      "stable_key": "playlist-176ac93f5a15",
+      "name": "Monsoon Cinema",
+      "file": "playlist-176ac93f5a15.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "9a291768a185998f94f5e2be3457d036d5a079d2c381dac383b3b23733102ac3",
+      "tags": ["Indian cinema", "A. R. Rahman", "melodic", "dramatic"],
+      "prompt": "Drift Atlas square cover for Monsoon Cinema: dramatic rain veils, warm saffron light, teal storm depth, and melodic cinematic arcs inspired by the emotional scale of Indian film music."
+    },
+    {
+      "stable_key": "playlist-212326194c41",
+      "name": "Neon Affection",
+      "file": "playlist-212326194c41.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "f32bffe04665de0e2216ea805931f6378644361b3acd2afff178e0ee62318a45",
+      "tags": ["indie electronic", "dreamy", "nocturnal", "groove"],
+      "prompt": "Drift Atlas square cover for Neon Affection: two luminous nocturnal forms nearly touching amid dreamy violet and cyan currents, with a gentle indie-electronic pulse."
+    },
+    {
+      "stable_key": "playlist-4d16e2c72e9e",
+      "name": "Open-Sky Anthems",
+      "file": "playlist-4d16e2c72e9e.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "5111160a24a4c38282df4ca7700dab96bd029918a9137aa2cfe37e3df555c4c4",
+      "tags": ["alternative", "pop-rock", "anthemic", "widescreen"],
+      "prompt": "Drift Atlas square cover for Open-Sky Anthems: an expansive horizon breaking into radiant ascending bands, near-black charcoal, deep ink, muted petrol, and restrained sunrise gold; saturated color remains dark and low-key with no bright cobalt or vivid cyan."
+    },
+    {
+      "stable_key": "playlist-f1759734a641",
+      "name": "Snowglass Letters",
+      "file": "playlist-f1759734a641.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "5df0e812b65ede3eba5a20c51ed0e3f8f26f1412d4bfc90647911af7be8eface",
+      "tags": ["piano", "strings", "cinematic", "delicate"],
+      "prompt": "Drift Atlas square cover for Snowglass Letters: delicate ivory threads and translucent glasslike fragments suspended in wintry blue, intimate piano-and-strings quiet."
+    },
+    {
+      "stable_key": "playlist-888b633d5b86",
+      "name": "Stillwater Sanctuary",
+      "file": "playlist-888b633d5b86.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "6888e219b0780004c23ede53fd40851881859eb3f3eae32630a1fec186d2e65e",
+      "tags": ["new age", "meditation", "calm", "sleep"],
+      "prompt": "Drift Atlas square cover for Stillwater Sanctuary: a single pearl droplet hovering above perfectly quiet concentric ripples within misty dark teal space, restorative and profoundly calm."
+    },
+    {
+      "stable_key": "playlist-8cef85f2ac2d",
+      "name": "Tidal Hush",
+      "file": "playlist-8cef85f2ac2d.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "e7190b0afbbcccd3dfe2b130c3782de7e9564a1dd2e193aa5790879ffc0a4d57",
+      "tags": ["ambient indie", "slow drift", "intimate", "waterside"],
+      "prompt": "Drift Atlas square cover for Tidal Hush: low translucent tide ribbons moving horizontally through slate blue with a seafoam glow, intimate and slow drifting."
+    },
+    {
+      "stable_key": "playlist-27326fbe2008",
+      "name": "Velvet Overture",
+      "file": "playlist-27326fbe2008.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "fbd499fcc0873d61836a64be450da72ef89077a7c9194de88154825bede41060",
+      "tags": ["classical", "romantic", "orchestral", "piano"],
+      "prompt": "Drift Atlas square cover for Velvet Overture: burgundy and midnight folds surrounding a warm gold oval, crossed by fine ivory orchestral contours with romantic weight."
+    },
+    {
+      "stable_key": "playlist-6a691b9a95ae",
+      "name": "Warm Glow Weather",
+      "file": "playlist-6a691b9a95ae.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "e410a294b6deb6a3cf991730b3d644a534e3f5e55bdc848c2f877f3ead239d1a",
+      "tags": ["indie folk", "warm", "reflective", "soft pop"],
+      "prompt": "Drift Atlas square cover for Warm Glow Weather: a low amber sun among terracotta and forest-green veils with hand-drawn contour currents, warm and reflective."
+    },
+    {
+      "stable_key": "playlist-a419d5c830cf",
+      "name": "Weightless Horizons",
+      "file": "playlist-a419d5c830cf.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "e2ce8b9dd02db49909258582e53553b72d0a5df25ed99c10a8bb88a8461efd41",
+      "tags": ["ambient", "post-rock", "cinematic", "spacious"],
+      "prompt": "Drift Atlas square cover for Weightless Horizons: a thin silver plane floating above a blue-black horizon beneath enormous subtle arcs, cinematic and spacious."
+    }
+  ]
+}

@@ -442,6 +442,21 @@ version and SHA-256, produces a contact-sheet-style preview, and requires
 explicit artwork approval. Do not request Spotify image-upload scope or upload
 covers until v0.1.0.
 
+Artwork implementation is now complete in source as migration 0023,
+`src/artwork.rs`, and `chordrift artwork import|status|list|approve`. The
+approved Drift Atlas v1 set contains 14 original 1254×1254 PNGs in
+`artwork/canonical/drift-atlas-v1`, with strict `manifest.json` provenance and
+`contact-sheet.png`. The user approved the 13 original candidates, requested a
+darker replacement for #8 Open-Sky Anthems, then explicitly approved that
+replacement and the complete set. Migration 0023 is live and Neon is healthy
+at 23/23. Approved artwork batch
+`450e2e83-37d5-4100-99b7-cef4a56240f5` is bound to proposal
+`ca81d1b2-e56b-41e6-8846-cdb379cb039b`, contains 14 verified covers, and has
+input hash `c5e295d0914f1ee8d386fcf4f7ca297e2811449cb84acbe30287afddd8d7714a`.
+Re-importing the unchanged manifest reuses that exact approved batch. Artwork
+approval is local/Neon-only and must not request Spotify image-upload scope or
+upload covers before v0.1.0.
+
 Migration 0021 established the bookmark inventory. Two consecutive
 read-only pulls produced snapshots `6544a59b-c6e7-4ec0-92d8-3129132bb449`
 and `c187fc99-5e7c-42f7-a694-86bcb9d1930b`: both saw 62 Spotify playlists,
