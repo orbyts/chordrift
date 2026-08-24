@@ -385,6 +385,15 @@ pub enum ProposalCommand {
         #[arg(long, default_value = "personal")]
         account: String,
     },
+    /// List retirement-source tracks missing from the latest proposal.
+    Missing {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Maximum tracks to report.
+        #[arg(long, default_value_t = 100)]
+        limit: u32,
+    },
     /// Export a strict, privacy-minimized JSON naming context.
     NamingExport {
         /// Local label for this Spotify account.
@@ -1468,6 +1477,21 @@ async fn run_proposal_command(
                     row.missing_tracks,
                     row.signal_class,
                     clean_cell(&row.source_name),
+                    row.spotify_id
+                )?;
+            }
+            Ok(())
+        }
+        ProposalCommand::Missing { account, limit } => {
+            let rows = proposals::missing(database, &account, limit).await?;
+            writeln!(output, "track\tartists\tsource_playlists\tspotify_id")?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}",
+                    clean_cell(&row.title),
+                    clean_cell(&row.artists),
+                    clean_cell(&row.source_playlists),
                     row.spotify_id
                 )?;
             }

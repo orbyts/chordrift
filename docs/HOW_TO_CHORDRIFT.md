@@ -442,6 +442,7 @@ $ chordrift proposals status --account personal
 $ chordrift proposals list --account personal
 $ chordrift proposals tracks --account personal --playlist playlist-0123456789ab --limit 100
 $ chordrift proposals coverage --account personal
+$ chordrift proposals missing --account personal --limit 100
 ```
 
 The proposal copies cluster membership into canonical Neon rows without
@@ -457,6 +458,10 @@ synchronization a durable target.
 remain visible and block approval. Provider-curated, transport, ignored, and
 temporary Spatial Audio views do not imply retirement and are not part of this
 gate.
+
+`proposals missing` lists every uncovered track once, along with its Spotify
+track ID and all current retirement-source playlists containing it. Use the
+stable Spotify ID when titles are ambiguous.
 
 Naming is a model-neutral artifact boundary. Export a privacy-minimized context
 containing stable keys and representative title/artist samples:

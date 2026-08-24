@@ -115,6 +115,19 @@ pub struct CoverageRow {
     pub missing_tracks: usize,
 }
 
+/// One retirement-source track not represented by the proposal.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MissingTrack {
+    /// Track title.
+    pub title: String,
+    /// Display artists.
+    pub artists: String,
+    /// Spotify track identity.
+    pub spotify_id: String,
+    /// Current semantic-legacy or intake playlists containing the track.
+    pub source_playlists: String,
+}
+
 /// JSON document given to a naming model.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct NamingContext {
@@ -506,6 +519,80 @@ pub async fn coverage(database: &Database, account_label: &str) -> Result<Vec<Co
                 required_tracks: required,
                 represented_tracks: represented,
                 missing_tracks: required.saturating_sub(represented),
+            })
+        })
+        .collect()
+}
+
+/// Lists retirement-source tracks not represented in the latest proposal.
+pub async fn missing(
+    database: &Database,
+    account_label: &str,
+    limit: u32,
+) -> Result<Vec<MissingTrack>> {
+    if limit == 0 || limit > 1_000 {
+        return Err(ChordriftError::Configuration(
+            "missing-track limit must be between 1 and 1000".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let generation = status(database, account_label).await?;
+    let rows = sqlx::query(
+        "WITH latest AS (
+             SELECT id FROM provider_library_snapshots
+             WHERE provider_account_id = $1 ORDER BY captured_at DESC, id DESC LIMIT 1
+         ), required AS (
+             SELECT provider_track.track_id,
+                    string_agg(DISTINCT snapshot.name, ', ' ORDER BY snapshot.name)
+                        AS source_playlists
+             FROM provider_account_playlists account_playlist
+             JOIN provider_playlists provider_playlist
+               ON provider_playlist.id = account_playlist.provider_playlist_id
+             JOIN latest ON true
+             JOIN provider_playlist_snapshots snapshot
+               ON snapshot.provider_playlist_id = provider_playlist.id
+              AND snapshot.snapshot_id = latest.id
+             JOIN provider_playlist_tracks membership
+               ON membership.provider_playlist_id = provider_playlist.id
+              AND membership.snapshot_id = latest.id
+             JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
+             WHERE account_playlist.provider_account_id = $1
+               AND account_playlist.signal_class IN ('semantic_legacy', 'intake')
+             GROUP BY provider_track.track_id
+         ), proposed AS (
+             SELECT DISTINCT membership.track_id
+             FROM playlists playlist
+             JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+             WHERE playlist.generation_id = $2
+         )
+         SELECT track.title,
+                COALESCE(string_agg(DISTINCT artist.name, ', '), '') AS artists,
+                min(provider_track.provider_track_id) AS spotify_id,
+                required.source_playlists
+         FROM required
+         JOIN tracks track ON track.id = required.track_id
+         JOIN provider_tracks provider_track
+           ON provider_track.track_id = track.id AND provider_track.provider = 'spotify'
+         LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
+         LEFT JOIN artists artist ON artist.id = track_artist.artist_id
+         LEFT JOIN proposed ON proposed.track_id = required.track_id
+         WHERE proposed.track_id IS NULL
+         GROUP BY track.id, track.title, required.source_playlists
+         ORDER BY lower(track.title), spotify_id
+         LIMIT $3",
+    )
+    .bind(account_id)
+    .bind(generation.generation_id)
+    .bind(i64::from(limit))
+    .fetch_all(database.pool())
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(MissingTrack {
+                title: row.try_get("title")?,
+                artists: row.try_get("artists")?,
+                spotify_id: row.try_get("spotify_id")?,
+                source_playlists: row.try_get("source_playlists")?,
             })
         })
         .collect()

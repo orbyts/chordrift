@@ -361,6 +361,7 @@ naming revision, but the proposal remains deliberately unapproved: only 653 of
 699 legacy/intake tracks are represented. Approval correctly rejected the
 generation because 46 tracks remain uncovered (27 from `Liked from Radio`,
 with the remainder spread across small legacy lists). No Spotify state was
-changed. Next, improve semantic/acoustic coverage or add a reviewable
+changed. `proposals missing` lists those tracks with Spotify IDs and all source
+playlists. Next, improve semantic/acoustic coverage or add a reviewable
 holding/resolution path for those 46 tracks, regenerate, then present names and
 organization for explicit user approval.

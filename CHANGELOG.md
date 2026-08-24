@@ -16,6 +16,8 @@ All notable changes to Chordrift are documented here.
   generation approval gated by complete naming and track coverage.
 - Add a database-level current Spotify playlist projection so active queries
   expose only latest-snapshot names while immutable snapshots retain history.
+- Add per-track inspection of proposal coverage gaps with Spotify identities
+  and all contributing legacy/intake source playlists.
 - Define the stable intake names `Inbox`, `From Friends`, and
   `Liked from Radio`, including their distinct user-facing meanings and safe
   retirement rules for obsolete utility playlists.
