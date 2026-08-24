@@ -155,6 +155,9 @@ Spotify Platform policy and keep Spotify as the live synchronization and
 user-action provider; resolve the artist/title/ISRC identity independently for
 model inference and portable enrichment.
 
+Status: complete. Provenance-aware external semantic enrichment is the first
+input task for v0.0.6 before cluster generation begins.
+
 ## v0.0.6 — Vibe clustering
 
 Create reproducible cluster generations with stable identities,

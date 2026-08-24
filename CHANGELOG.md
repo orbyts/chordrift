@@ -4,6 +4,24 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-08-24
+
+- Add immutable, account-scoped semantic embedding generations with audit,
+  status, and nearest-neighbor inspection commands.
+- Keep listening, saved, rotation, discovery, intake, recommendation, and
+  prompted-interest signals in a separately versioned behavioral generation.
+- Add explicit playlist signal classes and clearing policies so provider-owned,
+  intake, transport, ignored, semantic legacy, and canonical playlists cannot
+  accidentally teach or clear one another.
+- Generate a deterministic 1,024-dimensional semantic fallback from approved
+  playlist, artist, album, and historical-name relationships while reserving
+  canonical acoustic embeddings for lawful locally owned audio.
+- Record the deferred Apple Music bootstrap, Spatial Audio workaround,
+  provider tombstones, and reversible Excluded Tracks policy without enabling
+  provider mutations.
+- Document provenance-aware language, release-country, artist-region, mood,
+  and sound enrichment as the prerequisite to clustering.
+
 ## [0.0.4] - 2026-08-24
 
 - Add `playlists tracks` to inspect the ordered contents of a playlist's latest
@@ -72,7 +90,8 @@ All notable changes to Chordrift are documented here.
 
 - Reserve the Chordrift crate and repository namespaces.
 
-[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.4...HEAD
+[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.5...HEAD
+[0.0.5]: https://github.com/orbyts/chordrift/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/orbyts/chordrift/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/orbyts/chordrift/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/orbyts/chordrift/compare/v0.0.1...v0.0.2
