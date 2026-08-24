@@ -141,16 +141,27 @@ Spotify.
 
 ## Current roadmap and next task
 
-Apple was removed from the critical release path. The next planned milestone is
-v0.0.5: versioned personal embeddings from Spotify playlist co-occurrence,
-artists, metadata, historical names, and available listening signals. See
-`ROADMAP.md` for the remaining sequence through Spotify apply readiness and
-v0.1.0.
+Apple was removed from the critical release path. v0.0.5 is active on
+`codex/embeddings`. The target representation is hybrid: a reusable pretrained
+music-audio foundation vector plus an independently versioned account-specific
+component. MERT v1 95M is the preferred first acoustic candidate; evaluate MuQ
+as an alternative. Both published weight sets are currently non-commercial, so
+revisit licensing before any commercial Chordrift use.
 
-Do not assume an embedding technique or external model before inspecting the
-canonical data distribution and defining reproducibility, versioning, and
-evaluation criteria. Preserve provider-policy boundaries: Spotify content is
-inventory/provenance and is not training data for a general ML model.
+The acoustic models require waveforms. Do not download, scrape, or record
+Spotify audio. Populate canonical acoustic embeddings only from lawful,
+locally owned DRM-free audio. Spotify-only tracks receive a deterministic
+personal/metadata fallback from weighted playlist co-occurrence, artists,
+albums, historical playlist-name tokens, log play count, one-year recency
+decay, and completion/non-skip affinity. Normalize components before fusion.
+
+Migration 0009 and the in-progress CLI keep canonical `track_embeddings`
+separate from immutable account-scoped `embedding_generations` and
+`account_track_embeddings`. New commands cover input audit, playlist semantic
+weights, deterministic generation/status, and nearest-neighbor inspection.
+Unit, CLI, documentation, and non-database tests pass; disposable PostgreSQL CI
+and live Neon migration have not yet run. Do not apply migration 0009 to live
+Neon until disposable integration succeeds.
 
 ## Verification and release discipline
 
@@ -186,5 +197,7 @@ At the end of each focused task:
 4. Confirm the handoff contains no secrets or unnecessary personal data.
 5. Leave the active branch and working tree state explicit for the next task.
 
-Current handoff state: `main` is the intended active branch. The working tree
-should be clean after the roadmap and handoff documentation commit.
+Current handoff state: active branch `codex/embeddings`, with the v0.0.5
+implementation still uncommitted at the time of this handoff update. Continue
+by committing the reviewed work, running disposable PostgreSQL CI, then audit
+the real account's playlist weights before accepting a clustering input.

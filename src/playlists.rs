@@ -51,7 +51,7 @@ impl DriftPolicy {
 }
 
 /// One account-scoped playlist configuration.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PlaylistRecord {
     /// Spotify playlist ID.
     pub provider_playlist_id: String,
@@ -61,6 +61,8 @@ pub struct PlaylistRecord {
     pub role: String,
     /// Configured drift policy.
     pub drift_policy: String,
+    /// Relative contribution to personal embeddings; zero excludes the playlist.
+    pub embedding_weight: f64,
     /// Whether it exists in the latest imported snapshot.
     pub present: bool,
     /// Item count reported by the latest snapshot, when present.
@@ -83,7 +85,7 @@ pub struct PlaylistTrackRecord {
 }
 
 /// Current ordered contents of one account-scoped playlist.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PlaylistTracks {
     /// Playlist resolved from the user selector.
     pub playlist: PlaylistRecord,
@@ -109,6 +111,7 @@ pub async fn list(database: &Database, account_label: &str) -> Result<Vec<Playli
         "SELECT provider.provider_playlist_id,
                 COALESCE(provider.metadata->>'name', canonical.name) AS name,
                 account_playlist.role, account_playlist.drift_policy,
+                account_playlist.embedding_weight,
                 account_playlist.present_in_latest_snapshot,
                 latest_playlist.total_items
          FROM provider_account_playlists account_playlist
@@ -137,11 +140,45 @@ pub async fn list(database: &Database, account_label: &str) -> Result<Vec<Playli
                 name: row.try_get("name")?,
                 role: row.try_get("role")?,
                 drift_policy: row.try_get("drift_policy")?,
+                embedding_weight: row.try_get("embedding_weight")?,
                 present: row.try_get("present_in_latest_snapshot")?,
                 total_items: row.try_get("total_items")?,
             })
         })
         .collect()
+}
+
+/// Sets one playlist's semantic contribution; zero excludes it from embeddings.
+pub async fn set_embedding_weight(
+    database: &Database,
+    account_label: &str,
+    selector: &PlaylistSelector,
+    weight: f64,
+) -> Result<PlaylistRecord> {
+    if !weight.is_finite() || !(0.0..=10.0).contains(&weight) {
+        return Err(ChordriftError::Configuration(
+            "playlist embedding weight must be between 0 and 10".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let selected = resolve_selector(database, account_label, selector).await?;
+    sqlx::query(
+        "UPDATE provider_account_playlists account_playlist
+         SET embedding_weight = $3, updated_at = now()
+         FROM provider_playlists provider
+         WHERE account_playlist.provider_account_id = $1
+           AND account_playlist.provider_playlist_id = provider.id
+           AND provider.provider_playlist_id = $2",
+    )
+    .bind(account_id)
+    .bind(&selected.provider_playlist_id)
+    .bind(weight)
+    .execute(database.pool())
+    .await?;
+    Ok(PlaylistRecord {
+        embedding_weight: weight,
+        ..selected
+    })
 }
 
 /// Lists the ordered tracks in one playlist's latest imported snapshot.

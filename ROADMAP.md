@@ -106,8 +106,14 @@ retain storefront and evidence provenance, and cache Apple's extended
 
 ## v0.0.5 — Embeddings
 
-Build versioned personal embeddings from playlist co-occurrence, artist and
-metadata relationships, historical names, and any available listening signals.
+Build versioned hybrid embeddings. Use a pretrained music-audio foundation
+model (initially MERT, with MuQ evaluated as an alternative) as the reusable
+acoustic base whenever Chordrift has lawful access to locally owned, DRM-free
+audio. Add an independently versioned personal component from playlist
+co-occurrence, artist and album relationships, historical names, and listening
+signals. Normalize and weight the components before fusion. Spotify-only tracks
+must retain a deterministic personal/metadata fallback rather than downloading
+or scraping provider audio.
 
 ## v0.0.6 — Vibe clustering
 

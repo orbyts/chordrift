@@ -244,6 +244,62 @@ The available policies are `provider-wins`, `neon-wins`, and `manual`. They are
 durable metadata in the current pull-only release; remote repair will arrive in
 the later dry-run/apply workflow.
 
+## Embeddings
+
+Chordrift's target representation is hybrid:
+
+1. A reusable, music-foundation embedding such as MERT describes the recording's
+   acoustic character when Chordrift has lawful access to an audio file.
+2. An account-scoped personal component describes playlist co-membership,
+   artists, albums, historical playlist-name tokens, and listening behavior.
+3. A versioned fusion combines normalized components before clustering so raw
+   counts or a high-dimensional component cannot dominate accidentally.
+
+Spotify track metadata does not contain the waveform required by an acoustic
+foundation model. Until a track can be matched to locally owned, DRM-free
+audio, Chordrift generates a deterministic personal-only fallback. The schema
+keeps canonical acoustic embeddings separate from account-scoped generations,
+so adding MERT later does not invalidate the provider inventory or history.
+
+Audit source coverage and playlist weights:
+
+```console
+$ chordrift embeddings audit --account personal
+```
+
+Utility or catch-all playlists can obscure semantic relationships. Exclude one
+from future generations without changing it in Spotify:
+
+```console
+$ chordrift playlists weight --name "All my saved songs" --weight 0
+```
+
+Weights from `0` through `10` are accepted. The default is `1`; zero excludes
+the playlist only from embedding generation.
+
+Generate or reuse the deterministic fallback generation:
+
+```console
+$ chordrift embeddings generate --account personal
+$ chordrift embeddings status --account personal
+```
+
+The personal listening component currently uses meaningful play count with a
+log transform, one-year exponential recency decay, and an affinity value formed
+from completion and non-skip rates. It has deliberately less influence than
+playlist, artist, and album relationships.
+
+Inspect nearest neighbors before allowing a generation to feed clustering:
+
+```console
+$ chordrift embeddings neighbors --name "TRACK TITLE" --limit 10
+$ chordrift embeddings neighbors --spotify-id SPOTIFY_TRACK_ID --limit 10
+```
+
+Every generation records its model, implementation version, dimensions, seed,
+parameters, source snapshot, and content hash. Regenerating identical inputs
+reuses the existing immutable generation.
+
 ## Analysis
 
 Show aggregate statistics for the current analyzed snapshot:
