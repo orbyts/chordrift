@@ -13,7 +13,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     let database = db::connect(config).await?;
 
     let report = db::migrate(&database).await?;
-    assert_eq!(report.available, 25);
+    assert_eq!(report.available, 26);
 
     let status = db::status(&database).await?;
     assert_eq!(status.available_migrations, 26);
