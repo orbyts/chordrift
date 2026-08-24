@@ -20,6 +20,7 @@ const PARSER_VERSION: &str = "musicbrainz-isrc-v1";
 const API_ROOT: &str = "https://musicbrainz.org/ws/2/";
 const REQUEST_INTERVAL: Duration = Duration::from_millis(1_100);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_TRANSIENT_ATTEMPTS: usize = 3;
 
 /// Summary of one bounded cache-first MusicBrainz enrichment run.
 #[derive(Clone, Debug, PartialEq)]
@@ -260,7 +261,7 @@ async fn run_musicbrainz(
                 wait_for_rate_limit(&mut last_request).await;
                 let fetched = client.fetch_isrc(&track.isrc).await?;
                 last_request = Some(Instant::now());
-                report.requests_made += 1;
+                report.requests_made += fetched.requests_made;
                 persist_lookup(database, "isrc", &track.isrc, fetched).await?
             }
         };
@@ -279,7 +280,7 @@ async fn run_musicbrainz(
                     wait_for_rate_limit(&mut last_request).await;
                     let fetched = client.fetch_recording(&recording_id).await?;
                     last_request = Some(Instant::now());
-                    report.requests_made += 1;
+                    report.requests_made += fetched.requests_made;
                     persist_lookup(database, "recording", &recording_id, fetched).await?
                 }
             };
@@ -400,6 +401,12 @@ async fn load_tracks(
          FROM tracks track
          LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
          LEFT JOIN artists artist ON artist.id = track_artist.artist_id
+         LEFT JOIN account_track_signals signal
+           ON signal.track_id = track.id AND signal.generation_id = (
+               SELECT generation.id FROM signal_generations generation
+               WHERE generation.provider_account_id = $1
+               ORDER BY generation.created_at DESC, generation.id DESC LIMIT 1
+           )
          WHERE track.isrc IS NOT NULL
            AND EXISTS (
                SELECT 1 FROM provider_tracks provider
@@ -411,8 +418,14 @@ async fn load_tracks(
                WHERE match.track_id = track.id AND match.source = $3
                  AND match.parser_version = $4
            ))
-         GROUP BY track.id, track.title, track.duration_ms, track.isrc
-         ORDER BY track.id
+         GROUP BY track.id, track.title, track.duration_ms, track.isrc,
+                  signal.intake, signal.provider_rotation, signal.saved,
+                  signal.meaningful_play_count
+         ORDER BY signal.intake DESC NULLS LAST,
+                  signal.provider_rotation DESC NULLS LAST,
+                  signal.saved DESC NULLS LAST,
+                  signal.meaningful_play_count DESC NULLS LAST,
+                  track.id
          LIMIT $5",
     )
     .bind(account_id)
@@ -472,6 +485,7 @@ struct FetchedLookup {
     http_status: u16,
     response: Option<Value>,
     error_class: Option<&'static str>,
+    requests_made: usize,
 }
 
 async fn persist_lookup(
@@ -593,7 +607,7 @@ fn decide_match(track: &TrackInput, lookup: &CachedLookup) -> Result<MatchDecisi
 
 fn candidate_score(track: &TrackInput, candidate: &MbRecording) -> f64 {
     let mut score = 0.0;
-    if normalize(&track.title) == normalize(&candidate.title) {
+    if normalize_title(&track.title) == normalize_title(&candidate.title) {
         score += 0.55;
     }
     let track_artists: BTreeSet<_> = track.artists.iter().map(|name| normalize(name)).collect();
@@ -795,13 +809,8 @@ impl MusicBrainzClient {
             ));
         }
         let url = format!("{API_ROOT}isrc/{isrc}");
-        let response = self
-            .http
-            .get(url)
-            .query(&[("inc", "artist-credits"), ("fmt", "json")])
-            .send()
-            .await?;
-        response_outcome(response).await
+        self.get_with_retry(url, &[("inc", "artist-credits"), ("fmt", "json")])
+            .await
     }
 
     async fn fetch_recording(&self, recording_id: &str) -> Result<FetchedLookup> {
@@ -811,20 +820,37 @@ impl MusicBrainzClient {
             )
         })?;
         let url = format!("{API_ROOT}recording/{recording_id}");
-        let response = self
-            .http
-            .get(url)
-            .query(&[
+        self.get_with_retry(
+            url,
+            &[
                 ("inc", "artist-credits+releases+genres+tags"),
                 ("fmt", "json"),
-            ])
-            .send()
-            .await?;
-        response_outcome(response).await
+            ],
+        )
+        .await
+    }
+
+    async fn get_with_retry(&self, url: String, query: &[(&str, &str)]) -> Result<FetchedLookup> {
+        for attempt in 1..=MAX_TRANSIENT_ATTEMPTS {
+            let response = self.http.get(&url).query(query).send().await?;
+            let status = response.status();
+            if !matches!(
+                status,
+                StatusCode::SERVICE_UNAVAILABLE | StatusCode::TOO_MANY_REQUESTS
+            ) || attempt == MAX_TRANSIENT_ATTEMPTS
+            {
+                return response_outcome(response, attempt).await;
+            }
+            sleep(Duration::from_secs(1_u64 << attempt)).await;
+        }
+        unreachable!("bounded attempt loop always returns")
     }
 }
 
-async fn response_outcome(response: reqwest::Response) -> Result<FetchedLookup> {
+async fn response_outcome(
+    response: reqwest::Response,
+    requests_made: usize,
+) -> Result<FetchedLookup> {
     let status = response.status();
     if status == StatusCode::OK {
         return Ok(FetchedLookup {
@@ -832,6 +858,7 @@ async fn response_outcome(response: reqwest::Response) -> Result<FetchedLookup> 
             http_status: status.as_u16(),
             response: Some(response.json().await?),
             error_class: None,
+            requests_made,
         });
     }
     if status == StatusCode::NOT_FOUND {
@@ -840,6 +867,7 @@ async fn response_outcome(response: reqwest::Response) -> Result<FetchedLookup> 
             http_status: status.as_u16(),
             response: None,
             error_class: None,
+            requests_made,
         });
     }
     Ok(FetchedLookup {
@@ -855,6 +883,7 @@ async fn response_outcome(response: reqwest::Response) -> Result<FetchedLookup> 
         } else {
             "http_error"
         }),
+        requests_made,
     })
 }
 
@@ -895,6 +924,16 @@ fn normalize(value: &str) -> String {
         .collect()
 }
 
+fn normalize_title(value: &str) -> String {
+    let lowercase = value.to_lowercase();
+    let base = ["(feat.", "(feat ", "(featuring ", "[feat.", "[featuring "]
+        .into_iter()
+        .filter_map(|marker| lowercase.find(marker))
+        .min()
+        .map_or(value, |index| &value[..index]);
+    normalize(base)
+}
+
 fn as_i32(value: usize) -> Result<i32> {
     i32::try_from(value).map_err(|_| {
         ChordriftError::Configuration("enrichment count exceeds PostgreSQL integer".to_owned())
@@ -911,7 +950,7 @@ fn as_usize(value: i64) -> Result<usize> {
 mod tests {
     use super::{
         CachedLookup, LookupOutcome, MbArtist, MbArtistCredit, MbRecording, MbResponse, TrackInput,
-        candidate_score, decide_match, facts, normalize,
+        candidate_score, decide_match, facts, normalize, normalize_title,
     };
     use serde_json::to_value;
     use uuid::Uuid;
@@ -970,6 +1009,18 @@ mod tests {
     #[test]
     fn normalization_is_stable_across_punctuation_and_case() {
         assert_eq!(normalize("A. R. Rahman"), normalize("a-r rahman"));
+    }
+
+    #[test]
+    fn featured_artist_suffix_does_not_change_recording_title() {
+        assert_eq!(
+            normalize_title("Earnestly Yours (feat. Ren Ford)"),
+            normalize_title("Earnestly Yours")
+        );
+        assert_ne!(
+            normalize_title("Song (Instrumental)"),
+            normalize_title("Song")
+        );
     }
 
     fn track() -> TrackInput {

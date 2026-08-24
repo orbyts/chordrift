@@ -271,6 +271,12 @@ fast-forwarded into `$CRATES/chordrift`. Active development is now on
 MusicBrainz adapter are in the working tree but not yet applied live. The
 adapter caches raw ISRC and recording-detail responses separately, respects the
 one-request-per-second limit, and persists conservative match/fact provenance.
-It must pass disposable PostgreSQL/CI validation before migration 0012 reaches
-live Neon. Artist-area and pretrained mood/sound inference are the next layers;
+Fresh PostgreSQL CI run `32764620509` passed, migration 0012 is live, and a
+five-track probe completed without false matches. After narrowly normalizing
+only featured-artist title suffixes, one track matched and produced two
+release-provenance facts; two ISRCs were absent and one MusicBrainz duplicate
+recording set correctly remained ambiguous. Bounded retry cleared two transient
+503s. Pending requests are prioritized by intake, rotation, saved state, then
+meaningful plays; these behavioral values affect scheduling only, never musical
+similarity. Artist-area and pretrained mood/sound inference are the next layers;
 the Excluded Tracks schema/apply behavior remains future work.

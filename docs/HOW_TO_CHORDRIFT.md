@@ -390,6 +390,10 @@ then one cached recording-detail lookup only after a conservative match. Shared
 ISRCs and recording IDs do not cause repeated requests. Reprocess settled tracks
 after a parser change without forcing a redownload:
 
+Pending batches prioritize intake, current rotation, saved state, and meaningful
+plays so the most useful library surface is enriched first. This changes request
+order only; behavioral priority never becomes musical similarity.
+
 ```console
 $ chordrift enrich musicbrainz --account personal --limit 25 --refresh
 ```
