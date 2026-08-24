@@ -391,6 +391,38 @@ Every generation records its model, implementation version, dimensions, seed,
 parameters, source snapshot, and content hash. Regenerating identical inputs
 reuses the existing immutable generation.
 
+The current fallback generation also consumes versioned MusicBrainz semantic
+facts, imported model facts, and any lawful imported acoustic embeddings.
+Imported acoustic vectors are L2-normalized and projected deterministically
+into the common feature space; model identity and version are part of the
+feature key. Behavioral signals remain outside similarity.
+
+## Vibe clusters
+
+Generate a non-destructive diagnostic structure from the latest immutable
+embedding generation:
+
+```console
+$ chordrift clusters generate --account personal --count 12 --min-similarity 0.05
+$ chordrift clusters status --account personal
+$ chordrift clusters list --account personal
+$ chordrift clusters tracks --account personal --cluster vibe-0123456789ab --limit 100
+```
+
+Clustering uses deterministic farthest-first initialization and spherical
+k-means over cosine similarity. The generation records the exact embedding
+generation, algorithm/version, seed, parameters, counts, and an input hash;
+identical inputs reuse the existing result. Tracks below the configured
+centroid similarity remain explicitly unassigned. Machine labels are temporary
+content-derived identifiers, not playlist names, and no Spotify playlist is
+created or modified.
+
+After proposed playlists have stable identities, Chordrift will support the
+listening correction workflow: reject a track's current assignment, optionally
+choose or lock a different destination, then regenerate so the track moves.
+That account-specific decision will be an auditable constraint while the
+original score and assignment remain preserved.
+
 ## Semantic enrichment
 
 MusicBrainz enrichment is independent from Spotify synchronization. It resolves

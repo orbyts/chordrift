@@ -317,3 +317,14 @@ that account-scoped decision as an auditable stability constraint while
 preserving the original model score and assignment history. Do not implement
 this as a free-floating pre-clustering mood tag; wait for stable cluster and
 playlist identities.
+
+The semantic fallback model is being advanced to `semantic-feature-hash@3` so
+its immutable input includes MusicBrainz facts, imported model facts, and
+deterministically projected lawful acoustic vectors in addition to legacy
+playlist, artist, album, and historical-name evidence. Source/parser and
+model/version identities are recorded in generation parameters; behavior
+remains excluded. Migration 0015 and the `clusters generate/status/list/tracks`
+commands are in development using deterministic spherical k-means, an exact
+embedding-generation input, explicit low-similarity unassignment, idempotent
+generation hashes, and temporary content-derived machine labels. Cluster output
+is diagnostic and must not create or modify Spotify playlists.

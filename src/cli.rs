@@ -6,8 +6,8 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
-    ChordriftError, Result, analysis, config, db, embeddings, enrichment, history, model_inference,
-    playlists, providers::spotify, signals,
+    ChordriftError, Result, analysis, clusters, config, db, embeddings, enrichment, history,
+    model_inference, playlists, providers::spotify, signals,
 };
 
 /// Chordrift command-line interface.
@@ -63,6 +63,12 @@ pub enum Command {
         /// Embedding operation to perform.
         #[command(subcommand)]
         command: EmbeddingCommand,
+    },
+    /// Generate and inspect reproducible vibe clusters.
+    Clusters {
+        /// Cluster operation to perform.
+        #[command(subcommand)]
+        command: ClusterCommand,
     },
     /// Generate and inspect account-specific preference and lifecycle signals.
     Signals {
@@ -283,6 +289,50 @@ pub enum EmbeddingCommand {
         spotify_id: Option<String>,
         /// Maximum neighbors to report.
         #[arg(long, default_value_t = 10)]
+        limit: u32,
+    },
+}
+
+/// Reproducible vibe clustering commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ClusterCommand {
+    /// Generate or reuse clusters from the latest embedding generation.
+    Generate {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Requested cluster count.
+        #[arg(long, default_value_t = 12)]
+        count: u32,
+        /// Leave tracks below this centroid cosine similarity unassigned.
+        #[arg(long, default_value_t = 0.05, allow_hyphen_values = true)]
+        min_similarity: f64,
+        /// Reproducibility seed; defaults to 42.
+        #[arg(long)]
+        seed: Option<i64>,
+    },
+    /// Show the latest cluster generation.
+    Status {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List cluster sizes and representative tracks.
+    List {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List tracks assigned to one machine cluster label.
+    Tracks {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Machine label reported by `clusters list`.
+        #[arg(long)]
+        cluster: String,
+        /// Maximum tracks to report.
+        #[arg(long, default_value_t = 100)]
         limit: u32,
     },
 }
@@ -659,6 +709,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
             database.close().await;
             result?;
         }
+        Command::Clusters { command } => {
+            let database = connect_current_database().await?;
+            let result = run_cluster_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
         Command::Signals { command } => {
             let database = connect_current_database().await?;
             let result = run_signal_command(command, output, &database).await;
@@ -1015,6 +1071,16 @@ async fn run_embedding_command(
                 report.album_related_tracks
             )?;
             writeln!(output, "history_tracks: {}", report.history_tracks)?;
+            writeln!(
+                output,
+                "semantic_fact_tracks: {}",
+                report.semantic_fact_tracks
+            )?;
+            writeln!(
+                output,
+                "acoustic_embedding_tracks: {}",
+                report.acoustic_embedding_tracks
+            )?;
             writeln!(output)?;
             writeln!(output, "semantic_weight\ttracks\tplaylist\tspotify_id")?;
             for playlist in report.playlists {
@@ -1094,6 +1160,98 @@ async fn run_embedding_command(
                     clean_cell(&neighbor.title),
                     clean_cell(&neighbor.artists),
                     neighbor.provider_track_id
+                )?;
+            }
+            Ok(())
+        }
+    }
+}
+
+async fn run_cluster_command(
+    command: ClusterCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        ClusterCommand::Generate {
+            account,
+            count,
+            min_similarity,
+            seed,
+        } => {
+            let report =
+                clusters::generate(database, &account, count, min_similarity, seed).await?;
+            writeln!(output, "clusters: generated")?;
+            writeln!(output, "generation_id: {}", report.generation_id)?;
+            writeln!(
+                output,
+                "embedding_generation_id: {}",
+                report.embedding_generation_id
+            )?;
+            writeln!(output, "reused: {}", report.reused)?;
+            writeln!(output, "tracks: {}", report.track_count)?;
+            writeln!(output, "clusters: {}", report.cluster_count)?;
+            writeln!(output, "unassigned: {}", report.unassigned_count)?;
+            writeln!(output, "input_hash: {}", report.input_hash)?;
+            Ok(())
+        }
+        ClusterCommand::Status { account } => {
+            let report = clusters::status(database, &account).await?;
+            writeln!(output, "clusters: current")?;
+            writeln!(output, "generation_id: {}", report.generation_id)?;
+            writeln!(
+                output,
+                "embedding_generation_id: {}",
+                report.embedding_generation_id
+            )?;
+            writeln!(
+                output,
+                "algorithm: {}@{}",
+                report.algorithm, report.algorithm_version
+            )?;
+            writeln!(output, "tracks: {}", report.track_count)?;
+            writeln!(output, "clusters: {}", report.cluster_count)?;
+            writeln!(output, "unassigned: {}", report.unassigned_count)?;
+            writeln!(output, "input_hash: {}", report.input_hash)?;
+            writeln!(output, "created_at: {}", report.created_at.to_rfc3339())?;
+            Ok(())
+        }
+        ClusterCommand::List { account } => {
+            let rows = clusters::list(database, &account).await?;
+            writeln!(
+                output,
+                "tracks\trepresentative_score\tcluster\trepresentative\tspotify_id"
+            )?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{:.4}\t{}\t{} — {}\t{}",
+                    row.track_count,
+                    row.representative_score,
+                    clean_cell(&row.machine_label),
+                    clean_cell(&row.representative_title),
+                    clean_cell(&row.representative_artists),
+                    row.representative_spotify_id
+                )?;
+            }
+            Ok(())
+        }
+        ClusterCommand::Tracks {
+            account,
+            cluster,
+            limit,
+        } => {
+            let rows = clusters::tracks(database, &account, &cluster, limit).await?;
+            writeln!(output, "rank\tscore\ttrack\tartists\tspotify_id")?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{:.4}\t{}\t{}\t{}",
+                    row.representative_rank,
+                    row.membership_score,
+                    clean_cell(&row.title),
+                    clean_cell(&row.artists),
+                    row.spotify_id
                 )?;
             }
             Ok(())
@@ -1439,9 +1597,9 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        BehavioralSignalArg, Cli, Command, DbCommand, EmbeddingCommand, EnrichmentCommand,
-        HistoryCommand, PlaylistCommand, PlaylistRoleArg, PlaylistSignalClassArg, SignalCommand,
-        SpotifyCommand, SyncCommand, write_status,
+        BehavioralSignalArg, Cli, ClusterCommand, Command, DbCommand, EmbeddingCommand,
+        EnrichmentCommand, HistoryCommand, PlaylistCommand, PlaylistRoleArg,
+        PlaylistSignalClassArg, SignalCommand, SpotifyCommand, SyncCommand, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -1635,6 +1793,23 @@ mod tests {
                     seed: None
                 }
             } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_default_cluster_generation() {
+        let cli =
+            Cli::try_parse_from(["chordrift", "clusters", "generate"]).expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Clusters {
+                command: ClusterCommand::Generate {
+                    account,
+                    count: 12,
+                    min_similarity,
+                    seed: None
+                }
+            } if account == "personal" && (min_similarity - 0.05).abs() < f64::EPSILON
         ));
     }
 

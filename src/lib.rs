@@ -10,6 +10,8 @@
 pub mod analysis;
 /// Command-line parsing and execution.
 pub mod cli;
+/// Reproducible account-scoped vibe cluster generations.
+pub mod clusters;
 /// Application-owned database configuration.
 pub mod config;
 /// System credential storage with provider and account isolation.
