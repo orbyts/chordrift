@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
     ChordriftError, Result, analysis, clusters, config, db, embeddings, enrichment, history,
-    model_inference, playlists, providers::spotify, signals,
+    model_inference, playlists, proposals, providers::spotify, signals,
 };
 
 /// Chordrift command-line interface.
@@ -69,6 +69,12 @@ pub enum Command {
         /// Cluster operation to perform.
         #[command(subcommand)]
         command: ClusterCommand,
+    },
+    /// Build, name, inspect, and explicitly approve a proposed playlist library.
+    Proposals {
+        /// Proposal operation to perform.
+        #[command(subcommand)]
+        command: ProposalCommand,
     },
     /// Generate and inspect account-specific preference and lifecycle signals.
     Signals {
@@ -337,6 +343,74 @@ pub enum ClusterCommand {
         /// Maximum tracks to report.
         #[arg(long, default_value_t = 100)]
         limit: u32,
+    },
+}
+
+/// Non-destructive proposed playlist library commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ProposalCommand {
+    /// Generate or reuse a proposal from the latest cluster generation.
+    Generate {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Show the latest proposal, naming, and coverage state.
+    Status {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List stable proposed playlists.
+    List {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List tracks in one stable proposed playlist.
+    Tracks {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Stable key reported by `proposals list`.
+        #[arg(long)]
+        playlist: String,
+        /// Maximum tracks to report.
+        #[arg(long, default_value_t = 100)]
+        limit: u32,
+    },
+    /// Show per-source retirement coverage.
+    Coverage {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Export a strict, privacy-minimized JSON naming context.
+    NamingExport {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Destination JSON file.
+        #[arg(long)]
+        file: PathBuf,
+    },
+    /// Import versioned names, descriptions, tags, and generator provenance.
+    NamingImport {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Strict naming-result JSON artifact.
+        #[arg(long)]
+        file: PathBuf,
+    },
+    /// Approve a fully named proposal only when retirement coverage is complete.
+    Approve {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact generation ID printed by `proposals status`.
+        #[arg(long)]
+        confirm: uuid::Uuid,
     },
 }
 
@@ -715,6 +789,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
         Command::Clusters { command } => {
             let database = connect_current_database().await?;
             let result = run_cluster_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
+        Command::Proposals { command } => {
+            let database = connect_current_database().await?;
+            let result = run_proposal_command(command, output, &database).await;
             database.close().await;
             result?;
         }
@@ -1265,6 +1345,159 @@ async fn run_cluster_command(
                     row.spotify_id
                 )?;
             }
+            Ok(())
+        }
+    }
+}
+
+async fn run_proposal_command(
+    command: ProposalCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        ProposalCommand::Generate { account } => {
+            let report = proposals::generate(database, &account).await?;
+            writeln!(
+                output,
+                "proposal: {}",
+                if report.reused {
+                    "already current"
+                } else {
+                    "created"
+                }
+            )?;
+            writeln!(output, "generation_id: {}", report.generation_id)?;
+            writeln!(
+                output,
+                "cluster_generation_id: {}",
+                report.cluster_generation_id
+            )?;
+            writeln!(output, "playlists: {}", report.playlist_count)?;
+            writeln!(output, "assigned_tracks: {}", report.assigned_track_count)?;
+            writeln!(output, "required_tracks: {}", report.required_track_count)?;
+            writeln!(
+                output,
+                "represented_tracks: {}",
+                report.represented_track_count
+            )?;
+            writeln!(output, "coverage_complete: {}", report.coverage_complete)?;
+            writeln!(output, "input_hash: {}", report.input_hash)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        ProposalCommand::Status { account } => {
+            let status = proposals::status(database, &account).await?;
+            writeln!(output, "proposal: {}", status.state)?;
+            writeln!(output, "generation_id: {}", status.generation_id)?;
+            writeln!(
+                output,
+                "cluster_generation_id: {}",
+                status.cluster_generation_id
+            )?;
+            writeln!(output, "playlists: {}", status.playlist_count)?;
+            writeln!(output, "named_playlists: {}", status.named_playlist_count)?;
+            writeln!(output, "required_tracks: {}", status.required_track_count)?;
+            writeln!(
+                output,
+                "represented_tracks: {}",
+                status.represented_track_count
+            )?;
+            writeln!(output, "coverage_complete: {}", status.coverage_complete)?;
+            writeln!(output, "input_hash: {}", status.input_hash)?;
+            writeln!(
+                output,
+                "naming_context_hash: {}",
+                status.naming_context_hash.as_deref().unwrap_or("-")
+            )?;
+            writeln!(output, "created_at: {}", status.created_at.to_rfc3339())?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        ProposalCommand::List { account } => {
+            let rows = proposals::list(database, &account).await?;
+            writeln!(
+                output,
+                "tracks\tnamed\tstable_key\tname\ttags\tmachine_label"
+            )?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}\t{}",
+                    row.track_count,
+                    row.named,
+                    row.stable_key,
+                    clean_cell(&row.name),
+                    clean_cell(&row.tags.join(",")),
+                    row.machine_label
+                )?;
+            }
+            Ok(())
+        }
+        ProposalCommand::Tracks {
+            account,
+            playlist,
+            limit,
+        } => {
+            let rows = proposals::tracks(database, &account, &playlist, limit).await?;
+            writeln!(output, "position\ttrack\tartists\tspotify_id")?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}",
+                    row.position,
+                    clean_cell(&row.title),
+                    clean_cell(&row.artists),
+                    row.spotify_id
+                )?;
+            }
+            Ok(())
+        }
+        ProposalCommand::Coverage { account } => {
+            let rows = proposals::coverage(database, &account).await?;
+            writeln!(
+                output,
+                "required\trepresented\tmissing\tclass\tplaylist\tspotify_id"
+            )?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}\t{}",
+                    row.required_tracks,
+                    row.represented_tracks,
+                    row.missing_tracks,
+                    row.signal_class,
+                    clean_cell(&row.source_name),
+                    row.spotify_id
+                )?;
+            }
+            Ok(())
+        }
+        ProposalCommand::NamingExport { account, file } => {
+            let context = proposals::naming_context(database, &account).await?;
+            let bytes = serde_json::to_vec_pretty(&context)?;
+            std::fs::write(&file, bytes)?;
+            writeln!(output, "naming_context: exported")?;
+            writeln!(output, "generation_id: {}", context.generation_id)?;
+            writeln!(output, "context_sha256: {}", context.context_sha256)?;
+            writeln!(output, "playlists: {}", context.playlists.len())?;
+            writeln!(output, "file: {}", file.display())?;
+            Ok(())
+        }
+        ProposalCommand::NamingImport { account, file } => {
+            let bytes = std::fs::read(&file)?;
+            let artifact: proposals::NamingArtifact = serde_json::from_slice(&bytes)?;
+            let count = proposals::import_names(database, &account, artifact, &bytes).await?;
+            writeln!(output, "naming_artifact: imported")?;
+            writeln!(output, "playlists_named: {count}")?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        ProposalCommand::Approve { account, confirm } => {
+            let status = proposals::approve(database, &account, confirm).await?;
+            writeln!(output, "proposal: {}", status.state)?;
+            writeln!(output, "generation_id: {}", status.generation_id)?;
+            writeln!(output, "spotify_writes: disabled")?;
             Ok(())
         }
     }

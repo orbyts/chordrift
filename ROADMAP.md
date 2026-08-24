@@ -205,6 +205,14 @@ inspectable, non-destructive proposed playlist structure. Require user approval
 of generated names and organization, and prove that every track from each
 legacy or discovery playlist is represented before proposing its retirement.
 
+Playlist identity must be independent of both temporary cluster labels and
+generated display names, and should carry forward through later generations by
+membership lineage. Naming uses a strict model-neutral export/import artifact
+with provider/model/version/hash provenance. Approval is generation-specific
+and is blocked by stale or incomplete naming, unassigned retirement-source
+tracks, or incomplete legacy/intake coverage. This milestone never writes to
+Spotify.
+
 ## v0.0.8 — Full dry-run synchronization
 
 Plan idempotent Spotify diffs without mutating the service. Include discovery

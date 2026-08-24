@@ -30,8 +30,8 @@ Before editing, inspect `git status --short`, the current branch, this file,
 - Neon PostgreSQL is the canonical and operational source of truth.
 - Provider APIs are adapters. Current Spotify state is pulled into immutable
   snapshots; provider state does not compete with Neon authority.
-- Chordrift is read-only against Spotify through v0.0.4. It does not create,
-  modify, reorder, or delete remote playlists or tracks.
+- Chordrift is read-only against Spotify through the current v0.0.7 work. It
+  does not create, modify, reorder, or delete remote playlists or tracks.
 - Spotify downloadable archives are optional enrichment and immutable local
   recovery inputs. They are not the operational database.
 - A routine `chordrift sync pull` reads live Spotify state and reconciles
@@ -319,7 +319,7 @@ this as a free-floating pre-clustering mood tag; wait for stable cluster and
 playlist identities.
 
 The semantic fallback model is now `semantic-feature-hash@3`; its immutable
-its immutable input includes MusicBrainz facts, imported model facts, and
+input includes MusicBrainz facts, imported model facts, and
 deterministically projected lawful acoustic vectors in addition to legacy
 playlist, artist, album, and historical-name evidence. Source/parser and
 model/version identities are recorded in generation parameters; behavior
@@ -340,4 +340,21 @@ unassigned. An identical command reused the generation. Samples show coherent
 M83 and A. R. Rahman groups, while a generic legacy-playlist cluster still has
 many equal scores; do not mistake this sparse-evidence fallback for final
 acoustic classification or publish its machine labels. More independent
-semantic/acoustic coverage and v0.0.7 naming/proposal work come next.
+semantic/acoustic coverage is still needed before these clusters should be
+published.
+
+v0.0.7 proposal work is implemented on `codex/semantic-enrichment`. Migration
+0016 is live and Neon is healthy at 16/16. The `proposals` commands provide a
+non-destructive workflow with stable `playlist-*` concepts, overlap-based
+lineage, strict naming artifacts, complete generator/hash provenance, and
+explicit approval. The first live proposal is
+`ca81d1b2-e56b-41e6-8846-cdb379cb039b`, derived from cluster generation
+`8ec8512f-66fc-4f59-a50e-65d5b7ac8d13`. It contains 12 playlists and 838
+assigned tracks. All 12 candidate names were imported as an OpenAI Codex GPT-5
+naming revision, but the proposal remains deliberately unapproved: only 653 of
+699 legacy/intake tracks are represented. Approval correctly rejected the
+generation because 46 tracks remain uncovered (27 from `Liked from Radio`,
+with the remainder spread across small legacy lists). No Spotify state was
+changed. Next, improve semantic/acoustic coverage or add a reviewable
+holding/resolution path for those 46 tracks, regenerate, then present names and
+organization for explicit user approval.

@@ -28,6 +28,8 @@ pub mod history;
 pub mod model_inference;
 /// Account-scoped playlist roles and drift policy.
 pub mod playlists;
+/// Non-destructive, account-scoped proposed playlist libraries.
+pub mod proposals;
 /// Streaming-provider adapters.
 pub mod providers;
 /// Versioned account-specific preference and lifecycle signals.

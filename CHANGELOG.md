@@ -4,9 +4,16 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
-- Add the first cache-first MusicBrainz enrichment foundation with bounded
-  ISRC resolution, conservative ambiguity handling, retained raw responses,
-  and provenance-aware semantic facts.
+- Add model-neutral pretrained-audio inference artifacts and cache-first
+  MusicBrainz recording, tag, release, and artist-area enrichment with strict
+  provenance and no provider-audio acquisition.
+- Add deterministic semantic-seeded vibe clusters with explicit unassigned
+  tracks, immutable inputs, reproducibility hashes, and inspection commands.
+- Add non-destructive proposed playlist generations with stable lineage-backed
+  identities, per-source retirement coverage, and no Spotify writes.
+- Add strict naming-context export and naming-result import with generator
+  provenance, revision history, reserved-name validation, and explicit
+  generation approval gated by complete naming and track coverage.
 - Define the stable intake names `Inbox`, `From Friends`, and
   `Liked from Radio`, including their distinct user-facing meanings and safe
   retirement rules for obsolete utility playlists.

@@ -425,6 +425,58 @@ choose or lock a different destination, then regenerate so the track moves.
 That account-specific decision will be an auditable constraint while the
 original score and assignment remain preserved.
 
+## Proposed playlist library
+
+Build an immutable, non-destructive proposal from the latest cluster
+generation, then inspect its stable playlist identities and tracks:
+
+```console
+$ chordrift proposals generate --account personal
+$ chordrift proposals status --account personal
+$ chordrift proposals list --account personal
+$ chordrift proposals tracks --account personal --playlist playlist-0123456789ab --limit 100
+$ chordrift proposals coverage --account personal
+```
+
+The proposal copies cluster membership into canonical Neon rows without
+creating, renaming, clearing, or deleting any Spotify playlist. A stable
+`playlist-*` key is separate from both a cluster's temporary machine label and
+its user-facing name. When a later cluster generation overlaps an earlier
+playlist by at least half of the smaller membership, Chordrift carries that
+stable identity forward. This gives future manual corrections and provider
+synchronization a durable target.
+
+`proposals coverage` checks every unique track in every current
+`semantic_legacy` and `intake` source playlist. Missing or unassigned tracks
+remain visible and block approval. Provider-curated, transport, ignored, and
+temporary Spatial Audio views do not imply retirement and are not part of this
+gate.
+
+Naming is a model-neutral artifact boundary. Export a privacy-minimized context
+containing stable keys and representative title/artist samples:
+
+```console
+$ chordrift proposals naming-export --account personal --file naming-context.json
+$ chordrift proposals naming-import --account personal --file naming-results.json
+```
+
+The result format is defined by `docs/playlist-naming-v1.schema.json`. It must
+target the exact proposal generation and exported context SHA-256, include one
+unique name/description/tag set for every stable key, and identify the naming
+provider, model, and model/prompt revision. Chordrift retains every revision
+and selects the latest import; it rejects unknown fields, reserved intake names,
+duplicate names, missing playlists, and stale contexts.
+
+Approval is deliberately explicit and succeeds only after all playlists are
+named and retirement coverage is complete:
+
+```console
+$ chordrift proposals approve --account personal --confirm PROPOSAL_GENERATION_UUID
+```
+
+Approval records the account-owner decision in Neon. It still performs no
+Spotify writes; publishing belongs to the later dry-run/apply milestones.
+
 ## Semantic enrichment
 
 MusicBrainz enrichment is independent from Spotify synchronization. It resolves
