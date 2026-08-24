@@ -296,15 +296,19 @@ artists, requests, or writes. Current live coverage is 2 matched tracks, 39
 MusicBrainz facts, and 2 tracks with artist-area facts. Pretrained mood/sound
 inference is next; Excluded Tracks remains future work.
 
-The pretrained-audio boundary is now model-neutral and requires authorized
-local audio; Chordrift will not download or infer from Spotify audio. Migration
-0014, `enrich model-import`, `enrich model-status`, and the strict path-free
-`docs/model-inference-v1.schema.json` are in development. Artifacts pin model
+The pretrained-audio boundary is model-neutral and requires authorized local
+audio; Chordrift will not download or infer from Spotify audio. Migration 0014,
+`enrich model-import`, `enrich model-status`, and the strict path-free
+`docs/model-inference-v1.schema.json` are implemented. Artifacts pin model
 name/version/revision/license, input hashes, inference time, aggregation,
 embeddings, and mood/sound facts. MERT and MuQ-MuLan are candidate foundation
 spaces and Essentia provides explicit classifiers, but the evaluated weights
 carry non-commercial terms and all require real audio. Tracks without lawful
-audio remain unembedded rather than receiving invented acoustic evidence.
+audio remain unembedded rather than receiving invented acoustic evidence. CI
+run `32769042155` passed; migration 0014 is live and Neon is healthy at 14/14.
+The live model status correctly reports 2,005 eligible tracks and zero imported
+inferences, embeddings, facts, or models because no authorized local audio has
+been supplied.
 
 Manual correction is explicitly post-generation: after proposed playlists
 exist, the user must be able to reject a track's current vibe and optionally
