@@ -52,6 +52,16 @@ Before editing, inspect `git status --short`, the current branch, this file,
 
 ## Product intent
 
+The concise product thesis is **a clean listening surface backed by lossless
+musical memory**. The problem is accumulated playlist/library entropy: old
+favorites, unexplained songs, followed or shared playlists, provider discovery,
+and abandoned user lists become indistinguishable, so the user stops exploring
+their own rich history and defaults to song radio. Chordrift must first explain
+where each playlist and track came from, retain the best available provenance
+and history, explicitly mark gaps, and only then simplify the provider surface.
+The result should be a small set of purposeful, approved, artwork-backed
+playlists the user genuinely listens to—not merely more generated playlists.
+
 Chordrift will become the canonical playlist orchestrator while discovery stays
 native to each streaming platform. A small number of provider playlists can be
 marked as discovery inboxes. Chordrift will consume new tracks, recognize
@@ -62,6 +72,12 @@ Clustering and LLM-proposed playlist names must remain inspectable and require
 explicit user approval. No track or playlist deletion may be implicit. Managed
 playlist application must be idempotent, auditable, interruption-safe, and
 converge to zero changes on repeated runs.
+
+If this personal workflow proves valuable, a future UI should expose the same
+audited model: active library, external bookmarks, immutable history,
+“why is this here?” provenance, bounded cleanup approvals, artwork review, and
+manual vibe corrections. Do not assume a commercial multi-user product before
+validating that the problem and workflow generalize.
 
 ## Current Spotify implementation
 

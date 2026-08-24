@@ -3,6 +3,19 @@
 Chordrift is a personal music-library intelligence and synchronization system
 for organizing a library across streaming services.
 
+Its product promise is **a clean listening surface backed by lossless musical
+memory**. Streaming libraries accumulate old favorites, unexplained tracks,
+followed playlists, abandoned utility lists, and provider-generated discovery
+without preserving an obvious account of why each item is there. Chordrift
+retains provenance and history before simplifying that surface, then turns the
+useful material into a small, purposeful set of approved playlists that the
+listener actually wants to play.
+
+Chordrift is therefore not merely another playlist generator. It is library
+archaeology, curation, and orchestration: explain where music came from,
+preserve what mattered, separate external bookmarks from personal intent, and
+make the active library enjoyable again without silently losing history.
+
 Neon PostgreSQL will be the canonical source of truth. Spotify and Apple Music
 will be provider adapters rather than competing authorities. Future releases
 will use playlist history, personal listening context, and versioned embeddings

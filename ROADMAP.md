@@ -8,6 +8,20 @@ importable enrichment source. No other milestone is blocked on receiving it.
 
 ## Discovery and orchestration model
 
+The guiding product principle is **a clean listening surface backed by lossless
+musical memory**. Every active playlist should have an intentional purpose;
+every retained track should have inspectable provenance explaining whether it
+was a personal favorite, an old playlist member, a provider discovery, a friend
+recommendation, or part of an external followed playlist. Cleanup must preserve
+the best available history before removing clutter and explicitly identify any
+provider data that could not be recovered.
+
+The resulting canonical playlists should combine current high-rotation music,
+forgotten favorites, new discoveries, and explicit recommendations according
+to an inspectable composition policy. Their approved names and artwork should
+make the final provider surface inviting enough to replace defaulting to radio,
+while native radio and discovery continue supplying new intake.
+
 Chordrift will become the canonical orchestrator of playlists, while song
 discovery remains native to each streaming platform. New provider playlists can
 act as discovery inboxes: Chordrift ingests their tracks, identifies songs
@@ -249,9 +263,9 @@ Plan idempotent Spotify diffs without mutating the service. Include discovery
 inbox ingestion, cross-playlist duplicate removal, and explicit retirement
 plans for legacy and consumed inbox playlists, with track-preservation checks
 and no implicit deletions. Show proposed additions to and restorations from
-Excluded Tracks separately from provider drift. Provider-neutral plan structures must allow Apple
-Music diffs and Spatial Audio variants to be added later without changing the
-canonical model.
+Excluded Tracks separately from provider drift. Provider-neutral plan
+structures must allow Apple Music diffs and Spatial Audio variants to be added
+later without changing the canonical model.
 
 ## v0.0.9 — Spotify apply readiness
 
@@ -288,6 +302,18 @@ separately approved operations after their replacement playlists are published
 and verified. Remove followed/shared external playlists from the user's
 provider library only after their bookmark snapshots are retained and the
 separate cleanup operations are approved; never mutate the source owner's
-playlist. Apple
-Music publishing and Spatial Audio companions remain a subsequent provider
+playlist. Apple Music publishing and Spatial Audio companions remain a
+subsequent provider
 milestone unless the deferred provider track is completed earlier.
+
+## Post-v0.1 product direction — Review UI
+
+If the personal workflow proves useful, build a provider-neutral review UI
+around the same audited model rather than moving policy out of the CLI. It
+should answer “why is this here?” for every playlist and track, distinguish the
+active library from bookmarks and immutable history, preview proposed
+organization and artwork, approve cleanup in bounded batches, explain unknown
+or inaccessible provenance, and capture corrections when a track belongs in a
+different vibe. Product validation should establish whether this library-
+entropy problem is shared before commercial scope or multi-user operations are
+assumed.
