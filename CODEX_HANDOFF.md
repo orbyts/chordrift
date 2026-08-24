@@ -318,13 +318,26 @@ preserving the original model score and assignment history. Do not implement
 this as a free-floating pre-clustering mood tag; wait for stable cluster and
 playlist identities.
 
-The semantic fallback model is being advanced to `semantic-feature-hash@3` so
+The semantic fallback model is now `semantic-feature-hash@3`; its immutable
 its immutable input includes MusicBrainz facts, imported model facts, and
 deterministically projected lawful acoustic vectors in addition to legacy
 playlist, artist, album, and historical-name evidence. Source/parser and
 model/version identities are recorded in generation parameters; behavior
 remains excluded. Migration 0015 and the `clusters generate/status/list/tracks`
-commands are in development using deterministic spherical k-means, an exact
-embedding-generation input, explicit low-similarity unassignment, idempotent
-generation hashes, and temporary content-derived machine labels. Cluster output
-is diagnostic and must not create or modify Spotify playlists.
+commands are implemented using deterministic spherical k-means, an exact
+embedding-generation input, explicit low-similarity/undersized unassignment,
+idempotent generation hashes, and temporary content-derived machine labels.
+Cluster output is diagnostic and cannot create or modify Spotify playlists.
+
+CI runs `32770150613` and `32770941996` passed. Migration 0015 is live and Neon
+is healthy at 15/15. Live embedding generation
+`f0c8eda3-ad34-41b9-a362-2fb56354bb95` is model v3, 1,024 dimensions, and covers
+1,733 tracks. The first all-track centroid fit exposed bad 2–3-track groups and
+a 650-track catch-all, so it was superseded by semantic-seeded algorithm v2.
+The current diagnostic generation `8ec8512f-66fc-4f59-a50e-65d5b7ac8d13`
+contains 12 clusters of 30–251 tracks and leaves 895 weakly supported tracks
+unassigned. An identical command reused the generation. Samples show coherent
+M83 and A. R. Rahman groups, while a generic legacy-playlist cluster still has
+many equal scores; do not mistake this sparse-evidence fallback for final
+acoustic classification or publish its machine labels. More independent
+semantic/acoustic coverage and v0.0.7 naming/proposal work come next.
