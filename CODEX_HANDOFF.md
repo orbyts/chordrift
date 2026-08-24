@@ -356,13 +356,15 @@ explicit approval. The first live proposal is
 `ca81d1b2-e56b-41e6-8846-cdb379cb039b`, derived from cluster generation
 `8ec8512f-66fc-4f59-a50e-65d5b7ac8d13`. It contains 12 playlists and 838
 assigned tracks. All 12 candidate names were imported as an OpenAI Codex GPT-5
-naming revision, but the proposal remains deliberately unapproved: only 653 of
-699 legacy/intake tracks are represented. Approval correctly rejected the
-generation because 46 tracks remain uncovered (27 from `Liked from Radio`,
-with the remainder spread across small legacy lists). No Spotify state was
-changed. `proposals missing` lists those tracks with Spotify IDs and all source
-playlists. Migration 0018 and `proposals category-create/assign/review` add
+naming revision. Two additional manual categories, `Open-Sky Anthems` and
+`Weightless Horizons`, were created and 46 initially uncovered tracks were
+reviewed into stable destinations. The proposal now contains 14 named playlists
+and represents all 699 of 699 legacy/intake tracks; `proposals missing` is
+empty. It remains deliberately unapproved pending the account owner's explicit
+acceptance of the names and organization. No Spotify state was changed.
+Migration 0018 and `proposals category-create/assign/review` add
 stable manual semantic destinations, reversible active decisions, complete
 revision history, a non-provider needs-review state, and replay into later
-proposal generations. Next, classify the uncovered tracks, regenerate if
-needed, then present names and organization for explicit user approval.
+proposal generations. Next, obtain explicit approval for generation
+`ca81d1b2-e56b-41e6-8846-cdb379cb039b`, then begin v0.0.8's immutable Spotify
+dry-run planner without remote mutation.
