@@ -413,7 +413,7 @@ retirement additionally requires separate future approval. The planner makes
 no Spotify request and Spotify write scopes remain disabled. Migration 0019
 also introduces stable concept mappings for future published provider
 playlists and the provider-neutral reversible `excluded_tracks` ledger.
-Migrations 0019 and 0020 are live and Neon is healthy at 20/20. Migration 0020
+Migrations 0019 through 0021 are live and Neon is healthy at 21/21. Migration 0020
 adds immutable successful managed-playlist baselines so a later missing
 expected track becomes an internal `exclude_track` proposal rather than an
 automatic re-add; an unexpected extra remains ordinary provider drift. The
