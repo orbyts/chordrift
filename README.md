@@ -142,7 +142,9 @@ retained only for recovery and future reprocessing.
 
 See [docs/HOW_TO_CHORDRIFT.md](docs/HOW_TO_CHORDRIFT.md) for the complete CLI
 guide, [ROADMAP.md](ROADMAP.md) for planned milestones, and
-[CHANGELOG.md](CHANGELOG.md) for release history.
+[CHANGELOG.md](CHANGELOG.md) for release history. New focused development tasks
+should begin with [CODEX_HANDOFF.md](CODEX_HANDOFF.md) for current decisions and
+operational state.
 
 ## License
 

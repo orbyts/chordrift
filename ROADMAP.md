@@ -86,6 +86,24 @@ clustering, naming, playlist proposals, and dry-run synchronization. Apple work
 will be rebased onto the then-current main line rather than reserving or
 blocking a release number.
 
+Until native Apple matching resumes, Spatial Audio curation uses an explicit
+manual bridge:
+
+1. Chordrift or the user creates a dedicated Spotify playlist of candidate
+   tracks.
+2. The user scans its public Spotify URL with
+   [Hello Atmos](https://helloatmos.app/spotify/) to identify Apple Music Dolby
+   Atmos matches.
+3. The filtered set is exported to Apple Music directly, or copied into a
+   second Spotify playlist and transferred with Apple Music's built-in
+   **Transfer Music** workflow.
+
+This third-party result is a convenience, not authoritative Chordrift provider
+state. It must not silently populate verified Apple identifiers or Spatial
+Audio flags in Neon. A future native adapter will match exact recordings,
+retain storefront and evidence provenance, and cache Apple's extended
+`audioVariants` value `dolby-atmos` so repeated queries are unnecessary.
+
 ## v0.0.5 — Embeddings
 
 Build versioned personal embeddings from playlist co-occurrence, artist and
