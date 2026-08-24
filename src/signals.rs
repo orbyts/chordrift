@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result};
 
 const MODEL: &str = "account-track-signals";
-const MODEL_VERSION: &str = "1";
+const MODEL_VERSION: &str = "2";
 
 /// Result of generating or reusing an immutable signal generation.
 #[derive(Clone, Debug, PartialEq)]
@@ -31,6 +31,10 @@ pub struct GenerationReport {
     pub saved_tracks: usize,
     /// Tracks present in a configured rotation source.
     pub rotation_tracks: usize,
+    /// Tracks present in a configured provider or intake discovery source.
+    pub discovery_tracks: usize,
+    /// Tracks present in a configured prompted-interest source.
+    pub prompted_tracks: usize,
     /// Tracks present in a configured intake.
     pub intake_tracks: usize,
     /// Tracks carrying recommendation provenance.
@@ -69,6 +73,8 @@ struct TrackSignal {
     non_skip_ratio: Option<f64>,
     saved: bool,
     provider_rotation: bool,
+    provider_discovery: bool,
+    prompted_interest: bool,
     intake: bool,
     recommendation: bool,
 }
@@ -100,11 +106,13 @@ pub async fn generate(database: &Database, account_label: &str) -> Result<Genera
     }
 
     let mut transaction = database.pool().begin().await?;
-    let generation_id: Uuid = sqlx::query_scalar(
+    let generation_id: Option<Uuid> = sqlx::query_scalar(
         "INSERT INTO signal_generations
          (provider_account_id, source_snapshot_id, model, model_version,
           input_hash, track_count, parameters)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (provider_account_id, model, model_version, input_hash)
+         DO NOTHING
          RETURNING id",
     )
     .bind(account_id)
@@ -120,15 +128,37 @@ pub async fn generate(database: &Database, account_label: &str) -> Result<Genera
         "ratios": "completed/event and 1-skipped/event",
         "playlist_evidence": "latest configured provider snapshot"
     }))
-    .fetch_one(&mut *transaction)
+    .fetch_optional(&mut *transaction)
     .await?;
+    let Some(generation_id) = generation_id else {
+        transaction.rollback().await?;
+        let generation_id: Uuid = sqlx::query_scalar(
+            "SELECT id FROM signal_generations
+             WHERE provider_account_id = $1 AND model = $2 AND model_version = $3
+               AND input_hash = $4",
+        )
+        .bind(account_id)
+        .bind(MODEL)
+        .bind(MODEL_VERSION)
+        .bind(&input_hash)
+        .fetch_one(database.pool())
+        .await?;
+        return Ok(report(
+            generation_id,
+            true,
+            snapshot_id,
+            &signals,
+            input_hash,
+        ));
+    };
     for signal in signals.values() {
         sqlx::query(
             "INSERT INTO account_track_signals
              (generation_id, track_id, meaningful_play_count, event_count,
               last_played_at, recency_score, completion_ratio, non_skip_ratio,
-              saved, provider_rotation, intake, recommendation, provenance)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+              saved, provider_rotation, provider_discovery, prompted_interest,
+              intake, recommendation, provenance)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
         )
         .bind(generation_id)
         .bind(signal.track_id)
@@ -140,10 +170,14 @@ pub async fn generate(database: &Database, account_label: &str) -> Result<Genera
         .bind(signal.non_skip_ratio)
         .bind(signal.saved)
         .bind(signal.provider_rotation)
+        .bind(signal.provider_discovery)
+        .bind(signal.prompted_interest)
         .bind(signal.intake)
         .bind(signal.recommendation)
         .bind(json!({
             "provider_rotation": signal.provider_rotation,
+            "provider_discovery": signal.provider_discovery,
+            "prompted_interest": signal.prompted_interest,
             "intake": signal.intake,
             "recommendation": signal.recommendation
         }))
@@ -236,6 +270,24 @@ async fn load_inputs(
                       ON policy.provider_playlist_id = membership.provider_playlist_id
                      AND policy.provider_account_id = $1
                     WHERE membership.snapshot_id = $2 AND member_track.track_id = track.id
+                      AND policy.behavioral_signal = 'discovery'
+                ) AS provider_discovery,
+                EXISTS (
+                    SELECT 1 FROM provider_playlist_tracks membership
+                    JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
+                    JOIN provider_account_playlists policy
+                      ON policy.provider_playlist_id = membership.provider_playlist_id
+                     AND policy.provider_account_id = $1
+                    WHERE membership.snapshot_id = $2 AND member_track.track_id = track.id
+                      AND policy.behavioral_signal = 'prompted'
+                ) AS prompted_interest,
+                EXISTS (
+                    SELECT 1 FROM provider_playlist_tracks membership
+                    JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
+                    JOIN provider_account_playlists policy
+                      ON policy.provider_playlist_id = membership.provider_playlist_id
+                     AND policy.provider_account_id = $1
+                    WHERE membership.snapshot_id = $2 AND member_track.track_id = track.id
                       AND policy.signal_class = 'intake'
                 ) AS intake,
                 EXISTS (
@@ -293,6 +345,8 @@ async fn load_inputs(
                 ),
                 saved: row.try_get("saved")?,
                 provider_rotation: row.try_get("provider_rotation")?,
+                provider_discovery: row.try_get("provider_discovery")?,
+                prompted_interest: row.try_get("prompted_interest")?,
                 intake: row.try_get("intake")?,
                 recommendation: row.try_get("recommendation")?,
             },
@@ -343,6 +397,8 @@ fn signal_hash(signals: &BTreeMap<Uuid, TrackSignal>, snapshot_id: Uuid) -> Stri
         hasher.update([
             signal.saved as u8,
             signal.provider_rotation as u8,
+            signal.provider_discovery as u8,
+            signal.prompted_interest as u8,
             signal.intake as u8,
             signal.recommendation as u8,
         ]);
@@ -370,6 +426,14 @@ fn report(
         rotation_tracks: signals
             .values()
             .filter(|signal| signal.provider_rotation)
+            .count(),
+        discovery_tracks: signals
+            .values()
+            .filter(|signal| signal.provider_discovery)
+            .count(),
+        prompted_tracks: signals
+            .values()
+            .filter(|signal| signal.prompted_interest)
             .count(),
         intake_tracks: signals.values().filter(|signal| signal.intake).count(),
         recommendation_tracks: signals

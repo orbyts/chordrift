@@ -270,11 +270,13 @@ pub async fn generate(
         "playlist_size_normalization": "sqrt(weight/(unique_tracks-1))"
     });
     let mut transaction = database.pool().begin().await?;
-    let generation_id: Uuid = sqlx::query_scalar(
+    let generation_id: Option<Uuid> = sqlx::query_scalar(
         "INSERT INTO embedding_generations
          (provider_account_id, source_snapshot_id, model, model_version,
           dimensions, seed, input_hash, track_count, parameters)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (provider_account_id, model, model_version, input_hash)
+         DO NOTHING
          RETURNING id",
     )
     .bind(inputs.account_id)
@@ -288,8 +290,35 @@ pub async fn generate(
         ChordriftError::Configuration("too many tracks for PostgreSQL counters".to_owned())
     })?)
     .bind(parameters)
-    .fetch_one(&mut *transaction)
+    .fetch_optional(&mut *transaction)
     .await?;
+    let Some(generation_id) = generation_id else {
+        transaction.rollback().await?;
+        let generation_id: Uuid = sqlx::query_scalar(
+            "SELECT id FROM embedding_generations
+             WHERE provider_account_id = $1 AND model = $2 AND model_version = $3
+               AND input_hash = $4",
+        )
+        .bind(inputs.account_id)
+        .bind(MODEL)
+        .bind(MODEL_VERSION)
+        .bind(&input_hash)
+        .fetch_one(database.pool())
+        .await?;
+        return Ok(GenerationReport {
+            generation_id,
+            reused: true,
+            snapshot_id: inputs.snapshot_id,
+            model: MODEL.to_owned(),
+            model_version: MODEL_VERSION.to_owned(),
+            dimensions,
+            seed,
+            eligible_tracks,
+            embedded_tracks: vectors.len(),
+            unembedded_tracks: eligible_tracks.saturating_sub(vectors.len()),
+            input_hash,
+        });
+    };
     for (track_id, embedding) in &vectors {
         sqlx::query(
             "INSERT INTO account_track_embeddings

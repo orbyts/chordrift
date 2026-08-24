@@ -1065,6 +1065,8 @@ async fn run_signal_command(
             writeln!(output, "history_tracks: {}", report.history_tracks)?;
             writeln!(output, "saved_tracks: {}", report.saved_tracks)?;
             writeln!(output, "rotation_tracks: {}", report.rotation_tracks)?;
+            writeln!(output, "discovery_tracks: {}", report.discovery_tracks)?;
+            writeln!(output, "prompted_tracks: {}", report.prompted_tracks)?;
             writeln!(output, "intake_tracks: {}", report.intake_tracks)?;
             writeln!(
                 output,
