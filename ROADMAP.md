@@ -86,17 +86,25 @@ clustering, naming, playlist proposals, and dry-run synchronization. Apple work
 will be rebased onto the then-current main line rather than reserving or
 blocking a release number.
 
+Neon remains canonical; Spotify is the only active provider and intake surface
+until native Apple support resumes. Before clearing an existing Apple Music
+library, transfer any Apple-only tracks or playlists into a temporary Spotify
+intake, pull them into Neon, and verify canonical coverage. After that one-time
+consolidation, SongShift can mirror multiple Chordrift-managed Spotify playlists
+to Apple Music using the same approved canonical names. No aggregate "two way
+sync" or transfer-relay playlist is required.
+
 Until native Apple matching resumes, Spatial Audio curation uses an explicit
-manual bridge:
+manual workaround:
 
 1. Chordrift or the user creates a dedicated Spotify playlist of candidate
    tracks.
 2. The user scans its public Spotify URL with
    [Hello Atmos](https://helloatmos.app/spotify/) to identify Apple Music Dolby
    Atmos matches.
-3. The filtered set is exported to Apple Music directly, or copied into a
-   second Spotify playlist and transferred with Apple Music's built-in
-   **Transfer Music** workflow.
+3. The filtered set is exported to a specially named Apple Music Spatial Audio
+   playlist directly, or copied into a temporary filtered Spotify playlist and
+   mirrored with SongShift.
 
 This third-party result is a convenience, not authoritative Chordrift provider
 state. It must not silently populate verified Apple identifiers or Spatial
@@ -106,14 +114,16 @@ retain storefront and evidence provenance, and cache Apple's extended
 
 ## v0.0.5 — Embeddings
 
-Build versioned hybrid embeddings. Use a pretrained music-audio foundation
+Build versioned hybrid representations. Use a pretrained music-audio foundation
 model (initially MERT, with MuQ evaluated as an alternative) as the reusable
 acoustic base whenever Chordrift has lawful access to locally owned, DRM-free
-audio. Add an independently versioned personal component from playlist
-co-occurrence, artist and album relationships, historical names, and listening
-signals. Normalize and weight the components before fusion. Spotify-only tracks
-must retain a deterministic personal/metadata fallback rather than downloading
-or scraping provider audio.
+audio. Add semantic context from explicitly semantic legacy playlists, artist
+and album relationships, and historical names. Store behavioral preference and
+lifecycle signals—plays, recency, completion, skips, provider-curated rotation,
+inbox status, and recommendation provenance—separately so unrelated favorites
+do not become acoustically similar merely because both are frequently played.
+Spotify-only tracks must retain a deterministic personal/metadata fallback
+rather than downloading or scraping provider audio.
 
 ## v0.0.6 — Vibe clustering
 

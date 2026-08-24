@@ -127,8 +127,9 @@ Temporary Spatial Audio workaround:
 
 1. Create a dedicated public Spotify playlist of candidates.
 2. Scan it at <https://helloatmos.app/spotify/>.
-3. Export the Atmos subset to Apple Music, or make a filtered Spotify playlist
-   and use Apple Music's built-in **Transfer Music** feature.
+3. Export the Atmos subset to a specially named Apple Music Spatial Audio
+   playlist, or make a temporary filtered Spotify playlist and mirror it with
+   SongShift.
 
 Hello Atmos is a third party. Its matches are temporary convenience results,
 not verified Neon provider state. Native Chordrift matching must retain exact
@@ -138,6 +139,13 @@ Apple privacy exports do not require developer membership. Do not implement a
 history parser from assumed examples; inspect the user's actual archive first,
 then apply the same immutable, cumulative, PII-excluding principles used for
 Spotify.
+
+Neon remains authoritative and Spotify is the only active provider for now.
+SongShift can mirror every canonical Spotify playlist individually, so do not
+create a replacement for the obsolete `Two Way Sync` playlist. Before the user
+clears Apple Music, first transfer any Apple-only material into a temporary
+Spotify intake, pull it into Neon, and verify coverage. SongShift is a temporary
+publishing workaround, not an authoritative provider adapter.
 
 ## Current roadmap and next task
 
@@ -151,9 +159,19 @@ revisit licensing before any commercial Chordrift use.
 The acoustic models require waveforms. Do not download, scrape, or record
 Spotify audio. Populate canonical acoustic embeddings only from lawful,
 locally owned DRM-free audio. Spotify-only tracks receive a deterministic
-personal/metadata fallback from weighted playlist co-occurrence, artists,
-albums, historical playlist-name tokens, log play count, one-year recency
-decay, and completion/non-skip affinity. Normalize components before fusion.
+semantic fallback from explicitly semantic playlist co-occurrence, artists,
+albums, and historical playlist-name tokens. Keep listening behavior separate:
+plays, recency, completion, skips, `On Repeat`, inbox state, and recommendation
+provenance are preference/lifecycle signals for composition and ordering, not
+musical-similarity dimensions.
+
+Playlist policy has three distinct classes: provider-curated signal sources
+(`On Repeat`, Daily Mix, prompted playlists), user-owned intake surfaces
+(initially Inbox and From Friends), and Chordrift-managed canonical playlists.
+Never clear provider-curated sources. Clear intake entries only after Neon
+retains provenance and a published canonical Spotify destination is verified.
+Do not feed Chordrift-managed output back into semantic training; use previous
+assignments only as stability constraints.
 
 Migration 0009 and the in-progress CLI keep canonical `track_embeddings`
 separate from immutable account-scoped `embedding_generations` and
@@ -163,8 +181,10 @@ Unit, CLI, documentation, disposable PostgreSQL, Spotify persistence, package,
 and doc checks passed in GitHub Actions run `32748970657`. Migration 0009 is
 applied to live Neon (9/9 current). The first live audit found 2,005 eligible
 tracks: 1,203 playlist-connected, 1,469 artist-related, 1,015 album-related,
-and 1,554 with matched history. No embedding generation has been accepted yet;
-first confirm which utility playlists should have semantic weight zero.
+and 1,554 with matched history. No embedding generation has been accepted yet.
+Before merging, revise the current personal generator because it still places
+listening values in its last three vector dimensions and still models playlist
+policy as one numeric weight.
 
 ## Verification and release discipline
 
