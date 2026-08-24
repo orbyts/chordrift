@@ -49,6 +49,15 @@ pub enum ChordriftError {
         /// Secret-free error explanation returned by Spotify.
         message: String,
     },
+
+    /// Apple Music rejected an API request.
+    #[error("Apple Music API request failed with status {status}: {message}")]
+    AppleMusicApi {
+        /// HTTP status returned by Apple Music.
+        status: u16,
+        /// Secret-free error explanation returned by Apple Music.
+        message: String,
+    },
 }
 
 impl fmt::Debug for ChordriftError {
@@ -67,6 +76,11 @@ impl fmt::Debug for ChordriftError {
             Self::Archive(_) => formatter.write_str("Archive(..)"),
             Self::SpotifyApi { status, message } => formatter
                 .debug_struct("SpotifyApi")
+                .field("status", status)
+                .field("message", message)
+                .finish(),
+            Self::AppleMusicApi { status, message } => formatter
+                .debug_struct("AppleMusicApi")
                 .field("status", status)
                 .field("message", message)
                 .finish(),
