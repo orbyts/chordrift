@@ -28,9 +28,9 @@ and synchronization will not wait for it; when available, the export will add
 signals such as play counts, listening duration, first play, and last play.
 
 > [!WARNING]
-> Chordrift is in very early development. Version 0.0.5 adds versioned semantic
-> embeddings, independently versioned personal signals, and explicit playlist
-> evidence policies. Chordrift still performs no remote Spotify mutations.
+> Chordrift is in early development. The v0.1.0 work introduces remote Spotify
+> mutation only through exact, audited, resumable phase confirmations. Never
+> run an apply command without inspecting its immutable plan and readiness ID.
 
 ## v0.0.5 capabilities
 

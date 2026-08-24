@@ -711,8 +711,8 @@ state, so generate a new plan rather than relying on the stale one.
 
 ## Apply-readiness validation
 
-Before v0.1.0 enables any write path, assess the newest immutable plan and
-perform the single-request authenticated read-only probe:
+Before applying any write phase, assess the newest immutable plan and perform
+the single-request authenticated identity and scope probe:
 
 ```console
 $ chordrift sync readiness --account personal --probe
@@ -726,13 +726,72 @@ approved proposal and complete approved artwork, ordered and uniquely keyed
 operations, destructive-operation gates, the approved external-cleanup batch,
 five simulated interruption/resume points, bounded Spotify 429 handling, and
 zero changes on an idempotent operation replay. The provider probe refreshes
-the existing credential and calls Spotify's current-user endpoint only; it
-rejects credentials containing `playlist-modify-*` or `ugc-image-upload`.
+the existing credential and calls Spotify's current-user endpoint only. For
+v0.1.0 it requires the read scopes plus `playlist-modify-private`,
+`playlist-modify-public`, `user-library-modify`, and `ugc-image-upload`. Re-run
+`chordrift spotify auth --account personal` once to approve those scopes; the
+refresh token remains in Passwords/Keychain.
 
 Running `sync readiness` without `--probe` is useful as an offline diagnostic,
 but its provider-probe check remains blocked and the overall result is not
-ready. Even a `ready` assessment reports `spotify_writes: disabled`: it is
-evidence for the future apply implementation, not an execution command.
+ready. Readiness itself never writes to Spotify.
+
+## Applying an approved plan
+
+v0.1.0 executes one safety phase at a time. Every execution requires a current
+v6 plan, a ready v2 assessment, and the assessment UUID repeated exactly. A
+successful phase stops at `awaiting_pull`; always pull and verify before
+planning or applying another phase.
+
+Publish the canonical playlists, any missing intake containers, their ordered
+tracks, and only the approved Drift Atlas covers:
+
+```console
+$ chordrift db migrate
+$ chordrift spotify auth --account personal
+$ chordrift sync pull --account personal
+$ chordrift sync plan --account personal
+$ chordrift sync plan-show --account personal --details
+$ chordrift sync readiness --account personal --probe
+$ chordrift sync apply --account personal \
+    --assessment ASSESSMENT_UUID --phase publish --confirm ASSESSMENT_UUID
+$ chordrift sync apply-show --account personal
+$ chordrift sync pull --account personal
+```
+
+Playlist item additions are batched in groups of 100. On resume, Chordrift
+reads each target playlist once, records already-present tracks as successful,
+and adds only missing tracks. Repeating the exact apply command resumes its
+durable run rather than creating a second execution. Approved PNG covers are
+locally converted to Spotify-compatible JPEG payloads no larger than 256 KB.
+
+After the pull reports `verified_apply_runs`, create and assess a new plan.
+Only then may intake or external-bookmark cleanup run, with an additional
+destructive acknowledgement:
+
+```console
+$ chordrift sync apply --account personal \
+    --assessment ASSESSMENT_UUID --phase cleanup \
+    --confirm ASSESSMENT_UUID --allow-destructive
+```
+
+Legacy retirement has one more durable approval boundary. Inspect every
+retirement in `sync plan-show --details`, approve that exact plan, and then
+execute its retirement phase:
+
+```console
+$ chordrift sync retirement-approve --account personal \
+    --plan PLAN_UUID --confirm PLAN_UUID
+$ chordrift sync apply --account personal \
+    --assessment ASSESSMENT_UUID --phase retirement \
+    --confirm ASSESSMENT_UUID --allow-destructive
+```
+
+Cleanup and retirement are blocked unless every canonical destination matches
+the approved ordered membership in the latest imported Spotify snapshot.
+Removing an owned playlist means removing its library relationship—Spotify has
+no separate playlist-deletion operation—and never deletes an externally owned
+source playlist.
 
 ## Semantic enrichment
 

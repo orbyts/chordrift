@@ -503,6 +503,26 @@ Repository artwork is intentionally excluded from the crates.io archive
 because the 14 approved full-resolution PNGs are review/publication assets
 rather than runtime data; they remain in Git.
 
+v0.1.0 work is on `codex/v010-spotify-apply`. Migration 0026, planner v6,
+readiness v2, and `src/apply.rs` introduce the first provider-write path. Apply
+is phase-scoped, requires exact assessment confirmation, persists every
+operation and resolved Spotify target, batches at current API limits, resumes
+against live membership, uploads only approved artwork, and stops at
+`awaiting_pull`. The next pull verifies exact ordered canonical membership and
+records immutable managed baselines. Cleanup/retirement additionally require
+`--allow-destructive`; retirement also requires exact-plan durable approval.
+No v0.1.0 live Spotify mutation has occurred yet. The existing stored OAuth
+credential is read-only and must be explicitly reauthorized for the seven
+documented v0.1.0 scopes before a new v6 readiness assessment can pass.
+Migration 0026 is live and Neon is healthy at 26/26. Current v6 plan
+`e89854e8-c1dc-42fc-b469-b7e113fcd831` is bound to snapshot
+`c187fc99-5e7c-42f7-a694-86bcb9d1930b` and input hash
+`520fa5b82c70fccfa3024927ad568ced0594732cecec2c0c415f2689780e7793`.
+It is current and contains 1,034 operations: 16 creates, 884 additions, 14
+approved artwork uploads, 65 deferred intake removals, 13 deferred external
+relationship removals, and 42 deferred legacy retirements. No Spotify request
+was made while creating or inspecting it.
+
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the
 same package name/version, a plain `cargo run` reused an older final executable

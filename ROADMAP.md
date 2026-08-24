@@ -337,6 +337,13 @@ playlist. Apple Music publishing and Spatial Audio companions remain a
 subsequent provider
 milestone unless the deferred provider track is completed earlier.
 
+Status: in progress. The v6 planner includes approved artwork uploads and the
+v2 readiness probe requires the exact v0.1.0 scopes. Migration 0026 introduces
+durable phase executions, per-operation retry history, provider target
+resolution, exact retirement approval, post-pull canonical verification, and
+batched Spotify requests. Live mutation remains pending a fresh user-approved
+OAuth grant and exact publish-phase confirmation.
+
 ## Post-v0.1 product direction — Review UI
 
 If the personal workflow proves useful, build a provider-neutral review UI

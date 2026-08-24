@@ -1,6 +1,7 @@
 use std::{collections::HashSet, time::Duration};
 
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, Method, StatusCode};
+use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use tokio::time::sleep;
@@ -64,6 +65,156 @@ impl SpotifyClient {
     /// Returns the authenticated account's stable identity.
     pub async fn current_user(&self) -> Result<CurrentUser> {
         self.get_json(api_url("me")?).await
+    }
+
+    pub(crate) async fn current_playlists(&self) -> Result<Vec<SpotifyPlaylist>> {
+        let mut url = api_url("me/playlists")?;
+        url.query_pairs_mut().append_pair("limit", PAGE_LIMIT);
+        self.all_pages(url, None).await
+    }
+
+    pub(crate) async fn create_playlist(
+        &self,
+        name: &str,
+        description: &str,
+        public: bool,
+    ) -> Result<SpotifyPlaylist> {
+        self.request_json(
+            Method::POST,
+            api_url("me/playlists")?,
+            Some(serde_json::json!({
+                "name": name,
+                "description": description,
+                "public": public,
+            })),
+        )
+        .await
+    }
+
+    pub(crate) async fn update_playlist(
+        &self,
+        playlist_id: &str,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<()> {
+        self.request_empty(
+            Method::PUT,
+            playlist_url(playlist_id)?,
+            Some(serde_json::json!({"name": name, "description": description})),
+        )
+        .await
+    }
+
+    pub(crate) async fn add_playlist_items(
+        &self,
+        playlist_id: &str,
+        uris: &[String],
+        position: Option<usize>,
+    ) -> Result<String> {
+        if uris.is_empty() || uris.len() > 100 {
+            return Err(ChordriftError::Configuration(
+                "Spotify item additions must contain between 1 and 100 URIs".to_owned(),
+            ));
+        }
+        let response: SnapshotResponse = self
+            .request_json(
+                Method::POST,
+                playlist_items_url(playlist_id)?,
+                Some(serde_json::json!({"uris": uris, "position": position})),
+            )
+            .await?;
+        Ok(response.snapshot_id)
+    }
+
+    pub(crate) async fn replace_playlist_items(
+        &self,
+        playlist_id: &str,
+        uris: &[String],
+    ) -> Result<String> {
+        if uris.len() > 100 {
+            return Err(ChordriftError::Configuration(
+                "Spotify item replacement accepts at most 100 URIs".to_owned(),
+            ));
+        }
+        let response: SnapshotResponse = self
+            .request_json(
+                Method::PUT,
+                playlist_items_url(playlist_id)?,
+                Some(serde_json::json!({"uris": uris})),
+            )
+            .await?;
+        Ok(response.snapshot_id)
+    }
+
+    pub(crate) async fn remove_playlist_items(
+        &self,
+        playlist_id: &str,
+        uris: &[String],
+        snapshot_id: Option<&str>,
+    ) -> Result<String> {
+        if uris.is_empty() || uris.len() > 100 {
+            return Err(ChordriftError::Configuration(
+                "Spotify item removals must contain between 1 and 100 URIs".to_owned(),
+            ));
+        }
+        let items: Vec<Value> = uris
+            .iter()
+            .map(|uri| serde_json::json!({"uri": uri}))
+            .collect();
+        let response: SnapshotResponse = self
+            .request_json(
+                Method::DELETE,
+                playlist_items_url(playlist_id)?,
+                Some(serde_json::json!({"items": items, "snapshot_id": snapshot_id})),
+            )
+            .await?;
+        Ok(response.snapshot_id)
+    }
+
+    pub(crate) async fn remove_library_playlists(&self, playlist_ids: &[String]) -> Result<()> {
+        if playlist_ids.is_empty() || playlist_ids.len() > 40 {
+            return Err(ChordriftError::Configuration(
+                "Spotify library removals must contain between 1 and 40 playlist IDs".to_owned(),
+            ));
+        }
+        let mut url = api_url("me/library")?;
+        let uris = playlist_ids
+            .iter()
+            .map(|id| format!("spotify:playlist:{id}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        url.query_pairs_mut().append_pair("uris", &uris);
+        self.request_empty(Method::DELETE, url, None).await
+    }
+
+    pub(crate) async fn upload_playlist_cover(
+        &self,
+        playlist_id: &str,
+        jpeg_base64: &str,
+    ) -> Result<()> {
+        let url = api_url(&format!("playlists/{playlist_id}/images"))?;
+        validate_api_url(&url)?;
+        let mut attempt = 0;
+        loop {
+            let response = self
+                .http
+                .put(url.clone())
+                .bearer_auth(&self.access_token)
+                .header(reqwest::header::CONTENT_TYPE, "image/jpeg")
+                .body(jpeg_base64.to_owned())
+                .send()
+                .await?;
+            if should_retry(&response, &mut attempt).await {
+                continue;
+            }
+            let status = response.status();
+            let body = response.bytes().await?;
+            return if status.is_success() {
+                Ok(())
+            } else {
+                Err(api_error(status, &body))
+            };
+        }
     }
 
     pub(crate) async fn external_playlist(
@@ -326,6 +477,65 @@ impl SpotifyClient {
             return Err(api_error(status, &body));
         }
     }
+
+    async fn request_json<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        url: Url,
+        body: Option<Value>,
+    ) -> Result<T> {
+        let bytes = self.request(method, url, body).await?;
+        serde_json::from_slice(&bytes).map_err(Into::into)
+    }
+
+    async fn request_empty(&self, method: Method, url: Url, body: Option<Value>) -> Result<()> {
+        self.request(method, url, body).await.map(|_| ())
+    }
+
+    async fn request(&self, method: Method, url: Url, body: Option<Value>) -> Result<Vec<u8>> {
+        validate_api_url(&url)?;
+        let mut attempt = 0;
+        loop {
+            let mut request = self
+                .http
+                .request(method.clone(), url.clone())
+                .bearer_auth(&self.access_token);
+            if let Some(body) = &body {
+                request = request.json(body);
+            }
+            let response = request.send().await?;
+            if should_retry(&response, &mut attempt).await {
+                continue;
+            }
+            let status = response.status();
+            let bytes = response.bytes().await?;
+            return if status.is_success() {
+                Ok(bytes.to_vec())
+            } else {
+                Err(api_error(status, &bytes))
+            };
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct SnapshotResponse {
+    snapshot_id: String,
+}
+
+async fn should_retry(response: &reqwest::Response, attempt: &mut usize) -> bool {
+    if response.status() != StatusCode::TOO_MANY_REQUESTS || *attempt >= MAX_RATE_LIMIT_RETRIES {
+        return false;
+    }
+    *attempt += 1;
+    let delay = retry_delay_seconds(
+        response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok()),
+    );
+    sleep(Duration::from_secs(delay)).await;
+    true
 }
 
 fn is_private_spotify_personalized(owner_id: &str, public: Option<bool>) -> bool {

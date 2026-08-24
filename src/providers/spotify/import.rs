@@ -244,6 +244,20 @@ async fn persist(
         .execute(&mut *transaction)
         .await?;
         sqlx::query(
+            "UPDATE provider_account_playlists account_playlist
+             SET role = 'managed', drift_policy = 'neon_wins',
+                 signal_class = 'canonical', clear_policy = 'never', updated_at = now()
+             FROM provider_playlists provider
+             WHERE account_playlist.provider_account_id = $1
+               AND account_playlist.provider_playlist_id = $2
+               AND provider.id = account_playlist.provider_playlist_id
+               AND provider.concept_id IS NOT NULL",
+        )
+        .bind(account_id)
+        .bind(provider_playlist_id)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
             "INSERT INTO provider_playlist_snapshots
              (snapshot_id, provider_playlist_id, name, description,
               provider_snapshot_id, public, collaborative, total_items, metadata)
@@ -602,21 +616,45 @@ async fn upsert_playlist(
         return Ok(id);
     }
 
-    let playlist_id: Uuid = sqlx::query_scalar(
-        "INSERT INTO playlists (name, description, kind)
-         VALUES ($1, $2, 'historical') RETURNING id",
+    let applied = sqlx::query(
+        "SELECT target.playlist_id, target.concept_id
+         FROM sync_apply_playlist_targets target
+         JOIN sync_apply_runs run ON run.id = target.apply_run_id
+         WHERE target.spotify_playlist_id = $1
+         ORDER BY run.started_at DESC, run.id DESC LIMIT 1",
     )
-    .bind(playlist_name)
-    .bind(&playlist.description)
-    .fetch_one(&mut **transaction)
+    .bind(&playlist.id)
+    .fetch_optional(&mut **transaction)
     .await?;
+    let concept_id: Option<Uuid> = applied
+        .as_ref()
+        .and_then(|row| row.try_get("concept_id").ok())
+        .flatten();
+    let playlist_id: Uuid = match applied
+        .as_ref()
+        .and_then(|row| row.try_get("playlist_id").ok())
+        .flatten()
+    {
+        Some(id) => id,
+        None => {
+            sqlx::query_scalar(
+                "INSERT INTO playlists (name, description, kind)
+                 VALUES ($1, $2, 'historical') RETURNING id",
+            )
+            .bind(playlist_name)
+            .bind(&playlist.description)
+            .fetch_one(&mut **transaction)
+            .await?
+        }
+    };
     sqlx::query_scalar(
         "INSERT INTO provider_playlists
-         (playlist_id, provider, provider_playlist_id, provider_uri,
+         (playlist_id, concept_id, provider, provider_playlist_id, provider_uri,
           provider_url, snapshot_id, metadata, imported_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, now()) RETURNING id",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now()) RETURNING id",
     )
     .bind(playlist_id)
+    .bind(concept_id)
     .bind(PROVIDER)
     .bind(&playlist.id)
     .bind(&playlist.uri)

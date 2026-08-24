@@ -6,8 +6,8 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
-    ChordriftError, Result, analysis, apply_readiness, artwork, bookmarks, clusters, config, db,
-    embeddings, enrichment, history, model_inference, playlists, proposals, providers::spotify,
+    ChordriftError, Result, analysis, apply, apply_readiness, artwork, bookmarks, clusters, config,
+    db, embeddings, enrichment, history, model_inference, playlists, proposals, providers::spotify,
     signals, sync_plan,
 };
 
@@ -192,6 +192,69 @@ pub enum SyncCommand {
         #[arg(long)]
         assessment: Option<uuid::Uuid>,
     },
+    /// Execute exactly one gated phase from a ready immutable Spotify plan.
+    Apply {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact ready assessment to execute.
+        #[arg(long)]
+        assessment: uuid::Uuid,
+        /// One independently gated execution phase.
+        #[arg(long, value_enum)]
+        phase: ApplyPhaseArg,
+        /// Repeat the exact assessment ID as an explicit confirmation.
+        #[arg(long)]
+        confirm: uuid::Uuid,
+        /// Required in addition to confirmation for cleanup or retirement.
+        #[arg(long)]
+        allow_destructive: bool,
+    },
+    /// Approve all legacy retirement operations in one exact inspected plan.
+    RetirementApprove {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact current plan containing the reviewed retirements.
+        #[arg(long)]
+        plan: uuid::Uuid,
+        /// Repeat the exact plan ID as confirmation.
+        #[arg(long)]
+        confirm: uuid::Uuid,
+    },
+    /// Show the latest or selected durable apply execution.
+    ApplyShow {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact apply run; defaults to the latest.
+        #[arg(long)]
+        run: Option<uuid::Uuid>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+/// CLI representation of independently gated apply phases.
+pub enum ApplyPhaseArg {
+    /// Publish canonical playlists and approved artwork.
+    Publish,
+    /// Reconcile managed state without deferred cleanup.
+    Reconcile,
+    /// Clear verified intake and approved external relationships.
+    Cleanup,
+    /// Remove separately approved legacy playlist relationships.
+    Retirement,
+}
+
+impl From<ApplyPhaseArg> for apply::ApplyPhase {
+    fn from(value: ApplyPhaseArg) -> Self {
+        match value {
+            ApplyPhaseArg::Publish => Self::Publish,
+            ApplyPhaseArg::Reconcile => Self::Reconcile,
+            ApplyPhaseArg::Cleanup => Self::Cleanup,
+            ApplyPhaseArg::Retirement => Self::Retirement,
+        }
+    }
 }
 
 /// Canonical analysis commands.
@@ -834,7 +897,7 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
             SpotifyCommand::Import { account } => {
                 let config = config::database_config_from_env()?;
                 let database = db::connect(config).await?;
-                let result = async {
+                let result: Result<()> = async {
                     let status = db::status(&database).await?;
                     if status.pending_migrations != 0 || status.failed_migrations != 0 {
                         return Err(ChordriftError::Configuration(
@@ -870,6 +933,10 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                     let history = history::refresh(&database, &account).await?;
                     if history.archives != 0 {
                         write_history_summary(output, &history)?;
+                    }
+                    let verified = apply::verify_pending_publications(&database, &account).await?;
+                    if verified != 0 {
+                        writeln!(output, "verified_apply_runs: {verified}")?;
                     }
                     Ok(())
                 }
@@ -957,6 +1024,60 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                 let result = async {
                     let report = apply_readiness::show(&database, &account, assessment).await?;
                     write_readiness_report(output, &report)
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            SyncCommand::Apply {
+                account,
+                assessment,
+                phase,
+                confirm,
+                allow_destructive,
+            } => {
+                let database = connect_current_database().await?;
+                let result = async {
+                    let report = apply::execute(
+                        &database,
+                        &account,
+                        assessment,
+                        phase.into(),
+                        confirm,
+                        allow_destructive,
+                    )
+                    .await?;
+                    write_apply_report(output, &report)
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            SyncCommand::RetirementApprove {
+                account,
+                plan,
+                confirm,
+            } => {
+                let database = connect_current_database().await?;
+                let result: Result<()> = async {
+                    let approval =
+                        apply::approve_retirement(&database, &account, plan, confirm).await?;
+                    writeln!(output, "retirement approval: recorded")?;
+                    writeln!(output, "plan_id: {}", approval.plan_id)?;
+                    writeln!(output, "operations: {}", approval.operation_count)?;
+                    writeln!(output, "approved_at: {}", approval.approved_at.to_rfc3339())?;
+                    writeln!(output, "spotify_writes: disabled")?;
+                    Ok(())
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            SyncCommand::ApplyShow { account, run } => {
+                let database = connect_current_database().await?;
+                let result = async {
+                    let report = apply::show(&database, &account, run).await?;
+                    write_apply_report(output, &report)
                 }
                 .await;
                 database.close().await;
@@ -2556,6 +2677,7 @@ fn write_sync_plan_report(output: &mut impl Write, report: &sync_plan::PlanRepor
     writeln!(output, "renames: {}", report.renames)?;
     writeln!(output, "additions: {}", report.additions)?;
     writeln!(output, "restorations: {}", report.restorations)?;
+    writeln!(output, "artwork_uploads: {}", report.artwork_uploads)?;
     writeln!(output, "exclusions: {}", report.exclusions)?;
     writeln!(output, "removals: {}", report.removals)?;
     writeln!(output, "retirements: {}", report.retirements)?;
@@ -2567,6 +2689,24 @@ fn write_sync_plan_report(output: &mut impl Write, report: &sync_plan::PlanRepor
     Ok(())
 }
 
+fn write_apply_report(output: &mut impl Write, report: &apply::ApplyReport) -> Result<()> {
+    writeln!(output, "spotify apply: {}", report.status)?;
+    writeln!(output, "apply_run_id: {}", report.apply_run_id)?;
+    writeln!(output, "plan_id: {}", report.plan_id)?;
+    writeln!(output, "assessment_id: {}", report.assessment_id)?;
+    writeln!(output, "phase: {}", report.phase)?;
+    writeln!(output, "resumed: {}", report.resumed)?;
+    writeln!(output, "operations: {}", report.operation_count)?;
+    writeln!(output, "succeeded: {}", report.succeeded_count)?;
+    writeln!(output, "failed: {}", report.failed_count)?;
+    writeln!(output, "started_at: {}", report.started_at.to_rfc3339())?;
+    writeln!(
+        output,
+        "next: run `chordrift sync pull` before another phase"
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -2574,8 +2714,8 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        ArtworkCommand, BehavioralSignalArg, BookmarkCommand, Cli, ClusterCommand, Command,
-        DbCommand, EmbeddingCommand, EnrichmentCommand, HistoryCommand, PlaylistCommand,
+        ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand, Cli, ClusterCommand,
+        Command, DbCommand, EmbeddingCommand, EnrichmentCommand, HistoryCommand, PlaylistCommand,
         PlaylistRoleArg, PlaylistSignalClassArg, SignalCommand, SpotifyCommand, SyncCommand,
         write_status,
     };
@@ -2679,6 +2819,33 @@ mod tests {
                     assessment: None
                 }
             } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_exact_publish_apply() {
+        let id = uuid::Uuid::new_v4();
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "sync",
+            "apply",
+            "--assessment",
+            &id.to_string(),
+            "--phase",
+            "publish",
+            "--confirm",
+            &id.to_string(),
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Sync {
+                command: SyncCommand::Apply {
+                    phase: ApplyPhaseArg::Publish,
+                    allow_destructive: false,
+                    ..
+                }
+            }
         ));
     }
 
