@@ -201,6 +201,41 @@ identity, and all playlist roles are scoped to that account.
 
 ## Playlists
 
+### Which playlist should receive a new song?
+
+The stable user-managed intake names and their meanings are:
+
+| Playlist | Add a track when… | Signal retained by Chordrift |
+| --- | --- | --- |
+| `Inbox` | You discovered it yourself and currently feel strongly about it. | Explicit recent favorite; elevated intake priority. |
+| `From Friends` | A friend explicitly recommended it. | Recommendation provenance. Record the friend/source later when the CLI supports per-entry notes. |
+| `Liked from Radio` | You discovered it through radio, autoplay, or a similar platform recommendation. | Provider-assisted discovery, distinct from a direct personal find. |
+
+These are temporary intake surfaces. A later approved apply operation may clear
+an entry only after the track is present in a published and verified canonical
+playlist. Until then, Chordrift only reads them. Do not put a track in more than
+one intake merely to increase its weight; use the most specific origin.
+
+Spotify-owned playlists such as `On Repeat`, `Daily Mix`, and prompted
+playlists are signal sources that Spotify manages. Never add to, rename, empty,
+or recreate them for Chordrift. Chordrift reads their meaning without treating
+their tracks as a shared musical vibe.
+
+Chordrift-managed canonical playlists will use approved, generated vibe names.
+Those names are deliberately not fixed before clustering. Do not manually add
+tracks to those playlists; Chordrift will own their membership, while Spotify
+is the only live output provider for the first canonical release. A future
+Apple Music adapter will use the same approved names. The temporary Spatial
+Audio companion is named `Chordrift Spatial Audio`.
+
+Legacy vibe playlists must remain until the dry-run proves that every track has
+an approved canonical destination. The following utility playlists are not
+intake names and are retired from the design: `Two Way Sync`,
+`My top tracks playlist`, and `All my saved songs`. `Collaboration Jessica` is
+explicitly ignored and must not contribute recommendation or similarity
+evidence. Deleting any existing playlist is still a manual Spotify action in
+v0.0.5; Chordrift will not do it remotely.
+
 List known playlists, their current presence, item count, role, drift policy,
 and stable Spotify ID:
 
@@ -215,10 +250,10 @@ $ chordrift playlists tracks --name "Smooth Morning Coffee (Curated)"
 $ chordrift playlists tracks --spotify-id 77ejx8LwlokNcr7L1QH8JN
 ```
 
-Configure a provider-native discovery playlist as an inbox:
+Configure a personal discovery playlist as an inbox:
 
 ```console
-$ chordrift playlists configure --name "New Music Inbox" --role inbox
+$ chordrift playlists configure --name "Inbox" --role inbox
 ```
 
 Configure a future Chordrift-owned output playlist:
@@ -336,6 +371,35 @@ $ chordrift embeddings neighbors --spotify-id SPOTIFY_TRACK_ID --limit 10
 Every generation records its model, implementation version, dimensions, seed,
 parameters, source snapshot, and content hash. Regenerating identical inputs
 reuses the existing immutable generation.
+
+## Semantic enrichment
+
+MusicBrainz enrichment is independent from Spotify synchronization. It resolves
+canonical recordings by ISRC, conservatively stages ambiguous identifiers, and
+caches the complete JSON lookup in Neon before deriving facts. A normal run
+processes only tracks without a current parser result:
+
+```console
+$ chordrift enrich musicbrainz --account personal --limit 25
+$ chordrift enrich status --account personal
+```
+
+MusicBrainz asks clients to average no more than one request per second, so the
+default batch is intentionally bounded. Resolution uses one cached ISRC lookup,
+then one cached recording-detail lookup only after a conservative match. Shared
+ISRCs and recording IDs do not cause repeated requests. Reprocess settled tracks
+after a parser change without forcing a redownload:
+
+```console
+$ chordrift enrich musicbrainz --account personal --limit 25 --refresh
+```
+
+The first adapter retains recording genres and folksonomy tags, release
+countries, and release-title language/script metadata. Release-title language
+is not assumed to be the language being sung. Each fact records its MusicBrainz
+entity, parser version, confidence, weight, and observation time. Artist-area
+lookups and pretrained mood/sound inference will reuse this cache and schema in
+later v0.0.6 steps.
 
 ## Excluded tracks
 

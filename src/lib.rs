@@ -18,6 +18,8 @@ pub mod credentials;
 pub mod db;
 /// Deterministic, versioned semantic track embeddings.
 pub mod embeddings;
+/// Cache-first, provenance-aware semantic metadata enrichment.
+pub mod enrichment;
 /// Privacy-conscious Spotify archive inspection and listening-history import.
 pub mod history;
 /// Account-scoped playlist roles and drift policy.

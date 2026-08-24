@@ -200,7 +200,12 @@ user-action adapter.
 
 Playlist policy has three distinct classes: provider-curated signal sources
 (`On Repeat`, Daily Mix, prompted playlists), user-owned intake surfaces
-(initially Inbox and From Friends), and Chordrift-managed canonical playlists.
+(exact names: `Inbox`, `From Friends`, and `Liked from Radio`), and
+Chordrift-managed canonical playlists. `Inbox` means a direct strong personal
+discovery; `From Friends` means an explicit recommendation; `Liked from Radio`
+means radio/autoplay discovery. Canonical outputs use approved generated vibe
+names and are never intake. The temporary Atmos companion is `Chordrift Spatial
+Audio`.
 Never clear provider-curated sources. Clear intake entries only after Neon
 retains provenance and a published canonical Spotify destination is verified.
 Do not feed Chordrift-managed output back into semantic training; use previous
@@ -259,10 +264,13 @@ At the end of each focused task:
 4. Confirm the handoff contains no secrets or unnecessary personal data.
 5. Leave the active branch and working tree state explicit for the next task.
 
-Current handoff state: active branch `codex/embeddings`, PR
-<https://github.com/orbyts/chordrift/pull/1>. The implementation and handoff
-commits are green, migrations are live through 0011, and v0.0.5 release
-bookkeeping is being finalized before merge/tag/publish. No provider mutation
-was performed. After v0.0.5 is released and the main clone is updated, begin
-v0.0.6 with MusicBrainz-backed language/region and externally sourced mood/sound
-enrichment. The Excluded Tracks schema/apply behavior remains future work.
+v0.0.5 was merged at `ffbcc40`, tagged, released on GitHub, published to
+crates.io, installed locally, verified against healthy Neon at 11/11, and
+fast-forwarded into `$CRATES/chordrift`. Active development is now on
+`codex/semantic-enrichment` for v0.0.6. Migration 0012 and the first bounded
+MusicBrainz adapter are in the working tree but not yet applied live. The
+adapter caches raw ISRC and recording-detail responses separately, respects the
+one-request-per-second limit, and persists conservative match/fact provenance.
+It must pass disposable PostgreSQL/CI validation before migration 0012 reaches
+live Neon. Artist-area and pretrained mood/sound inference are the next layers;
+the Excluded Tracks schema/apply behavior remains future work.

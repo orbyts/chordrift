@@ -4,6 +4,13 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Add the first cache-first MusicBrainz enrichment foundation with bounded
+  ISRC resolution, conservative ambiguity handling, retained raw responses,
+  and provenance-aware semantic facts.
+- Define the stable intake names `Inbox`, `From Friends`, and
+  `Liked from Radio`, including their distinct user-facing meanings and safe
+  retirement rules for obsolete utility playlists.
+
 ## [0.0.5] - 2026-08-24
 
 - Add immutable, account-scoped semantic embedding generations with audit,

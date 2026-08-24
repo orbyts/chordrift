@@ -21,6 +21,13 @@ approved the LLM-suggested names and organization. Retiring an old or inbox
 playlist must be an explicit, auditable synchronization operation performed
 only after all of its tracks are accounted for in approved canonical playlists.
 
+Stable user-managed intake names are `Inbox` for direct personal discoveries,
+`From Friends` for explicit recommendations, and `Liked from Radio` for
+radio/autoplay discoveries. Spotify manages `On Repeat`, `Daily Mix`, and
+prompted playlists. Chordrift-managed outputs receive approved generated vibe
+names and must not be edited as intake surfaces. The temporary Atmos workaround
+uses `Chordrift Spatial Audio`.
+
 ## v0.0.0 — Namespace reservation
 
 Reserve the crate and repository names with a minimal, dependency-free package.
@@ -160,8 +167,17 @@ input task for v0.0.6 before cluster generation begins.
 
 ## v0.0.6 — Vibe clustering
 
-Create reproducible cluster generations with stable identities,
-representatives, statistics, and support for unassigned tracks.
+First enrich canonical recording identities independently from Spotify. Use a
+rate-limited, cache-first MusicBrainz adapter with ISRC-first resolution,
+conservative ambiguity handling, and raw-response retention. Persist genres,
+folksonomy tags, release countries, and release-title language/script with
+source, parser version, confidence, and entity provenance. Add separately
+versioned artist-area and pretrained mood/sound inference without confusing
+release-title language with vocal language.
+
+Then create reproducible cluster generations with stable identities,
+representatives, statistics, and support for unassigned tracks. Cluster inputs
+must identify the exact enrichment and embedding generations they consumed.
 
 ## v0.0.7 — Naming and proposed library
 

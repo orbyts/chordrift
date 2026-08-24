@@ -6,7 +6,7 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
-    ChordriftError, Result, analysis, config, db, embeddings, history, playlists,
+    ChordriftError, Result, analysis, config, db, embeddings, enrichment, history, playlists,
     providers::spotify, signals,
 };
 
@@ -69,6 +69,12 @@ pub enum Command {
         /// Signal operation to perform.
         #[command(subcommand)]
         command: SignalCommand,
+    },
+    /// Resolve and cache independent semantic metadata for canonical tracks.
+    Enrich {
+        /// Enrichment operation to perform.
+        #[command(subcommand)]
+        command: EnrichmentCommand,
     },
 }
 
@@ -247,7 +253,7 @@ pub enum EmbeddingCommand {
         /// Local label for this Spotify account.
         #[arg(long, default_value = "personal")]
         account: String,
-        /// Vector dimensions; defaults to 128.
+        /// Vector dimensions; defaults to 1024.
         #[arg(long)]
         dimensions: Option<usize>,
         /// Reproducibility seed; defaults to 42.
@@ -291,6 +297,29 @@ pub enum SignalCommand {
         account: String,
     },
     /// Show the latest persisted signal generation.
+    Status {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+}
+
+/// Independent semantic enrichment commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum EnrichmentCommand {
+    /// Resolve a bounded ISRC-first batch against MusicBrainz.
+    Musicbrainz {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Maximum pending tracks to process in this invocation.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+        /// Reprocess existing matches from cached responses; does not force redownloads.
+        #[arg(long)]
+        refresh: bool,
+    },
+    /// Show current enrichment and cache coverage without network requests.
     Status {
         /// Local label for this Spotify account.
         #[arg(long, default_value = "personal")]
@@ -609,6 +638,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
         Command::Signals { command } => {
             let database = connect_current_database().await?;
             let result = run_signal_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
+        Command::Enrich { command } => {
+            let database = connect_current_database().await?;
+            let result = run_enrichment_command(command, output, &database).await;
             database.close().await;
             result?;
         }
@@ -1091,6 +1126,54 @@ async fn run_signal_command(
     }
 }
 
+async fn run_enrichment_command(
+    command: EnrichmentCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        EnrichmentCommand::Musicbrainz {
+            account,
+            limit,
+            refresh,
+        } => {
+            let report = enrichment::musicbrainz(database, &account, limit, refresh).await?;
+            writeln!(output, "enrichment: succeeded")?;
+            writeln!(output, "run_id: {}", report.run_id)?;
+            writeln!(output, "source: musicbrainz")?;
+            writeln!(output, "tracks_considered: {}", report.tracks_considered)?;
+            writeln!(output, "requests_made: {}", report.requests_made)?;
+            writeln!(output, "cache_hits: {}", report.cache_hits)?;
+            writeln!(output, "matched_tracks: {}", report.matched_tracks)?;
+            writeln!(output, "ambiguous_tracks: {}", report.ambiguous_tracks)?;
+            writeln!(output, "unmatched_tracks: {}", report.unmatched_tracks)?;
+            writeln!(output, "error_tracks: {}", report.error_tracks)?;
+            writeln!(output, "facts_written: {}", report.facts_written)?;
+            Ok(())
+        }
+        EnrichmentCommand::Status { account } => {
+            let report = enrichment::status(database, &account).await?;
+            writeln!(output, "enrichment: current")?;
+            writeln!(output, "source: musicbrainz")?;
+            writeln!(output, "eligible_tracks: {}", report.eligible_tracks)?;
+            writeln!(output, "tracks_with_isrc: {}", report.tracks_with_isrc)?;
+            writeln!(output, "matched_tracks: {}", report.matched_tracks)?;
+            writeln!(output, "ambiguous_tracks: {}", report.ambiguous_tracks)?;
+            writeln!(output, "unmatched_tracks: {}", report.unmatched_tracks)?;
+            writeln!(output, "error_tracks: {}", report.error_tracks)?;
+            writeln!(output, "facts: {}", report.facts)?;
+            writeln!(
+                output,
+                "latest_run_at: {}",
+                report
+                    .latest_run_at
+                    .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+            )?;
+            Ok(())
+        }
+    }
+}
+
 fn playlist_selector(
     name: Option<String>,
     spotify_id: Option<String>,
@@ -1270,9 +1353,9 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        BehavioralSignalArg, Cli, Command, DbCommand, EmbeddingCommand, HistoryCommand,
-        PlaylistCommand, PlaylistRoleArg, PlaylistSignalClassArg, SignalCommand, SpotifyCommand,
-        SyncCommand, write_status,
+        BehavioralSignalArg, Cli, Command, DbCommand, EmbeddingCommand, EnrichmentCommand,
+        HistoryCommand, PlaylistCommand, PlaylistRoleArg, PlaylistSignalClassArg, SignalCommand,
+        SpotifyCommand, SyncCommand, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -1391,6 +1474,22 @@ mod tests {
             cli.command,
             Command::Signals {
                 command: SignalCommand::Generate { account }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_bounded_musicbrainz_enrichment() {
+        let cli = Cli::try_parse_from(["chordrift", "enrich", "musicbrainz", "--limit", "10"])
+            .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Enrich {
+                command: EnrichmentCommand::Musicbrainz {
+                    account,
+                    limit: 10,
+                    refresh: false
+                }
             } if account == "personal"
         ));
     }
