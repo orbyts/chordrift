@@ -438,6 +438,32 @@ the artist is primarily identified. Chordrift does not relabel it as
 birthplace, formation country, nationality, recording location, or a track's
 language. Pretrained mood/sound inference is a later v0.0.6 step.
 
+### Pretrained audio-model artifacts
+
+Chordrift never downloads Spotify audio for inference. A separate local runner
+may analyze audio that you own or are otherwise authorized to process, then
+emit the strict, path-free JSON format in
+`docs/model-inference-v1.schema.json`. Import an artifact with:
+
+```console
+$ chordrift enrich model-import --account personal --file inference.json
+$ chordrift enrich model-status --account personal
+```
+
+The manifest pins the model name, exact version/revision, model license, input
+audio SHA-256, sample rate, aggregation method, inference time, embeddings, and
+optional genre/mood/sound scores. It contains neither audio nor filesystem
+paths. Chordrift rejects provider-audio claims, malformed hashes, non-finite or
+oversized vectors, duplicate tracks/facts, unknown fields, and tracks outside
+the selected account. Importing identical bytes is idempotent.
+
+The first intended personal-audio runner may evaluate MERT and MuQ-MuLan as
+foundation embeddings and Essentia classifiers for explicit mood/sound facts.
+The runner and weights stay optional: these models require real audio, and the
+currently evaluated weights carry non-commercial terms. Tracks without lawful
+audio remain explicitly without an acoustic embedding and continue through the
+metadata, semantic-playlist, relationship, and manual-feedback fallbacks.
+
 ## Excluded tracks
 
 The planned apply workflow will expose an internal **Excluded Tracks** view,

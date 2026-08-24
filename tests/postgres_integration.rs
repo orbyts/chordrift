@@ -13,11 +13,11 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     let database = db::connect(config).await?;
 
     let report = db::migrate(&database).await?;
-    assert_eq!(report.available, 13);
+    assert_eq!(report.available, 14);
 
     let status = db::status(&database).await?;
-    assert_eq!(status.available_migrations, 13);
-    assert_eq!(status.applied_migrations, 13);
+    assert_eq!(status.available_migrations, 14);
+    assert_eq!(status.applied_migrations, 14);
     assert_eq!(status.pending_migrations, 0);
     assert_eq!(status.failed_migrations, 0);
 
@@ -40,6 +40,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "embedding_generations",
         "enrichment_runs",
         "listening_events",
+        "model_inference_imports",
         "playlist_generations",
         "playlist_tracks",
         "playlists",
@@ -65,6 +66,8 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "track_enrichment_matches",
         "track_semantic_facts",
         "track_matches",
+        "track_model_facts",
+        "track_model_inferences",
         "track_statistics",
         "tracks",
     ] {

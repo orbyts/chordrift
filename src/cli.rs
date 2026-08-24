@@ -6,8 +6,8 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
-    ChordriftError, Result, analysis, config, db, embeddings, enrichment, history, playlists,
-    providers::spotify, signals,
+    ChordriftError, Result, analysis, config, db, embeddings, enrichment, history, model_inference,
+    playlists, providers::spotify, signals,
 };
 
 /// Chordrift command-line interface.
@@ -327,6 +327,21 @@ pub enum EnrichmentCommand {
         /// Maximum distinct pending artists to process in this invocation.
         #[arg(long, default_value_t = 25)]
         limit: u32,
+    },
+    /// Import independently produced pretrained audio-model artifacts.
+    ModelImport {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Strict JSON artifact manifest containing no audio or local paths.
+        #[arg(long)]
+        file: PathBuf,
+    },
+    /// Show imported pretrained audio-model coverage.
+    ModelStatus {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
     },
     /// Show current enrichment and cache coverage without network requests.
     Status {
@@ -1179,6 +1194,43 @@ async fn run_enrichment_command(
             writeln!(output, "facts_written: {}", report.facts_written)?;
             Ok(())
         }
+        EnrichmentCommand::ModelImport { account, file } => {
+            let report = model_inference::import(database, &account, &file).await?;
+            writeln!(output, "model_inference_import: succeeded")?;
+            writeln!(output, "import_id: {}", report.import_id)?;
+            writeln!(output, "reused: {}", report.reused)?;
+            writeln!(output, "model: {}", report.model)?;
+            writeln!(output, "model_version: {}", report.model_version)?;
+            writeln!(output, "tracks_imported: {}", report.tracks_imported)?;
+            writeln!(output, "facts_imported: {}", report.facts_imported)?;
+            writeln!(output, "manifest_sha256: {}", report.manifest_sha256)?;
+            Ok(())
+        }
+        EnrichmentCommand::ModelStatus { account } => {
+            let report = model_inference::status(database, &account).await?;
+            writeln!(output, "model_inference: current")?;
+            writeln!(output, "eligible_tracks: {}", report.eligible_tracks)?;
+            writeln!(output, "inferred_tracks: {}", report.inferred_tracks)?;
+            writeln!(output, "embedded_tracks: {}", report.embedded_tracks)?;
+            writeln!(output, "facts: {}", report.facts)?;
+            writeln!(
+                output,
+                "models: {}",
+                if report.models.is_empty() {
+                    "-".to_owned()
+                } else {
+                    report.models.join(", ")
+                }
+            )?;
+            writeln!(
+                output,
+                "latest_import_at: {}",
+                report
+                    .latest_import_at
+                    .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+            )?;
+            Ok(())
+        }
         EnrichmentCommand::Status { account } => {
             let report = enrichment::status(database, &account).await?;
             writeln!(output, "enrichment: current")?;
@@ -1536,6 +1588,36 @@ mod tests {
             cli.command,
             Command::Enrich {
                 command: EnrichmentCommand::Artists { account, limit: 10 }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_model_inference_import() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "enrich",
+            "model-import",
+            "--file",
+            "inference.json",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Enrich {
+                command: EnrichmentCommand::ModelImport { account, file }
+            } if account == "personal" && file.to_str() == Some("inference.json")
+        ));
+    }
+
+    #[test]
+    fn parses_model_inference_status() {
+        let cli =
+            Cli::try_parse_from(["chordrift", "enrich", "model-status"]).expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Enrich {
+                command: EnrichmentCommand::ModelStatus { account }
             } if account == "personal"
         ));
     }

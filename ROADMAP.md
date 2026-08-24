@@ -191,6 +191,12 @@ release-title language with vocal language.
 Then create reproducible cluster generations with stable identities,
 representatives, statistics, and support for unassigned tracks. Cluster inputs
 must identify the exact enrichment and embedding generations they consumed.
+After proposed playlists have stable identities, add account-scoped assignment
+feedback: reject a track's current vibe, prefer or lock another destination,
+and make the next generation honor that decision as an auditable stability
+constraint. Preserve the original model score and prior assignment rather than
+rewriting history. This is post-generation correction, not a prerequisite for
+the initial classification.
 
 ## v0.0.7 — Naming and proposed library
 

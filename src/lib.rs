@@ -22,6 +22,8 @@ pub mod embeddings;
 pub mod enrichment;
 /// Privacy-conscious Spotify archive inspection and listening-history import.
 pub mod history;
+/// Versioned pretrained audio-model inference artifacts.
+pub mod model_inference;
 /// Account-scoped playlist roles and drift policy.
 pub mod playlists;
 /// Streaming-provider adapters.

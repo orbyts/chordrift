@@ -295,3 +295,21 @@ two track-level facts were written. An immediate repeat converged with zero
 artists, requests, or writes. Current live coverage is 2 matched tracks, 39
 MusicBrainz facts, and 2 tracks with artist-area facts. Pretrained mood/sound
 inference is next; Excluded Tracks remains future work.
+
+The pretrained-audio boundary is now model-neutral and requires authorized
+local audio; Chordrift will not download or infer from Spotify audio. Migration
+0014, `enrich model-import`, `enrich model-status`, and the strict path-free
+`docs/model-inference-v1.schema.json` are in development. Artifacts pin model
+name/version/revision/license, input hashes, inference time, aggregation,
+embeddings, and mood/sound facts. MERT and MuQ-MuLan are candidate foundation
+spaces and Essentia provides explicit classifiers, but the evaluated weights
+carry non-commercial terms and all require real audio. Tracks without lawful
+audio remain unembedded rather than receiving invented acoustic evidence.
+
+Manual correction is explicitly post-generation: after proposed playlists
+exist, the user must be able to reject a track's current vibe and optionally
+choose or lock another destination. The next generation moves it and retains
+that account-scoped decision as an auditable stability constraint while
+preserving the original model score and assignment history. Do not implement
+this as a free-floating pre-clustering mood tag; wait for stable cluster and
+playlist identities.
