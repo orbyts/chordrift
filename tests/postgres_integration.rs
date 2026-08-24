@@ -13,11 +13,11 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     let database = db::connect(config).await?;
 
     let report = db::migrate(&database).await?;
-    assert_eq!(report.available, 9);
+    assert_eq!(report.available, 10);
 
     let status = db::status(&database).await?;
-    assert_eq!(status.available_migrations, 9);
-    assert_eq!(status.applied_migrations, 9);
+    assert_eq!(status.available_migrations, 10);
+    assert_eq!(status.applied_migrations, 10);
     assert_eq!(status.pending_migrations, 0);
     assert_eq!(status.failed_migrations, 0);
 
@@ -33,6 +33,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "account_track_statistics",
         "artists",
         "account_track_embeddings",
+        "account_track_signals",
         "cluster_generations",
         "cluster_tracks",
         "clusters",
@@ -52,6 +53,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "provider_playlists",
         "provider_saved_tracks",
         "provider_tracks",
+        "signal_generations",
         "spotify_archive_imports",
         "sync_operations",
         "sync_runs",

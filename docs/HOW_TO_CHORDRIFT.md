@@ -250,32 +250,48 @@ Chordrift's target representation is hybrid:
 
 1. A reusable, music-foundation embedding such as MERT describes the recording's
    acoustic character when Chordrift has lawful access to an audio file.
-2. An account-scoped personal component describes playlist co-membership,
-   artists, albums, historical playlist-name tokens, and listening behavior.
-3. A versioned fusion combines normalized components before clustering so raw
-   counts or a high-dimensional component cannot dominate accidentally.
+2. An account-scoped semantic component describes explicitly semantic legacy
+   playlist co-membership, artists, albums, and historical playlist-name tokens.
+3. Listening, rotation, intake, and recommendation evidence remains a separate
+   versioned signal generation used for composition and ordering, not musical
+   similarity.
 
 Spotify track metadata does not contain the waveform required by an acoustic
 foundation model. Until a track can be matched to locally owned, DRM-free
-audio, Chordrift generates a deterministic personal-only fallback. The schema
+audio, Chordrift generates a deterministic semantic metadata fallback. The schema
 keeps canonical acoustic embeddings separate from account-scoped generations,
 so adding MERT later does not invalidate the provider inventory or history.
 
-Audit source coverage and playlist weights:
+Audit semantic source coverage and playlist weights:
 
 ```console
 $ chordrift embeddings audit --account personal
 ```
 
-Utility or catch-all playlists can obscure semantic relationships. Exclude one
-from future generations without changing it in Spotify:
+Configure each playlist's evidence class without changing it in Spotify. For
+example, exclude a catch-all utility playlist:
 
 ```console
-$ chordrift playlists weight --name "All my saved songs" --weight 0
+$ chordrift playlists signals --name "All my saved songs" --class ignored
 ```
 
-Weights from `0` through `10` are accepted. The default is `1`; zero excludes
-the playlist only from embedding generation.
+Treat Spotify On Repeat as current rotation evidence without implying that all
+of its tracks share a vibe:
+
+```console
+$ chordrift playlists signals --name "On Repeat" --class provider-curated --behavior rotation
+```
+
+Configure a friend-recommendation intake. Intake clearing remains disabled
+until the later apply workflow can verify canonical placement:
+
+```console
+$ chordrift playlists signals --name "From Friends" --class intake --behavior recommendation
+```
+
+Evidence classes are `semantic-legacy`, `provider-curated`, `intake`,
+`canonical`, `transport`, and `ignored`. Semantic weights from `0` through `10`
+are accepted only for `semantic-legacy`; the default is `1`.
 
 Generate or reuse the deterministic fallback generation:
 
@@ -284,10 +300,17 @@ $ chordrift embeddings generate --account personal
 $ chordrift embeddings status --account personal
 ```
 
-The personal listening component currently uses meaningful play count with a
-log transform, one-year exponential recency decay, and an affinity value formed
-from completion and non-skip rates. It has deliberately less influence than
-playlist, artist, and album relationships.
+Generate listening and lifecycle evidence independently:
+
+```console
+$ chordrift signals generate --account personal
+$ chordrift signals status --account personal
+```
+
+The signal generation retains meaningful play count, one-year exponential
+recency, completion and non-skip ratios, saved state, configured provider
+rotation, intake membership, and recommendation provenance. These values do not
+enter nearest-neighbor similarity.
 
 Inspect nearest neighbors before allowing a generation to feed clustering:
 

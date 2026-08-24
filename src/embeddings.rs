@@ -1,4 +1,4 @@
-//! Deterministic, account-scoped personal music embeddings.
+//! Deterministic, account-scoped semantic music embeddings.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -11,15 +11,14 @@ use uuid::Uuid;
 
 use crate::{ChordriftError, Result};
 
-const MODEL: &str = "personal-feature-hash";
-const MODEL_VERSION: &str = "1";
+const MODEL: &str = "semantic-feature-hash";
+const MODEL_VERSION: &str = "2";
 const DEFAULT_DIMENSIONS: usize = 128;
 const DEFAULT_SEED: i64 = 42;
 const PLAYLIST_WEIGHT: f64 = 1.0;
 const ARTIST_WEIGHT: f64 = 0.55;
 const ALBUM_WEIGHT: f64 = 0.35;
 const NAME_TOKEN_WEIGHT: f64 = 0.20;
-const LISTENING_WEIGHT: f64 = 0.12;
 
 /// Readiness summary for one account's embedding inputs.
 #[derive(Clone, Debug, PartialEq)]
@@ -50,7 +49,7 @@ pub struct PlaylistAudit {
     /// Unique canonical tracks in the latest snapshot.
     pub unique_tracks: usize,
     /// Configured semantic weight; zero excludes it.
-    pub embedding_weight: f64,
+    pub semantic_weight: f64,
 }
 
 /// Result of generating or reusing one immutable embedding generation.
@@ -144,11 +143,7 @@ pub struct NeighborReport {
 struct TrackInput {
     id: Uuid,
     album_id: Option<Uuid>,
-    play_count: i64,
-    event_count: i64,
-    skip_count: i64,
-    completed_count: i64,
-    last_played_at: Option<DateTime<Utc>>,
+    has_history: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -202,7 +197,7 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<AuditRepo
             provider_playlist_id: playlist.provider_playlist_id.clone(),
             name: playlist.name.clone(),
             unique_tracks: playlist.tracks.len(),
-            embedding_weight: playlist.weight,
+            semantic_weight: playlist.weight,
         })
         .collect();
     Ok(AuditReport {
@@ -214,7 +209,7 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<AuditRepo
         history_tracks: inputs
             .tracks
             .iter()
-            .filter(|track| track.event_count > 0)
+            .filter(|track| track.has_history)
             .count(),
         playlists,
     })
@@ -271,8 +266,6 @@ pub async fn generate(
         "artist_weight": ARTIST_WEIGHT,
         "album_weight": ALBUM_WEIGHT,
         "historical_name_token_weight": NAME_TOKEN_WEIGHT,
-        "listening_weight": LISTENING_WEIGHT,
-        "listening_dimensions": ["log_play_count", "one_year_recency_decay", "mean_non_skip_and_completion"],
         "normalization": "l2",
         "playlist_size_normalization": "sqrt(weight/(unique_tracks-1))"
     });
@@ -465,21 +458,12 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
     })?;
     let rows = sqlx::query(
         "SELECT track.id, track.title, min(provider.provider_track_id) AS provider_track_id,
-                track.album_id,
-                COALESCE(listening.play_count, 0) AS play_count,
-                COALESCE(listening.event_count, 0) AS event_count,
-                COALESCE(listening.skip_count, 0) AS skip_count,
-                COALESCE(listening.completed_count, 0) AS completed_count,
-                listening.last_played_at
+                track.album_id, listening.event_count IS NOT NULL AS has_history
          FROM tracks track
          JOIN provider_tracks provider
            ON provider.track_id = track.id AND provider.provider = 'spotify'
          LEFT JOIN LATERAL (
-             SELECT sum(stats.play_count)::bigint AS play_count,
-                    sum(stats.event_count)::bigint AS event_count,
-                    sum(stats.skip_count)::bigint AS skip_count,
-                    sum(stats.completed_count)::bigint AS completed_count,
-                    max(stats.last_played_at) AS last_played_at
+             SELECT sum(stats.event_count)::bigint AS event_count
              FROM account_listening_track_statistics stats
              WHERE stats.provider_account_id = $1 AND stats.track_id = track.id
          ) listening ON TRUE
@@ -492,9 +476,7 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
              JOIN provider_tracks saved_track ON saved_track.id = saved.provider_track_id
              WHERE saved.snapshot_id = $2 AND saved_track.track_id = track.id
          ) OR listening.event_count IS NOT NULL
-         GROUP BY track.id, track.title, track.album_id, listening.play_count,
-                  listening.event_count, listening.skip_count,
-                  listening.completed_count, listening.last_played_at
+         GROUP BY track.id, track.title, track.album_id, listening.event_count
          ORDER BY track.id",
     )
     .bind(account_id)
@@ -507,11 +489,7 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
             Ok(TrackInput {
                 id: row.try_get("id")?,
                 album_id: row.try_get("album_id")?,
-                play_count: row.try_get("play_count")?,
-                event_count: row.try_get("event_count")?,
-                skip_count: row.try_get("skip_count")?,
-                completed_count: row.try_get("completed_count")?,
-                last_played_at: row.try_get("last_played_at")?,
+                has_history: row.try_get("has_history")?,
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -534,7 +512,8 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
 
     let playlist_rows = sqlx::query(
         "SELECT provider.id AS playlist_id, provider.provider_playlist_id,
-                snapshot.name, account_playlist.embedding_weight,
+                snapshot.name, account_playlist.signal_class,
+                account_playlist.semantic_weight,
                 member_track.track_id
          FROM provider_account_playlists account_playlist
          JOIN provider_playlists provider
@@ -546,6 +525,7 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
          JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
          WHERE account_playlist.provider_account_id = $1
            AND account_playlist.present_in_latest_snapshot
+           AND account_playlist.signal_class = 'semantic_legacy'
          ORDER BY provider.id, member_track.track_id",
     )
     .bind(account_id)
@@ -568,8 +548,8 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
                 .try_get("name")
                 .expect("selected playlist name has correct type"),
             weight: row
-                .try_get("embedding_weight")
-                .expect("selected embedding weight has correct type"),
+                .try_get("semantic_weight")
+                .expect("selected semantic weight has correct type"),
             tracks: Vec::new(),
             historical_names: Vec::new(),
         });
@@ -608,7 +588,7 @@ fn build_vectors(inputs: &Inputs, dimensions: usize, seed: i64) -> BTreeMap<Uuid
         .iter()
         .map(|track| (track.id, vec![0.0; dimensions]))
         .collect();
-    let hashed_dimensions = dimensions - 3;
+    let hashed_dimensions = dimensions;
 
     for playlist in &inputs.playlists {
         if playlist.weight <= 0.0 || playlist.tracks.len() < 2 {
@@ -672,41 +652,6 @@ fn build_vectors(inputs: &Inputs, dimensions: usize, seed: i64) -> BTreeMap<Uuid
                 hashed_dimensions,
                 seed,
             );
-        }
-    }
-
-    let max_log_plays = inputs
-        .tracks
-        .iter()
-        .map(|track| (track.play_count.max(0) as f64).ln_1p())
-        .fold(0.0_f64, f64::max);
-    let newest_play = inputs
-        .tracks
-        .iter()
-        .filter_map(|track| track.last_played_at)
-        .max();
-    for track in &inputs.tracks {
-        if track.event_count <= 0 {
-            continue;
-        }
-        if let Some(vector) = vectors.get_mut(&track.id) {
-            vector[dimensions - 3] = if max_log_plays > 0.0 {
-                LISTENING_WEIGHT * (track.play_count.max(0) as f64).ln_1p() / max_log_plays
-            } else {
-                0.0
-            };
-            vector[dimensions - 2] = newest_play
-                .zip(track.last_played_at)
-                .map(|(newest, played)| {
-                    let days = (newest - played).num_days().max(0) as f64;
-                    LISTENING_WEIGHT * (-days / 365.0).exp()
-                })
-                .unwrap_or(0.0);
-            let skip_ratio = track.skip_count.max(0) as f64 / track.event_count as f64;
-            let completion_ratio = track.completed_count.max(0) as f64 / track.event_count as f64;
-            let affinity =
-                ((1.0 - skip_ratio.clamp(0.0, 1.0)) + completion_ratio.clamp(0.0, 1.0)) / 2.0;
-            vector[dimensions - 1] = LISTENING_WEIGHT * affinity;
         }
     }
 
@@ -848,11 +793,7 @@ mod tests {
         TrackInput {
             id,
             album_id: None,
-            play_count: 0,
-            event_count: 0,
-            skip_count: 0,
-            completed_count: 0,
-            last_played_at: None,
+            has_history: false,
         }
     }
 }

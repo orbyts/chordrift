@@ -16,7 +16,7 @@ pub mod config;
 pub mod credentials;
 /// Storexa-backed database lifecycle and migration inspection.
 pub mod db;
-/// Deterministic, versioned personal track embeddings.
+/// Deterministic, versioned semantic track embeddings.
 pub mod embeddings;
 /// Privacy-conscious Spotify archive inspection and listening-history import.
 pub mod history;
@@ -24,6 +24,8 @@ pub mod history;
 pub mod playlists;
 /// Streaming-provider adapters.
 pub mod providers;
+/// Versioned account-specific preference and lifecycle signals.
+pub mod signals;
 
 mod error;
 
