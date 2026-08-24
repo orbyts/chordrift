@@ -201,12 +201,167 @@ identity, and all playlist roles are scoped to that account.
 
 ## Playlists
 
-List known playlists, their current presence, item count, role, drift policy,
-and stable Spotify ID:
+### External playlist bookmarks
+
+The intended clean account surface does not include playlists owned by friends,
+other users, or organizations merely because they were followed, added, or
+shared collaboratively. Chordrift will classify these as internal **External
+Playlist Bookmarks**, not active library playlists.
+
+Before a future cleanup removes one from Spotify or Apple Music, Chordrift will
+retain the provider ID, owner, link, relationship, metadata, and last-known
+contents when the provider makes them readable. An inaccessible playlist will
+be marked incomplete. The retained bookmark remains queryable in Neon, but it
+does not contribute to clustering, signals, canonical playlist counts, or
+legacy retirement.
+
+Cleanup means removing the external playlist from your provider library. It
+never means deleting or editing your friend's source playlist, and it always
+requires separate approval. The Spotify importer stores these records in Neon
+during a normal pull. Public followed playlists are metadata-only under
+Spotify's current Development Mode limits; externally owned collaborative
+contents are retained when Spotify permits access and explicitly marked
+inaccessible otherwise. Private, account-specific playlists owned by Spotify
+remain active provider-curated signal sources rather than bookmarks.
+
+List both currently followed and archived bookmarks:
+
+```console
+$ chordrift bookmarks list --account personal
+```
+
+`present` says whether Spotify still reports the relationship. `last_changed`
+advances when Spotify's playlist snapshot signature changes, so another
+`chordrift sync pull` can reveal an update while the playlist is still visible
+to the account. Archived bookmarks remain listed after later cleanup.
+
+Inspect the newest complete contents Spotify allowed Chordrift to retain:
+
+```console
+$ chordrift bookmarks tracks --account personal --name "alone in the car"
+$ chordrift bookmarks tracks --account personal --spotify-id PLAYLIST_ID
+```
+
+Names must be unambiguous; the stable ID form always wins. A metadata-only or
+inaccessible bookmark with no older complete snapshot reports that limitation
+instead of presenting an empty playlist as authoritative. Explicit refresh of
+one bookmark is deliberately separate from normal sync:
+
+```console
+$ chordrift bookmarks refresh --account personal --name "Shared playlist"
+$ chordrift bookmarks refresh --account personal --spotify-id PLAYLIST_ID
+$ chordrift bookmarks tracks --account personal --spotify-id PLAYLIST_ID
+```
+
+A practical shared-playlist workflow is:
+
+1. Follow/save the shared playlist in Spotify, then run `chordrift sync pull`
+   so Chordrift retains its stable bookmark and ownership metadata.
+2. Optionally run `bookmarks refresh` for that one playlist. Spotify currently
+   exposes item membership to Web API applications only when the current user
+   owns or collaborates on the playlist; an ordinary public shared playlist
+   will therefore be recorded honestly as `inaccessible` rather than empty.
+3. Listen in Spotify and add only songs you want to keep to `Inbox` (or `From
+   Friends` when the recommendation itself is the meaningful signal).
+4. Run the normal pull and later Chordrift organization workflow. Bookmark
+   contents never become semantic inputs automatically.
+
+Every explicit attempt is retained, including 403/404 outcomes, while the last
+readable snapshot remains inspectable. Refreshing one bookmark does not create
+a provider-library snapshot, does not affect normal sync's request budget, and
+does not modify Spotify.
+
+Before removing any followed/shared relationships, create an immutable review
+batch containing every currently present external bookmark:
+
+```console
+$ chordrift bookmarks cleanup-plan --account personal
+$ chordrift bookmarks cleanup-show --account personal
+$ chordrift bookmarks cleanup-show --account personal --batch BATCH_ID
+```
+
+Review every row, especially `owner_id`, `content`, `spotify_id`, and the
+expected Spotify snapshot signature. Approval is exact and performs no Spotify
+write:
+
+```console
+$ chordrift bookmarks cleanup-approve --account personal --confirm BATCH_ID
+```
+
+After approval, rebuild the dry-run with `chordrift sync plan`. It will contain
+one `remove_external_playlist` cleanup operation per approved bookmark and
+report them separately as `external_cleanups`. These operations only remove
+your follow/library relationship; they cannot edit or delete the source
+owner's playlist. They remain deferred and non-executable throughout v0.0.9.
+An approval remains usable across identical pulls, but any changed signature,
+added bookmark, or missing bookmark requires a new review batch.
+
+### Which playlist should receive a new song?
+
+The stable user-managed intake names and their meanings are:
+
+| Playlist | Add a track when… | Signal retained by Chordrift |
+| --- | --- | --- |
+| `Inbox` | You discovered it yourself and currently feel strongly about it. | Explicit recent favorite; elevated intake priority. |
+| `From Friends` | A friend explicitly recommended it. | Recommendation provenance. Record the friend/source later when the CLI supports per-entry notes. |
+| `Liked from Radio` | You discovered it through radio, autoplay, or a similar platform recommendation. | Provider-assisted discovery, distinct from a direct personal find. |
+
+These are temporary intake surfaces. A later approved apply operation may clear
+an entry only after the track is present in a published and verified canonical
+playlist. Until then, Chordrift only reads them. Do not put a track in more than
+one intake merely to increase its weight; use the most specific origin.
+
+Spotify-owned playlists such as `On Repeat`, `Daily Mix`, and prompted
+playlists are signal sources that Spotify manages. Never add to, rename, empty,
+or recreate them for Chordrift. Chordrift reads their meaning without treating
+their tracks as a shared musical vibe.
+
+Chordrift-managed canonical playlists will use approved, generated vibe names.
+Those names are deliberately not fixed before clustering. Do not manually add
+tracks to those playlists; Chordrift will own their membership, while Spotify
+is the only live output provider for the first canonical release. A future
+Apple Music adapter will use the same approved names. The temporary Spatial
+Audio companion is named `Chordrift Spatial Audio`.
+
+Legacy vibe playlists must remain until the dry-run proves that every track has
+an approved canonical destination. After that verification and separate user
+approval, all old user-created vibe and utility playlists are intended to be
+retired. This includes `Melodi(es)` and `Ambient Music Therapy – Indian Lounge
+- Relaxing Music for your Six Senses`, which remain semantic evidence until
+retirement. The utility playlists `Two Way Sync`, `My top tracks playlist`, and
+`All my saved songs` are not intake names and are also retired from the design.
+`Collaboration Jessica` is explicitly ignored and must not contribute
+recommendation or similarity evidence. Retirement removes the obsolete
+playlist container, not its tracks from the saved library or verified canonical
+destinations. Deleting any existing playlist is still a manual Spotify action
+in v0.0.5; Chordrift will not do it remotely.
+
+The target Spotify surface is therefore:
+
+1. `Inbox`, `From Friends`, and `Liked from Radio` as the only user-managed
+   intake playlists.
+2. Spotify-managed sources such as `On Repeat`, `Daily Mix`, and prompted
+   playlists.
+3. Multiple Chordrift-managed canonical playlists, each with an approved
+   generated vibe name.
+4. `Chordrift Spatial Audio` as a temporary companion until native Apple Music
+   integration replaces the workaround.
+
+Spotify Liked Songs remains a provider library surface and is not a playlist
+retirement candidate.
+
+List only playlists present in Spotify's latest successfully imported snapshot,
+using their current Spotify names, item count, role, drift policy, and stable
+Spotify ID:
 
 ```console
 $ chordrift playlists list --account personal
 ```
+
+Renames replace the active name on the next pull, and removed playlists vanish
+from this current-state list. Neon still retains immutable older snapshots for
+sync provenance and recovery, but historical names never appear as current
+playlists. Proposed Chordrift names live separately until an approved publish.
 
 List the latest imported contents of one playlist:
 
@@ -215,10 +370,10 @@ $ chordrift playlists tracks --name "Smooth Morning Coffee (Curated)"
 $ chordrift playlists tracks --spotify-id 77ejx8LwlokNcr7L1QH8JN
 ```
 
-Configure a provider-native discovery playlist as an inbox:
+Configure a personal discovery playlist as an inbox:
 
 ```console
-$ chordrift playlists configure --name "New Music Inbox" --role inbox
+$ chordrift playlists configure --name "Inbox" --role inbox
 ```
 
 Configure a future Chordrift-owned output playlist:
@@ -337,6 +492,321 @@ Every generation records its model, implementation version, dimensions, seed,
 parameters, source snapshot, and content hash. Regenerating identical inputs
 reuses the existing immutable generation.
 
+The current fallback generation also consumes versioned MusicBrainz semantic
+facts, imported model facts, and any lawful imported acoustic embeddings.
+Imported acoustic vectors are L2-normalized and projected deterministically
+into the common feature space; model identity and version are part of the
+feature key. Behavioral signals remain outside similarity.
+
+## Vibe clusters
+
+Generate a non-destructive diagnostic structure from the latest immutable
+embedding generation:
+
+```console
+$ chordrift clusters generate --account personal --count 12 --min-similarity 0.05 --min-cluster-size 10
+$ chordrift clusters status --account personal
+$ chordrift clusters list --account personal
+$ chordrift clusters tracks --account personal --cluster vibe-0123456789ab --limit 100
+```
+
+Clustering trains deterministic farthest-first spherical k-means centroids on
+tracks with genuine semantic seed evidence, then considers all embedded tracks
+for assignment by cosine similarity. The generation records the exact embedding
+generation, algorithm/version, seed, parameters, counts, and an input hash;
+identical inputs reuse the existing result. Tracks below the configured
+centroid similarity or in undersized groups remain explicitly unassigned.
+Machine labels are temporary
+content-derived identifiers, not playlist names, and no Spotify playlist is
+created or modified.
+
+After proposed playlists have stable identities, Chordrift will support the
+listening correction workflow: reject a track's current assignment, optionally
+choose or lock a different destination, then regenerate so the track moves.
+That account-specific decision will be an auditable constraint while the
+original score and assignment remain preserved.
+
+## Proposed playlist library
+
+Build an immutable, non-destructive proposal from the latest cluster
+generation, then inspect its stable playlist identities and tracks:
+
+```console
+$ chordrift proposals generate --account personal
+$ chordrift proposals status --account personal
+$ chordrift proposals list --account personal
+$ chordrift proposals tracks --account personal --playlist playlist-0123456789ab --limit 100
+$ chordrift proposals coverage --account personal
+$ chordrift proposals missing --account personal --limit 100
+```
+
+The proposal copies cluster membership into canonical Neon rows without
+creating, renaming, clearing, or deleting any Spotify playlist. A stable
+`playlist-*` key is separate from both a cluster's temporary machine label and
+its user-facing name. When a later cluster generation overlaps an earlier
+playlist by at least half of the smaller membership, Chordrift carries that
+stable identity forward. This gives future manual corrections and provider
+synchronization a durable target.
+
+`proposals coverage` checks every unique track in every current
+`semantic_legacy` and `intake` source playlist. Missing or unassigned tracks
+remain visible and block approval. Provider-curated, transport, ignored, and
+temporary Spatial Audio views do not imply retirement and are not part of this
+gate.
+
+`proposals missing` lists every uncovered track once, along with its Spotify
+track ID and all current retirement-source playlists containing it. Use the
+stable Spotify ID when titles are ambiguous.
+
+When automatic evidence is weak, create a stable manual semantic destination:
+
+```console
+$ chordrift proposals category-create --account personal \
+    --name "Open-Sky Anthems" \
+    --description "Earnest alternative and pop-rock songs with widescreen choruses." \
+    --tag alternative --tag pop-rock --tag anthemic
+```
+
+Assign an unassigned track—or correct an existing placement—using exact stable
+identities:
+
+```console
+$ chordrift proposals assign --account personal \
+    --spotify-id SPOTIFY_TRACK_ID --spotify-id ANOTHER_TRACK_ID \
+    --playlist playlist-0123456789ab \
+    --reason "Anthemic alternative-rock fit"
+```
+
+Repeat `--spotify-id` to assign several reviewed tracks through one database
+session. Chordrift still records a separate reversible decision for each track.
+
+Changing the destination later supersedes the prior decision without deleting
+its audit record. If no destination feels honest, return the track to the
+internal review queue:
+
+```console
+$ chordrift proposals review --account personal \
+    --spotify-id SPOTIFY_TRACK_ID \
+    --reason "Current category does not match this recording"
+```
+
+Manual decisions are account-scoped and replay into later proposal generations.
+They alter Neon proposal membership only; none of these commands writes to
+Spotify. The internal review queue is deliberately not a Spotify playlist and
+continues to block retirement coverage until each source track is assigned or
+otherwise explicitly resolved.
+
+Naming is a model-neutral artifact boundary. Export a privacy-minimized context
+containing stable keys and representative title/artist samples:
+
+```console
+$ chordrift proposals naming-export --account personal --file naming-context.json
+$ chordrift proposals naming-import --account personal --file naming-results.json
+```
+
+The result format is defined by `docs/playlist-naming-v1.schema.json`. It must
+target the exact proposal generation and exported context SHA-256, include one
+unique name/description/tag set for every stable key, and identify the naming
+provider, model, and model/prompt revision. Chordrift retains every revision
+and selects the latest import; it rejects unknown fields, reserved intake names,
+duplicate names, missing playlists, and stale contexts.
+
+Approval is deliberately explicit and succeeds only after all playlists are
+named and retirement coverage is complete:
+
+```console
+$ chordrift proposals approve --account personal --confirm PROPOSAL_GENERATION_UUID
+```
+
+Approval records the account-owner decision in Neon. It still performs no
+Spotify writes; publishing belongs to the later dry-run/apply milestones.
+
+Before v0.1.0 publication, every approved canonical playlist will also receive
+a simple original cover generated from its approved name, description, and
+semantic tags. v0.0.9 will create deterministic local artifacts and a preview
+for explicit approval while remaining read-only against Spotify. Cover upload
+belongs to v0.1.0 and will never reuse provider artwork or silently publish an
+unapproved image.
+
+The approved v1 files live under `artwork/canonical/drift-atlas-v1`. Validate
+the strict manifest, inspect its contact sheet and hashes, and approve the
+exact immutable batch:
+
+```console
+$ chordrift db migrate
+$ chordrift artwork import --account personal \
+    --manifest artwork/canonical/drift-atlas-v1/manifest.json
+$ chordrift artwork status --account personal
+$ chordrift artwork list --account personal
+$ chordrift artwork approve --account personal --confirm ARTWORK_BATCH_UUID
+```
+
+`artwork import` verifies the proposal identity, complete playlist coverage,
+approved names, every PNG's media type and dimensions, and every content hash.
+An identical manifest reuses the existing batch. A changed candidate creates a
+new pending review and supersedes any older pending batch. Approval records the
+decision in Neon but reports `spotify_writes: disabled`; it neither requests an
+image-upload scope nor contacts Spotify.
+
+When exercising unreleased source from a machine-wide shared Cargo target,
+isolate the branch build so another clone of the same crate/version cannot
+overwrite the executable:
+
+```console
+$ cargo run --target-dir target -- proposals status --account personal
+```
+
+This is only development hygiene. After a release is installed, use the normal
+`chordrift proposals ...` commands.
+
+## Dry-run synchronization plans
+
+Build an immutable plan from the latest approved proposal and the latest
+imported Spotify snapshot:
+
+```console
+$ chordrift sync plan --account personal
+```
+
+To bind planning to a particular approval rather than implicitly selecting the
+latest one:
+
+```console
+$ chordrift sync plan --account personal \
+    --proposal ca81d1b2-e56b-41e6-8846-cdb379cb039b
+```
+
+The command reads Spotify state already stored in Neon and does not contact or
+mutate Spotify. Identical proposal, snapshot, exclusions, and policies reuse
+the same plan ID and input hash. A new pull produces a new source snapshot and
+therefore a new plan, even when the visible diff happens to look the same.
+
+Inspect the newest plan summary, or print its exact operations:
+
+```console
+$ chordrift sync plan-show --account personal
+$ chordrift sync plan-show --account personal --details
+$ chordrift sync plan-show --account personal --plan PLAN_UUID --details
+```
+
+Operations run through ordered safety phases: publish approved destinations,
+reconcile managed drift, consume eligible inbox entries, then retire legacy
+containers. Inbox removals and legacy retirement remain deferred until every
+destination has been published and verified. Retirement also requires a
+separate future approval; a dry-run plan is never permission to delete.
+
+The publish phase also proposes any missing stable intake containers named
+`Inbox`, `From Friends`, and `Liked from Radio`. Existing intake containers are
+reused; their tracks are never mixed into a new duplicate container.
+
+Track additions, explicit Excluded Tracks restorations, provider drift, and
+new exclusions inferred from a verified managed baseline are reported
+separately. A missing expected managed track proposes an internal exclusion
+rather than an automatic re-add; an unexpected extra track is provider drift
+and does not create an exclusion. Consumed-inbox removals are also distinct.
+Provider-curated, transport, ignored, followed, and unmanaged playlists never
+become mutation targets.
+`snapshot_current: false` means a later pull superseded the plan's observed
+state, so generate a new plan rather than relying on the stale one.
+
+## Apply-readiness validation
+
+Before v0.1.0 enables any write path, assess the newest immutable plan and
+perform the single-request authenticated read-only probe:
+
+```console
+$ chordrift sync readiness --account personal --probe
+$ chordrift sync readiness-show --account personal
+$ chordrift sync readiness-show --account personal \
+    --assessment ASSESSMENT_UUID
+```
+
+The assessment is stored immutably in Neon. It verifies the current snapshot,
+approved proposal and complete approved artwork, ordered and uniquely keyed
+operations, destructive-operation gates, the approved external-cleanup batch,
+five simulated interruption/resume points, bounded Spotify 429 handling, and
+zero changes on an idempotent operation replay. The provider probe refreshes
+the existing credential and calls Spotify's current-user endpoint only; it
+rejects credentials containing `playlist-modify-*` or `ugc-image-upload`.
+
+Running `sync readiness` without `--probe` is useful as an offline diagnostic,
+but its provider-probe check remains blocked and the overall result is not
+ready. Even a `ready` assessment reports `spotify_writes: disabled`: it is
+evidence for the future apply implementation, not an execution command.
+
+## Semantic enrichment
+
+MusicBrainz enrichment is independent from Spotify synchronization. It resolves
+canonical recordings by ISRC, conservatively stages ambiguous identifiers, and
+caches the complete JSON lookup in Neon before deriving facts. A normal run
+processes only tracks without a current parser result:
+
+```console
+$ chordrift enrich musicbrainz --account personal --limit 25
+$ chordrift enrich status --account personal
+```
+
+MusicBrainz asks clients to average no more than one request per second, so the
+default batch is intentionally bounded. Resolution uses one cached ISRC lookup,
+then one cached recording-detail lookup only after a conservative match. Shared
+ISRCs and recording IDs do not cause repeated requests. Reprocess settled tracks
+after a parser change without forcing a redownload:
+
+Pending batches prioritize intake, current rotation, saved state, and meaningful
+plays so the most useful library surface is enriched first. This changes request
+order only; behavioral priority never becomes musical similarity.
+
+```console
+$ chordrift enrich musicbrainz --account personal --limit 25 --refresh
+```
+
+The first adapter retains recording genres and folksonomy tags, release
+countries, and release-title language/script metadata. Release-title language
+is not assumed to be the language being sung. Each fact records its MusicBrainz
+entity, parser version, confidence, weight, and observation time.
+
+After recording matches exist, resolve their credited artists to MusicBrainz's
+primary associated area in another bounded pass:
+
+```console
+$ chordrift enrich artists --account personal --limit 25
+```
+
+Artist requests use the same durable raw-response cache, so an artist shared by
+many tracks is downloaded once. Track-to-artist resolution is independently
+versioned and records resolved, unknown, and error outcomes; a missing area
+remains unknown, while a transient error becomes eligible for a bounded retry
+after its cache delay. MusicBrainz defines this value as the area with which
+the artist is primarily identified. Chordrift does not relabel it as
+birthplace, formation country, nationality, recording location, or a track's
+language. Pretrained mood/sound inference is a later v0.0.6 step.
+
+### Pretrained audio-model artifacts
+
+Chordrift never downloads Spotify audio for inference. A separate local runner
+may analyze audio that you own or are otherwise authorized to process, then
+emit the strict, path-free JSON format in
+`docs/model-inference-v1.schema.json`. Import an artifact with:
+
+```console
+$ chordrift enrich model-import --account personal --file inference.json
+$ chordrift enrich model-status --account personal
+```
+
+The manifest pins the model name, exact version/revision, model license, input
+audio SHA-256, sample rate, aggregation method, inference time, embeddings, and
+optional genre/mood/sound scores. It contains neither audio nor filesystem
+paths. Chordrift rejects provider-audio claims, malformed hashes, non-finite or
+oversized vectors, duplicate tracks/facts, unknown fields, and tracks outside
+the selected account. Importing identical bytes is idempotent.
+
+The first intended personal-audio runner may evaluate MERT and MuQ-MuLan as
+foundation embeddings and Essentia classifiers for explicit mood/sound facts.
+The runner and weights stay optional: these models require real audio, and the
+currently evaluated weights carry non-commercial terms. Tracks without lawful
+audio remain explicitly without an acoustic embedding and continue through the
+metadata, semantic-playlist, relationship, and manual-feedback fallbacks.
+
 ## Excluded tracks
 
 The planned apply workflow will expose an internal **Excluded Tracks** view,
@@ -347,6 +817,13 @@ history, source provider, removal time, and previous assignment, but will not
 place it in newly generated playlists until explicitly restored. Removing a
 track from a provider-curated, intake, transport, or legacy playlist does not
 mean the same thing and will not create an exclusion.
+
+This distinction relies on an immutable successful-verification baseline. A
+track missing before a managed playlist has ever matched its approved state is
+not enough evidence of an intentional removal. Active exclusions are durable
+track dispositions, so legacy retirement and inbox cleanup may preserve a
+track through either a verified canonical destination or that explicit
+exclusion—never by silently dropping it.
 
 ## Analysis
 

@@ -9,7 +9,8 @@ use url::Url;
 use crate::{ChordriftError, Result};
 
 use super::models::{
-    CurrentUser, Page, PlaylistInventory, PlaylistItem, ReusePlan, SavedTrack, SavedTrackReuse,
+    BookmarkContentStatus, CurrentUser, ExternalPlaylistInventory, ExternalPlaylistRelationship,
+    Page, PlaylistInventory, PlaylistItem, ReusePlan, SavedTrack, SavedTrackReuse,
     SavedTracksInventory, SpotifyInventory, SpotifyPlaylist,
 };
 
@@ -17,6 +18,27 @@ const API_ROOT: &str = "https://api.spotify.com/v1/";
 const PAGE_LIMIT: &str = "50";
 const MAX_RATE_LIMIT_RETRIES: usize = 5;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Bounded 429 retry behavior shared with apply-readiness validation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct RetryPolicy {
+    pub(crate) max_retries: usize,
+    pub(crate) max_delay_seconds: u64,
+}
+
+pub(crate) fn retry_policy() -> RetryPolicy {
+    RetryPolicy {
+        max_retries: MAX_RATE_LIMIT_RETRIES,
+        max_delay_seconds: 60,
+    }
+}
+
+fn retry_delay_seconds(value: Option<&str>) -> u64 {
+    value
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(1)
+        .min(retry_policy().max_delay_seconds)
+}
 
 /// Authenticated, read-only Spotify Web API client.
 #[derive(Clone, Debug)]
@@ -44,6 +66,17 @@ impl SpotifyClient {
         self.get_json(api_url("me")?).await
     }
 
+    pub(crate) async fn external_playlist(
+        &self,
+        playlist_id: &str,
+    ) -> Result<(SpotifyPlaylist, Vec<PlaylistItem>)> {
+        let playlist: SpotifyPlaylist = self.get_json(playlist_url(playlist_id)?).await?;
+        let mut items_url = playlist_items_url(playlist_id)?;
+        items_url.query_pairs_mut().append_pair("limit", PAGE_LIMIT);
+        let items = self.all_pages(items_url, None).await?;
+        Ok((playlist, items))
+    }
+
     /// Fetches the complete read-only library into memory before persistence.
     pub(crate) async fn inventory(
         &self,
@@ -62,11 +95,64 @@ impl SpotifyClient {
         let mut playlists_reused = 0;
         let mut playlist_item_fetches = 0;
         let mut playlists = Vec::new();
+        let mut external_playlists = Vec::new();
 
         for playlist in all_playlists {
             let owned = playlist.owner.id == profile.id;
-            if !owned && !playlist.collaborative {
+            // Spotify owns personalized, account-specific surfaces such as mixes.
+            // Their non-public membership is behavioral evidence, not a followed
+            // public relationship to somebody else's library.
+            let provider_curated =
+                is_private_spotify_personalized(&playlist.owner.id, playlist.public);
+            let active_library = owned || provider_curated;
+            if !active_library && !playlist.collaborative {
                 followed_playlists_skipped += 1;
+                external_playlists.push(ExternalPlaylistInventory {
+                    playlist,
+                    relationship: ExternalPlaylistRelationship::Followed,
+                    items: Vec::new(),
+                    content_status: BookmarkContentStatus::MetadataOnly,
+                    reused_from_snapshot: None,
+                });
+                continue;
+            }
+
+            if !active_library {
+                if let (Some(current_snapshot), Some(previous)) = (
+                    playlist.snapshot_id.as_deref(),
+                    reuse.bookmark_playlists.get(&playlist.id),
+                ) && current_snapshot == previous.provider_snapshot_id
+                {
+                    external_playlists.push(ExternalPlaylistInventory {
+                        playlist,
+                        relationship: ExternalPlaylistRelationship::Collaborative,
+                        items: Vec::new(),
+                        content_status: BookmarkContentStatus::Complete,
+                        reused_from_snapshot: Some(previous.source_snapshot_id),
+                    });
+                    continue;
+                }
+
+                playlist_item_fetches += 1;
+                eprintln!("spotify fetch: changed external playlist items {playlist_item_fetches}");
+                let mut items_url = playlist_items_url(&playlist.id)?;
+                items_url.query_pairs_mut().append_pair("limit", PAGE_LIMIT);
+                let (items, content_status) =
+                    match self.all_pages::<PlaylistItem>(items_url, None).await {
+                        Ok(items) => (items, BookmarkContentStatus::Complete),
+                        Err(ChordriftError::SpotifyApi { status: 403, .. }) => {
+                            inaccessible_collaborative_playlists += 1;
+                            (Vec::new(), BookmarkContentStatus::Inaccessible)
+                        }
+                        Err(error) => return Err(error),
+                    };
+                external_playlists.push(ExternalPlaylistInventory {
+                    playlist,
+                    relationship: ExternalPlaylistRelationship::Collaborative,
+                    items,
+                    content_status,
+                    reused_from_snapshot: None,
+                });
                 continue;
             }
 
@@ -112,6 +198,7 @@ impl SpotifyClient {
         Ok(SpotifyInventory {
             profile,
             playlists,
+            external_playlists,
             saved_tracks,
             playlists_seen,
             followed_playlists_skipped,
@@ -221,13 +308,12 @@ impl SpotifyClient {
                 && attempt < MAX_RATE_LIMIT_RETRIES
             {
                 attempt += 1;
-                let delay = response
-                    .headers()
-                    .get(reqwest::header::RETRY_AFTER)
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .unwrap_or(1)
-                    .min(60);
+                let delay = retry_delay_seconds(
+                    response
+                        .headers()
+                        .get(reqwest::header::RETRY_AFTER)
+                        .and_then(|value| value.to_str().ok()),
+                );
                 sleep(Duration::from_secs(delay)).await;
                 continue;
             }
@@ -240,6 +326,10 @@ impl SpotifyClient {
             return Err(api_error(status, &body));
         }
     }
+}
+
+fn is_private_spotify_personalized(owner_id: &str, public: Option<bool>) -> bool {
+    owner_id == "spotify" && public == Some(false)
 }
 
 fn saved_page_matches(page: &Page<SavedTrack>, previous: &SavedTrackReuse) -> bool {
@@ -302,6 +392,11 @@ fn api_url(path: &str) -> Result<Url> {
 }
 
 fn playlist_items_url(id: &str) -> Result<Url> {
+    playlist_url(id)?;
+    api_url(&format!("playlists/{id}/items"))
+}
+
+fn playlist_url(id: &str) -> Result<Url> {
     if id.is_empty()
         || !id
             .chars()
@@ -311,7 +406,7 @@ fn playlist_items_url(id: &str) -> Result<Url> {
             "Spotify returned an invalid playlist ID".to_owned(),
         ));
     }
-    api_url(&format!("playlists/{id}/items"))
+    api_url(&format!("playlists/{id}"))
 }
 
 fn validate_api_url(url: &Url) -> Result<()> {
@@ -351,7 +446,10 @@ mod tests {
     use url::Url;
     use uuid::Uuid;
 
-    use super::{playlist_items_url, saved_page_matches, validate_api_url};
+    use super::{
+        is_private_spotify_personalized, playlist_items_url, retry_delay_seconds, retry_policy,
+        saved_page_matches, validate_api_url,
+    };
     use crate::providers::spotify::models::{Page, SavedTrack, SavedTrackReuse};
 
     #[test]
@@ -368,6 +466,24 @@ mod tests {
         );
         assert!(playlist_items_url("37i9dQZF1DXcBWIGoYBM5M").is_ok());
         assert!(playlist_items_url("../me").is_err());
+    }
+
+    #[test]
+    fn distinguishes_private_spotify_signals_from_public_editorial_playlists() {
+        assert!(is_private_spotify_personalized("spotify", Some(false)));
+        assert!(!is_private_spotify_personalized("spotify", Some(true)));
+        assert!(!is_private_spotify_personalized("spotify", None));
+        assert!(!is_private_spotify_personalized("friend", Some(false)));
+    }
+
+    #[test]
+    fn bounds_rate_limit_retries_and_retry_after() {
+        let policy = retry_policy();
+        assert_eq!(policy.max_retries, 5);
+        assert_eq!(retry_delay_seconds(None), 1);
+        assert_eq!(retry_delay_seconds(Some("invalid")), 1);
+        assert_eq!(retry_delay_seconds(Some("17")), 17);
+        assert_eq!(retry_delay_seconds(Some("999")), policy.max_delay_seconds);
     }
 
     #[test]

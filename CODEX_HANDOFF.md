@@ -17,7 +17,7 @@ Last updated: 2026-08-24.
 - User's normal clone: `$CRATES/chordrift`, currently
   `/Users/suhail/Library/CloudStorage/Dropbox/matrix/crates/chordrift`
 - Local Storexa clone, if its source is needed: `$CRATES/storexa`
-- Released CLI: `chordrift 0.0.4`
+- Released CLI: `chordrift 0.0.5`
 - `main` is the Spotify-focused release line. The Apple foundation is isolated
   on `codex/apple-music` and must not be merged until it can be tested with real
   Apple credentials.
@@ -30,8 +30,8 @@ Before editing, inspect `git status --short`, the current branch, this file,
 - Neon PostgreSQL is the canonical and operational source of truth.
 - Provider APIs are adapters. Current Spotify state is pulled into immutable
   snapshots; provider state does not compete with Neon authority.
-- Chordrift is read-only against Spotify through v0.0.4. It does not create,
-  modify, reorder, or delete remote playlists or tracks.
+- Chordrift is read-only against Spotify through the current v0.0.8 work. It
+  does not create, modify, reorder, or delete remote playlists or tracks.
 - Spotify downloadable archives are optional enrichment and immutable local
   recovery inputs. They are not the operational database.
 - A routine `chordrift sync pull` reads live Spotify state and reconciles
@@ -45,8 +45,22 @@ Before editing, inspect `git status --short`, the current branch, this file,
   files.
 - Minimize provider requests. Reuse Spotify playlist snapshots and saved-track
   baselines from Neon whenever their remote signatures are unchanged.
+- The normal Neon/CLI playlist surface contains only playlists present in the
+  latest successful Spotify snapshot and uses that snapshot's current names.
+  Older names and removed playlists remain only in immutable sync/audit history;
+  proposed Chordrift names remain separate until published.
 
 ## Product intent
+
+The concise product thesis is **a clean listening surface backed by lossless
+musical memory**. The problem is accumulated playlist/library entropy: old
+favorites, unexplained songs, followed or shared playlists, provider discovery,
+and abandoned user lists become indistinguishable, so the user stops exploring
+their own rich history and defaults to song radio. Chordrift must first explain
+where each playlist and track came from, retain the best available provenance
+and history, explicitly mark gaps, and only then simplify the provider surface.
+The result should be a small set of purposeful, approved, artwork-backed
+playlists the user genuinely listens to—not merely more generated playlists.
 
 Chordrift will become the canonical playlist orchestrator while discovery stays
 native to each streaming platform. A small number of provider playlists can be
@@ -58,6 +72,12 @@ Clustering and LLM-proposed playlist names must remain inspectable and require
 explicit user approval. No track or playlist deletion may be implicit. Managed
 playlist application must be idempotent, auditable, interruption-safe, and
 converge to zero changes on repeated runs.
+
+If this personal workflow proves valuable, a future UI should expose the same
+audited model: active library, external bookmarks, immutable history,
+“why is this here?” provenance, bounded cleanup approvals, artwork review, and
+manual vibe corrections. Do not assume a commercial multi-user product before
+validating that the problem and workflow generalize.
 
 ## Current Spotify implementation
 
@@ -200,11 +220,48 @@ user-action adapter.
 
 Playlist policy has three distinct classes: provider-curated signal sources
 (`On Repeat`, Daily Mix, prompted playlists), user-owned intake surfaces
-(initially Inbox and From Friends), and Chordrift-managed canonical playlists.
+(exact names: `Inbox`, `From Friends`, and `Liked from Radio`), and
+Chordrift-managed canonical playlists. `Inbox` means a direct strong personal
+discovery; `From Friends` means an explicit recommendation; `Liked from Radio`
+means radio/autoplay discovery. Canonical outputs use approved generated vibe
+names and are never intake. The temporary Atmos companion is `Chordrift Spatial
+Audio`.
 Never clear provider-curated sources. Clear intake entries only after Neon
 retains provenance and a published canonical Spotify destination is verified.
 Do not feed Chordrift-managed output back into semantic training; use previous
 assignments only as stability constraints.
+
+The intended final Spotify surface contains the three intake playlists,
+Spotify-managed sources, multiple Chordrift-managed canonical playlists with
+approved generated names, and the temporary `Chordrift Spatial Audio`
+companion. All other user-created legacy vibe and utility playlists are to be
+retired only after their semantic evidence is consumed and every track has a
+published, verified canonical destination. The user explicitly added
+`Melodi(es)` and `Ambient Music Therapy – Indian Lounge - Relaxing Music for
+your Six Senses` to that retirement set; both currently remain
+`semantic_legacy` with weight 1.0. Retirement removes playlist containers, not
+tracks. Spotify Liked Songs remains a provider library surface.
+
+The user also wants followed/shared playlists owned by other people removed
+from the visible Spotify and future Apple Music library surfaces. Treat these
+as provider-neutral **External Playlist Bookmarks**, including externally owned
+collaborative playlists. Before cleanup, retain provider ID, owner, link,
+relationship, metadata, and an immutable last-known content snapshot when
+accessible; explicitly mark inaccessible content. Bookmarks contribute no
+semantic or behavioral signal, do not count as active canonical library
+playlists, and are never legacy-retirement sources. A separately approved
+cleanup removes only the user's provider-library relationship, never edits or
+deletes the source owner's playlist. Neon keeps the bookmark for later
+inspection. The first v0.0.9 slice adds `external_playlist_bookmarks`,
+immutable pull-bound bookmark observations and track snapshots, plus
+`chordrift bookmarks list|tracks`. The importer routes externally owned
+collaborative and public followed playlists away from the active library,
+copies unchanged readable collaborative contents from Neon, and retains
+metadata-only public followed records under Development Mode. Private
+Spotify-owned personalized surfaces remain active provider-curated signals.
+Migration 0022 and the bookmark cleanup commands now provide immutable
+all-present candidate review, explicit batch approval, and relationship-only
+dry-run operations. Migration 0025 adds the targeted refresh described below.
 
 Migrations 0009-0011 and the CLI keep canonical `track_embeddings`
 separate from immutable account-scoped `embedding_generations` and
@@ -259,10 +316,191 @@ At the end of each focused task:
 4. Confirm the handoff contains no secrets or unnecessary personal data.
 5. Leave the active branch and working tree state explicit for the next task.
 
-Current handoff state: active branch `codex/embeddings`, PR
-<https://github.com/orbyts/chordrift/pull/1>. The implementation and handoff
-commits are green, migrations are live through 0011, and v0.0.5 release
-bookkeeping is being finalized before merge/tag/publish. No provider mutation
-was performed. After v0.0.5 is released and the main clone is updated, begin
-v0.0.6 with MusicBrainz-backed language/region and externally sourced mood/sound
-enrichment. The Excluded Tracks schema/apply behavior remains future work.
+v0.0.5 was merged at `ffbcc40`, tagged, released on GitHub, published to
+crates.io, installed locally, verified against healthy Neon, and fast-forwarded
+into `$CRATES/chordrift`. Active development is on
+`codex/semantic-enrichment` for v0.0.6; PR #2 is open. Migration 0012 is live
+and CI run `32765541591` passed. The bounded MusicBrainz adapter caches raw ISRC
+and recording-detail responses separately, respects the one-request-per-second
+limit, and persists conservative match/fact provenance. A live high-priority
+probe matched M83 and retained 35 useful genre/tag/release facts. Pending
+requests are prioritized by intake, rotation, saved state, then meaningful
+plays; these values affect scheduling only, never similarity. The separate
+cache-first `enrich artists` operation retains MusicBrainz
+primary-associated-area evidence without claiming birthplace, nationality, or
+track language. CI run `32767604600` passed, including migration 0013 on
+disposable PostgreSQL 18; migration 0013 is live and Neon is healthy at 13/13.
+A three-artist probe considered M83, Reinoud Ford, and Keaton Henson: two
+primary areas resolved, one transient request was cached for later retry, and
+two track-level facts were written. An immediate repeat converged with zero
+artists, requests, or writes. Current live coverage is 2 matched tracks, 39
+MusicBrainz facts, and 2 tracks with artist-area facts. Pretrained mood/sound
+inference is next; Excluded Tracks remains future work.
+
+The pretrained-audio boundary is model-neutral and requires authorized local
+audio; Chordrift will not download or infer from Spotify audio. Migration 0014,
+`enrich model-import`, `enrich model-status`, and the strict path-free
+`docs/model-inference-v1.schema.json` are implemented. Artifacts pin model
+name/version/revision/license, input hashes, inference time, aggregation,
+embeddings, and mood/sound facts. MERT and MuQ-MuLan are candidate foundation
+spaces and Essentia provides explicit classifiers, but the evaluated weights
+carry non-commercial terms and all require real audio. Tracks without lawful
+audio remain unembedded rather than receiving invented acoustic evidence. CI
+run `32769042155` passed; migration 0014 is live and Neon is healthy at 14/14.
+The live model status correctly reports 2,005 eligible tracks and zero imported
+inferences, embeddings, facts, or models because no authorized local audio has
+been supplied.
+
+Manual correction is explicitly post-generation: after proposed playlists
+exist, the user must be able to reject a track's current vibe and optionally
+choose or lock another destination. The next generation moves it and retains
+that account-scoped decision as an auditable stability constraint while
+preserving the original model score and assignment history. Do not implement
+this as a free-floating pre-clustering mood tag; wait for stable cluster and
+playlist identities.
+
+The semantic fallback model is now `semantic-feature-hash@3`; its immutable
+input includes MusicBrainz facts, imported model facts, and
+deterministically projected lawful acoustic vectors in addition to legacy
+playlist, artist, album, and historical-name evidence. Source/parser and
+model/version identities are recorded in generation parameters; behavior
+remains excluded. Migration 0015 and the `clusters generate/status/list/tracks`
+commands are implemented using deterministic spherical k-means, an exact
+embedding-generation input, explicit low-similarity/undersized unassignment,
+idempotent generation hashes, and temporary content-derived machine labels.
+Cluster output is diagnostic and cannot create or modify Spotify playlists.
+
+CI runs `32770150613` and `32770941996` passed. Migration 0015 is live and Neon
+is healthy at 15/15. Live embedding generation
+`f0c8eda3-ad34-41b9-a362-2fb56354bb95` is model v3, 1,024 dimensions, and covers
+1,733 tracks. The first all-track centroid fit exposed bad 2–3-track groups and
+a 650-track catch-all, so it was superseded by semantic-seeded algorithm v2.
+The current diagnostic generation `8ec8512f-66fc-4f59-a50e-65d5b7ac8d13`
+contains 12 clusters of 30–251 tracks and leaves 895 weakly supported tracks
+unassigned. An identical command reused the generation. Samples show coherent
+M83 and A. R. Rahman groups, while a generic legacy-playlist cluster still has
+many equal scores; do not mistake this sparse-evidence fallback for final
+acoustic classification or publish its machine labels. More independent
+semantic/acoustic coverage is still needed before these clusters should be
+published.
+
+v0.0.7 proposal work is implemented on `codex/semantic-enrichment`. Migrations
+0016 through 0018 are live and Neon is healthy at 18/18. Migration 0017 provides
+the latest-snapshot-only Spotify playlist surface. The `proposals` commands
+provide a non-destructive workflow with stable `playlist-*` concepts, overlap-based
+lineage, strict naming artifacts, complete generator/hash provenance, and
+explicit approval. The first live proposal is
+`ca81d1b2-e56b-41e6-8846-cdb379cb039b`, derived from cluster generation
+`8ec8512f-66fc-4f59-a50e-65d5b7ac8d13`. It contains 12 playlists and 838
+assigned tracks. All 12 candidate names were imported as an OpenAI Codex GPT-5
+naming revision. Two additional manual categories, `Open-Sky Anthems` and
+`Weightless Horizons`, were created and 46 initially uncovered tracks were
+reviewed into stable destinations. The proposal now contains 14 named playlists
+and represents all 699 of 699 legacy/intake tracks; `proposals missing` is
+empty. The account owner explicitly approved generation
+`ca81d1b2-e56b-41e6-8846-cdb379cb039b`; Neon reports `approved`, 14/14 named,
+and complete coverage. No Spotify state was changed.
+Migration 0018 and `proposals category-create/assign/review` add
+stable manual semantic destinations, reversible active decisions, complete
+revision history, a non-provider needs-review state, and replay into later
+proposal generations.
+
+v0.0.8 adds migration 0019 and `sync plan` / `sync plan-show`. A plan is an
+immutable Neon audit record bound to an exact approved proposal and exact
+imported Spotify snapshot. Identical inputs reuse the same plan. Operations are
+ordered into publish, reconcile, cleanup, and retirement phases. Inbox cleanup
+and legacy retirement are deferred behind publication/verification gates, and
+retirement additionally requires separate future approval. The planner makes
+no Spotify request and Spotify write scopes remain disabled. Migration 0019
+also introduces stable concept mappings for future published provider
+playlists and the provider-neutral reversible `excluded_tracks` ledger.
+Migrations 0019 through 0025 are live and Neon is healthy at 25/25. Migration 0020
+adds immutable successful managed-playlist baselines so a later missing
+expected track becomes an internal `exclude_track` proposal rather than an
+automatic re-add; an unexpected extra remains ordinary provider drift. The
+current planner is `spotify-dry-run-v5`; earlier development plans remain
+immutable audit artifacts and must not be applied. The verified v4 plan is
+`cda2639d-da67-4b23-9492-a9274c71088c`, bound to approved proposal
+`ca81d1b2-e56b-41e6-8846-cdb379cb039b` and Spotify snapshot
+`622a94b4-b60e-4f26-8da2-20e540e160c1`. It contains 1,007 exact operations:
+16 creates (14 canonical plus missing `Inbox` and `From Friends`), 884 ordered
+track additions, 65 deferred intake removals, and 42 separately approved
+legacy retirements; no renames, restorations, or exclusions before initial
+publication. `Liked from Radio` already exists and is reused. Every inspected
+retirement has complete preservation. The current v5 plan is
+`68ee490c-f5f4-4e23-9a48-7f4933cd6511`, bound to Spotify snapshot
+`c187fc99-5e7c-42f7-a694-86bcb9d1930b`. It contains the same 1,007 canonical
+operations plus 13 separately approved `remove_external_playlist` operations,
+for 1,020 total. Cleanup batch `016defcd-f46b-4070-991d-73cb4c89f00a`
+captures and approves all 13 present external bookmarks with input hash
+`8528685a4f488784acd5a9381d183a7795485547714981cc3d5eb25006cfaa12`.
+Repeated v5 planning reuses the plan exactly. v0.0.9 apply-readiness validation
+is now implemented and remains read-only against Spotify.
+That milestone also generates one simple original deterministic cover per
+canonical playlist from its approved name/description/tags, stores generator
+version and SHA-256, produces a contact-sheet-style preview, and requires
+explicit artwork approval. Do not request Spotify image-upload scope or upload
+covers until v0.1.0.
+
+Artwork implementation is now complete in source as migration 0023,
+`src/artwork.rs`, and `chordrift artwork import|status|list|approve`. The
+approved Drift Atlas v1 set contains 14 original 1254×1254 PNGs in
+`artwork/canonical/drift-atlas-v1`, with strict `manifest.json` provenance and
+`contact-sheet.png`. The user approved the 13 original candidates, requested a
+darker replacement for #8 Open-Sky Anthems, then explicitly approved that
+replacement and the complete set. Migration 0023 is live and Neon is healthy
+at 23/23. Approved artwork batch
+`450e2e83-37d5-4100-99b7-cef4a56240f5` is bound to proposal
+`ca81d1b2-e56b-41e6-8846-cdb379cb039b`, contains 14 verified covers, and has
+input hash `c5e295d0914f1ee8d386fcf4f7ca297e2811449cb84acbe30287afddd8d7714a`.
+Re-importing the unchanged manifest reuses that exact approved batch. Artwork
+approval is local/Neon-only and must not request Spotify image-upload scope or
+upload covers before v0.1.0.
+
+Migration 0024, `src/apply_readiness.rs`, and
+`chordrift sync readiness|readiness-show` now persist an immutable safety
+assessment for one exact plan. Live assessment
+`7cedca9e-ed2b-4ddb-baca-f2a701db531c` is bound to plan
+`68ee490c-f5f4-4e23-9a48-7f4933cd6511` and input hash
+`575c5971219bbfc8bb3f1f8471833fadc8e19abdb16997a4d5d3d5feed0f8e91`.
+It is `ready`: 10/10 checks passed across 1,020 operations, five simulated
+restart checkpoints recovered all operations, and replay produced zero
+changes. The one-request live probe confirmed only
+`playlist-read-private`, `playlist-read-collaborative`, and
+`user-library-read`; no modify or image-upload scope is granted. All 120
+destructive operations remain deferred, and `spotify_writes: disabled`.
+
+Migration 0021 established the bookmark inventory. Two consecutive
+read-only pulls produced snapshots `6544a59b-c6e7-4ec0-92d8-3129132bb449`
+and `c187fc99-5e7c-42f7-a694-86bcb9d1930b`: both saw 62 Spotify playlists,
+kept 49 active, and retained 13 external bookmarks with no external item
+requests. All 49 active playlists and 927 saved tracks reused Neon on the
+second pull. `alone in the car` is bookmark Spotify ID
+`1128mckrHSNSNt3PzyE4Bp`, owner `trinwoodward`, 52 reported items, status
+`metadata_only`; its `last_changed_at` remained stable across the repeated
+pull. It is absent from `chordrift playlists list`. The 13 followed public
+bookmarks are metadata-only because Spotify Development Mode does not expose
+their contents to this app; `bookmarks tracks` reports that honestly.
+
+Migration 0025 and `chordrift bookmarks refresh` add explicit, targeted
+refresh for exactly one present or archived bookmark. Refresh attempts and any
+readable ordered track metadata are immutable and separate from provider
+library snapshots, so they neither stale the normal sync baseline nor increase
+its request budget. Spotify's February 2026 API permits playlist items only for
+owned/collaborative playlists; followed public shared lists will usually record
+a 403 `inaccessible` attempt while retaining their bookmark metadata and any
+older readable contents. The intended workflow is: follow/save the shared list
+in Spotify, pull once to bookmark it, selectively listen in Spotify, add chosen
+songs to `Inbox` or `From Friends`, then run Chordrift normally. Bookmark tracks
+never become semantic inputs automatically.
+
+The crate version is prepared as 0.0.9. Repository artwork is intentionally
+excluded from the crates.io archive because the 14 approved full-resolution
+PNGs are review/publication assets rather than runtime data; they remain in Git.
+
+Apogee configures a machine-wide shared Cargo target. Because the released
+`$CRATES/chordrift` clone and this development workspace currently share the
+same package name/version, a plain `cargo run` reused an older final executable
+that lacked `proposals`. For unreleased development commands, use a repository-
+specific target such as `cargo run --target-dir target -- ...`; do not modify
+shell initialization files.

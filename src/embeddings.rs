@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result};
 
 const MODEL: &str = "semantic-feature-hash";
-const MODEL_VERSION: &str = "2";
+const MODEL_VERSION: &str = "3";
 // This library exposes enough distinct playlist, artist, and album features
 // that 128 slots create visible signed-hash collisions during neighbor review.
 const DEFAULT_DIMENSIONS: usize = 1024;
@@ -21,6 +21,8 @@ const PLAYLIST_WEIGHT: f64 = 1.0;
 const ARTIST_WEIGHT: f64 = 0.55;
 const ALBUM_WEIGHT: f64 = 0.35;
 const NAME_TOKEN_WEIGHT: f64 = 0.20;
+const SEMANTIC_FACT_WEIGHT: f64 = 0.45;
+const ACOUSTIC_MODEL_WEIGHT: f64 = 1.0;
 
 /// Readiness summary for one account's embedding inputs.
 #[derive(Clone, Debug, PartialEq)]
@@ -37,6 +39,10 @@ pub struct AuditReport {
     pub album_related_tracks: usize,
     /// Eligible tracks with matched listening statistics.
     pub history_tracks: usize,
+    /// Eligible tracks with external semantic or model-produced facts.
+    pub semantic_fact_tracks: usize,
+    /// Eligible tracks with an imported pretrained acoustic embedding.
+    pub acoustic_embedding_tracks: usize,
     /// Playlist contribution configuration.
     pub playlists: Vec<PlaylistAudit>,
 }
@@ -158,12 +164,28 @@ struct PlaylistInput {
     historical_names: Vec<String>,
 }
 
+#[derive(Clone, Debug)]
+struct SemanticFeature {
+    key: String,
+    value: f64,
+}
+
+#[derive(Clone, Debug)]
+struct ModelVector {
+    key: String,
+    embedding: Vec<f64>,
+}
+
 struct Inputs {
     account_id: Uuid,
     snapshot_id: Uuid,
     tracks: Vec<TrackInput>,
     playlists: Vec<PlaylistInput>,
     artists: BTreeMap<Uuid, Vec<Uuid>>,
+    semantic_features: BTreeMap<Uuid, Vec<SemanticFeature>>,
+    model_vectors: BTreeMap<Uuid, Vec<ModelVector>>,
+    semantic_sources: Vec<String>,
+    acoustic_models: Vec<String>,
 }
 
 /// Audits source coverage without creating an embedding generation.
@@ -213,6 +235,8 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<AuditRepo
             .iter()
             .filter(|track| track.has_history)
             .count(),
+        semantic_fact_tracks: inputs.semantic_features.len(),
+        acoustic_embedding_tracks: inputs.model_vectors.len(),
         playlists,
     })
 }
@@ -268,6 +292,11 @@ pub async fn generate(
         "artist_weight": ARTIST_WEIGHT,
         "album_weight": ALBUM_WEIGHT,
         "historical_name_token_weight": NAME_TOKEN_WEIGHT,
+        "semantic_fact_weight": SEMANTIC_FACT_WEIGHT,
+        "acoustic_model_weight": ACOUSTIC_MODEL_WEIGHT,
+        "acoustic_projection": "signed_feature_hash_after_l2_normalization",
+        "semantic_sources": inputs.semantic_sources,
+        "acoustic_models": inputs.acoustic_models,
         "normalization": "l2",
         "playlist_size_normalization": "sqrt(weight/(unique_tracks-1))"
     });
@@ -604,12 +633,95 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
             playlist.historical_names.push(row.try_get("name")?);
         }
     }
+
+    let semantic_rows = sqlx::query(
+        "SELECT fact.track_id,
+                'semantic:' || fact.source || '@' || fact.parser_version || ':' ||
+                    fact.fact_kind || ':' || fact.normalized_value AS feature_key,
+                fact.source || '@' || fact.parser_version AS provenance,
+                fact.weight, fact.confidence
+         FROM track_semantic_facts fact
+         WHERE account_track_is_eligible($1, fact.track_id)
+         UNION ALL
+         SELECT inference.track_id,
+                'model:' || inference.model || '@' || inference.model_version || ':' ||
+                    fact.fact_kind || ':' || fact.normalized_value AS feature_key,
+                inference.model || '@' || inference.model_version AS provenance,
+                1::double precision AS weight, fact.confidence
+         FROM track_model_facts fact
+         JOIN track_model_inferences inference ON inference.id = fact.inference_id
+         WHERE account_track_is_eligible($1, inference.track_id)
+         ORDER BY track_id, feature_key",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut semantic_features: BTreeMap<Uuid, Vec<SemanticFeature>> = BTreeMap::new();
+    let mut semantic_sources = HashSet::new();
+    for row in semantic_rows {
+        let track_id: Uuid = row.try_get("track_id")?;
+        if eligible_ids.contains(&track_id) {
+            semantic_sources.insert(row.try_get::<String, _>("provenance")?);
+            let weight: f64 = row.try_get("weight")?;
+            let confidence: f64 = row.try_get("confidence")?;
+            semantic_features
+                .entry(track_id)
+                .or_default()
+                .push(SemanticFeature {
+                    key: row.try_get("feature_key")?,
+                    value: SEMANTIC_FACT_WEIGHT * confidence * weight.max(0.0).ln_1p().max(1.0),
+                });
+        }
+    }
+
+    let model_rows = sqlx::query(
+        "SELECT DISTINCT ON (inference.track_id, inference.model)
+                inference.track_id, inference.model, inference.model_version,
+                inference.embedding
+         FROM track_model_inferences inference
+         WHERE inference.embedding IS NOT NULL
+           AND account_track_is_eligible($1, inference.track_id)
+         ORDER BY inference.track_id, inference.model,
+                  inference.inferred_at DESC, inference.id DESC",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut model_vectors: BTreeMap<Uuid, Vec<ModelVector>> = BTreeMap::new();
+    let mut acoustic_models = HashSet::new();
+    for row in model_rows {
+        let track_id: Uuid = row.try_get("track_id")?;
+        if eligible_ids.contains(&track_id) {
+            let model: String = row.try_get("model")?;
+            let version: String = row.try_get("model_version")?;
+            acoustic_models.insert(format!("{model}@{version}"));
+            model_vectors
+                .entry(track_id)
+                .or_default()
+                .push(ModelVector {
+                    key: format!("{model}@{version}"),
+                    embedding: row.try_get("embedding")?,
+                });
+        }
+    }
     Ok(Inputs {
         account_id,
         snapshot_id,
         tracks,
         playlists: playlist_map.into_values().collect(),
         artists,
+        semantic_features,
+        model_vectors,
+        semantic_sources: {
+            let mut values: Vec<_> = semantic_sources.into_iter().collect();
+            values.sort();
+            values
+        },
+        acoustic_models: {
+            let mut values: Vec<_> = acoustic_models.into_iter().collect();
+            values.sort();
+            values
+        },
     })
 }
 
@@ -683,6 +795,39 @@ fn build_vectors(inputs: &Inputs, dimensions: usize, seed: i64) -> BTreeMap<Uuid
                 hashed_dimensions,
                 seed,
             );
+        }
+    }
+
+    for (track_id, features) in &inputs.semantic_features {
+        if let Some(vector) = vectors.get_mut(track_id) {
+            for feature in features {
+                let (index, sign) = feature_slot(&feature.key, hashed_dimensions, seed);
+                vector[index] += sign * feature.value;
+            }
+        }
+    }
+    for (track_id, model_vectors) in &inputs.model_vectors {
+        let Some(vector) = vectors.get_mut(track_id) else {
+            continue;
+        };
+        for model_vector in model_vectors {
+            let norm = model_vector
+                .embedding
+                .iter()
+                .map(|value| value * value)
+                .sum::<f64>()
+                .sqrt();
+            if norm <= f64::EPSILON {
+                continue;
+            }
+            for (source_index, value) in model_vector.embedding.iter().enumerate() {
+                let (index, sign) = feature_slot(
+                    &format!("acoustic:{}:{source_index}", model_vector.key),
+                    hashed_dimensions,
+                    seed,
+                );
+                vector[index] += sign * ACOUSTIC_MODEL_WEIGHT * value / norm;
+            }
         }
     }
 
@@ -783,7 +928,9 @@ mod tests {
 
     use uuid::Uuid;
 
-    use super::{Inputs, PlaylistInput, TrackInput, build_vectors, semantic_tokens};
+    use super::{
+        Inputs, PlaylistInput, SemanticFeature, TrackInput, build_vectors, semantic_tokens,
+    };
 
     #[test]
     fn semantic_tokens_ignore_generic_playlist_words() {
@@ -810,6 +957,10 @@ mod tests {
                 historical_names: vec!["Soft Vibes".to_owned()],
             }],
             artists: BTreeMap::new(),
+            semantic_features: BTreeMap::new(),
+            model_vectors: BTreeMap::new(),
+            semantic_sources: Vec::new(),
+            acoustic_models: Vec::new(),
         };
         let first = build_vectors(&inputs, 32, 42);
         let second = build_vectors(&inputs, 32, 42);
@@ -818,6 +969,29 @@ mod tests {
             let norm = vector.iter().map(|value| value * value).sum::<f64>();
             assert!((norm - 1.0).abs() < 1e-12);
         }
+    }
+
+    #[test]
+    fn semantic_facts_embed_an_otherwise_unconnected_track() {
+        let track_id = Uuid::new_v4();
+        let inputs = Inputs {
+            account_id: Uuid::new_v4(),
+            snapshot_id: Uuid::new_v4(),
+            tracks: vec![track(track_id)],
+            playlists: Vec::new(),
+            artists: BTreeMap::new(),
+            semantic_features: BTreeMap::from([(
+                track_id,
+                vec![SemanticFeature {
+                    key: "musicbrainz:tag:ambient".to_owned(),
+                    value: 0.8,
+                }],
+            )]),
+            model_vectors: BTreeMap::new(),
+            semantic_sources: vec!["musicbrainz@v1".to_owned()],
+            acoustic_models: Vec::new(),
+        };
+        assert!(build_vectors(&inputs, 32, 42).contains_key(&track_id));
     }
 
     fn track(id: Uuid) -> TrackInput {

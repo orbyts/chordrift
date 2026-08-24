@@ -4,6 +4,68 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.0.9] - 2026-08-24
+
+- Add immutable, idempotent Spotify dry-run plans bound to one approved
+  proposal and one imported snapshot, with exact operation inspection and no
+  provider requests or mutations.
+- Separate publication, managed-drift reconciliation, verified inbox cleanup,
+  and explicitly approved legacy retirement into ordered safety phases with
+  track-preservation gates.
+- Include missing stable `Inbox`, `From Friends`, and `Liked from Radio`
+  containers in the plan without duplicating existing intake surfaces.
+- Schedule deterministic, original, explicitly approved cover artwork for
+  every canonical playlist in v0.0.9, before any v0.1.0 publication.
+- Add the original Drift Atlas v1 cover set for all 14 approved canonical
+  playlists, including a darker user-selected Open-Sky Anthems revision and a
+  local contact-sheet preview.
+- Add strict artwork-manifest validation, content hashes, immutable Neon review
+  batches, and explicit `artwork import|status|list|approve` commands without
+  requesting Spotify image-upload scope or performing provider writes.
+- Add immutable v0.0.9 apply-readiness assessments for snapshot freshness,
+  approvals, operation ordering, destructive gates, interruption recovery,
+  bounded Spotify 429 retries, idempotent replay, and explicit read-only OAuth
+  scope probes through `sync readiness|readiness-show`.
+- Define External Playlist Bookmarks for followed and externally collaborative
+  Spotify/Apple Music playlists so their metadata and accessible contents can
+  be retained in Neon before separately approved provider-library cleanup.
+- Persist Spotify external bookmarks and immutable observations in Neon,
+  separate them from the active library, detect provider snapshot changes,
+  reuse readable collaborative contents, and add read-only bookmark list and
+  track inspection commands.
+- Add explicit one-bookmark refresh with immutable complete, inaccessible, and
+  not-found attempt history; retain readable ordered tracks when Spotify
+  permits access without adding requests to normal sync.
+- Add immutable all-present-bookmark cleanup review batches, explicit approval,
+  exact candidate inspection, and separately counted relationship-only cleanup
+  operations in Spotify dry-run planner v5; provider writes remain disabled.
+- Add a provider-neutral reversible Excluded Tracks ledger and report restores
+  separately from ordinary additions and provider drift.
+- Add immutable managed-playlist verification baselines so an expected user
+  removal proposes an exclusion while an unexpected extra remains ordinary
+  drift; allow cleanup gates to recognize durable exclusions as resolved track
+  dispositions.
+
+- Add model-neutral pretrained-audio inference artifacts and cache-first
+  MusicBrainz recording, tag, release, and artist-area enrichment with strict
+  provenance and no provider-audio acquisition.
+- Add deterministic semantic-seeded vibe clusters with explicit unassigned
+  tracks, immutable inputs, reproducibility hashes, and inspection commands.
+- Add non-destructive proposed playlist generations with stable lineage-backed
+  identities, per-source retirement coverage, and no Spotify writes.
+- Add strict naming-context export and naming-result import with generator
+  provenance, revision history, reserved-name validation, and explicit
+  generation approval gated by complete naming and track coverage.
+- Add a database-level current Spotify playlist projection so active queries
+  expose only latest-snapshot names while immutable snapshots retain history.
+- Add per-track inspection of proposal coverage gaps with Spotify identities
+  and all contributing legacy/intake source playlists.
+- Add stable manual semantic categories and reversible, audited track
+  assignment/review decisions that replay into future proposal generations.
+- Define the stable intake names `Inbox`, `From Friends`, and
+  `Liked from Radio`, including their distinct user-facing meanings and safe
+  retirement rules for obsolete utility playlists.
+
 ## [0.0.5] - 2026-08-24
 
 - Add immutable, account-scoped semantic embedding generations with audit,
@@ -90,7 +152,8 @@ All notable changes to Chordrift are documented here.
 
 - Reserve the Chordrift crate and repository namespaces.
 
-[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.5...HEAD
+[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.9...HEAD
+[0.0.9]: https://github.com/orbyts/chordrift/compare/v0.0.5...v0.0.9
 [0.0.5]: https://github.com/orbyts/chordrift/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/orbyts/chordrift/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/orbyts/chordrift/compare/v0.0.2...v0.0.3

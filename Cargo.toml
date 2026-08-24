@@ -1,6 +1,6 @@
 [package]
 name = "chordrift"
-version = "0.0.5"
+version = "0.0.9"
 edition = "2024"
 rust-version = "1.94"
 description = "Personal music-library intelligence and synchronization across streaming services."
@@ -9,6 +9,7 @@ repository = "https://github.com/orbyts/chordrift"
 readme = "README.md"
 keywords = ["music-library", "spotify", "apple-music", "playlists", "synchronization"]
 categories = ["multimedia::audio", "command-line-utilities"]
+exclude = ["artwork/"]
 
 [dependencies]
 base64 = "0.22.1"

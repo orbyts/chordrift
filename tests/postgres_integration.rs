@@ -13,11 +13,11 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     let database = db::connect(config).await?;
 
     let report = db::migrate(&database).await?;
-    assert_eq!(report.available, 11);
+    assert_eq!(report.available, 25);
 
     let status = db::status(&database).await?;
-    assert_eq!(status.available_migrations, 11);
-    assert_eq!(status.applied_migrations, 11);
+    assert_eq!(status.available_migrations, 25);
+    assert_eq!(status.applied_migrations, 25);
     assert_eq!(status.pending_migrations, 0);
     assert_eq!(status.failed_migrations, 0);
 
@@ -38,8 +38,26 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "cluster_tracks",
         "clusters",
         "embedding_generations",
+        "enrichment_runs",
+        "excluded_tracks",
+        "external_playlist_bookmark_snapshots",
+        "external_playlist_bookmark_tracks",
+        "external_playlist_bookmarks",
+        "external_playlist_cleanup_batches",
+        "external_playlist_cleanup_items",
+        "playlist_artwork_batches",
+        "playlist_artwork_artifacts",
+        "sync_readiness_assessments",
+        "sync_readiness_checks",
+        "external_playlist_bookmark_refreshes",
+        "external_playlist_bookmark_refresh_tracks",
         "listening_events",
+        "managed_playlist_verifications",
+        "managed_playlist_verified_tracks",
+        "model_inference_imports",
+        "playlist_concepts",
         "playlist_generations",
+        "playlist_name_revisions",
         "playlist_tracks",
         "playlists",
         "provider_albums",
@@ -58,13 +76,28 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "sync_operations",
         "sync_runs",
         "track_artists",
+        "track_artist_area_resolutions",
         "track_embeddings",
+        "track_enrichment_lookups",
+        "track_enrichment_matches",
+        "track_semantic_facts",
         "track_matches",
+        "track_model_facts",
+        "track_model_inferences",
+        "track_playlist_assignment_revisions",
         "track_statistics",
         "tracks",
     ] {
         assert!(tables.iter().any(|table| table == expected), "{expected}");
     }
+
+    let current_view: Option<String> = sqlx::query_scalar(
+        "SELECT table_name FROM information_schema.views
+         WHERE table_schema = 'public' AND table_name = 'current_spotify_playlists'",
+    )
+    .fetch_optional(database.pool())
+    .await?;
+    assert_eq!(current_view.as_deref(), Some("current_spotify_playlists"));
 
     let account_id = Uuid::new_v4();
     sqlx::query(
