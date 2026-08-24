@@ -1,6 +1,9 @@
 //! Durable external playlist bookmarks kept outside the active music library.
 
 use chrono::{DateTime, Utc};
+use serde::Serialize;
+use serde_json::json;
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 use storexa::Database;
 use uuid::Uuid;
@@ -69,6 +72,55 @@ pub struct BookmarkTracks {
     pub captured_at: DateTime<Utc>,
     /// Ordered retained entries.
     pub tracks: Vec<BookmarkTrackRecord>,
+}
+
+/// Immutable review batch for provider-library cleanup.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CleanupBatch {
+    /// Stable batch identifier used for explicit approval.
+    pub batch_id: Uuid,
+    /// Provider snapshot at which the candidates were observed.
+    pub source_snapshot_id: Uuid,
+    /// Pending, approved, or superseded state.
+    pub state: String,
+    /// Number of external relationships in the batch.
+    pub candidate_count: i32,
+    /// Stable hash of the complete candidate set.
+    pub input_hash: String,
+    /// Whether an identical batch already existed.
+    pub reused: bool,
+    /// When approval was recorded, if approved.
+    pub approved_at: Option<DateTime<Utc>>,
+    /// When the immutable batch was created.
+    pub created_at: DateTime<Utc>,
+}
+
+/// One exact external relationship captured in a cleanup batch.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CleanupItem {
+    /// Stable Spotify playlist ID.
+    pub provider_playlist_id: String,
+    /// Playlist name at review time.
+    pub name: String,
+    /// Source owner ID.
+    pub owner_provider_id: String,
+    /// Preservation availability at review time.
+    pub content_status: String,
+    /// Item count reported by Spotify.
+    pub item_count: i32,
+    /// Spotify snapshot signature expected before cleanup.
+    pub provider_snapshot_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct CleanupCandidate {
+    bookmark_id: Uuid,
+    provider_playlist_id: String,
+    provider_snapshot_id: Option<String>,
+    name: String,
+    owner_provider_id: String,
+    content_status: String,
+    item_count: i32,
 }
 
 /// Lists all bookmarks, including those no longer present in the provider library.
@@ -204,6 +256,227 @@ pub async fn tracks(
         captured_at,
         tracks,
     })
+}
+
+/// Creates or reuses an immutable batch containing every present bookmark.
+pub async fn cleanup_plan(database: &Database, account_label: &str) -> Result<CleanupBatch> {
+    let (account_id, source_snapshot_id) = account_and_snapshot(database, account_label).await?;
+    let candidates = cleanup_candidates(database, account_id).await?;
+    if candidates.is_empty() {
+        return Err(ChordriftError::Configuration(
+            "no present external playlist bookmarks require cleanup".to_owned(),
+        ));
+    }
+    let input_hash = hex_sha256(&serde_json::to_vec(&json!({
+        "provider": "spotify",
+        "candidates": candidates,
+    }))?);
+    if let Some(row) = sqlx::query(
+        "SELECT id, source_snapshot_id, state, candidate_count, input_hash,
+                approved_at, created_at
+         FROM external_playlist_cleanup_batches
+         WHERE provider_account_id = $1 AND input_hash = $2",
+    )
+    .bind(account_id)
+    .bind(&input_hash)
+    .fetch_optional(database.pool())
+    .await?
+    {
+        return cleanup_batch_from_row(&row, true);
+    }
+
+    let mut transaction = database.pool().begin().await?;
+    let row = sqlx::query(
+        "INSERT INTO external_playlist_cleanup_batches
+         (provider_account_id, source_snapshot_id, input_hash, candidate_count)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, source_snapshot_id, state, candidate_count, input_hash,
+                   approved_at, created_at",
+    )
+    .bind(account_id)
+    .bind(source_snapshot_id)
+    .bind(&input_hash)
+    .bind(i32::try_from(candidates.len()).map_err(|_| {
+        ChordriftError::Configuration("bookmark cleanup count exceeds limits".to_owned())
+    })?)
+    .fetch_one(&mut *transaction)
+    .await?;
+    let batch = cleanup_batch_from_row(&row, false)?;
+    for candidate in candidates {
+        sqlx::query(
+            "INSERT INTO external_playlist_cleanup_items
+             (batch_id, bookmark_id, provider_playlist_id, provider_snapshot_id,
+              name, owner_provider_id, content_status, item_count)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(batch.batch_id)
+        .bind(candidate.bookmark_id)
+        .bind(candidate.provider_playlist_id)
+        .bind(candidate.provider_snapshot_id)
+        .bind(candidate.name)
+        .bind(candidate.owner_provider_id)
+        .bind(candidate.content_status)
+        .bind(candidate.item_count)
+        .execute(&mut *transaction)
+        .await?;
+    }
+    transaction.commit().await?;
+    Ok(batch)
+}
+
+/// Shows the latest or selected cleanup batch and its exact candidates.
+pub async fn cleanup_show(
+    database: &Database,
+    account_label: &str,
+    batch_id: Option<Uuid>,
+) -> Result<(CleanupBatch, Vec<CleanupItem>)> {
+    let row = sqlx::query(
+        "SELECT batch.id, batch.source_snapshot_id, batch.state,
+                batch.candidate_count, batch.input_hash, batch.approved_at,
+                batch.created_at
+         FROM external_playlist_cleanup_batches batch
+         JOIN provider_accounts account ON account.id = batch.provider_account_id
+         WHERE account.provider = 'spotify' AND account.account_label = $1
+           AND ($2::uuid IS NULL OR batch.id = $2)
+         ORDER BY batch.created_at DESC, batch.id DESC LIMIT 1",
+    )
+    .bind(account_label)
+    .bind(batch_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| ChordriftError::Configuration("no bookmark cleanup batch exists".to_owned()))?;
+    let batch = cleanup_batch_from_row(&row, true)?;
+    let rows = sqlx::query(
+        "SELECT provider_playlist_id, provider_snapshot_id, name,
+                owner_provider_id, content_status, item_count
+         FROM external_playlist_cleanup_items
+         WHERE batch_id = $1 ORDER BY lower(name), provider_playlist_id",
+    )
+    .bind(batch.batch_id)
+    .fetch_all(database.pool())
+    .await?;
+    let items = rows
+        .into_iter()
+        .map(|row| {
+            Ok(CleanupItem {
+                provider_playlist_id: row.try_get("provider_playlist_id")?,
+                provider_snapshot_id: row.try_get("provider_snapshot_id")?,
+                name: row.try_get("name")?,
+                owner_provider_id: row.try_get("owner_provider_id")?,
+                content_status: row.try_get("content_status")?,
+                item_count: row.try_get("item_count")?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok((batch, items))
+}
+
+/// Explicitly approves one exact cleanup batch; this performs no provider write.
+pub async fn cleanup_approve(
+    database: &Database,
+    account_label: &str,
+    confirm: Uuid,
+) -> Result<CleanupBatch> {
+    let row = sqlx::query(
+        "SELECT batch.id, batch.source_snapshot_id, batch.state,
+                batch.candidate_count, batch.input_hash, batch.approved_at,
+                batch.created_at
+         FROM external_playlist_cleanup_batches batch
+         JOIN provider_accounts account ON account.id = batch.provider_account_id
+         WHERE account.provider = 'spotify' AND account.account_label = $1
+           AND batch.id = $2",
+    )
+    .bind(account_label)
+    .bind(confirm)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| ChordriftError::Configuration("cleanup batch was not found".to_owned()))?;
+    let batch = cleanup_batch_from_row(&row, true)?;
+    if batch.state == "approved" {
+        return Ok(batch);
+    }
+    if batch.state != "pending" {
+        return Err(ChordriftError::Configuration(
+            "cleanup batch is not awaiting approval".to_owned(),
+        ));
+    }
+    let row = sqlx::query(
+        "UPDATE external_playlist_cleanup_batches
+         SET state = 'approved', approved_at = now()
+         WHERE id = $1 AND state = 'pending'
+         RETURNING id, source_snapshot_id, state, candidate_count, input_hash,
+                   approved_at, created_at",
+    )
+    .bind(confirm)
+    .fetch_one(database.pool())
+    .await?;
+    cleanup_batch_from_row(&row, false)
+}
+
+async fn account_and_snapshot(database: &Database, account_label: &str) -> Result<(Uuid, Uuid)> {
+    let row = sqlx::query(
+        "SELECT account.id,
+                (SELECT snapshot.id FROM provider_library_snapshots snapshot
+                 WHERE snapshot.provider_account_id = account.id
+                 ORDER BY snapshot.captured_at DESC, snapshot.id DESC LIMIT 1) AS snapshot_id
+         FROM provider_accounts account
+         WHERE account.provider = 'spotify' AND account.account_label = $1",
+    )
+    .bind(account_label)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| ChordriftError::Configuration("Spotify account was not imported".to_owned()))?;
+    let snapshot_id = row.try_get("snapshot_id")?;
+    Ok((row.try_get("id")?, snapshot_id))
+}
+
+async fn cleanup_candidates(
+    database: &Database,
+    account_id: Uuid,
+) -> Result<Vec<CleanupCandidate>> {
+    let rows = sqlx::query(
+        "SELECT id, provider_playlist_id, provider_snapshot_id, name,
+                owner_provider_id, content_status, item_count
+         FROM external_playlist_bookmarks
+         WHERE provider_account_id = $1 AND provider = 'spotify'
+           AND present_in_provider_library
+         ORDER BY provider_playlist_id",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(CleanupCandidate {
+                bookmark_id: row.try_get("id")?,
+                provider_playlist_id: row.try_get("provider_playlist_id")?,
+                provider_snapshot_id: row.try_get("provider_snapshot_id")?,
+                name: row.try_get("name")?,
+                owner_provider_id: row.try_get("owner_provider_id")?,
+                content_status: row.try_get("content_status")?,
+                item_count: row.try_get("item_count")?,
+            })
+        })
+        .collect()
+}
+
+fn cleanup_batch_from_row(row: &sqlx::postgres::PgRow, reused: bool) -> Result<CleanupBatch> {
+    Ok(CleanupBatch {
+        batch_id: row.try_get("id")?,
+        source_snapshot_id: row.try_get("source_snapshot_id")?,
+        state: row.try_get("state")?,
+        candidate_count: row.try_get("candidate_count")?,
+        input_hash: row.try_get("input_hash")?,
+        reused,
+        approved_at: row.try_get("approved_at")?,
+        created_at: row.try_get("created_at")?,
+    })
+}
+
+fn hex_sha256(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
 }
 
 fn bookmark_from_row(row: &sqlx::postgres::PgRow) -> Result<BookmarkRecord> {

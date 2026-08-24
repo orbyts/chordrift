@@ -248,6 +248,31 @@ instead of presenting an empty playlist as authoritative. Explicit refresh of
 an archived bookmark is a later v0.0.9 operation and will not add dozens of
 requests to every normal sync.
 
+Before removing any followed/shared relationships, create an immutable review
+batch containing every currently present external bookmark:
+
+```console
+$ chordrift bookmarks cleanup-plan --account personal
+$ chordrift bookmarks cleanup-show --account personal
+$ chordrift bookmarks cleanup-show --account personal --batch BATCH_ID
+```
+
+Review every row, especially `owner_id`, `content`, `spotify_id`, and the
+expected Spotify snapshot signature. Approval is exact and performs no Spotify
+write:
+
+```console
+$ chordrift bookmarks cleanup-approve --account personal --confirm BATCH_ID
+```
+
+After approval, rebuild the dry-run with `chordrift sync plan`. It will contain
+one `remove_external_playlist` cleanup operation per approved bookmark and
+report them separately as `external_cleanups`. These operations only remove
+your follow/library relationship; they cannot edit or delete the source
+owner's playlist. They remain deferred and non-executable throughout v0.0.9.
+An approval remains usable across identical pulls, but any changed signature,
+added bookmark, or missing bookmark requires a new review batch.
+
 ### Which playlist should receive a new song?
 
 The stable user-managed intake names and their meanings are:

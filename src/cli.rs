@@ -303,6 +303,30 @@ pub enum BookmarkCommand {
         #[arg(long, required_unless_present = "name", conflicts_with = "name")]
         spotify_id: Option<String>,
     },
+    /// Snapshot every present bookmark into an immutable cleanup review batch.
+    CleanupPlan {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Show the latest or selected cleanup batch and every exact candidate.
+    CleanupShow {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact batch ID; defaults to the latest batch.
+        #[arg(long)]
+        batch: Option<uuid::Uuid>,
+    },
+    /// Approve one exact cleanup batch without contacting Spotify.
+    CleanupApprove {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact cleanup batch ID printed by cleanup-plan or cleanup-show.
+        #[arg(long)]
+        confirm: uuid::Uuid,
+    },
 }
 
 /// Personal embedding commands.
@@ -1364,7 +1388,68 @@ async fn run_bookmark_command(
             }
             Ok(())
         }
+        BookmarkCommand::CleanupPlan { account } => {
+            let batch = bookmarks::cleanup_plan(database, &account).await?;
+            writeln!(
+                output,
+                "cleanup_plan: {}",
+                if batch.reused {
+                    "already current"
+                } else {
+                    "created"
+                }
+            )?;
+            write_cleanup_batch(output, &batch)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        BookmarkCommand::CleanupShow { account, batch } => {
+            let (batch, items) = bookmarks::cleanup_show(database, &account, batch).await?;
+            write_cleanup_batch(output, &batch)?;
+            writeln!(
+                output,
+                "content\titems\towner_id\tname\tspotify_id\texpected_snapshot"
+            )?;
+            for item in items {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}\t{}",
+                    item.content_status,
+                    item.item_count,
+                    clean_cell(&item.owner_provider_id),
+                    clean_cell(&item.name),
+                    item.provider_playlist_id,
+                    item.provider_snapshot_id.as_deref().unwrap_or("-")
+                )?;
+            }
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        BookmarkCommand::CleanupApprove { account, confirm } => {
+            let batch = bookmarks::cleanup_approve(database, &account, confirm).await?;
+            write_cleanup_batch(output, &batch)?;
+            writeln!(output, "approval: recorded")?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
     }
+}
+
+fn write_cleanup_batch(output: &mut impl Write, batch: &bookmarks::CleanupBatch) -> Result<()> {
+    writeln!(output, "batch_id: {}", batch.batch_id)?;
+    writeln!(output, "source_snapshot_id: {}", batch.source_snapshot_id)?;
+    writeln!(output, "state: {}", batch.state)?;
+    writeln!(output, "candidates: {}", batch.candidate_count)?;
+    writeln!(output, "input_hash: {}", batch.input_hash)?;
+    writeln!(output, "created_at: {}", batch.created_at.to_rfc3339())?;
+    writeln!(
+        output,
+        "approved_at: {}",
+        batch
+            .approved_at
+            .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+    )?;
+    Ok(())
 }
 
 async fn run_embedding_command(
@@ -2190,6 +2275,7 @@ fn write_sync_plan_report(output: &mut impl Write, report: &sync_plan::PlanRepor
     writeln!(output, "exclusions: {}", report.exclusions)?;
     writeln!(output, "removals: {}", report.removals)?;
     writeln!(output, "retirements: {}", report.retirements)?;
+    writeln!(output, "external_cleanups: {}", report.external_cleanups)?;
     writeln!(output, "deferred: {}", report.deferred)?;
     writeln!(output, "input_hash: {}", report.input_hash)?;
     writeln!(output, "created_at: {}", report.created_at.to_rfc3339())?;
@@ -2346,6 +2432,24 @@ mod tests {
                     ..
                 }
             } if account == "personal" && name == "alone in the car"
+        ));
+    }
+
+    #[test]
+    fn parses_exact_bookmark_cleanup_approval() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "bookmarks",
+            "cleanup-approve",
+            "--confirm",
+            "016defcd-f46b-4070-991d-73cb4c89f00a",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Bookmarks {
+                command: BookmarkCommand::CleanupApprove { account, .. }
+            } if account == "personal"
         ));
     }
 

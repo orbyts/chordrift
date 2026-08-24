@@ -259,8 +259,9 @@ collaborative and public followed playlists away from the active library,
 copies unchanged readable collaborative contents from Neon, and retains
 metadata-only public followed records under Development Mode. Private
 Spotify-owned personalized surfaces remain active provider-curated signals.
-Archived on-demand refresh and separately approved cleanup planning are still
-pending.
+Migration 0022 and the bookmark cleanup commands now provide immutable
+all-present candidate review, explicit batch approval, and relationship-only
+dry-run operations. Archived on-demand refresh remains pending.
 
 Migrations 0009-0011 and the CLI keep canonical `track_embeddings`
 separate from immutable account-scoped `embedding_generations` and
@@ -413,12 +414,12 @@ retirement additionally requires separate future approval. The planner makes
 no Spotify request and Spotify write scopes remain disabled. Migration 0019
 also introduces stable concept mappings for future published provider
 playlists and the provider-neutral reversible `excluded_tracks` ledger.
-Migrations 0019 through 0021 are live and Neon is healthy at 21/21. Migration 0020
+Migrations 0019 through 0022 are live and Neon is healthy at 22/22. Migration 0020
 adds immutable successful managed-playlist baselines so a later missing
 expected track becomes an internal `exclude_track` proposal rather than an
 automatic re-add; an unexpected extra remains ordinary provider drift. The
-current planner is `spotify-dry-run-v4`; earlier development plans remain
-immutable audit artifacts and must not be applied. The current verified v4 plan is
+current planner is `spotify-dry-run-v5`; earlier development plans remain
+immutable audit artifacts and must not be applied. The verified v4 plan is
 `cda2639d-da67-4b23-9492-a9274c71088c`, bound to approved proposal
 `ca81d1b2-e56b-41e6-8846-cdb379cb039b` and Spotify snapshot
 `622a94b4-b60e-4f26-8da2-20e540e160c1`. It contains 1,007 exact operations:
@@ -426,16 +427,22 @@ immutable audit artifacts and must not be applied. The current verified v4 plan 
 track additions, 65 deferred intake removals, and 42 separately approved
 legacy retirements; no renames, restorations, or exclusions before initial
 publication. `Liked from Radio` already exists and is reused. Every inspected
-retirement has complete preservation.
-The snapshot is current and identical v4 planning reuses this plan ID. Next is
-v0.0.9 apply-readiness validation; it must remain read-only against Spotify.
+retirement has complete preservation. The current v5 plan is
+`68ee490c-f5f4-4e23-9a48-7f4933cd6511`, bound to Spotify snapshot
+`c187fc99-5e7c-42f7-a694-86bcb9d1930b`. It contains the same 1,007 canonical
+operations plus 13 separately approved `remove_external_playlist` operations,
+for 1,020 total. Cleanup batch `016defcd-f46b-4070-991d-73cb4c89f00a`
+captures and approves all 13 present external bookmarks with input hash
+`8528685a4f488784acd5a9381d183a7795485547714981cc3d5eb25006cfaa12`.
+Repeated v5 planning reuses the plan exactly. Next is v0.0.9 apply-readiness
+validation; it must remain read-only against Spotify.
 That milestone also generates one simple original deterministic cover per
 canonical playlist from its approved name/description/tags, stores generator
 version and SHA-256, produces a contact-sheet-style preview, and requires
 explicit artwork approval. Do not request Spotify image-upload scope or upload
 covers until v0.1.0.
 
-Migration 0021 is live in canonical Neon (21/21 current). Two consecutive
+Migration 0021 established the bookmark inventory. Two consecutive
 read-only pulls produced snapshots `6544a59b-c6e7-4ec0-92d8-3129132bb449`
 and `c187fc99-5e7c-42f7-a694-86bcb9d1930b`: both saw 62 Spotify playlists,
 kept 49 active, and retained 13 external bookmarks with no external item

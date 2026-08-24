@@ -285,8 +285,15 @@ The bookmark foundation persists stable records and immutable pull-bound
 observations in Neon. Normal pulls detect snapshot-signature changes for
 relationships still visible to Spotify; public followed contents remain
 metadata-only under Development Mode, while readable collaborative contents
-are copied forward without redundant requests. Archived on-demand refresh and
-separately approved provider-library cleanup remain later v0.0.9 slices.
+are copied forward without redundant requests. Archived on-demand refresh
+remains a later v0.0.9 slice.
+
+External cleanup review is represented by an immutable candidate batch. The
+user approves its exact ID after inspecting all owners, playlist IDs,
+preservation states, and Spotify signatures. Only a still-current approved
+batch may add relationship-only `remove_external_playlist` operations to the
+dry-run; changed membership or signatures require new review. v0.0.9 continues
+to prohibit execution of those operations.
 
 Generate one simple original cover-art artifact for every approved canonical
 playlist before publication. Artwork should be derived from the approved name,

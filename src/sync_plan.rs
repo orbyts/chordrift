@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result};
 
 const PROVIDER: &str = "spotify";
-const PLANNER_VERSION: &str = "spotify-dry-run-v4";
+const PLANNER_VERSION: &str = "spotify-dry-run-v5";
 const INTAKE_SURFACES: [(&str, &str); 3] = [
     (
         "Inbox",
@@ -58,6 +58,8 @@ pub struct PlanReport {
     pub removals: usize,
     /// Legacy playlist retirements.
     pub retirements: usize,
+    /// Approved external provider-library relationships to remove.
+    pub external_cleanups: usize,
     /// Operations that require post-publication verification.
     pub deferred: usize,
     /// When the plan was persisted.
@@ -145,6 +147,8 @@ struct Summary {
     exclusions: usize,
     removals: usize,
     retirements: usize,
+    #[serde(default)]
+    external_cleanups: usize,
     deferred: usize,
 }
 
@@ -164,6 +168,7 @@ pub async fn create(
     let mut operations = playlist_diff(&desired, &current);
     operations.extend(intake_surface_operations(database, account_id, snapshot_id).await?);
     operations.extend(cleanup_operations(database, account_id, snapshot_id, proposal_id).await?);
+    operations.extend(external_cleanup_operations(database, account_id).await?);
     operations.sort_by(|left, right| {
         phase_rank(&left.phase)
             .cmp(&phase_rank(&right.phase))
@@ -213,6 +218,7 @@ pub async fn create(
         "requires_current_snapshot": snapshot_id,
         "requires_approved_proposal": proposal_id,
         "retirement_requires_separate_approval": true
+        ,"external_cleanup_requires_approved_batch": true
     }))
     .fetch_one(&mut *transaction)
     .await?;
@@ -644,6 +650,93 @@ async fn cleanup_operations(
     Ok(operations)
 }
 
+async fn external_cleanup_operations(
+    database: &Database,
+    account_id: Uuid,
+) -> Result<Vec<PlanOperationInput>> {
+    let batch_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT batch.id
+         FROM external_playlist_cleanup_batches batch
+         WHERE batch.provider_account_id = $1 AND batch.state = 'approved'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM external_playlist_cleanup_items item
+             LEFT JOIN external_playlist_bookmarks bookmark
+               ON bookmark.id = item.bookmark_id
+              AND bookmark.provider_account_id = $1
+              AND bookmark.present_in_provider_library
+             WHERE item.batch_id = batch.id
+               AND (bookmark.id IS NULL
+                 OR bookmark.provider_playlist_id <> item.provider_playlist_id
+                 OR bookmark.provider_snapshot_id IS DISTINCT FROM item.provider_snapshot_id
+                 OR bookmark.name <> item.name
+                 OR bookmark.owner_provider_id <> item.owner_provider_id
+                 OR bookmark.content_status <> item.content_status
+                 OR bookmark.item_count <> item.item_count))
+           AND NOT EXISTS (
+             SELECT 1
+             FROM external_playlist_bookmarks bookmark
+             LEFT JOIN external_playlist_cleanup_items item
+               ON item.batch_id = batch.id AND item.bookmark_id = bookmark.id
+             WHERE bookmark.provider_account_id = $1
+               AND bookmark.provider = 'spotify'
+               AND bookmark.present_in_provider_library
+               AND item.bookmark_id IS NULL)
+         ORDER BY batch.approved_at DESC, batch.id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?;
+    let Some(batch_id) = batch_id else {
+        return Ok(Vec::new());
+    };
+    let rows = sqlx::query(
+        "SELECT item.provider_playlist_id, item.provider_snapshot_id,
+                item.name, item.owner_provider_id, item.content_status,
+                item.item_count
+         FROM external_playlist_cleanup_items item
+         WHERE item.batch_id = $1
+         ORDER BY lower(item.name), item.provider_playlist_id",
+    )
+    .bind(batch_id)
+    .fetch_all(database.pool())
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            let spotify_id: String = row.try_get("provider_playlist_id")?;
+            let name: String = row.try_get("name")?;
+            Ok(PlanOperationInput {
+                phase: "cleanup".to_owned(),
+                operation_type: "remove_external_playlist".to_owned(),
+                operation_key: format!("remove-external:{spotify_id}"),
+                playlist_id: None,
+                provider_playlist_id: None,
+                playlist_name: name,
+                spotify_playlist_id: Some(spotify_id),
+                spotify_track_id: None,
+                payload: json!({
+                    "cleanup_batch_id": batch_id,
+                    "owner_provider_id": row.try_get::<String, _>("owner_provider_id")?,
+                    "content_status": row.try_get::<String, _>("content_status")?,
+                    "item_count": row.try_get::<i32, _>("item_count")?,
+                    "expected_snapshot_id": row.try_get::<Option<String>, _>("provider_snapshot_id")?,
+                    "relationship_only": true
+                }),
+                safety: json!({
+                    "destructive": true,
+                    "deferred": true,
+                    "requires_separate_approval": true,
+                    "requires_cleanup_batch": batch_id,
+                    "requires_bookmark_preserved": true,
+                    "requires_snapshot_match": true,
+                    "removes_library_relationship_only": true,
+                    "source_owner_playlist_unchanged": true
+                }),
+            })
+        })
+        .collect()
+}
+
 async fn desired_playlists(
     database: &Database,
     account_id: Uuid,
@@ -917,6 +1010,7 @@ fn summarize(operations: &[PlanOperationInput]) -> Summary {
         exclusions: count_kind(operations, "exclude_track"),
         removals: count_kind(operations, "remove_track"),
         retirements: count_kind(operations, "archive_playlist"),
+        external_cleanups: count_kind(operations, "remove_external_playlist"),
         deferred: operations
             .iter()
             .filter(|operation| operation.safety.get("deferred") == Some(&Value::Bool(true)))
@@ -949,6 +1043,7 @@ fn report(
         exclusions: summary.exclusions,
         removals: summary.removals,
         retirements: summary.retirements,
+        external_cleanups: summary.external_cleanups,
         deferred: summary.deferred,
         created_at,
     }
@@ -979,8 +1074,9 @@ fn operation_rank(operation_type: &str) -> u8 {
         "reorder_track" => 3,
         "exclude_track" => 4,
         "remove_track" => 5,
-        "archive_playlist" => 6,
-        _ => 7,
+        "remove_external_playlist" => 6,
+        "archive_playlist" => 7,
+        _ => 8,
     }
 }
 
@@ -1034,6 +1130,7 @@ mod tests {
         let operations = vec![
             operation("add_track", "publish", false),
             operation("restore_track", "publish", false),
+            operation("remove_external_playlist", "cleanup", true),
             operation("archive_playlist", "retirement", true),
         ];
         let summary = summarize(&operations);
@@ -1041,7 +1138,8 @@ mod tests {
         assert_eq!(summary.restorations, 1);
         assert_eq!(summary.exclusions, 0);
         assert_eq!(summary.retirements, 1);
-        assert_eq!(summary.deferred, 1);
+        assert_eq!(summary.external_cleanups, 1);
+        assert_eq!(summary.deferred, 2);
         assert_eq!(count_kind(&operations, "remove_track"), 0);
     }
 

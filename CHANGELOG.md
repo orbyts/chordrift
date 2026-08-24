@@ -21,6 +21,9 @@ All notable changes to Chordrift are documented here.
   separate them from the active library, detect provider snapshot changes,
   reuse readable collaborative contents, and add read-only bookmark list and
   track inspection commands.
+- Add immutable all-present-bookmark cleanup review batches, explicit approval,
+  exact candidate inspection, and separately counted relationship-only cleanup
+  operations in Spotify dry-run planner v5; provider writes remain disabled.
 - Add a provider-neutral reversible Excluded Tracks ledger and report restores
   separately from ordinary additions and provider drift.
 - Add immutable managed-playlist verification baselines so an expected user
