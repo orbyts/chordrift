@@ -24,7 +24,7 @@ ALTER TABLE provider_account_playlists
 ALTER TABLE provider_account_playlists
     ADD CONSTRAINT provider_account_playlists_semantic_policy_check
         CHECK (signal_class = 'semantic_legacy' OR semantic_weight = 0.0),
-    ADD CONSTRAINT provider_account_playlists_clear_policy_check
+    ADD CONSTRAINT provider_account_playlists_clear_policy_class_check
         CHECK (
             clear_policy = 'never'
             OR signal_class = 'intake'
