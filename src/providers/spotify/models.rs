@@ -163,6 +163,60 @@ pub(crate) struct PlaylistInventory {
     pub reused_from_snapshot: Option<Uuid>,
 }
 
+/// How the current account is related to an externally owned playlist.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ExternalPlaylistRelationship {
+    /// The account follows or saved a playlist owned elsewhere.
+    Followed,
+    /// The account collaborates on a playlist owned elsewhere.
+    Collaborative,
+}
+
+impl ExternalPlaylistRelationship {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Followed => "followed_external",
+            Self::Collaborative => "collaborative_external",
+        }
+    }
+}
+
+/// Whether track membership was available for one bookmark observation.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum BookmarkContentStatus {
+    /// All readable track items were fetched or copied from Neon.
+    Complete,
+    /// Spotify exposed metadata but the importer deliberately made no item request.
+    MetadataOnly,
+    /// Spotify refused access to the playlist items.
+    Inaccessible,
+}
+
+impl BookmarkContentStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::MetadataOnly => "metadata_only",
+            Self::Inaccessible => "inaccessible",
+        }
+    }
+}
+
+/// One externally owned playlist retained as an internal bookmark.
+#[derive(Clone, Debug)]
+pub(crate) struct ExternalPlaylistInventory {
+    /// Playlist metadata returned by Spotify.
+    pub playlist: SpotifyPlaylist,
+    /// The account's relationship to the source playlist.
+    pub relationship: ExternalPlaylistRelationship,
+    /// Ordered items, when Spotify permits access.
+    pub items: Vec<PlaylistItem>,
+    /// Availability of track membership for this observation.
+    pub content_status: BookmarkContentStatus,
+    /// Prior bookmark snapshot used instead of another item request.
+    pub reused_from_snapshot: Option<Uuid>,
+}
+
 /// Complete or copy-forward saved-track inventory.
 #[derive(Clone, Debug)]
 pub(crate) struct SavedTracksInventory {
@@ -187,6 +241,7 @@ pub(crate) struct SavedTrackReuse {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ReusePlan {
     pub playlists: HashMap<String, PlaylistReuse>,
+    pub bookmark_playlists: HashMap<String, PlaylistReuse>,
     pub saved_tracks: Option<SavedTrackReuse>,
 }
 
@@ -195,8 +250,10 @@ pub(crate) struct ReusePlan {
 pub(crate) struct SpotifyInventory {
     /// Authenticated Spotify account.
     pub profile: CurrentUser,
-    /// Owned and accessible collaborative playlists.
+    /// Account-owned and private Spotify-personalized signal playlists.
     pub playlists: Vec<PlaylistInventory>,
+    /// Externally owned playlists retained outside the active library.
+    pub external_playlists: Vec<ExternalPlaylistInventory>,
     /// Ordered saved-track library.
     pub saved_tracks: SavedTracksInventory,
     /// All owned, followed, and collaborative playlists Spotify reported.

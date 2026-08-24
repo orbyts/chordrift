@@ -9,7 +9,8 @@ use url::Url;
 use crate::{ChordriftError, Result};
 
 use super::models::{
-    CurrentUser, Page, PlaylistInventory, PlaylistItem, ReusePlan, SavedTrack, SavedTrackReuse,
+    BookmarkContentStatus, CurrentUser, ExternalPlaylistInventory, ExternalPlaylistRelationship,
+    Page, PlaylistInventory, PlaylistItem, ReusePlan, SavedTrack, SavedTrackReuse,
     SavedTracksInventory, SpotifyInventory, SpotifyPlaylist,
 };
 
@@ -62,11 +63,64 @@ impl SpotifyClient {
         let mut playlists_reused = 0;
         let mut playlist_item_fetches = 0;
         let mut playlists = Vec::new();
+        let mut external_playlists = Vec::new();
 
         for playlist in all_playlists {
             let owned = playlist.owner.id == profile.id;
-            if !owned && !playlist.collaborative {
+            // Spotify owns personalized, account-specific surfaces such as mixes.
+            // Their non-public membership is behavioral evidence, not a followed
+            // public relationship to somebody else's library.
+            let provider_curated =
+                is_private_spotify_personalized(&playlist.owner.id, playlist.public);
+            let active_library = owned || provider_curated;
+            if !active_library && !playlist.collaborative {
                 followed_playlists_skipped += 1;
+                external_playlists.push(ExternalPlaylistInventory {
+                    playlist,
+                    relationship: ExternalPlaylistRelationship::Followed,
+                    items: Vec::new(),
+                    content_status: BookmarkContentStatus::MetadataOnly,
+                    reused_from_snapshot: None,
+                });
+                continue;
+            }
+
+            if !active_library {
+                if let (Some(current_snapshot), Some(previous)) = (
+                    playlist.snapshot_id.as_deref(),
+                    reuse.bookmark_playlists.get(&playlist.id),
+                ) && current_snapshot == previous.provider_snapshot_id
+                {
+                    external_playlists.push(ExternalPlaylistInventory {
+                        playlist,
+                        relationship: ExternalPlaylistRelationship::Collaborative,
+                        items: Vec::new(),
+                        content_status: BookmarkContentStatus::Complete,
+                        reused_from_snapshot: Some(previous.source_snapshot_id),
+                    });
+                    continue;
+                }
+
+                playlist_item_fetches += 1;
+                eprintln!("spotify fetch: changed external playlist items {playlist_item_fetches}");
+                let mut items_url = playlist_items_url(&playlist.id)?;
+                items_url.query_pairs_mut().append_pair("limit", PAGE_LIMIT);
+                let (items, content_status) =
+                    match self.all_pages::<PlaylistItem>(items_url, None).await {
+                        Ok(items) => (items, BookmarkContentStatus::Complete),
+                        Err(ChordriftError::SpotifyApi { status: 403, .. }) => {
+                            inaccessible_collaborative_playlists += 1;
+                            (Vec::new(), BookmarkContentStatus::Inaccessible)
+                        }
+                        Err(error) => return Err(error),
+                    };
+                external_playlists.push(ExternalPlaylistInventory {
+                    playlist,
+                    relationship: ExternalPlaylistRelationship::Collaborative,
+                    items,
+                    content_status,
+                    reused_from_snapshot: None,
+                });
                 continue;
             }
 
@@ -112,6 +166,7 @@ impl SpotifyClient {
         Ok(SpotifyInventory {
             profile,
             playlists,
+            external_playlists,
             saved_tracks,
             playlists_seen,
             followed_playlists_skipped,
@@ -242,6 +297,10 @@ impl SpotifyClient {
     }
 }
 
+fn is_private_spotify_personalized(owner_id: &str, public: Option<bool>) -> bool {
+    owner_id == "spotify" && public == Some(false)
+}
+
 fn saved_page_matches(page: &Page<SavedTrack>, previous: &SavedTrackReuse) -> bool {
     if page.total != previous.total {
         eprintln!(
@@ -351,7 +410,9 @@ mod tests {
     use url::Url;
     use uuid::Uuid;
 
-    use super::{playlist_items_url, saved_page_matches, validate_api_url};
+    use super::{
+        is_private_spotify_personalized, playlist_items_url, saved_page_matches, validate_api_url,
+    };
     use crate::providers::spotify::models::{Page, SavedTrack, SavedTrackReuse};
 
     #[test]
@@ -368,6 +429,14 @@ mod tests {
         );
         assert!(playlist_items_url("37i9dQZF1DXcBWIGoYBM5M").is_ok());
         assert!(playlist_items_url("../me").is_err());
+    }
+
+    #[test]
+    fn distinguishes_private_spotify_signals_from_public_editorial_playlists() {
+        assert!(is_private_spotify_personalized("spotify", Some(false)));
+        assert!(!is_private_spotify_personalized("spotify", Some(true)));
+        assert!(!is_private_spotify_personalized("spotify", None));
+        assert!(!is_private_spotify_personalized("friend", Some(false)));
     }
 
     #[test]

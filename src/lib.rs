@@ -8,6 +8,8 @@
 
 /// Account-scoped canonical library analysis.
 pub mod analysis;
+/// Durable metadata and last-known contents for externally owned playlists.
+pub mod bookmarks;
 /// Command-line parsing and execution.
 pub mod cli;
 /// Reproducible account-scoped vibe cluster generations.

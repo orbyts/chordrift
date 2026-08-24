@@ -6,8 +6,8 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
-    ChordriftError, Result, analysis, clusters, config, db, embeddings, enrichment, history,
-    model_inference, playlists, proposals, providers::spotify, signals, sync_plan,
+    ChordriftError, Result, analysis, bookmarks, clusters, config, db, embeddings, enrichment,
+    history, model_inference, playlists, proposals, providers::spotify, signals, sync_plan,
 };
 
 /// Chordrift command-line interface.
@@ -51,6 +51,12 @@ pub enum Command {
         /// Playlist operation to perform.
         #[command(subcommand)]
         command: PlaylistCommand,
+    },
+    /// Inspect externally owned playlists retained as Neon bookmarks.
+    Bookmarks {
+        /// Bookmark operation to perform.
+        #[command(subcommand)]
+        command: BookmarkCommand,
     },
     /// Inspect or import Spotify account and listening-history archives.
     History {
@@ -269,6 +275,33 @@ pub enum PlaylistCommand {
         /// When a temporary intake may be cleared.
         #[arg(long, value_enum)]
         clear_policy: Option<ClearPolicyArg>,
+    },
+}
+
+/// External playlist bookmark commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum BookmarkCommand {
+    /// List present and archived external playlist bookmarks.
+    List {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List the newest readable contents retained for one bookmark.
+    Tracks {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Case-insensitive bookmark name; must be unambiguous.
+        #[arg(
+            long,
+            required_unless_present = "spotify_id",
+            conflicts_with = "spotify_id"
+        )]
+        name: Option<String>,
+        /// Stable Spotify playlist ID.
+        #[arg(long, required_unless_present = "name", conflicts_with = "name")]
+        spotify_id: Option<String>,
     },
 }
 
@@ -801,6 +834,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
             database.close().await;
             result?;
         }
+        Command::Bookmarks { command } => {
+            let database = connect_current_database().await?;
+            let result = run_bookmark_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
         Command::History { command } => match command {
             HistoryCommand::Inspect { archive } => {
                 let inspection = history::inspect(&archive)?;
@@ -1245,6 +1284,84 @@ async fn run_playlist_command(
             )?;
             writeln!(output, "semantic_weight: {:.2}", updated.semantic_weight)?;
             writeln!(output, "clear_policy: {}", updated.clear_policy)?;
+            Ok(())
+        }
+    }
+}
+
+async fn run_bookmark_command(
+    command: BookmarkCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        BookmarkCommand::List { account } => {
+            let rows = bookmarks::list(database, &account).await?;
+            writeln!(
+                output,
+                "present\trelationship\tcontent\titems\towner\tname\tlast_changed\tspotify_id\turl"
+            )?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    row.present,
+                    row.relationship,
+                    row.content_status,
+                    row.item_count,
+                    clean_cell(
+                        row.owner_display_name
+                            .as_deref()
+                            .unwrap_or(&row.owner_provider_id)
+                    ),
+                    clean_cell(&row.name),
+                    row.last_changed_at.to_rfc3339(),
+                    row.provider_playlist_id,
+                    row.provider_url.as_deref().unwrap_or("-")
+                )?;
+            }
+            Ok(())
+        }
+        BookmarkCommand::Tracks {
+            account,
+            name,
+            spotify_id,
+        } => {
+            let selector = bookmark_selector(name, spotify_id);
+            let report = bookmarks::tracks(database, &account, &selector).await?;
+            writeln!(output, "bookmark: {}", clean_cell(&report.bookmark.name))?;
+            writeln!(
+                output,
+                "owner: {}",
+                clean_cell(
+                    report
+                        .bookmark
+                        .owner_display_name
+                        .as_deref()
+                        .unwrap_or(&report.bookmark.owner_provider_id)
+                )
+            )?;
+            writeln!(
+                output,
+                "spotify_id: {}",
+                report.bookmark.provider_playlist_id
+            )?;
+            writeln!(output, "present: {}", report.bookmark.present)?;
+            writeln!(output, "snapshot_id: {}", report.snapshot_id)?;
+            writeln!(output, "captured_at: {}", report.captured_at.to_rfc3339())?;
+            writeln!(output, "tracks: {}", report.tracks.len())?;
+            writeln!(output, "position\ttrack\tartists\talbum\tspotify_track_id")?;
+            for row in report.tracks {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}",
+                    row.position + 1,
+                    clean_cell(&row.title),
+                    clean_cell(&row.artists),
+                    clean_cell(row.album.as_deref().unwrap_or("-")),
+                    row.provider_track_id
+                )?;
+            }
             Ok(())
         }
     }
@@ -1865,6 +1982,17 @@ fn playlist_selector(
     }
 }
 
+fn bookmark_selector(
+    name: Option<String>,
+    spotify_id: Option<String>,
+) -> bookmarks::BookmarkSelector {
+    match (name, spotify_id) {
+        (Some(name), None) => bookmarks::BookmarkSelector::Name(name),
+        (None, Some(id)) => bookmarks::BookmarkSelector::ProviderId(id),
+        _ => unreachable!("clap enforces exactly one bookmark selector"),
+    }
+}
+
 fn playlist_role(value: PlaylistRoleArg) -> playlists::PlaylistRole {
     match value {
         PlaylistRoleArg::Observed => playlists::PlaylistRole::Observed,
@@ -1987,6 +2115,17 @@ fn write_import_report(output: &mut impl Write, report: &spotify::ImportReport) 
         "inaccessible_collaborative_playlists: {}",
         report.inaccessible_collaborative_playlists
     )?;
+    writeln!(output, "external_bookmarks: {}", report.external_bookmarks)?;
+    writeln!(
+        output,
+        "external_bookmarks_reused: {}",
+        report.external_bookmarks_reused
+    )?;
+    writeln!(
+        output,
+        "external_bookmark_entries: {}",
+        report.external_bookmark_entries
+    )?;
     Ok(())
 }
 
@@ -2065,8 +2204,8 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        BehavioralSignalArg, Cli, ClusterCommand, Command, DbCommand, EmbeddingCommand,
-        EnrichmentCommand, HistoryCommand, PlaylistCommand, PlaylistRoleArg,
+        BehavioralSignalArg, BookmarkCommand, Cli, ClusterCommand, Command, DbCommand,
+        EmbeddingCommand, EnrichmentCommand, HistoryCommand, PlaylistCommand, PlaylistRoleArg,
         PlaylistSignalClassArg, SignalCommand, SpotifyCommand, SyncCommand, write_status,
     };
     use crate::db::DatabaseStatus;
@@ -2185,6 +2324,28 @@ mod tests {
                     ..
                 }
             } if account == "personal" && name == "Smooth Morning Coffee (Curated)"
+        ));
+    }
+
+    #[test]
+    fn parses_bookmark_tracks_by_name() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "bookmarks",
+            "tracks",
+            "--name",
+            "alone in the car",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Bookmarks {
+                command: BookmarkCommand::Tracks {
+                    account,
+                    name: Some(name),
+                    ..
+                }
+            } if account == "personal" && name == "alone in the car"
         ));
     }
 

@@ -17,6 +17,10 @@ All notable changes to Chordrift are documented here.
 - Define External Playlist Bookmarks for followed and externally collaborative
   Spotify/Apple Music playlists so their metadata and accessible contents can
   be retained in Neon before separately approved provider-library cleanup.
+- Persist Spotify external bookmarks and immutable observations in Neon,
+  separate them from the active library, detect provider snapshot changes,
+  reuse readable collaborative contents, and add read-only bookmark list and
+  track inspection commands.
 - Add a provider-neutral reversible Excluded Tracks ledger and report restores
   separately from ordinary additions and provider drift.
 - Add immutable managed-playlist verification baselines so an expected user

@@ -252,9 +252,15 @@ semantic or behavioral signal, do not count as active canonical library
 playlists, and are never legacy-retirement sources. A separately approved
 cleanup removes only the user's provider-library relationship, never edits or
 deletes the source owner's playlist. Neon keeps the bookmark for later
-inspection. v0.0.9 must add read-only bookmark list/content inspection and
-cleanup planning. The current Spotify importer only reports a skipped-followed
-count, so it does not yet satisfy this bookmark requirement.
+inspection. The first v0.0.9 slice adds `external_playlist_bookmarks`,
+immutable pull-bound bookmark observations and track snapshots, plus
+`chordrift bookmarks list|tracks`. The importer routes externally owned
+collaborative and public followed playlists away from the active library,
+copies unchanged readable collaborative contents from Neon, and retains
+metadata-only public followed records under Development Mode. Private
+Spotify-owned personalized surfaces remain active provider-curated signals.
+Archived on-demand refresh and separately approved cleanup planning are still
+pending.
 
 Migrations 0009-0011 and the CLI keep canonical `track_embeddings`
 separate from immutable account-scoped `embedding_generations` and
@@ -428,6 +434,18 @@ canonical playlist from its approved name/description/tags, stores generator
 version and SHA-256, produces a contact-sheet-style preview, and requires
 explicit artwork approval. Do not request Spotify image-upload scope or upload
 covers until v0.1.0.
+
+Migration 0021 is live in canonical Neon (21/21 current). Two consecutive
+read-only pulls produced snapshots `6544a59b-c6e7-4ec0-92d8-3129132bb449`
+and `c187fc99-5e7c-42f7-a694-86bcb9d1930b`: both saw 62 Spotify playlists,
+kept 49 active, and retained 13 external bookmarks with no external item
+requests. All 49 active playlists and 927 saved tracks reused Neon on the
+second pull. `alone in the car` is bookmark Spotify ID
+`1128mckrHSNSNt3PzyE4Bp`, owner `trinwoodward`, 52 reported items, status
+`metadata_only`; its `last_changed_at` remained stable across the repeated
+pull. It is absent from `chordrift playlists list`. The 13 followed public
+bookmarks are metadata-only because Spotify Development Mode does not expose
+their contents to this app; `bookmarks tracks` reports that honestly.
 
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the

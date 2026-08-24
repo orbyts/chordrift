@@ -11,8 +11,8 @@ use crate::{ChordriftError, Result};
 use super::{
     auth,
     models::{
-        PlaylistReuse, ReusePlan, SavedTrackReuse, SpotifyAlbum, SpotifyArtist, SpotifyInventory,
-        SpotifyTrack,
+        ExternalPlaylistInventory, PlaylistReuse, ReusePlan, SavedTrackReuse, SpotifyAlbum,
+        SpotifyArtist, SpotifyInventory, SpotifyTrack,
     },
 };
 
@@ -31,7 +31,7 @@ pub struct ImportReport {
     pub snapshot_id: Uuid,
     /// Owned, followed, and collaborative playlists reported by Spotify.
     pub playlists_seen: usize,
-    /// Owned and accessible collaborative playlists persisted.
+    /// Account-owned and private Spotify-personalized playlists persisted.
     pub playlists_imported: usize,
     /// Playlists copied from the previous Neon snapshot without an item request.
     pub playlists_reused: usize,
@@ -49,6 +49,12 @@ pub struct ImportReport {
     pub followed_playlists_skipped: usize,
     /// Collaborative playlists Spotify did not permit Chordrift to read.
     pub inaccessible_collaborative_playlists: usize,
+    /// Externally owned playlists retained as durable Neon bookmarks.
+    pub external_bookmarks: usize,
+    /// Bookmark observations whose track contents were copied from Neon.
+    pub external_bookmarks_reused: usize,
+    /// Ordered track entries retained in external bookmark snapshots.
+    pub external_bookmark_entries: usize,
 }
 
 /// Fetches a complete read-only Spotify inventory and persists it atomically.
@@ -86,6 +92,32 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
     .fetch_all(database.pool())
     .await?;
     let playlists = playlist_rows
+        .into_iter()
+        .map(|row| {
+            let provider_playlist_id: String = row.try_get("provider_playlist_id")?;
+            let provider_snapshot_id: String = row.try_get("provider_snapshot_id")?;
+            Ok((
+                provider_playlist_id,
+                PlaylistReuse {
+                    provider_snapshot_id,
+                    source_snapshot_id,
+                },
+            ))
+        })
+        .collect::<Result<HashMap<_, _>>>()?;
+
+    let bookmark_rows = sqlx::query(
+        "SELECT bookmarks.provider_playlist_id, snapshots.provider_snapshot_id
+         FROM external_playlist_bookmark_snapshots snapshots
+         JOIN external_playlist_bookmarks bookmarks ON bookmarks.id = snapshots.bookmark_id
+         WHERE snapshots.snapshot_id = $1
+           AND snapshots.content_status = 'complete'
+           AND snapshots.provider_snapshot_id IS NOT NULL",
+    )
+    .bind(source_snapshot_id)
+    .fetch_all(database.pool())
+    .await?;
+    let bookmark_playlists = bookmark_rows
         .into_iter()
         .map(|row| {
             let provider_playlist_id: String = row.try_get("provider_playlist_id")?;
@@ -139,6 +171,7 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
     };
     Ok(ReusePlan {
         playlists,
+        bookmark_playlists,
         saved_tracks,
     })
 }
@@ -158,6 +191,15 @@ async fn persist(
     .bind(account_id)
     .execute(&mut *transaction)
     .await?;
+    sqlx::query(
+        "UPDATE external_playlist_bookmarks
+         SET present_in_provider_library = FALSE, last_checked_at = now(), updated_at = now()
+         WHERE provider_account_id = $1 AND provider = $2",
+    )
+    .bind(account_id)
+    .bind(PROVIDER)
+    .execute(&mut *transaction)
+    .await?;
     let snapshot_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO provider_library_snapshots
@@ -170,6 +212,7 @@ async fn persist(
     .bind(json!({
         "followed_playlists_skipped": inventory.followed_playlists_skipped,
         "inaccessible_collaborative_playlists": inventory.inaccessible_collaborative_playlists,
+        "external_bookmarks_seen": inventory.external_playlists.len(),
         "saved_items_seen": inventory.saved_tracks.total,
     }))
     .execute(&mut *transaction)
@@ -181,6 +224,8 @@ async fn persist(
     let mut saved_tracks = 0;
     let mut unavailable_items = 0;
     let mut unsupported_items = 0;
+    let mut external_bookmark_entries = 0;
+    let mut external_bookmarks_reused = 0;
 
     for playlist_inventory in &inventory.playlists {
         let playlist = &playlist_inventory.playlist;
@@ -272,6 +317,85 @@ async fn persist(
         }
     }
 
+    for external in &inventory.external_playlists {
+        let bookmark_id = upsert_external_bookmark(account_id, external, &mut transaction).await?;
+        let playlist = &external.playlist;
+        sqlx::query(
+            "INSERT INTO external_playlist_bookmark_snapshots
+             (snapshot_id, bookmark_id, relationship, name, owner_provider_id,
+              owner_display_name, provider_url, provider_snapshot_id, content_status,
+              item_count, metadata)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+        )
+        .bind(snapshot_id)
+        .bind(bookmark_id)
+        .bind(external.relationship.as_str())
+        .bind(nonempty_or(&playlist.name, "Untitled external playlist"))
+        .bind(&playlist.owner.id)
+        .bind(&playlist.owner.display_name)
+        .bind(playlist.external_urls.spotify())
+        .bind(&playlist.snapshot_id)
+        .bind(external.content_status.as_str())
+        .bind(to_i32(playlist.total_items(), "bookmark item count")?)
+        .bind(serde_json::to_value(playlist)?)
+        .execute(&mut *transaction)
+        .await?;
+
+        if let Some(source_snapshot_id) = external.reused_from_snapshot {
+            let copied = sqlx::query(
+                "INSERT INTO external_playlist_bookmark_tracks
+                 (snapshot_id, bookmark_id, provider_track_id, position,
+                  added_at, metadata, captured_at)
+                 SELECT $1, bookmark_id, provider_track_id, position,
+                        added_at, metadata, now()
+                 FROM external_playlist_bookmark_tracks
+                 WHERE snapshot_id = $2 AND bookmark_id = $3",
+            )
+            .bind(snapshot_id)
+            .bind(source_snapshot_id)
+            .bind(bookmark_id)
+            .execute(&mut *transaction)
+            .await?
+            .rows_affected();
+            external_bookmark_entries += usize::try_from(copied).map_err(|_| {
+                ChordriftError::Configuration(
+                    "copied bookmark entry count exceeds platform limits".to_owned(),
+                )
+            })?;
+            external_bookmarks_reused += 1;
+            continue;
+        }
+
+        for (position, item) in external.items.iter().enumerate() {
+            let Some(track) = item.track() else {
+                unavailable_items += 1;
+                continue;
+            };
+            let Some(provider_track_id) =
+                persist_track(track, &mut tracks, &mut transaction, &mut unsupported_items).await?
+            else {
+                continue;
+            };
+            sqlx::query(
+                "INSERT INTO external_playlist_bookmark_tracks
+                 (snapshot_id, bookmark_id, provider_track_id, position, added_at, metadata)
+                 VALUES ($1, $2, $3, $4, $5, $6)",
+            )
+            .bind(snapshot_id)
+            .bind(bookmark_id)
+            .bind(provider_track_id)
+            .bind(to_i32(position, "bookmark playlist position")?)
+            .bind(item.added_at)
+            .bind(json!({
+                "added_by": item.added_by,
+                "is_local": item.is_local,
+            }))
+            .execute(&mut *transaction)
+            .await?;
+            external_bookmark_entries += 1;
+        }
+    }
+
     let saved_tracks_reused = inventory.saved_tracks.reused_from_snapshot.is_some();
     if let Some(source_snapshot_id) = inventory.saved_tracks.reused_from_snapshot {
         let copied = sqlx::query(
@@ -335,6 +459,8 @@ async fn persist(
         "followed_playlists_skipped": inventory.followed_playlists_skipped,
         "inaccessible_collaborative_playlists": inventory.inaccessible_collaborative_playlists,
         "unique_tracks": tracks.len(),
+        "external_bookmarks": inventory.external_playlists.len(),
+        "external_bookmark_entries": external_bookmark_entries,
     }))
     .execute(&mut *transaction)
     .await?;
@@ -363,7 +489,66 @@ async fn persist(
         unsupported_items,
         followed_playlists_skipped: inventory.followed_playlists_skipped,
         inaccessible_collaborative_playlists: inventory.inaccessible_collaborative_playlists,
+        external_bookmarks: inventory.external_playlists.len(),
+        external_bookmarks_reused,
+        external_bookmark_entries,
     })
+}
+
+async fn upsert_external_bookmark(
+    account_id: Uuid,
+    external: &ExternalPlaylistInventory,
+    transaction: &mut Transaction<'_, Postgres>,
+) -> Result<Uuid> {
+    let playlist = &external.playlist;
+    sqlx::query_scalar(
+        "INSERT INTO external_playlist_bookmarks
+         (provider_account_id, provider, provider_playlist_id, relationship,
+          name, owner_provider_id, owner_display_name, provider_uri, provider_url,
+          provider_snapshot_id, public, collaborative, item_count, content_status,
+          present_in_provider_library, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+                 TRUE, $15)
+         ON CONFLICT (provider_account_id, provider, provider_playlist_id) DO UPDATE SET
+           relationship = EXCLUDED.relationship,
+           name = EXCLUDED.name,
+           owner_provider_id = EXCLUDED.owner_provider_id,
+           owner_display_name = EXCLUDED.owner_display_name,
+           provider_uri = EXCLUDED.provider_uri,
+           provider_url = EXCLUDED.provider_url,
+           last_changed_at = CASE
+             WHEN external_playlist_bookmarks.provider_snapshot_id
+                  IS DISTINCT FROM EXCLUDED.provider_snapshot_id THEN now()
+             ELSE external_playlist_bookmarks.last_changed_at
+           END,
+           provider_snapshot_id = EXCLUDED.provider_snapshot_id,
+           public = EXCLUDED.public,
+           collaborative = EXCLUDED.collaborative,
+           item_count = EXCLUDED.item_count,
+           content_status = EXCLUDED.content_status,
+           present_in_provider_library = TRUE,
+           metadata = EXCLUDED.metadata,
+           last_seen_at = now(), last_checked_at = now(), updated_at = now()
+         RETURNING id",
+    )
+    .bind(account_id)
+    .bind(PROVIDER)
+    .bind(&playlist.id)
+    .bind(external.relationship.as_str())
+    .bind(nonempty_or(&playlist.name, "Untitled external playlist"))
+    .bind(&playlist.owner.id)
+    .bind(&playlist.owner.display_name)
+    .bind(&playlist.uri)
+    .bind(playlist.external_urls.spotify())
+    .bind(&playlist.snapshot_id)
+    .bind(playlist.public)
+    .bind(playlist.collaborative)
+    .bind(to_i32(playlist.total_items(), "bookmark item count")?)
+    .bind(external.content_status.as_str())
+    .bind(serde_json::to_value(playlist)?)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(Into::into)
 }
 
 async fn upsert_account(
@@ -795,6 +980,7 @@ mod tests {
                 items: items.items,
                 reused_from_snapshot: None,
             }],
+            external_playlists: Vec::new(),
             saved_tracks: super::super::models::SavedTracksInventory {
                 total: saved_tracks.total,
                 items: saved_tracks.items,

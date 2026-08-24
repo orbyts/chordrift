@@ -281,6 +281,13 @@ show provider-library removal as a separate explicitly approved plan category.
 External bookmarks must never be mistaken for owned legacy playlists or
 canonical inputs.
 
+The bookmark foundation persists stable records and immutable pull-bound
+observations in Neon. Normal pulls detect snapshot-signature changes for
+relationships still visible to Spotify; public followed contents remain
+metadata-only under Development Mode, while readable collaborative contents
+are copied forward without redundant requests. Archived on-demand refresh and
+separately approved provider-library cleanup remain later v0.0.9 slices.
+
 Generate one simple original cover-art artifact for every approved canonical
 playlist before publication. Artwork should be derived from the approved name,
 description, and semantic tags; use a restrained shared visual system while

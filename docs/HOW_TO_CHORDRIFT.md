@@ -217,9 +217,36 @@ legacy retirement.
 
 Cleanup means removing the external playlist from your provider library. It
 never means deleting or editing your friend's source playlist, and it always
-requires separate approval. The current Spotify importer skips ordinary
-followed playlists and reports their count; bookmark names, contents, and
-cleanup planning are scheduled for v0.0.9.
+requires separate approval. The Spotify importer stores these records in Neon
+during a normal pull. Public followed playlists are metadata-only under
+Spotify's current Development Mode limits; externally owned collaborative
+contents are retained when Spotify permits access and explicitly marked
+inaccessible otherwise. Private, account-specific playlists owned by Spotify
+remain active provider-curated signal sources rather than bookmarks.
+
+List both currently followed and archived bookmarks:
+
+```console
+$ chordrift bookmarks list --account personal
+```
+
+`present` says whether Spotify still reports the relationship. `last_changed`
+advances when Spotify's playlist snapshot signature changes, so another
+`chordrift sync pull` can reveal an update while the playlist is still visible
+to the account. Archived bookmarks remain listed after later cleanup.
+
+Inspect the newest complete contents Spotify allowed Chordrift to retain:
+
+```console
+$ chordrift bookmarks tracks --account personal --name "alone in the car"
+$ chordrift bookmarks tracks --account personal --spotify-id PLAYLIST_ID
+```
+
+Names must be unambiguous; the stable ID form always wins. A metadata-only or
+inaccessible bookmark with no older complete snapshot reports that limitation
+instead of presenting an empty playlist as authoritative. Explicit refresh of
+an archived bookmark is a later v0.0.9 operation and will not add dozens of
+requests to every normal sync.
 
 ### Which playlist should receive a new song?
 
