@@ -260,9 +260,8 @@ At the end of each focused task:
 5. Leave the active branch and working tree state explicit for the next task.
 
 Current handoff state: active branch `codex/embeddings`, PR
-<https://github.com/orbyts/chordrift/pull/1>. CI run `32759966956` is green and
-migrations are live through 0011. The working tree contains the final
-1,024-dimension default and documentation updates described above until they
-are committed. Next, run the full local check suite, commit/push, wait for CI,
-then decide whether v0.0.5 is ready to merge. MusicBrainz language/region
+<https://github.com/orbyts/chordrift/pull/1>, implementation commit `c2f638c`.
+CI run `32761217658` is green, migrations are live through 0011, and the full
+local check/package suite passed. The branch is ready for final PR review before
+merge; no provider mutation was performed. MusicBrainz language/region
 enrichment and the Excluded Tracks schema/apply behavior remain future work.
