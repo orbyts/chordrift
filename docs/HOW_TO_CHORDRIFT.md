@@ -10,6 +10,14 @@ create, edit, reorder, or delete anything in Spotify.
 
 ## Everyday workflow
 
+Chordrift has three deliberately separate synchronization paths:
+
+| Command | Input | Purpose |
+| --- | --- | --- |
+| `chordrift sync pull` | Spotify's live Web API plus history already in Neon | Update current playlists/saved tracks and relink already-imported history; never scan local ZIPs. |
+| `chordrift history ingest` | Newly downloaded ZIPs in the local account inbox | Add only previously unknown historical events, then retain the ZIPs in the local archive. |
+| `chordrift history restore` | ZIPs already retained in the local archive | Rebuild enrichment after database recovery; not part of normal synchronization. |
+
 After changing one or more playlists in Spotify, pull those changes into Neon:
 
 ```console
