@@ -8,6 +8,8 @@
 
 /// Account-scoped canonical library analysis.
 pub mod analysis;
+/// Read-only proof that an immutable sync plan is safe for a future apply engine.
+pub mod apply_readiness;
 /// Local-only, content-addressed playlist artwork approval records.
 pub mod artwork;
 /// Durable metadata and last-known contents for externally owned playlists.

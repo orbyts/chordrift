@@ -414,7 +414,7 @@ retirement additionally requires separate future approval. The planner makes
 no Spotify request and Spotify write scopes remain disabled. Migration 0019
 also introduces stable concept mappings for future published provider
 playlists and the provider-neutral reversible `excluded_tracks` ledger.
-Migrations 0019 through 0022 are live and Neon is healthy at 22/22. Migration 0020
+Migrations 0019 through 0024 are live and Neon is healthy at 24/24. Migration 0020
 adds immutable successful managed-playlist baselines so a later missing
 expected track becomes an internal `exclude_track` proposal rather than an
 automatic re-add; an unexpected extra remains ordinary provider drift. The
@@ -434,8 +434,8 @@ operations plus 13 separately approved `remove_external_playlist` operations,
 for 1,020 total. Cleanup batch `016defcd-f46b-4070-991d-73cb4c89f00a`
 captures and approves all 13 present external bookmarks with input hash
 `8528685a4f488784acd5a9381d183a7795485547714981cc3d5eb25006cfaa12`.
-Repeated v5 planning reuses the plan exactly. Next is v0.0.9 apply-readiness
-validation; it must remain read-only against Spotify.
+Repeated v5 planning reuses the plan exactly. v0.0.9 apply-readiness validation
+is now implemented and remains read-only against Spotify.
 That milestone also generates one simple original deterministic cover per
 canonical playlist from its approved name/description/tags, stores generator
 version and SHA-256, produces a contact-sheet-style preview, and requires
@@ -456,6 +456,19 @@ input hash `c5e295d0914f1ee8d386fcf4f7ca297e2811449cb84acbe30287afddd8d7714a`.
 Re-importing the unchanged manifest reuses that exact approved batch. Artwork
 approval is local/Neon-only and must not request Spotify image-upload scope or
 upload covers before v0.1.0.
+
+Migration 0024, `src/apply_readiness.rs`, and
+`chordrift sync readiness|readiness-show` now persist an immutable safety
+assessment for one exact plan. Live assessment
+`7cedca9e-ed2b-4ddb-baca-f2a701db531c` is bound to plan
+`68ee490c-f5f4-4e23-9a48-7f4933cd6511` and input hash
+`575c5971219bbfc8bb3f1f8471833fadc8e19abdb16997a4d5d3d5feed0f8e91`.
+It is `ready`: 10/10 checks passed across 1,020 operations, five simulated
+restart checkpoints recovered all operations, and replay produced zero
+changes. The one-request live probe confirmed only
+`playlist-read-private`, `playlist-read-collaborative`, and
+`user-library-read`; no modify or image-upload scope is granted. All 120
+destructive operations remain deferred, and `spotify_writes: disabled`.
 
 Migration 0021 established the bookmark inventory. Two consecutive
 read-only pulls produced snapshots `6544a59b-c6e7-4ec0-92d8-3129132bb449`

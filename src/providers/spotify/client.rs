@@ -19,6 +19,27 @@ const PAGE_LIMIT: &str = "50";
 const MAX_RATE_LIMIT_RETRIES: usize = 5;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Bounded 429 retry behavior shared with apply-readiness validation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct RetryPolicy {
+    pub(crate) max_retries: usize,
+    pub(crate) max_delay_seconds: u64,
+}
+
+pub(crate) fn retry_policy() -> RetryPolicy {
+    RetryPolicy {
+        max_retries: MAX_RATE_LIMIT_RETRIES,
+        max_delay_seconds: 60,
+    }
+}
+
+fn retry_delay_seconds(value: Option<&str>) -> u64 {
+    value
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(1)
+        .min(retry_policy().max_delay_seconds)
+}
+
 /// Authenticated, read-only Spotify Web API client.
 #[derive(Clone, Debug)]
 pub struct SpotifyClient {
@@ -276,13 +297,12 @@ impl SpotifyClient {
                 && attempt < MAX_RATE_LIMIT_RETRIES
             {
                 attempt += 1;
-                let delay = response
-                    .headers()
-                    .get(reqwest::header::RETRY_AFTER)
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .unwrap_or(1)
-                    .min(60);
+                let delay = retry_delay_seconds(
+                    response
+                        .headers()
+                        .get(reqwest::header::RETRY_AFTER)
+                        .and_then(|value| value.to_str().ok()),
+                );
                 sleep(Duration::from_secs(delay)).await;
                 continue;
             }
@@ -411,7 +431,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        is_private_spotify_personalized, playlist_items_url, saved_page_matches, validate_api_url,
+        is_private_spotify_personalized, playlist_items_url, retry_delay_seconds, retry_policy,
+        saved_page_matches, validate_api_url,
     };
     use crate::providers::spotify::models::{Page, SavedTrack, SavedTrackReuse};
 
@@ -437,6 +458,16 @@ mod tests {
         assert!(!is_private_spotify_personalized("spotify", Some(true)));
         assert!(!is_private_spotify_personalized("spotify", None));
         assert!(!is_private_spotify_personalized("friend", Some(false)));
+    }
+
+    #[test]
+    fn bounds_rate_limit_retries_and_retry_after() {
+        let policy = retry_policy();
+        assert_eq!(policy.max_retries, 5);
+        assert_eq!(retry_delay_seconds(None), 1);
+        assert_eq!(retry_delay_seconds(Some("invalid")), 1);
+        assert_eq!(retry_delay_seconds(Some("17")), 17);
+        assert_eq!(retry_delay_seconds(Some("999")), policy.max_delay_seconds);
     }
 
     #[test]

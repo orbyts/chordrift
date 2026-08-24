@@ -274,6 +274,13 @@ rate-limit handling, and convergence checks against Spotify fixtures and
 read-only probes. Continue to prohibit remote mutations while proving that an
 approved plan can be executed safely and audited completely.
 
+Apply readiness is recorded as an immutable assessment of one exact dry-run.
+It validates snapshot freshness, proposal and artwork approval, operation
+integrity and destructive gates, the external-cleanup approval, five simulated
+resume checkpoints, bounded 429 retry behavior, zero-change replay, and one
+explicit read-only Spotify identity/scope probe. A missing probe or stale gate
+produces an inspectable blocked assessment; neither state enables writes.
+
 Inventory owned, provider-curated, collaborative-external, and followed-
 external playlists as distinct relationships. Add read-only bookmark list and
 content inspection, preserve accessible external contents before cleanup, and

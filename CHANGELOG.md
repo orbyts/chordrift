@@ -20,6 +20,10 @@ All notable changes to Chordrift are documented here.
 - Add strict artwork-manifest validation, content hashes, immutable Neon review
   batches, and explicit `artwork import|status|list|approve` commands without
   requesting Spotify image-upload scope or performing provider writes.
+- Add immutable v0.0.9 apply-readiness assessments for snapshot freshness,
+  approvals, operation ordering, destructive gates, interruption recovery,
+  bounded Spotify 429 retries, idempotent replay, and explicit read-only OAuth
+  scope probes through `sync readiness|readiness-show`.
 - Define External Playlist Bookmarks for followed and externally collaborative
   Spotify/Apple Music playlists so their metadata and accessible contents can
   be retained in Neon before separately approved provider-library cleanup.

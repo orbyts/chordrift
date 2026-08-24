@@ -686,6 +686,31 @@ become mutation targets.
 `snapshot_current: false` means a later pull superseded the plan's observed
 state, so generate a new plan rather than relying on the stale one.
 
+## Apply-readiness validation
+
+Before v0.1.0 enables any write path, assess the newest immutable plan and
+perform the single-request authenticated read-only probe:
+
+```console
+$ chordrift sync readiness --account personal --probe
+$ chordrift sync readiness-show --account personal
+$ chordrift sync readiness-show --account personal \
+    --assessment ASSESSMENT_UUID
+```
+
+The assessment is stored immutably in Neon. It verifies the current snapshot,
+approved proposal and complete approved artwork, ordered and uniquely keyed
+operations, destructive-operation gates, the approved external-cleanup batch,
+five simulated interruption/resume points, bounded Spotify 429 handling, and
+zero changes on an idempotent operation replay. The provider probe refreshes
+the existing credential and calls Spotify's current-user endpoint only; it
+rejects credentials containing `playlist-modify-*` or `ugc-image-upload`.
+
+Running `sync readiness` without `--probe` is useful as an offline diagnostic,
+but its provider-probe check remains blocked and the overall result is not
+ready. Even a `ready` assessment reports `spotify_writes: disabled`: it is
+evidence for the future apply implementation, not an execution command.
+
 ## Semantic enrichment
 
 MusicBrainz enrichment is independent from Spotify synchronization. It resolves

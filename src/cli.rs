@@ -6,9 +6,9 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
-    ChordriftError, Result, analysis, artwork, bookmarks, clusters, config, db, embeddings,
-    enrichment, history, model_inference, playlists, proposals, providers::spotify, signals,
-    sync_plan,
+    ChordriftError, Result, analysis, apply_readiness, artwork, bookmarks, clusters, config, db,
+    embeddings, enrichment, history, model_inference, playlists, proposals, providers::spotify,
+    signals, sync_plan,
 };
 
 /// Chordrift command-line interface.
@@ -170,6 +170,27 @@ pub enum SyncCommand {
         /// Print every exact operation after the summary.
         #[arg(long)]
         details: bool,
+    },
+    /// Prove future apply safety against an immutable plan without provider writes.
+    Readiness {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact plan ID; defaults to the newest plan.
+        #[arg(long)]
+        plan: Option<uuid::Uuid>,
+        /// Perform one authenticated read-only identity and OAuth-scope probe.
+        #[arg(long)]
+        probe: bool,
+    },
+    /// Show the latest or selected immutable apply-readiness assessment.
+    ReadinessShow {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact assessment ID; defaults to the newest assessment.
+        #[arg(long)]
+        assessment: Option<uuid::Uuid>,
     },
 }
 
@@ -887,6 +908,44 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                 database.close().await;
                 result?;
             }
+            SyncCommand::Readiness {
+                account,
+                plan,
+                probe,
+            } => {
+                let provider_status = if probe {
+                    Some(spotify::status(&account).await?)
+                } else {
+                    None
+                };
+                let database = connect_current_database().await?;
+                let result = async {
+                    let report = apply_readiness::assess(
+                        &database,
+                        &account,
+                        plan,
+                        provider_status.as_ref(),
+                    )
+                    .await?;
+                    write_readiness_report(output, &report)
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            SyncCommand::ReadinessShow {
+                account,
+                assessment,
+            } => {
+                let database = connect_current_database().await?;
+                let result = async {
+                    let report = apply_readiness::show(&database, &account, assessment).await?;
+                    write_readiness_report(output, &report)
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
         },
         Command::Analyze { command } => {
             let database = connect_current_database().await?;
@@ -1042,6 +1101,55 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn write_readiness_report(
+    output: &mut impl Write,
+    report: &apply_readiness::ReadinessReport,
+) -> Result<()> {
+    writeln!(
+        output,
+        "apply_readiness: {}{}",
+        report.status,
+        if report.reused {
+            " (already current)"
+        } else {
+            ""
+        }
+    )?;
+    writeln!(output, "assessment_id: {}", report.assessment_id)?;
+    writeln!(output, "plan_id: {}", report.plan_id)?;
+    writeln!(output, "operations: {}", report.operation_count)?;
+    writeln!(
+        output,
+        "checks: {}/{} passed",
+        report.passed_checks, report.check_count
+    )?;
+    writeln!(
+        output,
+        "restart_checkpoints: {}",
+        report.restart_checkpoints
+    )?;
+    writeln!(output, "replay_changes: {}", report.replay_changes)?;
+    writeln!(
+        output,
+        "provider_probe_performed: {}",
+        report.provider_probe_performed
+    )?;
+    writeln!(output, "input_hash: {}", report.input_hash)?;
+    writeln!(output, "created_at: {}", report.created_at.to_rfc3339())?;
+    writeln!(output, "status\tcheck\tevidence")?;
+    for check in &report.checks {
+        writeln!(
+            output,
+            "{}\t{}\t{}",
+            if check.passed { "passed" } else { "blocked" },
+            check.name,
+            clean_cell(&check.evidence.to_string())
+        )?;
+    }
+    writeln!(output, "spotify_writes: disabled")?;
     Ok(())
 }
 
@@ -2494,6 +2602,37 @@ mod tests {
                     account,
                     plan: None,
                     details: true
+                }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_apply_readiness_with_read_only_probe() {
+        let cli = Cli::try_parse_from(["chordrift", "sync", "readiness", "--probe"])
+            .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Sync {
+                command: SyncCommand::Readiness {
+                    account,
+                    plan: None,
+                    probe: true
+                }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_apply_readiness_inspection() {
+        let cli =
+            Cli::try_parse_from(["chordrift", "sync", "readiness-show"]).expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Sync {
+                command: SyncCommand::ReadinessShow {
+                    account,
+                    assessment: None
                 }
             } if account == "personal"
         ));
