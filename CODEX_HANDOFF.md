@@ -140,12 +140,27 @@ history parser from assumed examples; inspect the user's actual archive first,
 then apply the same immutable, cumulative, PII-excluding principles used for
 Spotify.
 
-Neon remains authoritative and Spotify is the only active provider for now.
-SongShift can mirror every canonical Spotify playlist individually, so do not
-create a replacement for the obsolete `Two Way Sync` playlist. Before the user
-clears Apple Music, first transfer any Apple-only material into a temporary
-Spotify intake, pull it into Neon, and verify coverage. SongShift is a temporary
-publishing workaround, not an authoritative provider adapter.
+Neon remains the durable identity, provenance, history, and orchestration
+ledger, while Spotify is the only active live provider for now. SongShift can
+mirror every canonical Spotify playlist individually, so do not replace the
+obsolete `Two Way Sync` playlist. Bootstrap the old Apple library once from the
+two SongShift JSON exports rather than transferring it through temporary
+Spotify playlists. SongShift remains a temporary publishing workaround, not an
+authoritative native provider adapter.
+
+The two 2026-08-24 exports are preserved under the Git-ignored
+`data/apple/personal/bootstrap/` content-addressed archive. They contain 952
+and 309 entries, 73 exact overlaps, and 1,185 unique Apple service IDs. Only 173
+unique ISRCs are present, so do not create canonical tracks from loose fuzzy
+matches. Automatically link unambiguous identities and stage ambiguous or
+unmatched metadata for review.
+
+Future native platforms are authoritative evidence for live user actions on
+their respective surfaces. A deletion should create a provider-scoped
+tombstone/override in Neon, not hard-delete the canonical track, history, or
+provenance. Reconciliation must distinguish intentional user removal from
+provider drift and prevent delete/re-add loops before propagating an action to
+another platform.
 
 ## Current roadmap and next task
 

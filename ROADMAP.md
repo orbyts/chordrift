@@ -86,13 +86,22 @@ clustering, naming, playlist proposals, and dry-run synchronization. Apple work
 will be rebased onto the then-current main line rather than reserving or
 blocking a release number.
 
-Neon remains canonical; Spotify is the only active provider and intake surface
-until native Apple support resumes. Before clearing an existing Apple Music
-library, transfer any Apple-only tracks or playlists into a temporary Spotify
-intake, pull them into Neon, and verify canonical coverage. After that one-time
-consolidation, SongShift can mirror multiple Chordrift-managed Spotify playlists
-to Apple Music using the same approved canonical names. No aggregate "two way
-sync" or transfer-relay playlist is required.
+Neon remains the durable identity, provenance, history, and orchestration
+ledger; Spotify is the only active live provider and intake surface until
+native Apple support resumes. Bootstrap the existing Apple library once from
+SongShift JSON rather than creating temporary Spotify playlists. Retain the
+original exports in the Git-ignored content-addressed archive, automatically
+link only unambiguous identities, and stage uncertain metadata matches for
+review. After consolidation, SongShift can mirror multiple Chordrift-managed
+Spotify playlists to Apple Music using the same approved canonical names. No
+aggregate "two way sync" or transfer-relay playlist is required.
+
+When both native providers are active, each platform is authoritative evidence
+for user actions on that platform. A user removal creates a provider-scoped
+tombstone/override; it does not erase the canonical track, history, or
+provenance from Neon. Reconciliation policy decides whether an intentional
+removal propagates to other providers and must prevent deletion/re-addition
+loops.
 
 Until native Apple matching resumes, Spatial Audio curation uses an explicit
 manual workaround:
