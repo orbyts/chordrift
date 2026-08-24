@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result, embeddings};
 
 const ALGORITHM: &str = "spherical-kmeans";
-const ALGORITHM_VERSION: &str = "1";
+const ALGORITHM_VERSION: &str = "2";
 const DEFAULT_SEED: i64 = 42;
 const DEFAULT_ITERATIONS: usize = 50;
 
@@ -94,6 +94,7 @@ pub struct ClusterTrack {
 struct Item {
     id: Uuid,
     embedding: Vec<f64>,
+    semantic_seed: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -108,6 +109,7 @@ pub async fn generate(
     account_label: &str,
     count: u32,
     min_similarity: f64,
+    min_cluster_size: u32,
     seed: Option<i64>,
 ) -> Result<GenerationReport> {
     if !(2..=100).contains(&count) {
@@ -120,13 +122,40 @@ pub async fn generate(
             "minimum cluster similarity must be between -1 and 1".to_owned(),
         ));
     }
+    if !(2..=1_000).contains(&min_cluster_size) {
+        return Err(ChordriftError::Configuration(
+            "minimum cluster size must be between 2 and 1000".to_owned(),
+        ));
+    }
     let account_id = account_id(database, account_label).await?;
     let embedding = embeddings::status(database, account_label).await?;
     let rows = sqlx::query(
-        "SELECT track_id, embedding FROM account_track_embeddings
-         WHERE generation_id = $1 ORDER BY track_id",
+        "SELECT embedding.track_id, embedding.embedding,
+                EXISTS (
+                    SELECT 1
+                    FROM provider_playlist_tracks membership
+                    JOIN provider_tracks provider_track
+                      ON provider_track.id = membership.provider_track_id
+                    JOIN provider_account_playlists account_playlist
+                      ON account_playlist.provider_playlist_id = membership.provider_playlist_id
+                     AND account_playlist.provider_account_id = $2
+                    WHERE membership.snapshot_id = $3
+                      AND provider_track.track_id = embedding.track_id
+                      AND account_playlist.signal_class = 'semantic_legacy'
+                      AND account_playlist.semantic_weight > 0
+                ) OR EXISTS (
+                    SELECT 1 FROM track_semantic_facts fact
+                    WHERE fact.track_id = embedding.track_id
+                ) OR EXISTS (
+                    SELECT 1 FROM track_model_inferences inference
+                    WHERE inference.track_id = embedding.track_id
+                ) AS semantic_seed
+         FROM account_track_embeddings embedding
+         WHERE embedding.generation_id = $1 ORDER BY embedding.track_id",
     )
     .bind(embedding.generation_id)
+    .bind(account_id)
+    .bind(embedding.snapshot_id)
     .fetch_all(database.pool())
     .await?;
     let items = rows
@@ -135,6 +164,7 @@ pub async fn generate(
             Ok(Item {
                 id: row.try_get("track_id")?,
                 embedding: row.try_get("embedding")?,
+                semantic_seed: row.try_get("semantic_seed")?,
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -144,19 +174,32 @@ pub async fn generate(
             items.len()
         )));
     }
+    let seed_items: Vec<_> = items
+        .iter()
+        .filter(|item| item.semantic_seed)
+        .cloned()
+        .collect();
+    if seed_items.len() < count as usize {
+        return Err(ChordriftError::Configuration(format!(
+            "cluster count {count} exceeds the {} tracks with semantic seed evidence",
+            seed_items.len()
+        )));
+    }
     let seed = seed.unwrap_or(DEFAULT_SEED);
     let input_hash = generation_hash(
         embedding.generation_id,
         &embedding.input_hash,
         count,
         min_similarity,
+        min_cluster_size,
         seed,
     );
     if let Some(report) = reused_report(database, account_id, &input_hash).await? {
         return Ok(report);
     }
 
-    let (centroids, assignments) = spherical_kmeans(&items, count as usize, seed);
+    let (centroids, _) = spherical_kmeans(&seed_items, count as usize, seed);
+    let assignments = assign(&items, &centroids);
     let mut members = vec![Vec::<(usize, f64)>::new(); centroids.len()];
     let mut unassigned_count = 0;
     for (item_index, assignment) in assignments.into_iter().enumerate() {
@@ -164,6 +207,12 @@ pub async fn generate(
             unassigned_count += 1;
         } else {
             members[assignment.cluster].push((item_index, assignment.score));
+        }
+    }
+    for cluster in &mut members {
+        if cluster.len() < min_cluster_size as usize {
+            unassigned_count += cluster.len();
+            cluster.clear();
         }
     }
     members.retain(|cluster| !cluster.is_empty());
@@ -178,6 +227,8 @@ pub async fn generate(
 
     let parameters = json!({
         "requested_clusters": count,
+        "semantic_seed_tracks": seed_items.len(),
+        "min_cluster_size": min_cluster_size,
         "iterations": DEFAULT_ITERATIONS,
         "initialization": "deterministic-farthest-first",
         "distance": "cosine",
@@ -469,6 +520,7 @@ fn generation_hash(
     embedding_hash: &str,
     count: u32,
     min_similarity: f64,
+    min_cluster_size: u32,
     seed: i64,
 ) -> String {
     let mut hasher = Sha256::new();
@@ -478,6 +530,7 @@ fn generation_hash(
     hasher.update(embedding_hash.as_bytes());
     hasher.update(count.to_be_bytes());
     hasher.update(min_similarity.to_bits().to_be_bytes());
+    hasher.update(min_cluster_size.to_be_bytes());
     hasher.update(seed.to_be_bytes());
     format!("{:x}", hasher.finalize())
 }
@@ -581,6 +634,7 @@ mod tests {
         Item {
             id: Uuid::new_v4(),
             embedding: vector.to_vec(),
+            semantic_seed: true,
         }
     }
 }

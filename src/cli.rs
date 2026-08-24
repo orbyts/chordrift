@@ -307,6 +307,9 @@ pub enum ClusterCommand {
         /// Leave tracks below this centroid cosine similarity unassigned.
         #[arg(long, default_value_t = 0.05, allow_hyphen_values = true)]
         min_similarity: f64,
+        /// Do not persist playlist-like clusters smaller than this.
+        #[arg(long, default_value_t = 10)]
+        min_cluster_size: u32,
         /// Reproducibility seed; defaults to 42.
         #[arg(long)]
         seed: Option<i64>,
@@ -1177,10 +1180,18 @@ async fn run_cluster_command(
             account,
             count,
             min_similarity,
+            min_cluster_size,
             seed,
         } => {
-            let report =
-                clusters::generate(database, &account, count, min_similarity, seed).await?;
+            let report = clusters::generate(
+                database,
+                &account,
+                count,
+                min_similarity,
+                min_cluster_size,
+                seed,
+            )
+            .await?;
             writeln!(output, "clusters: generated")?;
             writeln!(output, "generation_id: {}", report.generation_id)?;
             writeln!(
@@ -1807,6 +1818,7 @@ mod tests {
                     account,
                     count: 12,
                     min_similarity,
+                    min_cluster_size: 10,
                     seed: None
                 }
             } if account == "personal" && (min_similarity - 0.05).abs() < f64::EPSILON

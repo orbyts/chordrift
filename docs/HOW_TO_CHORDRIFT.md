@@ -403,17 +403,19 @@ Generate a non-destructive diagnostic structure from the latest immutable
 embedding generation:
 
 ```console
-$ chordrift clusters generate --account personal --count 12 --min-similarity 0.05
+$ chordrift clusters generate --account personal --count 12 --min-similarity 0.05 --min-cluster-size 10
 $ chordrift clusters status --account personal
 $ chordrift clusters list --account personal
 $ chordrift clusters tracks --account personal --cluster vibe-0123456789ab --limit 100
 ```
 
-Clustering uses deterministic farthest-first initialization and spherical
-k-means over cosine similarity. The generation records the exact embedding
+Clustering trains deterministic farthest-first spherical k-means centroids on
+tracks with genuine semantic seed evidence, then considers all embedded tracks
+for assignment by cosine similarity. The generation records the exact embedding
 generation, algorithm/version, seed, parameters, counts, and an input hash;
 identical inputs reuse the existing result. Tracks below the configured
-centroid similarity remain explicitly unassigned. Machine labels are temporary
+centroid similarity or in undersized groups remain explicitly unassigned.
+Machine labels are temporary
 content-derived identifiers, not playlist names, and no Spotify playlist is
 created or modified.
 
