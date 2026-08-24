@@ -526,6 +526,17 @@ $ chordrift proposals approve --account personal --confirm PROPOSAL_GENERATION_U
 Approval records the account-owner decision in Neon. It still performs no
 Spotify writes; publishing belongs to the later dry-run/apply milestones.
 
+When exercising unreleased source from a machine-wide shared Cargo target,
+isolate the branch build so another clone of the same crate/version cannot
+overwrite the executable:
+
+```console
+$ cargo run --target-dir target -- proposals status --account personal
+```
+
+This is only development hygiene. After a release is installed, use the normal
+`chordrift proposals ...` commands.
+
 ## Semantic enrichment
 
 MusicBrainz enrichment is independent from Spotify synchronization. It resolves

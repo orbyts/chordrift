@@ -360,11 +360,18 @@ naming revision. Two additional manual categories, `Open-Sky Anthems` and
 `Weightless Horizons`, were created and 46 initially uncovered tracks were
 reviewed into stable destinations. The proposal now contains 14 named playlists
 and represents all 699 of 699 legacy/intake tracks; `proposals missing` is
-empty. It remains deliberately unapproved pending the account owner's explicit
-acceptance of the names and organization. No Spotify state was changed.
+empty. The account owner explicitly approved generation
+`ca81d1b2-e56b-41e6-8846-cdb379cb039b`; Neon reports `approved`, 14/14 named,
+and complete coverage. No Spotify state was changed.
 Migration 0018 and `proposals category-create/assign/review` add
 stable manual semantic destinations, reversible active decisions, complete
 revision history, a non-provider needs-review state, and replay into later
-proposal generations. Next, obtain explicit approval for generation
-`ca81d1b2-e56b-41e6-8846-cdb379cb039b`, then begin v0.0.8's immutable Spotify
-dry-run planner without remote mutation.
+proposal generations. Next, begin v0.0.8's immutable Spotify dry-run planner
+without remote mutation.
+
+Apogee configures a machine-wide shared Cargo target. Because the released
+`$CRATES/chordrift` clone and this development workspace currently share the
+same package name/version, a plain `cargo run` reused an older final executable
+that lacked `proposals`. For unreleased development commands, use a repository-
+specific target such as `cargo run --target-dir target -- ...`; do not modify
+shell initialization files.
