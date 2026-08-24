@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
     ChordriftError, Result, analysis, clusters, config, db, embeddings, enrichment, history,
-    model_inference, playlists, proposals, providers::spotify, signals,
+    model_inference, playlists, proposals, providers::spotify, signals, sync_plan,
 };
 
 /// Chordrift command-line interface.
@@ -136,6 +136,27 @@ pub enum SyncCommand {
         /// Local label for this Spotify account.
         #[arg(long, default_value = "personal")]
         account: String,
+    },
+    /// Build or reuse an immutable plan without contacting Spotify.
+    Plan {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact approved proposal; defaults to the latest approved proposal.
+        #[arg(long)]
+        proposal: Option<uuid::Uuid>,
+    },
+    /// Show the latest or selected immutable dry-run plan.
+    PlanShow {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact plan ID; defaults to the newest plan.
+        #[arg(long)]
+        plan: Option<uuid::Uuid>,
+        /// Print every exact operation after the summary.
+        #[arg(long)]
+        details: bool,
     },
 }
 
@@ -713,6 +734,53 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                     let history = history::refresh(&database, &account).await?;
                     if history.archives != 0 {
                         write_history_summary(output, &history)?;
+                    }
+                    Ok(())
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            SyncCommand::Plan { account, proposal } => {
+                let database = connect_current_database().await?;
+                let result = async {
+                    let report = sync_plan::create(&database, &account, proposal).await?;
+                    write_sync_plan_report(output, &report)
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            SyncCommand::PlanShow {
+                account,
+                plan,
+                details,
+            } => {
+                let database = connect_current_database().await?;
+                let result: Result<()> = async {
+                    let (report, snapshot_current, operations) =
+                        sync_plan::show(&database, &account, plan).await?;
+                    write_sync_plan_report(output, &report)?;
+                    writeln!(output, "snapshot_current: {snapshot_current}")?;
+                    if details {
+                        writeln!(
+                            output,
+                            "sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety"
+                        )?;
+                        for operation in operations {
+                            writeln!(
+                                output,
+                                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                                operation.sequence,
+                                operation.phase,
+                                operation.operation_type,
+                                clean_cell(&operation.playlist_name),
+                                operation.spotify_playlist_id.as_deref().unwrap_or("-"),
+                                operation.spotify_track_id.as_deref().unwrap_or("-"),
+                                clean_cell(&operation.payload.to_string()),
+                                clean_cell(&operation.safety.to_string())
+                            )?;
+                        }
                     }
                     Ok(())
                 }
@@ -1958,6 +2026,38 @@ fn write_status(output: &mut impl Write, status: &db::DatabaseStatus) -> Result<
     Ok(())
 }
 
+fn write_sync_plan_report(output: &mut impl Write, report: &sync_plan::PlanReport) -> Result<()> {
+    writeln!(
+        output,
+        "sync_plan: {}",
+        if report.reused {
+            "already current"
+        } else {
+            "created"
+        }
+    )?;
+    writeln!(output, "plan_id: {}", report.plan_id)?;
+    writeln!(
+        output,
+        "proposal_generation_id: {}",
+        report.proposal_generation_id
+    )?;
+    writeln!(output, "source_snapshot_id: {}", report.source_snapshot_id)?;
+    writeln!(output, "operations: {}", report.operation_count)?;
+    writeln!(output, "creates: {}", report.creates)?;
+    writeln!(output, "renames: {}", report.renames)?;
+    writeln!(output, "additions: {}", report.additions)?;
+    writeln!(output, "restorations: {}", report.restorations)?;
+    writeln!(output, "exclusions: {}", report.exclusions)?;
+    writeln!(output, "removals: {}", report.removals)?;
+    writeln!(output, "retirements: {}", report.retirements)?;
+    writeln!(output, "deferred: {}", report.deferred)?;
+    writeln!(output, "input_hash: {}", report.input_hash)?;
+    writeln!(output, "created_at: {}", report.created_at.to_rfc3339())?;
+    writeln!(output, "spotify_writes: disabled")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -2000,6 +2100,43 @@ mod tests {
             cli.command,
             Command::Sync {
                 command: SyncCommand::Pull { account }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_dry_run_sync_plan() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "sync",
+            "plan",
+            "--proposal",
+            "ca81d1b2-e56b-41e6-8846-cdb379cb039b",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Sync {
+                command: SyncCommand::Plan {
+                    account,
+                    proposal: Some(_)
+                }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_detailed_sync_plan_inspection() {
+        let cli = Cli::try_parse_from(["chordrift", "sync", "plan-show", "--details"])
+            .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Sync {
+                command: SyncCommand::PlanShow {
+                    account,
+                    plan: None,
+                    details: true
+                }
             } if account == "personal"
         ));
     }

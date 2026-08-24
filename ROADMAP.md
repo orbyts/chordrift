@@ -243,11 +243,24 @@ rate-limit handling, and convergence checks against Spotify fixtures and
 read-only probes. Continue to prohibit remote mutations while proving that an
 approved plan can be executed safely and audited completely.
 
+Generate one simple original cover-art artifact for every approved canonical
+playlist before publication. Artwork should be derived from the approved name,
+description, and semantic tags; use a restrained shared visual system while
+remaining distinct per playlist. Store generator/prompt or template version,
+dimensions, media type, and content SHA-256, provide a local contact sheet or
+equivalent preview, and require explicit approval. Identical inputs must reuse
+identical artifacts. Do not use provider artwork, copyrighted source images, or
+personal photos, and do not request Spotify image-upload scope or upload a
+cover during this read-only milestone.
+
 ## v0.1.0 — Canonical music library
 
 Synchronize approved canonical playlists from Neon to Spotify, retain
 provenance and operation history, and converge to zero changes on repeated
-runs. Remove legacy or consumed discovery playlists only as separately approved
-operations after their replacement playlists are published and verified. Apple
+runs. Upload only explicitly approved cover artifacts after the corresponding
+playlist exists, with the same interruption and convergence protections as
+track operations. Remove legacy or consumed discovery playlists only as
+separately approved operations after their replacement playlists are published
+and verified. Apple
 Music publishing and Spatial Audio companions remain a subsequent provider
 milestone unless the deferred provider track is completed earlier.

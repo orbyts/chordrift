@@ -4,6 +4,23 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Add immutable, idempotent Spotify dry-run plans bound to one approved
+  proposal and one imported snapshot, with exact operation inspection and no
+  provider requests or mutations.
+- Separate publication, managed-drift reconciliation, verified inbox cleanup,
+  and explicitly approved legacy retirement into ordered safety phases with
+  track-preservation gates.
+- Include missing stable `Inbox`, `From Friends`, and `Liked from Radio`
+  containers in the plan without duplicating existing intake surfaces.
+- Schedule deterministic, original, explicitly approved cover artwork for
+  every canonical playlist in v0.0.9, before any v0.1.0 publication.
+- Add a provider-neutral reversible Excluded Tracks ledger and report restores
+  separately from ordinary additions and provider drift.
+- Add immutable managed-playlist verification baselines so an expected user
+  removal proposes an exclusion while an unexpected extra remains ordinary
+  drift; allow cleanup gates to recognize durable exclusions as resolved track
+  dispositions.
+
 - Add model-neutral pretrained-audio inference artifacts and cache-first
   MusicBrainz recording, tag, release, and artist-area enrichment with strict
   provenance and no provider-audio acquisition.

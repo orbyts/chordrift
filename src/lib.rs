@@ -34,6 +34,8 @@ pub mod proposals;
 pub mod providers;
 /// Versioned account-specific preference and lifecycle signals.
 pub mod signals;
+/// Immutable provider synchronization plans that never mutate remote services.
+pub mod sync_plan;
 
 mod error;
 

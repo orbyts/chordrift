@@ -30,7 +30,7 @@ Before editing, inspect `git status --short`, the current branch, this file,
 - Neon PostgreSQL is the canonical and operational source of truth.
 - Provider APIs are adapters. Current Spotify state is pulled into immutable
   snapshots; provider state does not compete with Neon authority.
-- Chordrift is read-only against Spotify through the current v0.0.7 work. It
+- Chordrift is read-only against Spotify through the current v0.0.8 work. It
   does not create, modify, reorder, or delete remote playlists or tracks.
 - Spotify downloadable archives are optional enrichment and immutable local
   recovery inputs. They are not the operational database.
@@ -366,8 +366,38 @@ and complete coverage. No Spotify state was changed.
 Migration 0018 and `proposals category-create/assign/review` add
 stable manual semantic destinations, reversible active decisions, complete
 revision history, a non-provider needs-review state, and replay into later
-proposal generations. Next, begin v0.0.8's immutable Spotify dry-run planner
-without remote mutation.
+proposal generations.
+
+v0.0.8 adds migration 0019 and `sync plan` / `sync plan-show`. A plan is an
+immutable Neon audit record bound to an exact approved proposal and exact
+imported Spotify snapshot. Identical inputs reuse the same plan. Operations are
+ordered into publish, reconcile, cleanup, and retirement phases. Inbox cleanup
+and legacy retirement are deferred behind publication/verification gates, and
+retirement additionally requires separate future approval. The planner makes
+no Spotify request and Spotify write scopes remain disabled. Migration 0019
+also introduces stable concept mappings for future published provider
+playlists and the provider-neutral reversible `excluded_tracks` ledger.
+Migrations 0019 and 0020 are live and Neon is healthy at 20/20. Migration 0020
+adds immutable successful managed-playlist baselines so a later missing
+expected track becomes an internal `exclude_track` proposal rather than an
+automatic re-add; an unexpected extra remains ordinary provider drift. The
+current planner is `spotify-dry-run-v4`; earlier development plans remain
+immutable audit artifacts and must not be applied. The current verified v4 plan is
+`cda2639d-da67-4b23-9492-a9274c71088c`, bound to approved proposal
+`ca81d1b2-e56b-41e6-8846-cdb379cb039b` and Spotify snapshot
+`622a94b4-b60e-4f26-8da2-20e540e160c1`. It contains 1,007 exact operations:
+16 creates (14 canonical plus missing `Inbox` and `From Friends`), 884 ordered
+track additions, 65 deferred intake removals, and 42 separately approved
+legacy retirements; no renames, restorations, or exclusions before initial
+publication. `Liked from Radio` already exists and is reused. Every inspected
+retirement has complete preservation.
+The snapshot is current and identical v4 planning reuses this plan ID. Next is
+v0.0.9 apply-readiness validation; it must remain read-only against Spotify.
+That milestone also generates one simple original deterministic cover per
+canonical playlist from its approved name/description/tags, stores generator
+version and SHA-256, produces a contact-sheet-style preview, and requires
+explicit artwork approval. Do not request Spotify image-upload scope or upload
+covers until v0.1.0.
 
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the

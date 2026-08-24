@@ -526,6 +526,13 @@ $ chordrift proposals approve --account personal --confirm PROPOSAL_GENERATION_U
 Approval records the account-owner decision in Neon. It still performs no
 Spotify writes; publishing belongs to the later dry-run/apply milestones.
 
+Before v0.1.0 publication, every approved canonical playlist will also receive
+a simple original cover generated from its approved name, description, and
+semantic tags. v0.0.9 will create deterministic local artifacts and a preview
+for explicit approval while remaining read-only against Spotify. Cover upload
+belongs to v0.1.0 and will never reuse provider artwork or silently publish an
+unapproved image.
+
 When exercising unreleased source from a machine-wide shared Cargo target,
 isolate the branch build so another clone of the same crate/version cannot
 overwrite the executable:
@@ -536,6 +543,56 @@ $ cargo run --target-dir target -- proposals status --account personal
 
 This is only development hygiene. After a release is installed, use the normal
 `chordrift proposals ...` commands.
+
+## Dry-run synchronization plans
+
+Build an immutable plan from the latest approved proposal and the latest
+imported Spotify snapshot:
+
+```console
+$ chordrift sync plan --account personal
+```
+
+To bind planning to a particular approval rather than implicitly selecting the
+latest one:
+
+```console
+$ chordrift sync plan --account personal \
+    --proposal ca81d1b2-e56b-41e6-8846-cdb379cb039b
+```
+
+The command reads Spotify state already stored in Neon and does not contact or
+mutate Spotify. Identical proposal, snapshot, exclusions, and policies reuse
+the same plan ID and input hash. A new pull produces a new source snapshot and
+therefore a new plan, even when the visible diff happens to look the same.
+
+Inspect the newest plan summary, or print its exact operations:
+
+```console
+$ chordrift sync plan-show --account personal
+$ chordrift sync plan-show --account personal --details
+$ chordrift sync plan-show --account personal --plan PLAN_UUID --details
+```
+
+Operations run through ordered safety phases: publish approved destinations,
+reconcile managed drift, consume eligible inbox entries, then retire legacy
+containers. Inbox removals and legacy retirement remain deferred until every
+destination has been published and verified. Retirement also requires a
+separate future approval; a dry-run plan is never permission to delete.
+
+The publish phase also proposes any missing stable intake containers named
+`Inbox`, `From Friends`, and `Liked from Radio`. Existing intake containers are
+reused; their tracks are never mixed into a new duplicate container.
+
+Track additions, explicit Excluded Tracks restorations, provider drift, and
+new exclusions inferred from a verified managed baseline are reported
+separately. A missing expected managed track proposes an internal exclusion
+rather than an automatic re-add; an unexpected extra track is provider drift
+and does not create an exclusion. Consumed-inbox removals are also distinct.
+Provider-curated, transport, ignored, followed, and unmanaged playlists never
+become mutation targets.
+`snapshot_current: false` means a later pull superseded the plan's observed
+state, so generate a new plan rather than relying on the stale one.
 
 ## Semantic enrichment
 
@@ -620,6 +677,13 @@ history, source provider, removal time, and previous assignment, but will not
 place it in newly generated playlists until explicitly restored. Removing a
 track from a provider-curated, intake, transport, or legacy playlist does not
 mean the same thing and will not create an exclusion.
+
+This distinction relies on an immutable successful-verification baseline. A
+track missing before a managed playlist has ever matched its approved state is
+not enough evidence of an intentional removal. Active exclusions are durable
+track dispositions, so legacy retirement and inbox cleanup may preserve a
+track through either a verified canonical destination or that explicit
+exclusion—never by silently dropping it.
 
 ## Analysis
 
