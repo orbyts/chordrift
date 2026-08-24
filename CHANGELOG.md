@@ -18,6 +18,8 @@ All notable changes to Chordrift are documented here.
   expose only latest-snapshot names while immutable snapshots retain history.
 - Add per-track inspection of proposal coverage gaps with Spotify identities
   and all contributing legacy/intake source playlists.
+- Add stable manual semantic categories and reversible, audited track
+  assignment/review decisions that replay into future proposal generations.
 - Define the stable intake names `Inbox`, `From Friends`, and
   `Liked from Radio`, including their distinct user-facing meanings and safe
   retirement rules for obsolete utility playlists.

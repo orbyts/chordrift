@@ -394,6 +394,48 @@ pub enum ProposalCommand {
         #[arg(long, default_value_t = 100)]
         limit: u32,
     },
+    /// Create a stable manual destination in the latest proposal.
+    CategoryCreate {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// User-facing category name; it may be revised later.
+        #[arg(long)]
+        name: String,
+        /// Short description of the intended sound.
+        #[arg(long)]
+        description: String,
+        /// Semantic tag; repeat this option 2-6 times.
+        #[arg(long, required = true)]
+        tag: Vec<String>,
+    },
+    /// Assign or move one track to a stable proposed playlist.
+    Assign {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact Spotify track ID; repeat to assign several tracks in one session.
+        #[arg(long, required = true)]
+        spotify_id: Vec<String>,
+        /// Stable destination key reported by `proposals list`.
+        #[arg(long)]
+        playlist: String,
+        /// Auditable explanation for the manual decision.
+        #[arg(long)]
+        reason: String,
+    },
+    /// Remove one assignment and return the track to internal review.
+    Review {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact Spotify track ID.
+        #[arg(long)]
+        spotify_id: String,
+        /// Auditable explanation for requesting review.
+        #[arg(long)]
+        reason: String,
+    },
     /// Export a strict, privacy-minimized JSON naming context.
     NamingExport {
         /// Local label for this Spotify account.
@@ -1497,6 +1539,42 @@ async fn run_proposal_command(
             }
             Ok(())
         }
+        ProposalCommand::CategoryCreate {
+            account,
+            name,
+            description,
+            tag,
+        } => {
+            let category =
+                proposals::create_category(database, &account, &name, &description, &tag).await?;
+            writeln!(output, "manual_category: created")?;
+            writeln!(output, "generation_id: {}", category.generation_id)?;
+            writeln!(output, "stable_key: {}", category.stable_key)?;
+            writeln!(output, "name: {}", clean_cell(&category.name))?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        ProposalCommand::Assign {
+            account,
+            spotify_id,
+            playlist,
+            reason,
+        } => {
+            for spotify_id in spotify_id {
+                let report =
+                    proposals::assign(database, &account, &spotify_id, &playlist, &reason).await?;
+                write_assignment_report(output, &report)?;
+            }
+            Ok(())
+        }
+        ProposalCommand::Review {
+            account,
+            spotify_id,
+            reason,
+        } => {
+            let report = proposals::needs_review(database, &account, &spotify_id, &reason).await?;
+            write_assignment_report(output, &report)
+        }
         ProposalCommand::NamingExport { account, file } => {
             let context = proposals::naming_context(database, &account).await?;
             let bytes = serde_json::to_vec_pretty(&context)?;
@@ -1525,6 +1603,28 @@ async fn run_proposal_command(
             Ok(())
         }
     }
+}
+
+fn write_assignment_report(
+    output: &mut impl Write,
+    report: &proposals::AssignmentReport,
+) -> Result<()> {
+    writeln!(output, "manual_assignment: recorded")?;
+    writeln!(output, "track: {}", clean_cell(&report.title))?;
+    writeln!(output, "spotify_id: {}", report.spotify_id)?;
+    writeln!(
+        output,
+        "destination: {}",
+        report.destination.as_deref().unwrap_or("needs-review")
+    )?;
+    writeln!(
+        output,
+        "represented_tracks: {}",
+        report.represented_track_count
+    )?;
+    writeln!(output, "missing_tracks: {}", report.missing_track_count)?;
+    writeln!(output, "spotify_writes: disabled")?;
+    Ok(())
 }
 
 async fn run_signal_command(

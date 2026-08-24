@@ -463,6 +463,44 @@ gate.
 track ID and all current retirement-source playlists containing it. Use the
 stable Spotify ID when titles are ambiguous.
 
+When automatic evidence is weak, create a stable manual semantic destination:
+
+```console
+$ chordrift proposals category-create --account personal \
+    --name "Open-Sky Anthems" \
+    --description "Earnest alternative and pop-rock songs with widescreen choruses." \
+    --tag alternative --tag pop-rock --tag anthemic
+```
+
+Assign an unassigned track—or correct an existing placement—using exact stable
+identities:
+
+```console
+$ chordrift proposals assign --account personal \
+    --spotify-id SPOTIFY_TRACK_ID --spotify-id ANOTHER_TRACK_ID \
+    --playlist playlist-0123456789ab \
+    --reason "Anthemic alternative-rock fit"
+```
+
+Repeat `--spotify-id` to assign several reviewed tracks through one database
+session. Chordrift still records a separate reversible decision for each track.
+
+Changing the destination later supersedes the prior decision without deleting
+its audit record. If no destination feels honest, return the track to the
+internal review queue:
+
+```console
+$ chordrift proposals review --account personal \
+    --spotify-id SPOTIFY_TRACK_ID \
+    --reason "Current category does not match this recording"
+```
+
+Manual decisions are account-scoped and replay into later proposal generations.
+They alter Neon proposal membership only; none of these commands writes to
+Spotify. The internal review queue is deliberately not a Spotify playlist and
+continues to block retirement coverage until each source track is assigned or
+otherwise explicitly resolved.
+
 Naming is a model-neutral artifact boundary. Export a privacy-minimized context
 containing stable keys and representative title/artist samples:
 

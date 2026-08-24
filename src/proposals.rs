@@ -128,6 +128,32 @@ pub struct MissingTrack {
     pub source_playlists: String,
 }
 
+/// Result of creating a stable manual playlist category.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ManualCategory {
+    /// Stable destination key.
+    pub stable_key: String,
+    /// User-facing category name.
+    pub name: String,
+    /// Current proposal generation containing it.
+    pub generation_id: Uuid,
+}
+
+/// Result of a reversible manual assignment decision.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AssignmentReport {
+    /// Track title.
+    pub title: String,
+    /// Spotify track identity.
+    pub spotify_id: String,
+    /// Stable destination key, or none when returned to review.
+    pub destination: Option<String>,
+    /// Required tracks represented after the decision.
+    pub represented_track_count: usize,
+    /// Required tracks still missing after the decision.
+    pub missing_track_count: usize,
+}
+
 /// JSON document given to a naming model.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct NamingContext {
@@ -262,7 +288,6 @@ pub async fn generate(database: &Database, account_label: &str) -> Result<Genera
     .await?;
 
     let mut used_concepts = HashSet::new();
-    let mut assigned = HashSet::new();
     for row in cluster_rows {
         let cluster_id: Uuid = row.try_get("id")?;
         let machine_label: String = row.try_get("machine_label")?;
@@ -309,7 +334,6 @@ pub async fn generate(database: &Database, account_label: &str) -> Result<Genera
         .await?;
         for track in track_rows {
             let track_id: Uuid = track.try_get("track_id")?;
-            assigned.insert(track_id);
             sqlx::query(
                 "INSERT INTO playlist_tracks
                  (playlist_id, track_id, position, source, provenance)
@@ -327,6 +351,23 @@ pub async fn generate(database: &Database, account_label: &str) -> Result<Genera
             .await?;
         }
     }
+
+    replay_assignment_overrides(&mut transaction, account_id, generation_id).await?;
+
+    let assigned_track_count: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT membership.track_id)::bigint
+         FROM playlists playlist
+         JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+         WHERE playlist.generation_id = $1",
+    )
+    .bind(generation_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    let playlist_count: i64 =
+        sqlx::query_scalar("SELECT count(*)::bigint FROM playlists WHERE generation_id = $1")
+            .bind(generation_id)
+            .fetch_one(&mut *transaction)
+            .await?;
 
     let represented_track_count =
         represented_required_track_count_tx(&mut transaction, account_id, generation_id).await?;
@@ -347,8 +388,8 @@ pub async fn generate(database: &Database, account_label: &str) -> Result<Genera
         generation_id,
         cluster_generation_id: cluster_status.generation_id,
         reused: false,
-        playlist_count: used_concepts.len(),
-        assigned_track_count: assigned.len(),
+        playlist_count: as_usize_i64(playlist_count)?,
+        assigned_track_count: as_usize_i64(assigned_track_count)?,
         required_track_count,
         represented_track_count,
         coverage_complete,
@@ -598,6 +639,115 @@ pub async fn missing(
         .collect()
 }
 
+/// Creates a stable manual category in the latest proposal.
+pub async fn create_category(
+    database: &Database,
+    account_label: &str,
+    name: &str,
+    description: &str,
+    tags: &[String],
+) -> Result<ManualCategory> {
+    let generation = status(database, account_label).await?;
+    require_editable(&generation)?;
+    validate_manual_category(name, description, tags)?;
+    if list(database, account_label)
+        .await?
+        .iter()
+        .any(|playlist| playlist.name.eq_ignore_ascii_case(name.trim()))
+    {
+        return Err(ChordriftError::Configuration(
+            "a proposed playlist already uses that name".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let concept_id = Uuid::new_v4();
+    let stable_key = format!("playlist-{}", &concept_id.simple().to_string()[..12]);
+    let machine_label = format!("manual-{}", &concept_id.simple().to_string()[..12]);
+    let mut transaction = database.pool().begin().await?;
+    sqlx::query(
+        "INSERT INTO playlist_concepts
+         (id, provider_account_id, stable_key, origin, manual_name,
+          manual_description, manual_tags)
+         VALUES ($1, $2, $3, 'manual', $4, $5, $6)",
+    )
+    .bind(concept_id)
+    .bind(account_id)
+    .bind(&stable_key)
+    .bind(name.trim())
+    .bind(description.trim())
+    .bind(json!(tags))
+    .execute(&mut *transaction)
+    .await?;
+    let playlist_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlists
+         (generation_id, concept_id, name, description, kind, machine_label, machine_tags)
+         VALUES ($1, $2, $3, $4, 'manual', $5, $6) RETURNING id",
+    )
+    .bind(generation.generation_id)
+    .bind(concept_id)
+    .bind(name.trim())
+    .bind(description.trim())
+    .bind(machine_label)
+    .bind(json!(tags))
+    .fetch_one(&mut *transaction)
+    .await?;
+    let artifact_sha256 = hash_parts(&[
+        "manual-category",
+        &generation.generation_id.to_string(),
+        &stable_key,
+        name.trim(),
+        description.trim(),
+        &tags.join("\0"),
+    ]);
+    sqlx::query(
+        "INSERT INTO playlist_name_revisions
+         (playlist_id, name, description, machine_tags, generator_provider,
+          generator_model, generator_model_version, artifact_sha256)
+         VALUES ($1, $2, $3, $4, 'account-owner', 'manual-category', '1', $5)",
+    )
+    .bind(playlist_id)
+    .bind(name.trim())
+    .bind(description.trim())
+    .bind(json!(tags))
+    .bind(artifact_sha256)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+    Ok(ManualCategory {
+        stable_key,
+        name: name.trim().to_owned(),
+        generation_id: generation.generation_id,
+    })
+}
+
+/// Assigns a track to a stable proposed playlist and supersedes any prior decision.
+pub async fn assign(
+    database: &Database,
+    account_label: &str,
+    spotify_id: &str,
+    stable_key: &str,
+    reason: &str,
+) -> Result<AssignmentReport> {
+    change_assignment(
+        database,
+        account_label,
+        spotify_id,
+        Some(stable_key),
+        reason,
+    )
+    .await
+}
+
+/// Returns a track to the internal needs-review queue.
+pub async fn needs_review(
+    database: &Database,
+    account_label: &str,
+    spotify_id: &str,
+    reason: &str,
+) -> Result<AssignmentReport> {
+    change_assignment(database, account_label, spotify_id, None, reason).await
+}
+
 /// Builds and records a deterministic naming context for the latest proposal.
 pub async fn naming_context(database: &Database, account_label: &str) -> Result<NamingContext> {
     let generation = status(database, account_label).await?;
@@ -845,6 +995,324 @@ fn validate_results(current: &[PlaylistSummary], results: &[NamingResult]) -> Re
         }
     }
     Ok(())
+}
+
+fn require_editable(status: &Status) -> Result<()> {
+    if status.state != "proposed" {
+        return Err(ChordriftError::Configuration(
+            "manual categories and assignments require a proposal awaiting approval".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_manual_category(name: &str, description: &str, tags: &[String]) -> Result<()> {
+    if name.trim().is_empty() || name.chars().count() > 80 {
+        return Err(ChordriftError::Configuration(
+            "manual category names must contain 1-80 characters".to_owned(),
+        ));
+    }
+    if description.trim().is_empty() || description.chars().count() > 300 {
+        return Err(ChordriftError::Configuration(
+            "manual category descriptions must contain 1-300 characters".to_owned(),
+        ));
+    }
+    if !(2..=6).contains(&tags.len())
+        || tags
+            .iter()
+            .any(|tag| tag.trim().is_empty() || tag.chars().count() > 40)
+    {
+        return Err(ChordriftError::Configuration(
+            "manual categories require 2-6 non-empty tags of at most 40 characters".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn change_assignment(
+    database: &Database,
+    account_label: &str,
+    spotify_id: &str,
+    destination: Option<&str>,
+    reason: &str,
+) -> Result<AssignmentReport> {
+    if reason.trim().is_empty() || reason.chars().count() > 300 {
+        return Err(ChordriftError::Configuration(
+            "assignment reason must contain 1-300 characters".to_owned(),
+        ));
+    }
+    let generation = status(database, account_label).await?;
+    require_editable(&generation)?;
+    let account_id = account_id(database, account_label).await?;
+    let row = sqlx::query(
+        "SELECT track.id, track.title
+         FROM provider_tracks provider_track
+         JOIN tracks track ON track.id = provider_track.track_id
+         JOIN account_track_statistics account_track
+           ON account_track.track_id = track.id AND account_track.provider_account_id = $1
+         WHERE provider_track.provider = 'spotify' AND provider_track.provider_track_id = $2",
+    )
+    .bind(account_id)
+    .bind(spotify_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(
+            "Spotify track ID is not in this account's current canonical library".to_owned(),
+        )
+    })?;
+    let track_id: Uuid = row.try_get("id")?;
+    let title: String = row.try_get("title")?;
+    let destination_concept: Option<Uuid> = if let Some(stable_key) = destination {
+        Some(
+            sqlx::query_scalar(
+                "SELECT concept.id
+                 FROM playlist_concepts concept
+                 JOIN playlists playlist ON playlist.concept_id = concept.id
+                 WHERE concept.provider_account_id = $1 AND concept.stable_key = $2
+                   AND playlist.generation_id = $3",
+            )
+            .bind(account_id)
+            .bind(stable_key)
+            .bind(generation.generation_id)
+            .fetch_optional(database.pool())
+            .await?
+            .ok_or_else(|| {
+                ChordriftError::Configuration(
+                    "destination stable key is not in the latest proposal".to_owned(),
+                )
+            })?,
+        )
+    } else {
+        None
+    };
+
+    let mut transaction = database.pool().begin().await?;
+    sqlx::query(
+        "UPDATE track_playlist_assignment_revisions SET superseded_at = now()
+         WHERE provider_account_id = $1 AND track_id = $2 AND superseded_at IS NULL",
+    )
+    .bind(account_id)
+    .bind(track_id)
+    .execute(&mut *transaction)
+    .await?;
+    let decision_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO track_playlist_assignment_revisions
+         (provider_account_id, track_id, destination_concept_id, decision,
+          source_generation_id, reason)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+    )
+    .bind(account_id)
+    .bind(track_id)
+    .bind(destination_concept)
+    .bind(if destination.is_some() {
+        "assign"
+    } else {
+        "needs_review"
+    })
+    .bind(generation.generation_id)
+    .bind(reason.trim())
+    .fetch_one(&mut *transaction)
+    .await?;
+    sqlx::query(
+        "DELETE FROM playlist_tracks membership USING playlists playlist
+         WHERE membership.playlist_id = playlist.id
+           AND playlist.generation_id = $1 AND membership.track_id = $2",
+    )
+    .bind(generation.generation_id)
+    .bind(track_id)
+    .execute(&mut *transaction)
+    .await?;
+    if let Some(concept_id) = destination_concept {
+        let playlist_id =
+            ensure_concept_playlist(&mut transaction, generation.generation_id, concept_id).await?;
+        let position: i32 = sqlx::query_scalar(
+            "SELECT COALESCE(max(position) + 1, 0) FROM playlist_tracks WHERE playlist_id = $1",
+        )
+        .bind(playlist_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO playlist_tracks
+             (playlist_id, track_id, position, source, provenance)
+             VALUES ($1, $2, $3, 'manual', $4)",
+        )
+        .bind(playlist_id)
+        .bind(track_id)
+        .bind(position)
+        .bind(json!({"assignment_revision_id": decision_id}))
+        .execute(&mut *transaction)
+        .await?;
+    }
+    let represented = refresh_coverage_tx(
+        &mut transaction,
+        account_id,
+        generation.generation_id,
+        generation.required_track_count,
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(AssignmentReport {
+        title,
+        spotify_id: spotify_id.to_owned(),
+        destination: destination.map(str::to_owned),
+        represented_track_count: represented,
+        missing_track_count: generation.required_track_count.saturating_sub(represented),
+    })
+}
+
+async fn replay_assignment_overrides(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: Uuid,
+    generation_id: Uuid,
+) -> Result<()> {
+    let rows = sqlx::query(
+        "SELECT id, track_id, destination_concept_id, decision
+         FROM track_playlist_assignment_revisions
+         WHERE provider_account_id = $1 AND superseded_at IS NULL
+         ORDER BY created_at, id",
+    )
+    .bind(account_id)
+    .fetch_all(&mut **transaction)
+    .await?;
+    for row in rows {
+        let decision_id: Uuid = row.try_get("id")?;
+        let track_id: Uuid = row.try_get("track_id")?;
+        sqlx::query(
+            "DELETE FROM playlist_tracks membership USING playlists playlist
+             WHERE membership.playlist_id = playlist.id
+               AND playlist.generation_id = $1 AND membership.track_id = $2",
+        )
+        .bind(generation_id)
+        .bind(track_id)
+        .execute(&mut **transaction)
+        .await?;
+        let destination: Option<Uuid> = row.try_get("destination_concept_id")?;
+        if row.try_get::<String, _>("decision")? == "assign" {
+            let playlist_id = ensure_concept_playlist(
+                transaction,
+                generation_id,
+                destination.ok_or_else(|| {
+                    ChordriftError::Configuration("active assignment has no destination".to_owned())
+                })?,
+            )
+            .await?;
+            let position: i32 = sqlx::query_scalar(
+                "SELECT COALESCE(max(position) + 1, 0) FROM playlist_tracks WHERE playlist_id = $1",
+            )
+            .bind(playlist_id)
+            .fetch_one(&mut **transaction)
+            .await?;
+            sqlx::query(
+                "INSERT INTO playlist_tracks
+                 (playlist_id, track_id, position, source, provenance)
+                 VALUES ($1, $2, $3, 'manual', $4)",
+            )
+            .bind(playlist_id)
+            .bind(track_id)
+            .bind(position)
+            .bind(json!({"assignment_revision_id": decision_id, "replayed": true}))
+            .execute(&mut **transaction)
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn ensure_concept_playlist(
+    transaction: &mut Transaction<'_, Postgres>,
+    generation_id: Uuid,
+    concept_id: Uuid,
+) -> Result<Uuid> {
+    if let Some(id) =
+        sqlx::query_scalar("SELECT id FROM playlists WHERE generation_id = $1 AND concept_id = $2")
+            .bind(generation_id)
+            .bind(concept_id)
+            .fetch_optional(&mut **transaction)
+            .await?
+    {
+        return Ok(id);
+    }
+    let row = sqlx::query(
+        "SELECT concept.stable_key,
+                COALESCE(concept.manual_name, previous.name) AS name,
+                COALESCE(concept.manual_description, previous.description, 'Manual assignment') AS description,
+                CASE WHEN concept.origin = 'manual' THEN concept.manual_tags
+                     ELSE COALESCE(previous.machine_tags, '[]'::jsonb) END AS tags
+         FROM playlist_concepts concept
+         LEFT JOIN LATERAL (
+             SELECT playlist.name, playlist.description, playlist.machine_tags
+             FROM playlists playlist WHERE playlist.concept_id = concept.id
+             ORDER BY playlist.created_at DESC, playlist.id DESC LIMIT 1
+         ) previous ON TRUE
+         WHERE concept.id = $1",
+    )
+    .bind(concept_id)
+    .fetch_one(&mut **transaction)
+    .await?;
+    let stable_key: String = row.try_get("stable_key")?;
+    let name: String = row.try_get("name")?;
+    let description: String = row.try_get("description")?;
+    let tags: Value = row.try_get("tags")?;
+    let playlist_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlists
+         (generation_id, concept_id, name, description, kind, machine_label, machine_tags)
+         VALUES ($1, $2, $3, $4, 'manual', $5, $6) RETURNING id",
+    )
+    .bind(generation_id)
+    .bind(concept_id)
+    .bind(&name)
+    .bind(&description)
+    .bind(format!("manual-{stable_key}"))
+    .bind(&tags)
+    .fetch_one(&mut **transaction)
+    .await?;
+    let artifact_sha256 = hash_parts(&[
+        "assignment-replay",
+        &generation_id.to_string(),
+        &stable_key,
+        &name,
+        &description,
+        &tags.to_string(),
+    ]);
+    sqlx::query(
+        "INSERT INTO playlist_name_revisions
+         (playlist_id, name, description, machine_tags, generator_provider,
+          generator_model, generator_model_version, artifact_sha256)
+         VALUES ($1, $2, $3, $4, 'chordrift', 'stable-concept-replay', '1', $5)",
+    )
+    .bind(playlist_id)
+    .bind(name)
+    .bind(description)
+    .bind(tags)
+    .bind(artifact_sha256)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(playlist_id)
+}
+
+async fn refresh_coverage_tx(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: Uuid,
+    generation_id: Uuid,
+    required: usize,
+) -> Result<usize> {
+    let represented =
+        represented_required_track_count_tx(transaction, account_id, generation_id).await?;
+    sqlx::query(
+        "UPDATE playlist_generations SET represented_track_count = $2,
+         coverage_complete = ($2 = required_track_count) WHERE id = $1",
+    )
+    .bind(generation_id)
+    .bind(as_i32(represented)?)
+    .execute(&mut **transaction)
+    .await?;
+    if represented > required {
+        return Err(ChordriftError::Configuration(
+            "represented coverage exceeds required coverage".to_owned(),
+        ));
+    }
+    Ok(represented)
 }
 
 async fn find_lineage_concept(

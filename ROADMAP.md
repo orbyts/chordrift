@@ -204,6 +204,13 @@ constraint. Preserve the original model score and prior assignment rather than
 rewriting history. This is post-generation correction, not a prerequisite for
 the initial classification.
 
+The same feedback surface handles initially unassigned tracks: create a stable
+manual semantic destination, assign or move a track using its provider ID, or
+leave it in an internal needs-review queue. Active decisions replay into later
+proposals; changing a decision supersedes rather than erases its audit record.
+Needs Review is never published as a provider playlist and does not satisfy
+retirement coverage.
+
 ## v0.0.7 — Naming and proposed library
 
 Generate names, descriptions, and semantic tags, then expose a complete,

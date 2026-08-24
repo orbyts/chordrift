@@ -348,10 +348,9 @@ semantic/acoustic coverage is still needed before these clusters should be
 published.
 
 v0.0.7 proposal work is implemented on `codex/semantic-enrichment`. Migrations
-0016 and 0017 are live and Neon is healthy at 17/17. Migration 0017 provides
+0016 through 0018 are live and Neon is healthy at 18/18. Migration 0017 provides
 the latest-snapshot-only Spotify playlist surface. The `proposals` commands
-provide a
-non-destructive workflow with stable `playlist-*` concepts, overlap-based
+provide a non-destructive workflow with stable `playlist-*` concepts, overlap-based
 lineage, strict naming artifacts, complete generator/hash provenance, and
 explicit approval. The first live proposal is
 `ca81d1b2-e56b-41e6-8846-cdb379cb039b`, derived from cluster generation
@@ -362,6 +361,8 @@ naming revision, but the proposal remains deliberately unapproved: only 653 of
 generation because 46 tracks remain uncovered (27 from `Liked from Radio`,
 with the remainder spread across small legacy lists). No Spotify state was
 changed. `proposals missing` lists those tracks with Spotify IDs and all source
-playlists. Next, improve semantic/acoustic coverage or add a reviewable
-holding/resolution path for those 46 tracks, regenerate, then present names and
-organization for explicit user approval.
+playlists. Migration 0018 and `proposals category-create/assign/review` add
+stable manual semantic destinations, reversible active decisions, complete
+revision history, a non-provider needs-review state, and replay into later
+proposal generations. Next, classify the uncovered tracks, regenerate if
+needed, then present names and organization for explicit user approval.
