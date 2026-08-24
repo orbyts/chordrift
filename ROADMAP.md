@@ -71,40 +71,59 @@ source that can rebuild enrichment without requesting another Spotify export.
 
 Status: complete.
 
-## v0.0.5 — Apple Music matching
+## Deferred provider track — Apple Music
 
-Add Apple Music authentication and ISRC-first catalog matching with scored
-metadata fallbacks and unresolved-match reporting. Keep operations read-only.
+Apple Music is not on the critical path to the canonical library. Its provider
+foundation is isolated on the `codex/apple-music` branch until paid Apple
+Developer Program access is independently worthwhile and the integration can
+be tested with real credentials. When resumed, add MusicKit authorization,
+ISRC-first catalog matching with scored metadata fallbacks, unresolved-match
+reporting, and optional privacy-export history ingestion. Keep all operations
+read-only until the normal synchronization approval milestone.
 
-## v0.0.6 — Embeddings
+Spotify and Neon remain sufficient to develop and validate embeddings,
+clustering, naming, playlist proposals, and dry-run synchronization. Apple work
+will be rebased onto the then-current main line rather than reserving or
+blocking a release number.
+
+## v0.0.5 — Embeddings
 
 Build versioned personal embeddings from playlist co-occurrence, artist and
 metadata relationships, historical names, and any available listening signals.
 
-## v0.0.7 — Vibe clustering
+## v0.0.6 — Vibe clustering
 
 Create reproducible cluster generations with stable identities,
 representatives, statistics, and support for unassigned tracks.
 
-## v0.0.8 — Naming and proposed library
+## v0.0.7 — Naming and proposed library
 
 Generate names, descriptions, and semantic tags, then expose a complete,
 inspectable, non-destructive proposed playlist structure. Require user approval
 of generated names and organization, and prove that every track from each
 legacy or discovery playlist is represented before proposing its retirement.
 
-## v0.0.9 — Full dry-run synchronization
+## v0.0.8 — Full dry-run synchronization
 
-Plan idempotent Spotify and Apple Music diffs, unresolved matches, and Apple
-Music Spatial Audio variants without mutating either service. Include discovery
-inbox ingestion, cross-playlist duplicate removal, and explicit retirement plans
-for legacy and consumed inbox playlists, with track-preservation checks and no
-implicit deletions.
+Plan idempotent Spotify diffs without mutating the service. Include discovery
+inbox ingestion, cross-playlist duplicate removal, and explicit retirement
+plans for legacy and consumed inbox playlists, with track-preservation checks
+and no implicit deletions. Provider-neutral plan structures must allow Apple
+Music diffs and Spatial Audio variants to be added later without changing the
+canonical model.
+
+## v0.0.9 — Spotify apply readiness
+
+Validate approval records, operation ordering, interruption recovery,
+rate-limit handling, and convergence checks against Spotify fixtures and
+read-only probes. Continue to prohibit remote mutations while proving that an
+approved plan can be executed safely and audited completely.
 
 ## v0.1.0 — Canonical music library
 
-Synchronize approved canonical playlists from Neon to both providers, create
-Spatial Audio companions in Apple Music, retain provenance and operation
-history, and converge to zero changes on repeated runs. Remove legacy or
-consumed discovery playlists only as separately approved operations after their
-replacement playlists are published and verified.
+Synchronize approved canonical playlists from Neon to Spotify, retain
+provenance and operation history, and converge to zero changes on repeated
+runs. Remove legacy or consumed discovery playlists only as separately approved
+operations after their replacement playlists are published and verified. Apple
+Music publishing and Spatial Audio companions remain a subsequent provider
+milestone unless the deferred provider track is completed earlier.
