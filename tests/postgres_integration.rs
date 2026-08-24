@@ -13,11 +13,11 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     let database = db::connect(config).await?;
 
     let report = db::migrate(&database).await?;
-    assert_eq!(report.available, 15);
+    assert_eq!(report.available, 17);
 
     let status = db::status(&database).await?;
-    assert_eq!(status.available_migrations, 15);
-    assert_eq!(status.applied_migrations, 15);
+    assert_eq!(status.available_migrations, 17);
+    assert_eq!(status.applied_migrations, 17);
     assert_eq!(status.pending_migrations, 0);
     assert_eq!(status.failed_migrations, 0);
 
@@ -41,7 +41,9 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "enrichment_runs",
         "listening_events",
         "model_inference_imports",
+        "playlist_concepts",
         "playlist_generations",
+        "playlist_name_revisions",
         "playlist_tracks",
         "playlists",
         "provider_albums",
@@ -73,6 +75,14 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     ] {
         assert!(tables.iter().any(|table| table == expected), "{expected}");
     }
+
+    let current_view: Option<String> = sqlx::query_scalar(
+        "SELECT table_name FROM information_schema.views
+         WHERE table_schema = 'public' AND table_name = 'current_spotify_playlists'",
+    )
+    .fetch_optional(database.pool())
+    .await?;
+    assert_eq!(current_view.as_deref(), Some("current_spotify_playlists"));
 
     let account_id = Uuid::new_v4();
     sqlx::query(
