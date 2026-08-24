@@ -37,6 +37,10 @@ pub enum ChordriftError {
     #[error("provider response was invalid")]
     Json(#[source] serde_json::Error),
 
+    /// A ZIP archive could not be opened or decoded.
+    #[error("Spotify archive could not be read")]
+    Archive(#[source] zip::result::ZipError),
+
     /// Spotify rejected an API request.
     #[error("Spotify API request failed with status {status}: {message}")]
     SpotifyApi {
@@ -60,6 +64,7 @@ impl fmt::Debug for ChordriftError {
             Self::Credential(_) => formatter.write_str("Credential(..)"),
             Self::Http(_) => formatter.write_str("Http(..)"),
             Self::Json(_) => formatter.write_str("Json(..)"),
+            Self::Archive(_) => formatter.write_str("Archive(..)"),
             Self::SpotifyApi { status, message } => formatter
                 .debug_struct("SpotifyApi")
                 .field("status", status)
@@ -115,6 +120,12 @@ impl From<reqwest::Error> for ChordriftError {
 impl From<serde_json::Error> for ChordriftError {
     fn from(error: serde_json::Error) -> Self {
         Self::Json(error)
+    }
+}
+
+impl From<zip::result::ZipError> for ChordriftError {
+    fn from(error: zip::result::ZipError) -> Self {
+        Self::Archive(error)
     }
 }
 

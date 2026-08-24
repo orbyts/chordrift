@@ -1,8 +1,11 @@
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    path::PathBuf,
+};
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::{ChordriftError, Result, analysis, config, db, playlists, providers::spotify};
+use crate::{ChordriftError, Result, analysis, config, db, history, playlists, providers::spotify};
 
 /// Chordrift command-line interface.
 #[derive(Clone, Debug, Parser)]
@@ -45,6 +48,12 @@ pub enum Command {
         /// Playlist operation to perform.
         #[command(subcommand)]
         command: PlaylistCommand,
+    },
+    /// Inspect or import Spotify account and listening-history archives.
+    History {
+        /// Archive operation to perform.
+        #[command(subcommand)]
+        command: HistoryCommand,
     },
 }
 
@@ -181,6 +190,65 @@ pub enum PlaylistCommand {
     },
 }
 
+/// Spotify archive and listening-history commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum HistoryCommand {
+    /// Verify an archive and report its safe structural contents without database writes.
+    Inspect {
+        /// Spotify ZIP archive to inspect.
+        #[arg(long)]
+        archive: PathBuf,
+    },
+    /// Import and locally archive every ZIP from the account inbox.
+    Ingest {
+        /// Local label for this Spotify account and its data folder.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Local ignored data root containing spotify/<account>/inbox.
+        #[arg(long, default_value = "data")]
+        data_root: PathBuf,
+    },
+    /// Replay every retained local archive into Neon for disaster recovery.
+    Restore {
+        /// Local label for this Spotify account and its data folder.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Local ignored data root containing spotify/<account>/archive.
+        #[arg(long, default_value = "data")]
+        data_root: PathBuf,
+    },
+    /// Idempotently import useful archive state into Neon.
+    Import {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Spotify ZIP archive to import.
+        #[arg(long)]
+        archive: PathBuf,
+    },
+    /// Relink newly known Spotify IDs and rebuild per-track listening statistics.
+    Refresh {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Summarize all imported listening history for an account.
+    Summary {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List the most-listened tracks by total playback duration.
+    Top {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Maximum rows to report.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+    },
+}
+
 /// CLI representation of playlist orchestration roles.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub enum PlaylistRoleArg {
@@ -259,11 +327,16 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
         Command::Sync { command } => match command {
             SyncCommand::Pull { account } => {
                 let database = connect_current_database().await?;
-                let result = async {
+                let result: Result<()> = async {
                     let import = spotify::import(&account, &database).await?;
                     write_import_report(output, &import)?;
                     let summary = analysis::refresh(&database, &account).await?;
-                    write_analysis_summary(output, &summary)
+                    write_analysis_summary(output, &summary)?;
+                    let history = history::refresh(&database, &account).await?;
+                    if history.archives != 0 {
+                        write_history_summary(output, &history)?;
+                    }
+                    Ok(())
                 }
                 .await;
                 database.close().await;
@@ -282,9 +355,240 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
             database.close().await;
             result?;
         }
+        Command::History { command } => match command {
+            HistoryCommand::Inspect { archive } => {
+                let inspection = history::inspect(&archive)?;
+                write_archive_inspection(output, &inspection)?;
+            }
+            HistoryCommand::Import { account, archive } => {
+                let database = connect_current_database().await?;
+                let result = async {
+                    let report = history::import(&database, &account, &archive).await?;
+                    write_history_import_report(output, &report)
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            HistoryCommand::Ingest { account, data_root } => {
+                let database = connect_current_database().await?;
+                let result: Result<()> = async {
+                    let reports = history::ingest(&database, &account, &data_root).await?;
+                    for (index, report) in reports.iter().enumerate() {
+                        if index != 0 {
+                            writeln!(output)?;
+                        }
+                        write_history_import_report(output, &report.import)?;
+                        writeln!(output, "archived_to: {}", report.archived_to.display())?;
+                    }
+                    Ok(())
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            HistoryCommand::Restore { account, data_root } => {
+                let database = connect_current_database().await?;
+                let result: Result<()> = async {
+                    let reports = history::restore(&database, &account, &data_root).await?;
+                    for (index, report) in reports.iter().enumerate() {
+                        if index != 0 {
+                            writeln!(output)?;
+                        }
+                        write_history_import_report(output, report)?;
+                    }
+                    Ok(())
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            HistoryCommand::Refresh { account } => {
+                let database = connect_current_database().await?;
+                let result = async {
+                    let summary = history::refresh(&database, &account).await?;
+                    write_history_summary(output, &summary)
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            HistoryCommand::Summary { account } => {
+                let database = connect_current_database().await?;
+                let result = async {
+                    let summary = history::summary(&database, &account).await?;
+                    write_history_summary(output, &summary)
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            HistoryCommand::Top { account, limit } => {
+                let database = connect_current_database().await?;
+                let result: Result<()> = async {
+                    let rows = history::top(&database, &account, limit).await?;
+                    writeln!(
+                        output,
+                        "hours\tplays\tevents\tskips\tcompleted\tmatched\tlast_played\ttrack"
+                    )?;
+                    for row in rows {
+                        writeln!(
+                            output,
+                            "{:.2}\t{}\t{}\t{}\t{}\t{}\t{}\t{} — {}",
+                            hours(row.total_ms_played),
+                            row.play_count,
+                            row.event_count,
+                            row.skip_count,
+                            row.completed_count,
+                            row.matched,
+                            row.last_played_at.to_rfc3339(),
+                            clean_cell(&row.track_name),
+                            clean_cell(&row.artist_name)
+                        )?;
+                    }
+                    Ok(())
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+        },
     }
 
     Ok(())
+}
+
+fn write_archive_inspection(
+    output: &mut impl Write,
+    inspection: &history::ArchiveInspection,
+) -> Result<()> {
+    writeln!(output, "spotify archive: verified")?;
+    writeln!(output, "kind: {}", inspection.kind.as_str())?;
+    writeln!(output, "filename: {}", inspection.source_filename)?;
+    writeln!(output, "sha256: {}", inspection.sha256)?;
+    writeln!(output, "source_files: {}", inspection.source_files)?;
+    match inspection.kind {
+        history::ArchiveKind::ExtendedStreamingHistory => {
+            writeln!(output, "audio_events: {}", inspection.audio_events)?;
+            writeln!(output, "track_events: {}", inspection.track_events)?;
+            writeln!(output, "unique_tracks: {}", inspection.unique_tracks)?;
+            writeln!(output, "episode_events: {}", inspection.episode_events)?;
+            writeln!(output, "audiobook_events: {}", inspection.audiobook_events)?;
+            writeln!(output, "video_events: {}", inspection.video_events)?;
+            writeln!(output, "skipped_tracks: {}", inspection.skipped_tracks)?;
+            writeln!(
+                output,
+                "listening_hours: {:.2}",
+                hours(inspection.total_ms_played)
+            )?;
+            writeln!(
+                output,
+                "first_event_at: {}",
+                inspection
+                    .first_event_at
+                    .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+            )?;
+            writeln!(
+                output,
+                "last_event_at: {}",
+                inspection
+                    .last_event_at
+                    .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+            )?;
+        }
+        history::ArchiveKind::AccountData => {
+            writeln!(output, "playlists: {}", inspection.account_playlists)?;
+            writeln!(
+                output,
+                "playlist_entries: {}",
+                inspection.account_playlist_entries
+            )?;
+            writeln!(
+                output,
+                "library_tracks: {}",
+                inspection.account_library_tracks
+            )?;
+            writeln!(
+                output,
+                "simplified_music_events_not_imported: {}",
+                inspection.simplified_music_events
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn write_history_import_report(
+    output: &mut impl Write,
+    report: &history::ImportReport,
+) -> Result<()> {
+    write_archive_inspection(output, &report.inspection)?;
+    writeln!(
+        output,
+        "archive_import: {}",
+        if report.reused_archive {
+            "already current"
+        } else {
+            "succeeded"
+        }
+    )?;
+    writeln!(output, "events_inserted: {}", report.events_inserted)?;
+    writeln!(
+        output,
+        "events_already_present: {}",
+        report.events_already_present
+    )?;
+    writeln!(output, "events_matched: {}", report.events_matched)?;
+    writeln!(output, "events_unmatched: {}", report.events_unmatched)?;
+    writeln!(
+        output,
+        "privacy: IP addresses and account-profile PII not stored"
+    )?;
+    Ok(())
+}
+
+fn write_history_summary(output: &mut impl Write, summary: &history::HistorySummary) -> Result<()> {
+    writeln!(output, "history: current")?;
+    writeln!(output, "archives: {}", summary.archives)?;
+    writeln!(output, "events: {}", summary.events)?;
+    writeln!(output, "unique_tracks: {}", summary.unique_tracks)?;
+    writeln!(
+        output,
+        "matched_unique_tracks: {}",
+        summary.matched_unique_tracks
+    )?;
+    writeln!(
+        output,
+        "unmatched_unique_tracks: {}",
+        summary.unmatched_unique_tracks
+    )?;
+    writeln!(output, "matched_events: {}", summary.matched_events)?;
+    writeln!(output, "unmatched_events: {}", summary.unmatched_events)?;
+    writeln!(output, "skipped_events: {}", summary.skipped_events)?;
+    writeln!(
+        output,
+        "listening_hours: {:.2}",
+        hours(summary.total_ms_played)
+    )?;
+    writeln!(
+        output,
+        "first_event_at: {}",
+        summary
+            .first_event_at
+            .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+    )?;
+    writeln!(
+        output,
+        "last_event_at: {}",
+        summary
+            .last_event_at
+            .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+    )?;
+    Ok(())
+}
+
+fn hours(milliseconds: i64) -> f64 {
+    milliseconds as f64 / 3_600_000.0
 }
 
 async fn connect_current_database() -> Result<storexa::Database> {
@@ -581,8 +885,8 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        Cli, Command, DbCommand, PlaylistCommand, PlaylistRoleArg, SpotifyCommand, SyncCommand,
-        write_status,
+        Cli, Command, DbCommand, HistoryCommand, PlaylistCommand, PlaylistRoleArg, SpotifyCommand,
+        SyncCommand, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -663,6 +967,58 @@ mod tests {
                     ..
                 }
             } if account == "personal" && name == "Smooth Morning Coffee (Curated)"
+        ));
+    }
+
+    #[test]
+    fn parses_extended_history_import() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "history",
+            "import",
+            "--archive",
+            "data/history.zip",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::History {
+                command: HistoryCommand::Import { account, archive }
+            } if account == "personal" && archive == std::path::Path::new("data/history.zip")
+        ));
+    }
+
+    #[test]
+    fn parses_default_history_inbox_ingestion() {
+        let cli = Cli::try_parse_from(["chordrift", "history", "ingest"]).expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::History {
+                command: HistoryCommand::Ingest { account, data_root }
+            } if account == "personal" && data_root == std::path::Path::new("data")
+        ));
+    }
+
+    #[test]
+    fn parses_default_history_restore() {
+        let cli = Cli::try_parse_from(["chordrift", "history", "restore"]).expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::History {
+                command: HistoryCommand::Restore { account, data_root }
+            } if account == "personal" && data_root == std::path::Path::new("data")
+        ));
+    }
+
+    #[test]
+    fn parses_history_top() {
+        let cli = Cli::try_parse_from(["chordrift", "history", "top", "--limit", "10"])
+            .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::History {
+                command: HistoryCommand::Top { account, limit }
+            } if account == "personal" && limit == 10
         ));
     }
 

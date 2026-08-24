@@ -60,6 +60,92 @@ Chordrift reads its Neon URL from `CHORDRIFT_DATABASE_URL` and its public
 Spotify application ID from `CHORDRIFT_SPOTIFY_CLIENT_ID`. With Apogee, expose
 those variables through Apogee rather than editing shell initialization files.
 
+## Spotify data archives
+
+Neon remains Chordrift's operational and authoritative database. Chordrift
+keeps downloaded Spotify archives under the Git-ignored `data/` directory only
+as immutable recovery inputs. Keep Spotify's original `my_spotify_data.zip`
+filename; the folder structure distinguishes the two export types:
+
+```text
+data/spotify/personal/inbox/
+├── account-data/my_spotify_data.zip
+└── extended-streaming-history/my_spotify_data.zip
+```
+
+After saving new exports in those locations, run:
+
+```console
+$ chordrift history ingest
+```
+
+Chordrift recognizes each archive from its contents, imports it idempotently,
+and moves it beneath `data/spotify/personal/archive/` using export type, import
+date, and full SHA-256 folders. The ZIP itself remains named
+`my_spotify_data.zip`, while the hash folder prevents collisions across repeated
+requests. Reusing an exact archive or importing a newer archive with overlapping
+events does not duplicate listening history. Later exports are treated as
+cumulative supplements: Chordrift identifies an event by account, Spotify track
+ID, timestamp, milliseconds played, and an occurrence number for truly
+identical repeats, then inserts only event identities Neon does not already
+know.
+
+Inspect one archive without writing to Neon or moving the file:
+
+```console
+$ chordrift history inspect --archive data/spotify/personal/inbox/account-data/my_spotify_data.zip
+```
+
+Import a specific archive without applying the inbox/archive organization:
+
+```console
+$ chordrift history import --archive /path/to/my_spotify_data.zip
+```
+
+Summarize the account's imported listening history:
+
+```console
+$ chordrift history summary --account personal
+```
+
+Reconcile newly encountered Spotify IDs and rebuild per-track statistics from
+the retained raw events:
+
+```console
+$ chordrift history refresh --account personal
+```
+
+Normal `chordrift sync pull` runs this reconciliation automatically after
+updating the provider inventory. Show the most-listened tracks by total playback
+duration:
+
+```console
+$ chordrift history top --account personal --limit 25
+```
+
+Extended streaming history is the authoritative event source because it has
+timestamps, exact Spotify track URIs, durations, skips, playback reasons, and
+context flags. Account-data exports are registered with safe playlist/library
+counts, but their simplified recent plays are not imported because they overlap
+extended history. Chordrift does not store archive IP addresses, account profile
+details, addresses, payment data, messages, or search text.
+
+If Neon must be rebuilt, first restore the application schema and current
+provider inventory, then replay every retained local archive:
+
+```console
+$ chordrift db migrate
+$ chordrift spotify auth --account personal
+$ chordrift sync pull --account personal
+$ chordrift history restore --account personal
+```
+
+`chordrift history restore` scans the content-addressed archive without moving
+or modifying its ZIPs. Imports remain idempotent, so it is also safe to run as a
+recovery verification against an already-current database. The unchanged ZIPs
+let future Chordrift versions extract additional useful fields without asking
+Spotify to generate the export again.
+
 ## Database
 
 Check Neon connectivity and migration state without changing the schema:
@@ -187,6 +273,7 @@ Run a pull and confirm the final report says `analysis: current`:
 $ chordrift sync pull
 $ chordrift playlists tracks --name "Smooth Morning Coffee (Curated)"
 $ chordrift analyze summary
+$ chordrift history summary
 ```
 
 That establishes a fresh immutable provider snapshot and matching derived

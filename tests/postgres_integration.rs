@@ -1,5 +1,6 @@
 use chordrift::{config, db};
 use storexa::{DatabaseConfig, PostgresProvider};
+use uuid::Uuid;
 
 #[tokio::test]
 #[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for a disposable PostgreSQL database"]
@@ -12,11 +13,11 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     let database = db::connect(config).await?;
 
     let report = db::migrate(&database).await?;
-    assert_eq!(report.available, 4);
+    assert_eq!(report.available, 8);
 
     let status = db::status(&database).await?;
-    assert_eq!(status.available_migrations, 4);
-    assert_eq!(status.applied_migrations, 4);
+    assert_eq!(status.available_migrations, 8);
+    assert_eq!(status.applied_migrations, 8);
     assert_eq!(status.pending_migrations, 0);
     assert_eq!(status.failed_migrations, 0);
 
@@ -28,6 +29,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     for expected in [
         "albums",
         "account_analysis_state",
+        "account_listening_track_statistics",
         "account_track_statistics",
         "artists",
         "cluster_generations",
@@ -48,6 +50,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "provider_playlists",
         "provider_saved_tracks",
         "provider_tracks",
+        "spotify_archive_imports",
         "sync_operations",
         "sync_runs",
         "track_artists",
@@ -58,6 +61,43 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     ] {
         assert!(tables.iter().any(|table| table == expected), "{expected}");
     }
+
+    let account_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO provider_accounts
+         (id, provider, provider_account_id, account_label)
+         VALUES ($1, 'spotify', 'fixture-user', 'fixture')",
+    )
+    .bind(account_id)
+    .execute(database.pool())
+    .await?;
+    sqlx::query(
+        "INSERT INTO listening_events
+         (provider_account_id, provider, provider_track_id, source_event_id,
+          played_at, ms_played, source_occurrence)
+         VALUES ($1, 'spotify', 'track-1', 'archive-a',
+                 '2026-08-20T04:33:23Z', 12345, 0)",
+    )
+    .bind(account_id)
+    .execute(database.pool())
+    .await?;
+    let duplicate = sqlx::query(
+        "INSERT INTO listening_events
+         (provider_account_id, provider, provider_track_id, source_event_id,
+          played_at, ms_played, source_occurrence)
+         VALUES ($1, 'spotify', 'track-1', 'archive-b',
+                 '2026-08-20T04:33:23Z', 12345, 0)
+         ON CONFLICT (provider_account_id, provider, provider_track_id,
+                      played_at, ms_played, source_occurrence)
+         WHERE provider_account_id IS NOT NULL
+           AND provider_track_id IS NOT NULL
+           AND ms_played IS NOT NULL
+         DO NOTHING",
+    )
+    .bind(account_id)
+    .execute(database.pool())
+    .await?;
+    assert_eq!(duplicate.rows_affected(), 0);
 
     database.close().await;
     Ok(())

@@ -4,10 +4,25 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-08-24
+
 - Add `playlists tracks` to inspect the ordered contents of a playlist's latest
   imported Neon snapshot by unambiguous name or stable Spotify ID.
 - Add and link a canonical user-facing CLI guide with everyday sync and
   verification examples.
+- Add privacy-conscious inspection and idempotent import of Spotify account-data
+  and extended streaming-history ZIP archives.
+- Preserve exact music playback timestamps, durations, skips, interaction
+  reasons, platform/context flags, and Spotify track IDs while excluding IP
+  addresses and account-profile PII.
+- Add a Git-ignored, collision-safe local inbox/archive workflow that keeps
+  Spotify's original `my_spotify_data.zip` filename.
+- Add replay of retained local archives for Neon disaster recovery while
+  keeping Neon authoritative during normal operation.
+- Deduplicate cumulative future exports by stable core playback identity rather
+  than archive or source-file boundaries.
+- Derive account-scoped per-track event, meaningful-play, duration, skip,
+  completion, and recency statistics; relink history after normal provider syncs.
 
 ## [0.0.3] - 2026-08-18
 
@@ -57,7 +72,8 @@ All notable changes to Chordrift are documented here.
 
 - Reserve the Chordrift crate and repository namespaces.
 
-[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.3...HEAD
+[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.4...HEAD
+[0.0.4]: https://github.com/orbyts/chordrift/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/orbyts/chordrift/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/orbyts/chordrift/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/orbyts/chordrift/compare/v0.0.0...v0.0.1

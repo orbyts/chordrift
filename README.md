@@ -15,11 +15,11 @@ and synchronization will not wait for it; when available, the export will add
 signals such as play counts, listening duration, first play, and last play.
 
 > [!WARNING]
-> Chordrift is in very early development. Version 0.0.3 adds incremental
-> Spotify-to-Neon synchronization and canonical playlist analysis. Chordrift
-> still performs no remote Spotify mutations.
+> Chordrift is in very early development. Version 0.0.4 adds privacy-conscious
+> Spotify history enrichment, repeatable local archive recovery, and basic
+> read-only query commands. Chordrift still performs no remote Spotify mutations.
 
-## v0.0.3 capabilities
+## v0.0.4 capabilities
 
 - Storexa-backed Neon PostgreSQL connection management
 - an application-owned canonical music-library schema
@@ -35,13 +35,18 @@ signals such as play counts, listening duration, first play, and last play.
 - account-scoped observed, inbox, and managed playlist roles
 - explicit provider-wins, Neon-wins, and manual drift policies
 - current overlap, duplicate-membership, and aggregate library reports
+- ordered track queries for individual current playlists
+- idempotent account-data and extended streaming-history archive ingestion
+- cumulative event deduplication across periodic overlapping Spotify exports
+- account-scoped play, duration, skip, completion, and recency statistics
+- Git-ignored local inbox/archive recovery that preserves original ZIPs
 
 Set the canonical Neon connection URL through the application-specific
 `CHORDRIFT_DATABASE_URL` environment variable. Chordrift never prints it.
 
 ```console
 $ chordrift --version
-chordrift 0.0.3
+chordrift 0.0.4
 
 $ chordrift db status
 database: chordrift-primary
@@ -121,7 +126,7 @@ $ chordrift analyze overlap --limit 25
 $ chordrift analyze duplicates --limit 25
 ```
 
-Role and policy configuration is durable, but v0.0.3 remains pull-only. A
+Role and policy configuration is durable, but v0.0.4 remains pull-only. A
 future dry-run/apply milestone will use `neon-wins` for managed playlists and
 will require explicit, auditable approval before changing Spotify.
 
@@ -129,9 +134,11 @@ Spotify Platform content is retained as provider inventory and provenance. It
 will not be used to train an ML or AI model. Later personal embeddings will use
 Chordrift's canonical and user-supplied signals within provider-policy limits.
 
-The downloadable listening-history archive remains optional. When it arrives,
-it will enrich the library with play counts and listening statistics without
-changing or replacing these Web API inventory snapshots.
+The downloadable listening-history archive remains optional. When available,
+`chordrift history ingest` enriches the library with account-scoped play counts,
+duration, skips, completions, and recency without changing or replacing Web API
+inventory snapshots. Neon remains authoritative; unchanged local ZIPs are
+retained only for recovery and future reprocessing.
 
 See [docs/HOW_TO_CHORDRIFT.md](docs/HOW_TO_CHORDRIFT.md) for the complete CLI
 guide, [ROADMAP.md](ROADMAP.md) for planned milestones, and

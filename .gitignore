@@ -4,4 +4,4 @@
 !.env.example
 *.pem
 *.key
-
+/data/

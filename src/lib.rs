@@ -16,6 +16,8 @@ pub mod config;
 pub mod credentials;
 /// Storexa-backed database lifecycle and migration inspection.
 pub mod db;
+/// Privacy-conscious Spotify archive inspection and listening-history import.
+pub mod history;
 /// Account-scoped playlist roles and drift policy.
 pub mod playlists;
 /// Streaming-provider adapters.

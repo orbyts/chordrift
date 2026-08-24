@@ -57,10 +57,19 @@ events, and derive play-count, duration, recency, and skip statistics. The rest
 of Chordrift remains usable before or without this data.
 
 Add a basic read-only query surface for accounts and playlists, ordered songs
-within a playlist, saved tracks, canonical-track lookup, and import/analysis
-snapshot freshness. These commands should make it possible to verify that Neon
-is clean and current without writing SQL. Preserve duplicate entries and expose
-stable provider IDs whenever a mutable name is ambiguous.
+within a playlist, canonical analysis, listening-history summaries, and
+per-track listening statistics. These commands should make it possible to
+verify that Neon is clean and current without writing SQL. Preserve duplicate
+entries and expose stable provider IDs whenever a mutable name is ambiguous.
+
+Archive ingestion uses a Git-ignored per-account inbox and collision-safe local
+archive. Imports are content-addressed and event-deduplicated so periodic
+overlapping exports can be added safely. Raw IP addresses and unrelated account
+PII are excluded from the canonical database. Neon remains authoritative; the
+unchanged local ZIP archive is a disaster-recovery and future reprocessing
+source that can rebuild enrichment without requesting another Spotify export.
+
+Status: complete.
 
 ## v0.0.5 — Apple Music matching
 
