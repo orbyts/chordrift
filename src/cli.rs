@@ -319,6 +319,15 @@ pub enum EnrichmentCommand {
         #[arg(long)]
         refresh: bool,
     },
+    /// Resolve matched MusicBrainz artists to primary associated areas.
+    Artists {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Maximum distinct pending artists to process in this invocation.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+    },
     /// Show current enrichment and cache coverage without network requests.
     Status {
         /// Local label for this Spotify account.
@@ -1151,6 +1160,25 @@ async fn run_enrichment_command(
             writeln!(output, "facts_written: {}", report.facts_written)?;
             Ok(())
         }
+        EnrichmentCommand::Artists { account, limit } => {
+            let report = enrichment::artist_areas(database, &account, limit).await?;
+            writeln!(output, "artist_area_enrichment: succeeded")?;
+            writeln!(output, "run_id: {}", report.run_id)?;
+            writeln!(output, "source: musicbrainz")?;
+            writeln!(output, "artists_considered: {}", report.artists_considered)?;
+            writeln!(
+                output,
+                "track_artists_considered: {}",
+                report.track_artists_considered
+            )?;
+            writeln!(output, "requests_made: {}", report.requests_made)?;
+            writeln!(output, "cache_hits: {}", report.cache_hits)?;
+            writeln!(output, "resolved_artists: {}", report.resolved_artists)?;
+            writeln!(output, "unknown_artists: {}", report.unknown_artists)?;
+            writeln!(output, "error_artists: {}", report.error_artists)?;
+            writeln!(output, "facts_written: {}", report.facts_written)?;
+            Ok(())
+        }
         EnrichmentCommand::Status { account } => {
             let report = enrichment::status(database, &account).await?;
             writeln!(output, "enrichment: current")?;
@@ -1162,6 +1190,12 @@ async fn run_enrichment_command(
             writeln!(output, "unmatched_tracks: {}", report.unmatched_tracks)?;
             writeln!(output, "error_tracks: {}", report.error_tracks)?;
             writeln!(output, "facts: {}", report.facts)?;
+            writeln!(
+                output,
+                "tracks_with_artist_area: {}",
+                report.tracks_with_artist_area
+            )?;
+            writeln!(output, "artist_area_facts: {}", report.artist_area_facts)?;
             writeln!(
                 output,
                 "latest_run_at: {}",
@@ -1490,6 +1524,18 @@ mod tests {
                     limit: 10,
                     refresh: false
                 }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_bounded_artist_area_enrichment() {
+        let cli = Cli::try_parse_from(["chordrift", "enrich", "artists", "--limit", "10"])
+            .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Enrich {
+                command: EnrichmentCommand::Artists { account, limit: 10 }
             } if account == "personal"
         ));
     }

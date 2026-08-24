@@ -17,7 +17,7 @@ Last updated: 2026-08-24.
 - User's normal clone: `$CRATES/chordrift`, currently
   `/Users/suhail/Library/CloudStorage/Dropbox/matrix/crates/chordrift`
 - Local Storexa clone, if its source is needed: `$CRATES/storexa`
-- Released CLI: `chordrift 0.0.4`
+- Released CLI: `chordrift 0.0.5`
 - `main` is the Spotify-focused release line. The Apple foundation is isolated
   on `codex/apple-music` and must not be merged until it can be tested with real
   Apple credentials.
@@ -276,18 +276,16 @@ At the end of each focused task:
 5. Leave the active branch and working tree state explicit for the next task.
 
 v0.0.5 was merged at `ffbcc40`, tagged, released on GitHub, published to
-crates.io, installed locally, verified against healthy Neon at 11/11, and
-fast-forwarded into `$CRATES/chordrift`. Active development is now on
-`codex/semantic-enrichment` for v0.0.6. Migration 0012 and the first bounded
-MusicBrainz adapter are in the working tree but not yet applied live. The
-adapter caches raw ISRC and recording-detail responses separately, respects the
-one-request-per-second limit, and persists conservative match/fact provenance.
-Fresh PostgreSQL CI run `32764620509` passed, migration 0012 is live, and a
-five-track probe completed without false matches. After narrowly normalizing
-only featured-artist title suffixes, one track matched and produced two
-release-provenance facts; two ISRCs were absent and one MusicBrainz duplicate
-recording set correctly remained ambiguous. Bounded retry cleared two transient
-503s. Pending requests are prioritized by intake, rotation, saved state, then
-meaningful plays; these behavioral values affect scheduling only, never musical
-similarity. Artist-area and pretrained mood/sound inference are the next layers;
-the Excluded Tracks schema/apply behavior remains future work.
+crates.io, installed locally, verified against healthy Neon, and fast-forwarded
+into `$CRATES/chordrift`. Active development is on
+`codex/semantic-enrichment` for v0.0.6; PR #2 is open. Migration 0012 is live
+and CI run `32765541591` passed. The bounded MusicBrainz adapter caches raw ISRC
+and recording-detail responses separately, respects the one-request-per-second
+limit, and persists conservative match/fact provenance. A live high-priority
+probe matched M83 and retained 35 useful genre/tag/release facts. Pending
+requests are prioritized by intake, rotation, saved state, then meaningful
+plays; these values affect scheduling only, never similarity. Migration 0013
+and the separate cache-first `enrich artists` operation are now being developed
+to retain MusicBrainz primary-associated-area evidence without claiming
+birthplace, nationality, or track language. Pretrained mood/sound inference is
+next; Excluded Tracks remains future work.

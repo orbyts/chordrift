@@ -182,8 +182,10 @@ First enrich canonical recording identities independently from Spotify. Use a
 rate-limited, cache-first MusicBrainz adapter with ISRC-first resolution,
 conservative ambiguity handling, and raw-response retention. Persist genres,
 folksonomy tags, release countries, and release-title language/script with
-source, parser version, confidence, and entity provenance. Add separately
-versioned artist-area and pretrained mood/sound inference without confusing
+source, parser version, confidence, and entity provenance. Resolve credited
+artists to separately versioned primary-associated-area evidence, retaining
+unknown outcomes and never treating the area as birthplace, nationality, or
+track language. Add pretrained mood/sound inference without confusing
 release-title language with vocal language.
 
 Then create reproducible cluster generations with stable identities,

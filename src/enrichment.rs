@@ -1,6 +1,9 @@
 //! Cache-first, provenance-aware semantic metadata enrichment.
 
-use std::{collections::BTreeSet, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet},
+    time::Duration,
+};
 
 use chrono::{DateTime, Utc};
 use reqwest::{Client, StatusCode};
@@ -17,6 +20,7 @@ use crate::{ChordriftError, Result};
 const SOURCE: &str = "musicbrainz";
 const API_VERSION: &str = "ws2-json";
 const PARSER_VERSION: &str = "musicbrainz-isrc-v1";
+const ARTIST_AREA_PARSER_VERSION: &str = "musicbrainz-artist-area-v1";
 const API_ROOT: &str = "https://musicbrainz.org/ws/2/";
 const REQUEST_INTERVAL: Duration = Duration::from_millis(1_100);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
@@ -45,6 +49,29 @@ pub struct RunReport {
     pub facts_written: usize,
 }
 
+/// Summary of one bounded artist-area enrichment run.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArtistAreaRunReport {
+    /// Persisted run identity.
+    pub run_id: Uuid,
+    /// Distinct MusicBrainz artists considered.
+    pub artists_considered: usize,
+    /// Track-to-artist associations resolved in this run.
+    pub track_artists_considered: usize,
+    /// Network requests made after consulting the lookup cache.
+    pub requests_made: usize,
+    /// Artist lookups reused from Neon.
+    pub cache_hits: usize,
+    /// Artist lookups with a primary associated area.
+    pub resolved_artists: usize,
+    /// Artist lookups without an associated area.
+    pub unknown_artists: usize,
+    /// Artist lookups that ended in an HTTP error.
+    pub error_artists: usize,
+    /// Track-level artist-area facts inserted or refreshed.
+    pub facts_written: usize,
+}
+
 /// Latest aggregate enrichment state for an account.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StatusReport {
@@ -62,6 +89,10 @@ pub struct StatusReport {
     pub error_tracks: usize,
     /// Current semantic fact count.
     pub facts: usize,
+    /// Eligible tracks with at least one resolved artist area.
+    pub tracks_with_artist_area: usize,
+    /// Current artist-area fact count.
+    pub artist_area_facts: usize,
     /// Most recent completed run, if any.
     pub latest_run_at: Option<DateTime<Utc>>,
 }
@@ -157,7 +188,37 @@ struct MbArtistCredit {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct MbArtist {
+    #[serde(default)]
+    id: String,
     name: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct MbArtistDetail {
+    id: String,
+    name: String,
+    #[serde(default)]
+    area: Option<MbArea>,
+    #[serde(default)]
+    country: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct MbArea {
+    id: String,
+    name: String,
+}
+
+#[derive(Clone, Debug)]
+struct ArtistAreaTarget {
+    track_id: Uuid,
+    match_confidence: f64,
+}
+
+#[derive(Clone, Debug)]
+struct ArtistAreaCandidate {
+    artist_name: String,
+    targets: Vec<ArtistAreaTarget>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -219,6 +280,132 @@ pub async fn musicbrainz(
         .await?;
     }
     result
+}
+
+/// Resolves a bounded set of matched recording artists to their primary areas.
+pub async fn artist_areas(
+    database: &Database,
+    account_label: &str,
+    limit: u32,
+) -> Result<ArtistAreaRunReport> {
+    if limit == 0 || limit > 1_000 {
+        return Err(ChordriftError::Configuration(
+            "artist-area enrichment limit must be between 1 and 1000".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let run_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO enrichment_runs
+         (provider_account_id, source, source_version, status, parameters)
+         VALUES ($1, $2, $3, 'running', $4) RETURNING id",
+    )
+    .bind(account_id)
+    .bind(SOURCE)
+    .bind(ARTIST_AREA_PARSER_VERSION)
+    .bind(json!({ "limit": limit, "lookup": "artist" }))
+    .fetch_one(database.pool())
+    .await?;
+
+    let result = run_artist_areas(database, account_id, run_id, limit).await;
+    if result.is_err() {
+        sqlx::query(
+            "UPDATE enrichment_runs SET status = 'failed', finished_at = now() WHERE id = $1",
+        )
+        .bind(run_id)
+        .execute(database.pool())
+        .await?;
+    }
+    result
+}
+
+async fn run_artist_areas(
+    database: &Database,
+    account_id: Uuid,
+    run_id: Uuid,
+    limit: u32,
+) -> Result<ArtistAreaRunReport> {
+    let candidates = load_artist_area_candidates(database, account_id, limit).await?;
+    let mut report = ArtistAreaRunReport {
+        run_id,
+        artists_considered: candidates.len(),
+        track_artists_considered: candidates
+            .values()
+            .map(|candidate| candidate.targets.len())
+            .sum(),
+        requests_made: 0,
+        cache_hits: 0,
+        resolved_artists: 0,
+        unknown_artists: 0,
+        error_artists: 0,
+        facts_written: 0,
+    };
+    let client = MusicBrainzClient::new()?;
+    let mut last_request = None;
+
+    for (index, (artist_mbid, candidate)) in candidates.iter().enumerate() {
+        eprintln!(
+            "musicbrainz artist areas: {}/{} {}",
+            index + 1,
+            candidates.len(),
+            candidate.artist_name
+        );
+        let lookup = match cached_lookup(database, "artist", artist_mbid).await? {
+            Some(cached) => {
+                report.cache_hits += 1;
+                cached
+            }
+            None => {
+                wait_for_rate_limit(&mut last_request).await;
+                let fetched = client.fetch_artist(artist_mbid).await?;
+                last_request = Some(Instant::now());
+                report.requests_made += fetched.requests_made;
+                persist_lookup(database, "artist", artist_mbid, fetched).await?
+            }
+        };
+        let detail = artist_area_detail(artist_mbid, &lookup)?;
+        match &detail {
+            ArtistAreaDetail::Resolved(_) => report.resolved_artists += 1,
+            ArtistAreaDetail::Unknown => report.unknown_artists += 1,
+            ArtistAreaDetail::Error => report.error_artists += 1,
+        }
+        for target in &candidate.targets {
+            report.facts_written += persist_artist_area(
+                database,
+                target,
+                artist_mbid,
+                &candidate.artist_name,
+                &lookup,
+                &detail,
+            )
+            .await?;
+        }
+    }
+
+    sqlx::query(
+        "UPDATE enrichment_runs
+         SET status = 'succeeded', tracks_considered = $2, requests_made = $3,
+             cache_hits = $4, matched_tracks = $5, unmatched_tracks = $6,
+             error_tracks = $7, facts_written = $8, finished_at = now()
+         WHERE id = $1",
+    )
+    .bind(run_id)
+    .bind(as_i32(report.track_artists_considered)?)
+    .bind(as_i32(report.requests_made)?)
+    .bind(as_i32(report.cache_hits)?)
+    .bind(as_i32(report.resolved_artists)?)
+    .bind(as_i32(report.unknown_artists)?)
+    .bind(as_i32(report.error_artists)?)
+    .bind(as_i32(report.facts_written)?)
+    .execute(database.pool())
+    .await?;
+    Ok(report)
+}
+
+#[derive(Clone, Debug)]
+enum ArtistAreaDetail {
+    Resolved(MbArtistDetail),
+    Unknown,
+    Error,
 }
 
 async fn run_musicbrainz(
@@ -332,6 +519,203 @@ async fn run_musicbrainz(
     Ok(report)
 }
 
+async fn load_artist_area_candidates(
+    database: &Database,
+    account_id: Uuid,
+    limit: u32,
+) -> Result<BTreeMap<String, ArtistAreaCandidate>> {
+    let rows = sqlx::query(
+        "SELECT match.track_id, match.confidence, recording_lookup.response
+         FROM track_enrichment_matches match
+         JOIN track_enrichment_lookups recording_lookup
+           ON recording_lookup.source = match.source
+          AND recording_lookup.api_version = $1
+          AND recording_lookup.lookup_kind = 'recording'
+          AND recording_lookup.lookup_value = match.source_entity_id
+          AND recording_lookup.outcome = 'response'
+         WHERE match.source = $2 AND match.parser_version = $3
+           AND match.status = 'matched'
+           AND account_track_is_eligible($4, match.track_id)
+         ORDER BY match.resolved_at DESC, match.track_id",
+    )
+    .bind(API_VERSION)
+    .bind(SOURCE)
+    .bind(PARSER_VERSION)
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    let resolved_rows = sqlx::query(
+        "SELECT resolution.track_id, resolution.artist_mbid
+         FROM track_artist_area_resolutions resolution
+         JOIN track_enrichment_lookups lookup ON lookup.id = resolution.lookup_id
+         WHERE resolution.source = $1 AND resolution.parser_version = $2
+           AND account_track_is_eligible($3, resolution.track_id)
+           AND (resolution.status <> 'error' OR lookup.retry_after > now())",
+    )
+    .bind(SOURCE)
+    .bind(ARTIST_AREA_PARSER_VERSION)
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    let settled: HashSet<(Uuid, String)> = resolved_rows
+        .into_iter()
+        .map(|row| Ok((row.try_get("track_id")?, row.try_get("artist_mbid")?)))
+        .collect::<Result<_>>()?;
+    let mut candidates = BTreeMap::new();
+    for row in rows {
+        let track_id: Uuid = row.try_get("track_id")?;
+        let match_confidence: Option<f64> = row.try_get("confidence")?;
+        let recording: MbRecording = serde_json::from_value(row.try_get("response")?)?;
+        for credit in recording.artist_credit {
+            let artist = credit.artist;
+            if artist.id.is_empty() || settled.contains(&(track_id, artist.id.clone())) {
+                continue;
+            }
+            let candidate = candidates
+                .entry(artist.id)
+                .or_insert_with(|| ArtistAreaCandidate {
+                    artist_name: artist.name,
+                    targets: Vec::new(),
+                });
+            if !candidate
+                .targets
+                .iter()
+                .any(|target| target.track_id == track_id)
+            {
+                candidate.targets.push(ArtistAreaTarget {
+                    track_id,
+                    match_confidence: match_confidence.unwrap_or(0.85),
+                });
+            }
+        }
+    }
+    Ok(candidates.into_iter().take(limit as usize).collect())
+}
+
+fn artist_area_detail(artist_mbid: &str, lookup: &CachedLookup) -> Result<ArtistAreaDetail> {
+    match lookup.outcome {
+        LookupOutcome::NotFound => Ok(ArtistAreaDetail::Unknown),
+        LookupOutcome::Error => Ok(ArtistAreaDetail::Error),
+        LookupOutcome::Response => {
+            let detail: MbArtistDetail =
+                serde_json::from_value(lookup.response.clone().ok_or_else(|| {
+                    ChordriftError::Configuration(
+                        "MusicBrainz artist lookup is missing its cached response".to_owned(),
+                    )
+                })?)?;
+            if detail.id != artist_mbid {
+                return Err(ChordriftError::Configuration(
+                    "MusicBrainz artist lookup returned a different identity".to_owned(),
+                ));
+            }
+            if detail
+                .area
+                .as_ref()
+                .is_some_and(|area| !area.id.trim().is_empty() && !area.name.trim().is_empty())
+            {
+                Ok(ArtistAreaDetail::Resolved(detail))
+            } else {
+                Ok(ArtistAreaDetail::Unknown)
+            }
+        }
+    }
+}
+
+async fn persist_artist_area(
+    database: &Database,
+    target: &ArtistAreaTarget,
+    artist_mbid: &str,
+    artist_name: &str,
+    lookup: &CachedLookup,
+    detail: &ArtistAreaDetail,
+) -> Result<usize> {
+    let (status, area, country) = match detail {
+        ArtistAreaDetail::Resolved(detail) => {
+            ("resolved", detail.area.as_ref(), detail.country.as_deref())
+        }
+        ArtistAreaDetail::Unknown => ("unknown", None, None),
+        ArtistAreaDetail::Error => ("error", None, None),
+    };
+    let confidence = (target.match_confidence * 0.8).clamp(0.0, 1.0);
+    let mut transaction = database.pool().begin().await?;
+    sqlx::query(
+        "INSERT INTO track_artist_area_resolutions
+         (track_id, source, parser_version, match_parser_version, artist_mbid,
+          artist_name, lookup_id, status, area_mbid, area_name, country_code,
+          confidence, provenance, resolved_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
+         ON CONFLICT (track_id, source, parser_version, artist_mbid)
+         DO UPDATE SET artist_name = EXCLUDED.artist_name, lookup_id = EXCLUDED.lookup_id,
+             status = EXCLUDED.status, area_mbid = EXCLUDED.area_mbid,
+             area_name = EXCLUDED.area_name, country_code = EXCLUDED.country_code,
+             confidence = EXCLUDED.confidence, provenance = EXCLUDED.provenance,
+             resolved_at = now()",
+    )
+    .bind(target.track_id)
+    .bind(SOURCE)
+    .bind(ARTIST_AREA_PARSER_VERSION)
+    .bind(PARSER_VERSION)
+    .bind(artist_mbid)
+    .bind(artist_name)
+    .bind(lookup.id)
+    .bind(status)
+    .bind(area.map(|value| &value.id))
+    .bind(area.map(|value| &value.name))
+    .bind(country)
+    .bind(confidence)
+    .bind(json!({
+        "entity": "artist",
+        "artist_mbid": artist_mbid,
+        "artist_name": artist_name,
+        "area_meaning": "primary_associated_area",
+        "artist_area_parser_version": ARTIST_AREA_PARSER_VERSION
+    }))
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query(
+        "DELETE FROM track_semantic_facts
+         WHERE track_id = $1 AND source = $2 AND parser_version = $3
+           AND source_entity_id = $4 AND fact_kind = 'artist_area'",
+    )
+    .bind(target.track_id)
+    .bind(SOURCE)
+    .bind(PARSER_VERSION)
+    .bind(artist_mbid)
+    .execute(&mut *transaction)
+    .await?;
+    let mut written = 0;
+    if let Some(area) = area {
+        sqlx::query(
+            "INSERT INTO track_semantic_facts
+             (track_id, match_track_id, source, parser_version, source_entity_id,
+              fact_kind, value, normalized_value, weight, confidence, provenance)
+             VALUES ($1, $1, $2, $3, $4, 'artist_area', $5, $6, 1, $7, $8)
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(target.track_id)
+        .bind(SOURCE)
+        .bind(PARSER_VERSION)
+        .bind(artist_mbid)
+        .bind(&area.name)
+        .bind(normalize(&area.name))
+        .bind(confidence)
+        .bind(json!({
+            "entity": "artist",
+            "artist_mbid": artist_mbid,
+            "artist_name": artist_name,
+            "area_mbid": area.id,
+            "country_code": country,
+            "meaning": "primary_associated_area",
+            "artist_area_parser_version": ARTIST_AREA_PARSER_VERSION
+        }))
+        .execute(&mut *transaction)
+        .await?;
+        written = 1;
+    }
+    transaction.commit().await?;
+    Ok(written)
+}
+
 /// Reports current enrichment coverage without making network requests.
 pub async fn status(database: &Database, account_label: &str) -> Result<StatusReport> {
     let account_id = account_id(database, account_label).await?;
@@ -369,6 +753,19 @@ pub async fn status(database: &Database, account_label: &str) -> Result<StatusRe
     .bind(account_id)
     .fetch_one(database.pool())
     .await?;
+    let artist_area_row = sqlx::query(
+        "SELECT count(DISTINCT resolution.track_id)
+                    FILTER (WHERE resolution.status = 'resolved')::bigint AS tracks,
+                count(*) FILTER (WHERE resolution.status = 'resolved')::bigint AS facts
+         FROM track_artist_area_resolutions resolution
+         WHERE resolution.source = $1 AND resolution.parser_version = $2
+           AND account_track_is_eligible($3, resolution.track_id)",
+    )
+    .bind(SOURCE)
+    .bind(ARTIST_AREA_PARSER_VERSION)
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
     let latest_run_at: Option<DateTime<Utc>> = sqlx::query_scalar(
         "SELECT max(finished_at) FROM enrichment_runs
          WHERE provider_account_id = $1 AND source = $2 AND status = 'succeeded'",
@@ -385,6 +782,8 @@ pub async fn status(database: &Database, account_label: &str) -> Result<StatusRe
         unmatched_tracks: as_usize(row.try_get("unmatched_tracks")?)?,
         error_tracks: as_usize(row.try_get("error_tracks")?)?,
         facts: as_usize(facts)?,
+        tracks_with_artist_area: as_usize(artist_area_row.try_get("tracks")?)?,
+        artist_area_facts: as_usize(artist_area_row.try_get("facts")?)?,
         latest_run_at,
     })
 }
@@ -658,7 +1057,8 @@ async fn persist_match(
     .await?;
     sqlx::query(
         "DELETE FROM track_semantic_facts
-         WHERE track_id = $1 AND source = $2 AND parser_version = $3",
+         WHERE track_id = $1 AND source = $2 AND parser_version = $3
+           AND fact_kind <> 'artist_area'",
     )
     .bind(track.id)
     .bind(SOURCE)
@@ -830,6 +1230,16 @@ impl MusicBrainzClient {
         .await
     }
 
+    async fn fetch_artist(&self, artist_id: &str) -> Result<FetchedLookup> {
+        Uuid::parse_str(artist_id).map_err(|_| {
+            ChordriftError::Configuration(
+                "MusicBrainz returned an invalid artist identity".to_owned(),
+            )
+        })?;
+        let url = format!("{API_ROOT}artist/{artist_id}");
+        self.get_with_retry(url, &[("fmt", "json")]).await
+    }
+
     async fn get_with_retry(&self, url: String, query: &[(&str, &str)]) -> Result<FetchedLookup> {
         for attempt in 1..=MAX_TRANSIENT_ATTEMPTS {
             let response = self.http.get(&url).query(query).send().await?;
@@ -949,8 +1359,9 @@ fn as_usize(value: i64) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CachedLookup, LookupOutcome, MbArtist, MbArtistCredit, MbRecording, MbResponse, TrackInput,
-        candidate_score, decide_match, facts, normalize, normalize_title,
+        ArtistAreaDetail, CachedLookup, LookupOutcome, MbArtist, MbArtistCredit, MbRecording,
+        MbResponse, TrackInput, artist_area_detail, candidate_score, decide_match, facts,
+        normalize, normalize_title,
     };
     use serde_json::to_value;
     use uuid::Uuid;
@@ -1023,6 +1434,29 @@ mod tests {
         );
     }
 
+    #[test]
+    fn artist_area_is_primary_association_not_inferred_origin() {
+        let artist_id = "b7ffd2af-418f-4be2-bdd1-22f8b48613da";
+        let lookup = CachedLookup {
+            id: Uuid::new_v4(),
+            outcome: LookupOutcome::Response,
+            response: Some(serde_json::json!({
+                "id": artist_id,
+                "name": "Nine Inch Nails",
+                "country": "US",
+                "area": {
+                    "id": "489ce91b-6658-3307-9877-795b68554c98",
+                    "name": "United States"
+                }
+            })),
+        };
+        let detail = artist_area_detail(artist_id, &lookup).expect("artist response parses");
+        let ArtistAreaDetail::Resolved(detail) = detail else {
+            panic!("artist has a primary associated area");
+        };
+        assert_eq!(detail.area.expect("area exists").name, "United States");
+    }
+
     fn track() -> TrackInput {
         TrackInput {
             id: Uuid::new_v4(),
@@ -1040,6 +1474,7 @@ mod tests {
             length,
             artist_credit: vec![MbArtistCredit {
                 artist: MbArtist {
+                    id: Uuid::new_v4().to_string(),
                     name: artist.to_owned(),
                 },
             }],

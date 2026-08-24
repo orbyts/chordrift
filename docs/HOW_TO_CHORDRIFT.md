@@ -420,9 +420,22 @@ $ chordrift enrich musicbrainz --account personal --limit 25 --refresh
 The first adapter retains recording genres and folksonomy tags, release
 countries, and release-title language/script metadata. Release-title language
 is not assumed to be the language being sung. Each fact records its MusicBrainz
-entity, parser version, confidence, weight, and observation time. Artist-area
-lookups and pretrained mood/sound inference will reuse this cache and schema in
-later v0.0.6 steps.
+entity, parser version, confidence, weight, and observation time.
+
+After recording matches exist, resolve their credited artists to MusicBrainz's
+primary associated area in another bounded pass:
+
+```console
+$ chordrift enrich artists --account personal --limit 25
+```
+
+Artist requests use the same durable raw-response cache, so an artist shared by
+many tracks is downloaded once. Track-to-artist resolution is independently
+versioned and records resolved, unknown, and error outcomes; a missing area
+remains unknown. MusicBrainz defines this value as the area with which the
+artist is primarily identified. Chordrift does not relabel it as birthplace,
+formation country, nationality, recording location, or a track's language.
+Pretrained mood/sound inference is a later v0.0.6 step.
 
 ## Excluded tracks
 
