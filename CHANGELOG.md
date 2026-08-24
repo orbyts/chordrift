@@ -4,6 +4,8 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.0.9] - 2026-08-24
+
 - Add immutable, idempotent Spotify dry-run plans bound to one approved
   proposal and one imported snapshot, with exact operation inspection and no
   provider requests or mutations.
@@ -31,6 +33,9 @@ All notable changes to Chordrift are documented here.
   separate them from the active library, detect provider snapshot changes,
   reuse readable collaborative contents, and add read-only bookmark list and
   track inspection commands.
+- Add explicit one-bookmark refresh with immutable complete, inaccessible, and
+  not-found attempt history; retain readable ordered tracks when Spotify
+  permits access without adding requests to normal sync.
 - Add immutable all-present-bookmark cleanup review batches, explicit approval,
   exact candidate inspection, and separately counted relationship-only cleanup
   operations in Spotify dry-run planner v5; provider writes remain disabled.
@@ -147,7 +152,8 @@ All notable changes to Chordrift are documented here.
 
 - Reserve the Chordrift crate and repository namespaces.
 
-[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.5...HEAD
+[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.9...HEAD
+[0.0.9]: https://github.com/orbyts/chordrift/compare/v0.0.5...v0.0.9
 [0.0.5]: https://github.com/orbyts/chordrift/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/orbyts/chordrift/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/orbyts/chordrift/compare/v0.0.2...v0.0.3

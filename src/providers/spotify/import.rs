@@ -908,12 +908,17 @@ fn to_i32(value: usize, label: &str) -> Result<i32> {
 #[cfg(test)]
 mod tests {
     use storexa::{DatabaseConfig, PostgresProvider};
+    use uuid::Uuid;
 
     use super::{
         SpotifyInventory, clean_isrc, nonempty_or, normalize, parse_release_date, persist,
     };
     use crate::{
-        analysis, db, playlists,
+        analysis,
+        bookmarks::{
+            self, BookmarkFetchOutcome, BookmarkSelector, FetchedBookmark, FetchedBookmarkItem,
+        },
+        db, playlists,
         providers::spotify::models::{
             CurrentUser, Page, PlaylistInventory, PlaylistItem, SavedTrack, SpotifyPlaylist,
         },
@@ -1017,6 +1022,59 @@ mod tests {
         assert_eq!(summary.playlist_entries, 1);
         assert_eq!(summary.unique_playlist_tracks, 1);
         assert_eq!(summary.saved_tracks, 1);
+
+        let account_id: Uuid =
+            sqlx::query_scalar("SELECT id FROM provider_accounts WHERE account_label = 'fixture'")
+                .fetch_one(database.pool())
+                .await?;
+        sqlx::query(
+            "INSERT INTO external_playlist_bookmarks
+             (provider_account_id, provider, provider_playlist_id, relationship,
+              name, owner_provider_id, item_count, content_status,
+              present_in_provider_library)
+             VALUES ($1, 'spotify', 'shared123', 'followed_external',
+                     'Shared Fixture', 'friend', 1, 'metadata_only', TRUE)",
+        )
+        .bind(account_id)
+        .execute(database.pool())
+        .await?;
+        let refresh = bookmarks::record_refresh(
+            &database,
+            "fixture",
+            "shared123",
+            BookmarkFetchOutcome::Complete(FetchedBookmark {
+                name: "Shared Fixture Updated".to_owned(),
+                owner_provider_id: "friend".to_owned(),
+                owner_display_name: Some("Friend".to_owned()),
+                provider_url: Some("https://open.spotify.com/playlist/shared123".to_owned()),
+                provider_snapshot_id: Some("shared-snapshot-2".to_owned()),
+                public: Some(true),
+                collaborative: true,
+                item_count: 1,
+                unavailable_items: 0,
+                unsupported_items: 0,
+                items: vec![FetchedBookmarkItem {
+                    position: 0,
+                    provider_track_id: "track123".to_owned(),
+                    title: "Refreshed Track".to_owned(),
+                    artists: "Fixture Artist".to_owned(),
+                    album: Some("Fixture Album".to_owned()),
+                    added_at: None,
+                    provider_url: None,
+                }],
+            }),
+        )
+        .await?;
+        assert_eq!(refresh.status, "complete");
+        assert_eq!(refresh.captured_items, 1);
+        let retained = bookmarks::tracks(
+            &database,
+            "fixture",
+            &BookmarkSelector::ProviderId("shared123".to_owned()),
+        )
+        .await?;
+        assert_eq!(retained.bookmark.name, "Shared Fixture Updated");
+        assert_eq!(retained.tracks[0].title, "Refreshed Track");
 
         let configured = playlists::configure(
             &database,

@@ -66,6 +66,17 @@ impl SpotifyClient {
         self.get_json(api_url("me")?).await
     }
 
+    pub(crate) async fn external_playlist(
+        &self,
+        playlist_id: &str,
+    ) -> Result<(SpotifyPlaylist, Vec<PlaylistItem>)> {
+        let playlist: SpotifyPlaylist = self.get_json(playlist_url(playlist_id)?).await?;
+        let mut items_url = playlist_items_url(playlist_id)?;
+        items_url.query_pairs_mut().append_pair("limit", PAGE_LIMIT);
+        let items = self.all_pages(items_url, None).await?;
+        Ok((playlist, items))
+    }
+
     /// Fetches the complete read-only library into memory before persistence.
     pub(crate) async fn inventory(
         &self,
@@ -381,6 +392,11 @@ fn api_url(path: &str) -> Result<Url> {
 }
 
 fn playlist_items_url(id: &str) -> Result<Url> {
+    playlist_url(id)?;
+    api_url(&format!("playlists/{id}/items"))
+}
+
+fn playlist_url(id: &str) -> Result<Url> {
     if id.is_empty()
         || !id
             .chars()
@@ -390,7 +406,7 @@ fn playlist_items_url(id: &str) -> Result<Url> {
             "Spotify returned an invalid playlist ID".to_owned(),
         ));
     }
-    api_url(&format!("playlists/{id}/items"))
+    api_url(&format!("playlists/{id}"))
 }
 
 fn validate_api_url(url: &Url) -> Result<()> {

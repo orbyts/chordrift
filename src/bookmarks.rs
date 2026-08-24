@@ -74,6 +74,92 @@ pub struct BookmarkTracks {
     pub tracks: Vec<BookmarkTrackRecord>,
 }
 
+/// One track returned by an explicit provider bookmark refresh.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FetchedBookmarkItem {
+    /// Zero-based provider position.
+    pub position: i32,
+    /// Stable Spotify track ID.
+    pub provider_track_id: String,
+    /// Track title.
+    pub title: String,
+    /// Ordered display artists.
+    pub artists: String,
+    /// Album title, when supplied.
+    pub album: Option<String>,
+    /// Time the source playlist added the item, when supplied.
+    pub added_at: Option<DateTime<Utc>>,
+    /// Public Spotify track link, when supplied.
+    pub provider_url: Option<String>,
+}
+
+/// Readable metadata and membership returned for one bookmark.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FetchedBookmark {
+    /// Latest provider name.
+    pub name: String,
+    /// Stable owner ID.
+    pub owner_provider_id: String,
+    /// Owner display name, when supplied.
+    pub owner_display_name: Option<String>,
+    /// Public playlist link, when supplied.
+    pub provider_url: Option<String>,
+    /// Provider snapshot signature, when supplied.
+    pub provider_snapshot_id: Option<String>,
+    /// Provider public flag.
+    pub public: Option<bool>,
+    /// Whether the account collaborates on the playlist.
+    pub collaborative: bool,
+    /// Provider-reported item count.
+    pub item_count: usize,
+    /// Unavailable items skipped from the retained list.
+    pub unavailable_items: usize,
+    /// Unsupported local or non-track items skipped from the retained list.
+    pub unsupported_items: usize,
+    /// Readable supported tracks.
+    pub items: Vec<FetchedBookmarkItem>,
+}
+
+/// Outcome of an explicit, targeted provider request.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BookmarkFetchOutcome {
+    /// Metadata and every accessible supported track were returned.
+    Complete(FetchedBookmark),
+    /// Spotify denied the playlist or its items to this application.
+    Inaccessible {
+        /// Provider HTTP status.
+        http_status: u16,
+    },
+    /// Spotify no longer exposed the playlist ID.
+    NotFound {
+        /// Provider HTTP status.
+        http_status: u16,
+    },
+}
+
+/// Result of recording one explicit bookmark refresh attempt.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RefreshReport {
+    /// Immutable refresh identity.
+    pub refresh_id: Uuid,
+    /// Stable Spotify playlist ID.
+    pub provider_playlist_id: String,
+    /// Bookmark display name after the refresh.
+    pub name: String,
+    /// Complete, inaccessible, or not_found.
+    pub status: String,
+    /// Provider-reported item count.
+    pub item_count: usize,
+    /// Readable supported tracks retained.
+    pub captured_items: usize,
+    /// Unavailable items skipped.
+    pub unavailable_items: usize,
+    /// Unsupported items skipped.
+    pub unsupported_items: usize,
+    /// Refresh time.
+    pub refreshed_at: DateTime<Utc>,
+}
+
 /// Immutable review batch for provider-library cleanup.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CleanupBatch {
@@ -145,6 +231,31 @@ pub async fn list(database: &Database, account_label: &str) -> Result<Vec<Bookma
         .collect()
 }
 
+/// Resolves exactly one durable bookmark without contacting Spotify.
+pub async fn resolve(
+    database: &Database,
+    account_label: &str,
+    selector: &BookmarkSelector,
+) -> Result<BookmarkRecord> {
+    let rows = list(database, account_label).await?;
+    let matches: Vec<_> = rows
+        .into_iter()
+        .filter(|bookmark| match selector {
+            BookmarkSelector::ProviderId(id) => bookmark.provider_playlist_id == *id,
+            BookmarkSelector::Name(name) => bookmark.name.eq_ignore_ascii_case(name),
+        })
+        .collect();
+    match matches.len() {
+        0 => Err(ChordriftError::Configuration(
+            "external playlist bookmark was not found for this account".to_owned(),
+        )),
+        1 => Ok(matches.into_iter().next().expect("one bookmark")),
+        _ => Err(ChordriftError::Configuration(
+            "bookmark name is ambiguous; select it with --spotify-id".to_owned(),
+        )),
+    }
+}
+
 /// Returns the newest complete contents retained for one bookmark.
 pub async fn tracks(
     database: &Database,
@@ -200,45 +311,38 @@ pub async fn tracks(
     let row = &candidates[0];
     let bookmark_id: Uuid = row.try_get("id")?;
     let bookmark = bookmark_from_row(row)?;
-    let snapshot = sqlx::query(
-        "SELECT snapshot_id, captured_at
-         FROM external_playlist_bookmark_snapshots
-         WHERE bookmark_id = $1 AND content_status = 'complete'
-         ORDER BY captured_at DESC, snapshot_id DESC LIMIT 1",
+    let source = sqlx::query(
+        "SELECT source, source_id, captured_at FROM (
+             SELECT 'pull'::text AS source, snapshot_id AS source_id, captured_at
+             FROM external_playlist_bookmark_snapshots
+             WHERE bookmark_id = $1 AND content_status = 'complete'
+             UNION ALL
+             SELECT 'refresh'::text, id, refreshed_at
+             FROM external_playlist_bookmark_refreshes
+             WHERE bookmark_id = $1 AND status = 'complete'
+         ) readable ORDER BY captured_at DESC, source_id DESC LIMIT 1",
     )
     .bind(bookmark_id)
     .fetch_optional(database.pool())
     .await?;
-    let Some(snapshot) = snapshot else {
+    let Some(source) = source else {
         return Err(ChordriftError::Configuration(format!(
             "Spotify has not exposed readable contents for bookmark '{}' (status: {})",
             bookmark.name, bookmark.content_status
         )));
     };
-    let snapshot_id: Uuid = snapshot.try_get("snapshot_id")?;
-    let captured_at: DateTime<Utc> = snapshot.try_get("captured_at")?;
-    let rows = sqlx::query(
-        "SELECT entry.position, track.title, album.title AS album,
-                provider_track.provider_track_id,
-                COALESCE(artists.names, '') AS artists
-         FROM external_playlist_bookmark_tracks entry
-         JOIN provider_tracks provider_track ON provider_track.id = entry.provider_track_id
-         JOIN tracks track ON track.id = provider_track.track_id
-         LEFT JOIN albums album ON album.id = track.album_id
-         LEFT JOIN LATERAL (
-           SELECT string_agg(artist.name, ', ' ORDER BY link.position) AS names
-           FROM track_artists link
-           JOIN artists artist ON artist.id = link.artist_id
-           WHERE link.track_id = track.id
-         ) artists ON TRUE
-         WHERE entry.snapshot_id = $1 AND entry.bookmark_id = $2
-         ORDER BY entry.position",
-    )
-    .bind(snapshot_id)
-    .bind(bookmark_id)
-    .fetch_all(database.pool())
-    .await?;
-    let tracks = rows
+    let source_id: Uuid = source.try_get("source_id")?;
+    let captured_at: DateTime<Utc> = source.try_get("captured_at")?;
+    let source_kind: String = source.try_get("source")?;
+    let tracks = if source_kind == "refresh" {
+        sqlx::query(
+            "SELECT position, title, artists, album, provider_track_id
+             FROM external_playlist_bookmark_refresh_tracks
+             WHERE refresh_id = $1 ORDER BY position",
+        )
+        .bind(source_id)
+        .fetch_all(database.pool())
+        .await?
         .into_iter()
         .map(|row| {
             Ok(BookmarkTrackRecord {
@@ -249,12 +353,183 @@ pub async fn tracks(
                 provider_track_id: row.try_get("provider_track_id")?,
             })
         })
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>()?
+    } else {
+        sqlx::query(
+            "SELECT entry.position, track.title, album.title AS album,
+                    provider_track.provider_track_id,
+                    COALESCE(artists.names, '') AS artists
+             FROM external_playlist_bookmark_tracks entry
+             JOIN provider_tracks provider_track ON provider_track.id = entry.provider_track_id
+             JOIN tracks track ON track.id = provider_track.track_id
+             LEFT JOIN albums album ON album.id = track.album_id
+             LEFT JOIN LATERAL (
+               SELECT string_agg(artist.name, ', ' ORDER BY link.position) AS names
+               FROM track_artists link
+               JOIN artists artist ON artist.id = link.artist_id
+               WHERE link.track_id = track.id
+             ) artists ON TRUE
+             WHERE entry.snapshot_id = $1 AND entry.bookmark_id = $2
+             ORDER BY entry.position",
+        )
+        .bind(source_id)
+        .bind(bookmark_id)
+        .fetch_all(database.pool())
+        .await?
+        .into_iter()
+        .map(|row| {
+            Ok(BookmarkTrackRecord {
+                position: row.try_get("position")?,
+                title: row.try_get("title")?,
+                artists: row.try_get("artists")?,
+                album: row.try_get("album")?,
+                provider_track_id: row.try_get("provider_track_id")?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?
+    };
     Ok(BookmarkTracks {
         bookmark,
-        snapshot_id,
+        snapshot_id: source_id,
         captured_at,
         tracks,
+    })
+}
+
+/// Persists one explicit targeted refresh attempt without changing active library state.
+pub async fn record_refresh(
+    database: &Database,
+    account_label: &str,
+    provider_playlist_id: &str,
+    outcome: BookmarkFetchOutcome,
+) -> Result<RefreshReport> {
+    let row = sqlx::query(
+        "SELECT bookmark.id, bookmark.name
+         FROM external_playlist_bookmarks bookmark
+         JOIN provider_accounts account ON account.id = bookmark.provider_account_id
+         WHERE account.provider = 'spotify' AND account.account_label = $1
+           AND bookmark.provider_playlist_id = $2",
+    )
+    .bind(account_label)
+    .bind(provider_playlist_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(
+            "external playlist bookmark was not found for this account".to_owned(),
+        )
+    })?;
+    let bookmark_id: Uuid = row.try_get("id")?;
+    let previous_name: String = row.try_get("name")?;
+    let mut transaction = database.pool().begin().await?;
+    let (status, item_count, captured, unavailable, unsupported, http_status, metadata) =
+        match &outcome {
+            BookmarkFetchOutcome::Complete(fetched) => (
+                "complete",
+                fetched.item_count,
+                fetched.items.len(),
+                fetched.unavailable_items,
+                fetched.unsupported_items,
+                None,
+                json!({"name": fetched.name, "owner_provider_id": fetched.owner_provider_id,
+                    "owner_display_name": fetched.owner_display_name, "provider_url": fetched.provider_url,
+                    "public": fetched.public, "collaborative": fetched.collaborative}),
+            ),
+            BookmarkFetchOutcome::Inaccessible { http_status } => {
+                ("inaccessible", 0, 0, 0, 0, Some(*http_status), json!({}))
+            }
+            BookmarkFetchOutcome::NotFound { http_status } => {
+                ("not_found", 0, 0, 0, 0, Some(*http_status), json!({}))
+            }
+        };
+    let provider_snapshot_id = match &outcome {
+        BookmarkFetchOutcome::Complete(fetched) => fetched.provider_snapshot_id.as_deref(),
+        _ => None,
+    };
+    let refresh = sqlx::query(
+        "INSERT INTO external_playlist_bookmark_refreshes
+         (bookmark_id, status, provider_snapshot_id, item_count,
+          captured_item_count, unavailable_item_count, unsupported_item_count,
+          http_status, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id, refreshed_at",
+    )
+    .bind(bookmark_id)
+    .bind(status)
+    .bind(provider_snapshot_id)
+    .bind(to_i32(item_count, "bookmark item count")?)
+    .bind(to_i32(captured, "captured bookmark item count")?)
+    .bind(to_i32(unavailable, "unavailable bookmark item count")?)
+    .bind(to_i32(unsupported, "unsupported bookmark item count")?)
+    .bind(http_status.map(i32::from))
+    .bind(metadata)
+    .fetch_one(&mut *transaction)
+    .await?;
+    let refresh_id: Uuid = refresh.try_get("id")?;
+    let refreshed_at: DateTime<Utc> = refresh.try_get("refreshed_at")?;
+    let name = if let BookmarkFetchOutcome::Complete(fetched) = &outcome {
+        sqlx::query(
+            "UPDATE external_playlist_bookmarks SET
+               name = $2, owner_provider_id = $3, owner_display_name = $4,
+               provider_url = $5, provider_snapshot_id = $6, public = $7,
+               collaborative = $8, item_count = $9, content_status = 'complete',
+               last_changed_at = CASE
+                 WHEN provider_snapshot_id IS DISTINCT FROM $6 THEN now()
+                 ELSE last_changed_at END,
+               last_checked_at = now(), updated_at = now()
+             WHERE id = $1",
+        )
+        .bind(bookmark_id)
+        .bind(&fetched.name)
+        .bind(&fetched.owner_provider_id)
+        .bind(&fetched.owner_display_name)
+        .bind(&fetched.provider_url)
+        .bind(&fetched.provider_snapshot_id)
+        .bind(fetched.public)
+        .bind(fetched.collaborative)
+        .bind(to_i32(fetched.item_count, "bookmark item count")?)
+        .execute(&mut *transaction)
+        .await?;
+        for item in &fetched.items {
+            sqlx::query(
+                "INSERT INTO external_playlist_bookmark_refresh_tracks
+                 (refresh_id, position, provider_track_id, title, artists,
+                  album, added_at, provider_url)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            )
+            .bind(refresh_id)
+            .bind(item.position)
+            .bind(&item.provider_track_id)
+            .bind(&item.title)
+            .bind(&item.artists)
+            .bind(&item.album)
+            .bind(item.added_at)
+            .bind(&item.provider_url)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        fetched.name.clone()
+    } else {
+        sqlx::query(
+            "UPDATE external_playlist_bookmarks
+             SET last_checked_at = now(), updated_at = now() WHERE id = $1",
+        )
+        .bind(bookmark_id)
+        .execute(&mut *transaction)
+        .await?;
+        previous_name
+    };
+    transaction.commit().await?;
+    Ok(RefreshReport {
+        refresh_id,
+        provider_playlist_id: provider_playlist_id.to_owned(),
+        name,
+        status: status.to_owned(),
+        item_count,
+        captured_items: captured,
+        unavailable_items: unavailable,
+        unsupported_items: unsupported,
+        refreshed_at,
     })
 }
 
@@ -477,6 +752,12 @@ fn hex_sha256(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
+}
+
+fn to_i32(value: usize, label: &str) -> Result<i32> {
+    i32::try_from(value).map_err(|_| {
+        ChordriftError::Configuration(format!("Spotify {label} exceeds PostgreSQL limits"))
+    })
 }
 
 fn bookmark_from_row(row: &sqlx::postgres::PgRow) -> Result<BookmarkRecord> {

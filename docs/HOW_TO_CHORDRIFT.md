@@ -245,8 +245,31 @@ $ chordrift bookmarks tracks --account personal --spotify-id PLAYLIST_ID
 Names must be unambiguous; the stable ID form always wins. A metadata-only or
 inaccessible bookmark with no older complete snapshot reports that limitation
 instead of presenting an empty playlist as authoritative. Explicit refresh of
-an archived bookmark is a later v0.0.9 operation and will not add dozens of
-requests to every normal sync.
+one bookmark is deliberately separate from normal sync:
+
+```console
+$ chordrift bookmarks refresh --account personal --name "Shared playlist"
+$ chordrift bookmarks refresh --account personal --spotify-id PLAYLIST_ID
+$ chordrift bookmarks tracks --account personal --spotify-id PLAYLIST_ID
+```
+
+A practical shared-playlist workflow is:
+
+1. Follow/save the shared playlist in Spotify, then run `chordrift sync pull`
+   so Chordrift retains its stable bookmark and ownership metadata.
+2. Optionally run `bookmarks refresh` for that one playlist. Spotify currently
+   exposes item membership to Web API applications only when the current user
+   owns or collaborates on the playlist; an ordinary public shared playlist
+   will therefore be recorded honestly as `inaccessible` rather than empty.
+3. Listen in Spotify and add only songs you want to keep to `Inbox` (or `From
+   Friends` when the recommendation itself is the meaningful signal).
+4. Run the normal pull and later Chordrift organization workflow. Bookmark
+   contents never become semantic inputs automatically.
+
+Every explicit attempt is retained, including 403/404 outcomes, while the last
+readable snapshot remains inspectable. Refreshing one bookmark does not create
+a provider-library snapshot, does not affect normal sync's request budget, and
+does not modify Spotify.
 
 Before removing any followed/shared relationships, create an immutable review
 batch containing every currently present external bookmark:

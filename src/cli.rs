@@ -331,6 +331,22 @@ pub enum BookmarkCommand {
         #[arg(long, required_unless_present = "name", conflicts_with = "name")]
         spotify_id: Option<String>,
     },
+    /// Explicitly refresh one bookmark's metadata and readable contents.
+    Refresh {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Case-insensitive bookmark name; must be unambiguous.
+        #[arg(
+            long,
+            required_unless_present = "spotify_id",
+            conflicts_with = "spotify_id"
+        )]
+        name: Option<String>,
+        /// Stable Spotify playlist ID.
+        #[arg(long, required_unless_present = "name", conflicts_with = "name")]
+        spotify_id: Option<String>,
+    },
     /// Snapshot every present bookmark into an immutable cleanup review batch.
     CleanupPlan {
         /// Local label for this Spotify account.
@@ -1628,6 +1644,34 @@ async fn run_bookmark_command(
             }
             Ok(())
         }
+        BookmarkCommand::Refresh {
+            account,
+            name,
+            spotify_id,
+        } => {
+            let selector = bookmark_selector(name, spotify_id);
+            let bookmark = bookmarks::resolve(database, &account, &selector).await?;
+            let fetched = spotify::fetch_bookmark(&account, &bookmark.provider_playlist_id).await?;
+            let report = bookmarks::record_refresh(
+                database,
+                &account,
+                &bookmark.provider_playlist_id,
+                fetched,
+            )
+            .await?;
+            writeln!(output, "bookmark_refresh: {}", report.status)?;
+            writeln!(output, "refresh_id: {}", report.refresh_id)?;
+            writeln!(output, "bookmark: {}", clean_cell(&report.name))?;
+            writeln!(output, "spotify_id: {}", report.provider_playlist_id)?;
+            writeln!(output, "provider_items: {}", report.item_count)?;
+            writeln!(output, "captured_tracks: {}", report.captured_items)?;
+            writeln!(output, "unavailable_items: {}", report.unavailable_items)?;
+            writeln!(output, "unsupported_items: {}", report.unsupported_items)?;
+            writeln!(output, "refreshed_at: {}", report.refreshed_at.to_rfc3339())?;
+            writeln!(output, "normal_sync_request_budget: unchanged")?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
         BookmarkCommand::CleanupPlan { account } => {
             let batch = bookmarks::cleanup_plan(database, &account).await?;
             writeln!(
@@ -2722,6 +2766,28 @@ mod tests {
                     ..
                 }
             } if account == "personal" && name == "alone in the car"
+        ));
+    }
+
+    #[test]
+    fn parses_targeted_bookmark_refresh() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "bookmarks",
+            "refresh",
+            "--spotify-id",
+            "1128mckrHSNSNt3PzyE4Bp",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Bookmarks {
+                command: BookmarkCommand::Refresh {
+                    account,
+                    spotify_id: Some(id),
+                    ..
+                }
+            } if account == "personal" && id == "1128mckrHSNSNt3PzyE4Bp"
         ));
     }
 

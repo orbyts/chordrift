@@ -292,8 +292,12 @@ The bookmark foundation persists stable records and immutable pull-bound
 observations in Neon. Normal pulls detect snapshot-signature changes for
 relationships still visible to Spotify; public followed contents remain
 metadata-only under Development Mode, while readable collaborative contents
-are copied forward without redundant requests. Archived on-demand refresh
-remains a later v0.0.9 slice.
+are copied forward without redundant requests. Explicit on-demand refresh now
+targets exactly one present or archived bookmark, stores complete and denied
+attempts separately from provider-library snapshots, preserves the last
+readable contents, and does not increase normal-sync requests. Under Spotify's
+current Development Mode, item refresh succeeds only for owned/collaborative
+playlists; ordinary followed public playlists remain metadata bookmarks.
 
 External cleanup review is represented by an immutable candidate batch. The
 user approves its exact ID after inspecting all owners, playlist IDs,

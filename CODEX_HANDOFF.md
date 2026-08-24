@@ -261,7 +261,7 @@ metadata-only public followed records under Development Mode. Private
 Spotify-owned personalized surfaces remain active provider-curated signals.
 Migration 0022 and the bookmark cleanup commands now provide immutable
 all-present candidate review, explicit batch approval, and relationship-only
-dry-run operations. Archived on-demand refresh remains pending.
+dry-run operations. Migration 0025 adds the targeted refresh described below.
 
 Migrations 0009-0011 and the CLI keep canonical `track_embeddings`
 separate from immutable account-scoped `embedding_generations` and
@@ -414,7 +414,7 @@ retirement additionally requires separate future approval. The planner makes
 no Spotify request and Spotify write scopes remain disabled. Migration 0019
 also introduces stable concept mappings for future published provider
 playlists and the provider-neutral reversible `excluded_tracks` ledger.
-Migrations 0019 through 0024 are live and Neon is healthy at 24/24. Migration 0020
+Migrations 0019 through 0025 are live and Neon is healthy at 25/25. Migration 0020
 adds immutable successful managed-playlist baselines so a later missing
 expected track becomes an internal `exclude_track` proposal rather than an
 automatic re-add; an unexpected extra remains ordinary provider drift. The
@@ -481,6 +481,22 @@ second pull. `alone in the car` is bookmark Spotify ID
 pull. It is absent from `chordrift playlists list`. The 13 followed public
 bookmarks are metadata-only because Spotify Development Mode does not expose
 their contents to this app; `bookmarks tracks` reports that honestly.
+
+Migration 0025 and `chordrift bookmarks refresh` add explicit, targeted
+refresh for exactly one present or archived bookmark. Refresh attempts and any
+readable ordered track metadata are immutable and separate from provider
+library snapshots, so they neither stale the normal sync baseline nor increase
+its request budget. Spotify's February 2026 API permits playlist items only for
+owned/collaborative playlists; followed public shared lists will usually record
+a 403 `inaccessible` attempt while retaining their bookmark metadata and any
+older readable contents. The intended workflow is: follow/save the shared list
+in Spotify, pull once to bookmark it, selectively listen in Spotify, add chosen
+songs to `Inbox` or `From Friends`, then run Chordrift normally. Bookmark tracks
+never become semantic inputs automatically.
+
+The crate version is prepared as 0.0.9. Repository artwork is intentionally
+excluded from the crates.io archive because the 14 approved full-resolution
+PNGs are review/publication assets rather than runtime data; they remain in Git.
 
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the
