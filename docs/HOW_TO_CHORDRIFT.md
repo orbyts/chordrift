@@ -432,10 +432,11 @@ $ chordrift enrich artists --account personal --limit 25
 Artist requests use the same durable raw-response cache, so an artist shared by
 many tracks is downloaded once. Track-to-artist resolution is independently
 versioned and records resolved, unknown, and error outcomes; a missing area
-remains unknown. MusicBrainz defines this value as the area with which the
-artist is primarily identified. Chordrift does not relabel it as birthplace,
-formation country, nationality, recording location, or a track's language.
-Pretrained mood/sound inference is a later v0.0.6 step.
+remains unknown, while a transient error becomes eligible for a bounded retry
+after its cache delay. MusicBrainz defines this value as the area with which
+the artist is primarily identified. Chordrift does not relabel it as
+birthplace, formation country, nationality, recording location, or a track's
+language. Pretrained mood/sound inference is a later v0.0.6 step.
 
 ## Excluded tracks
 

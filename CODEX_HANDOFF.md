@@ -284,8 +284,14 @@ and recording-detail responses separately, respects the one-request-per-second
 limit, and persists conservative match/fact provenance. A live high-priority
 probe matched M83 and retained 35 useful genre/tag/release facts. Pending
 requests are prioritized by intake, rotation, saved state, then meaningful
-plays; these values affect scheduling only, never similarity. Migration 0013
-and the separate cache-first `enrich artists` operation are now being developed
-to retain MusicBrainz primary-associated-area evidence without claiming
-birthplace, nationality, or track language. Pretrained mood/sound inference is
-next; Excluded Tracks remains future work.
+plays; these values affect scheduling only, never similarity. The separate
+cache-first `enrich artists` operation retains MusicBrainz
+primary-associated-area evidence without claiming birthplace, nationality, or
+track language. CI run `32767604600` passed, including migration 0013 on
+disposable PostgreSQL 18; migration 0013 is live and Neon is healthy at 13/13.
+A three-artist probe considered M83, Reinoud Ford, and Keaton Henson: two
+primary areas resolved, one transient request was cached for later retry, and
+two track-level facts were written. An immediate repeat converged with zero
+artists, requests, or writes. Current live coverage is 2 matched tracks, 39
+MusicBrainz facts, and 2 tracks with artist-area facts. Pretrained mood/sound
+inference is next; Excluded Tracks remains future work.
