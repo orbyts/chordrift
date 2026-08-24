@@ -244,6 +244,110 @@ The available policies are `provider-wins`, `neon-wins`, and `manual`. They are
 durable metadata in the current pull-only release; remote repair will arrive in
 the later dry-run/apply workflow.
 
+## Embeddings
+
+Chordrift's target representation is hybrid:
+
+1. A reusable, music-foundation embedding such as MERT describes the recording's
+   acoustic character when Chordrift has lawful access to an audio file.
+2. An account-scoped semantic component describes explicitly semantic legacy
+   playlist co-membership, artists, albums, and historical playlist-name tokens.
+3. Independently sourced release language/country and artist-area metadata can
+   enrich similarity when each value retains its source and confidence.
+4. Listening, rotation, intake, and recommendation evidence remains a separate
+   versioned signal generation used for composition and ordering, not musical
+   similarity.
+
+Spotify track metadata does not contain the waveform required by an acoustic
+foundation model. Until a track can be matched to locally owned, DRM-free
+audio, Chordrift generates a deterministic semantic metadata fallback. The schema
+keeps canonical acoustic embeddings separate from account-scoped generations,
+so adding MERT later does not invalidate the provider inventory or history.
+Spotify does not provide authoritative track language or recording origin;
+availability markets describe where a recording can be played. Chordrift will
+enrich those fields from independently licensed sources such as MusicBrainz,
+and will preserve unknowns rather than infer them from a title. Spotify remains
+the synchronization/evidence adapter, subject to its current Platform policy.
+Chordrift is not training a foundation model: it resolves a recording identity,
+runs a versioned pretrained model or imports independently sourced tags, and
+caches the inference with provenance and confidence.
+
+Audit semantic source coverage and playlist weights:
+
+```console
+$ chordrift embeddings audit --account personal
+```
+
+Configure each playlist's evidence class without changing it in Spotify. For
+example, exclude a catch-all utility playlist:
+
+```console
+$ chordrift playlists signals --name "All my saved songs" --class ignored
+```
+
+Treat Spotify On Repeat as current rotation evidence without implying that all
+of its tracks share a vibe:
+
+```console
+$ chordrift playlists signals --name "On Repeat" --class provider-curated --behavior rotation
+```
+
+Configure a friend-recommendation intake. Intake clearing remains disabled
+until the later apply workflow can verify canonical placement:
+
+```console
+$ chordrift playlists signals --name "From Friends" --class intake --behavior recommendation
+```
+
+Evidence classes are `semantic-legacy`, `provider-curated`, `intake`,
+`canonical`, `transport`, and `ignored`. Semantic weights from `0` through `10`
+are accepted only for `semantic-legacy`; the default is `1`.
+
+Generate or reuse the deterministic fallback generation:
+
+```console
+$ chordrift embeddings generate --account personal
+$ chordrift embeddings status --account personal
+```
+
+The default fallback uses 1,024 signed-hash dimensions. The earlier 128-slot
+diagnostic produced obvious feature collisions in this library; dimensions,
+model version, and seed remain recorded so generations are reproducible.
+
+Generate listening and lifecycle evidence independently:
+
+```console
+$ chordrift signals generate --account personal
+$ chordrift signals status --account personal
+```
+
+The signal generation retains meaningful play count, one-year exponential
+recency, completion and non-skip ratios, saved state, configured provider
+rotation, intake membership, and recommendation provenance. These values do not
+enter nearest-neighbor similarity.
+
+Inspect nearest neighbors before allowing a generation to feed clustering:
+
+```console
+$ chordrift embeddings neighbors --name "TRACK TITLE" --limit 10
+$ chordrift embeddings neighbors --spotify-id SPOTIFY_TRACK_ID --limit 10
+```
+
+Every generation records its model, implementation version, dimensions, seed,
+parameters, source snapshot, and content hash. Regenerating identical inputs
+reuses the existing immutable generation.
+
+## Excluded tracks
+
+The planned apply workflow will expose an internal **Excluded Tracks** view,
+not a Spotify playlist. After a Chordrift-managed playlist has been published
+and verified, removing one of its tracks in Spotify will record a reversible
+account-level exclusion during the next pull. Chordrift retains the track,
+history, source provider, removal time, and previous assignment, but will not
+place it in newly generated playlists until explicitly restored. Removing a
+track from a provider-curated, intake, transport, or legacy playlist does not
+mean the same thing and will not create an exclusion.
+
 ## Analysis
 
 Show aggregate statistics for the current analyzed snapshot:

@@ -50,8 +50,83 @@ impl DriftPolicy {
     }
 }
 
+/// How a playlist contributes evidence without conflating sync authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PlaylistSignalClass {
+    /// A user-curated legacy playlist whose membership and name describe vibe.
+    SemanticLegacy,
+    /// A Spotify-owned surface observed for behavioral evidence.
+    ProviderCurated,
+    /// A user-owned temporary intake that is cleared only after verified placement.
+    Intake,
+    /// A Chordrift-managed output; previous assignments are stability evidence only.
+    Canonical,
+    /// Temporary provider-transfer infrastructure with no library meaning.
+    Transport,
+    /// A playlist excluded from semantic and behavioral analysis.
+    Ignored,
+}
+
+impl PlaylistSignalClass {
+    /// Stable database representation.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SemanticLegacy => "semantic_legacy",
+            Self::ProviderCurated => "provider_curated",
+            Self::Intake => "intake",
+            Self::Canonical => "canonical",
+            Self::Transport => "transport",
+            Self::Ignored => "ignored",
+        }
+    }
+}
+
+/// Optional behavioral evidence supplied by a provider-curated or intake playlist.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BehavioralSignal {
+    /// Current high-rotation evidence such as Spotify On Repeat.
+    Rotation,
+    /// Provider discovery evidence such as Discover Weekly.
+    Discovery,
+    /// Explicit prompted-interest evidence.
+    Prompted,
+    /// Social or friend recommendation provenance.
+    Recommendation,
+}
+
+impl BehavioralSignal {
+    /// Stable database representation.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Rotation => "rotation",
+            Self::Discovery => "discovery",
+            Self::Prompted => "prompted",
+            Self::Recommendation => "recommendation",
+        }
+    }
+}
+
+/// When Chordrift may clear a user-owned intake playlist.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ClearPolicy {
+    /// Never clear this playlist automatically.
+    Never,
+    /// Clear entries only after canonical placement is published and verified.
+    AfterVerifiedAssignment,
+}
+
+impl ClearPolicy {
+    /// Stable database representation.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Never => "never",
+            Self::AfterVerifiedAssignment => "after_verified_assignment",
+        }
+    }
+}
+
 /// One account-scoped playlist configuration.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PlaylistRecord {
     /// Spotify playlist ID.
     pub provider_playlist_id: String,
@@ -61,6 +136,14 @@ pub struct PlaylistRecord {
     pub role: String,
     /// Configured drift policy.
     pub drift_policy: String,
+    /// Evidence class, independent of role and drift authority.
+    pub signal_class: String,
+    /// Optional behavioral evidence produced by membership.
+    pub behavioral_signal: Option<String>,
+    /// Relative semantic contribution; zero excludes playlist co-membership.
+    pub semantic_weight: f64,
+    /// When a temporary intake may be cleared.
+    pub clear_policy: String,
     /// Whether it exists in the latest imported snapshot.
     pub present: bool,
     /// Item count reported by the latest snapshot, when present.
@@ -83,7 +166,7 @@ pub struct PlaylistTrackRecord {
 }
 
 /// Current ordered contents of one account-scoped playlist.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PlaylistTracks {
     /// Playlist resolved from the user selector.
     pub playlist: PlaylistRecord,
@@ -109,6 +192,8 @@ pub async fn list(database: &Database, account_label: &str) -> Result<Vec<Playli
         "SELECT provider.provider_playlist_id,
                 COALESCE(provider.metadata->>'name', canonical.name) AS name,
                 account_playlist.role, account_playlist.drift_policy,
+                account_playlist.signal_class, account_playlist.behavioral_signal,
+                account_playlist.semantic_weight, account_playlist.clear_policy,
                 account_playlist.present_in_latest_snapshot,
                 latest_playlist.total_items
          FROM provider_account_playlists account_playlist
@@ -137,11 +222,96 @@ pub async fn list(database: &Database, account_label: &str) -> Result<Vec<Playli
                 name: row.try_get("name")?,
                 role: row.try_get("role")?,
                 drift_policy: row.try_get("drift_policy")?,
+                signal_class: row.try_get("signal_class")?,
+                behavioral_signal: row.try_get("behavioral_signal")?,
+                semantic_weight: row.try_get("semantic_weight")?,
+                clear_policy: row.try_get("clear_policy")?,
                 present: row.try_get("present_in_latest_snapshot")?,
                 total_items: row.try_get("total_items")?,
             })
         })
         .collect()
+}
+
+/// Configures one playlist's independently modeled evidence policy.
+pub async fn configure_signals(
+    database: &Database,
+    account_label: &str,
+    selector: &PlaylistSelector,
+    signal_class: PlaylistSignalClass,
+    behavioral_signal: Option<BehavioralSignal>,
+    semantic_weight: Option<f64>,
+    clear_policy: Option<ClearPolicy>,
+) -> Result<PlaylistRecord> {
+    let selected = resolve_selector(database, account_label, selector).await?;
+    let semantic_weight = match signal_class {
+        PlaylistSignalClass::SemanticLegacy => semantic_weight.unwrap_or({
+            if selected.semantic_weight > 0.0 {
+                selected.semantic_weight
+            } else {
+                1.0
+            }
+        }),
+        _ => {
+            if semantic_weight.is_some_and(|weight| weight != 0.0) {
+                return Err(ChordriftError::Configuration(
+                    "only semantic-legacy playlists may have a non-zero semantic weight".to_owned(),
+                ));
+            }
+            0.0
+        }
+    };
+    if !semantic_weight.is_finite() || !(0.0..=10.0).contains(&semantic_weight) {
+        return Err(ChordriftError::Configuration(
+            "playlist semantic weight must be between 0 and 10".to_owned(),
+        ));
+    }
+    if behavioral_signal.is_some()
+        && !matches!(
+            signal_class,
+            PlaylistSignalClass::ProviderCurated | PlaylistSignalClass::Intake
+        )
+    {
+        return Err(ChordriftError::Configuration(
+            "behavioral signals require a provider-curated or intake playlist".to_owned(),
+        ));
+    }
+    let clear_policy = clear_policy.unwrap_or(match signal_class {
+        PlaylistSignalClass::Intake => ClearPolicy::AfterVerifiedAssignment,
+        _ => ClearPolicy::Never,
+    });
+    if clear_policy == ClearPolicy::AfterVerifiedAssignment
+        && signal_class != PlaylistSignalClass::Intake
+    {
+        return Err(ChordriftError::Configuration(
+            "only intake playlists may clear after verified assignment".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    sqlx::query(
+        "UPDATE provider_account_playlists account_playlist
+         SET signal_class = $3, behavioral_signal = $4,
+             semantic_weight = $5, clear_policy = $6, updated_at = now()
+         FROM provider_playlists provider
+         WHERE account_playlist.provider_account_id = $1
+           AND account_playlist.provider_playlist_id = provider.id
+           AND provider.provider_playlist_id = $2",
+    )
+    .bind(account_id)
+    .bind(&selected.provider_playlist_id)
+    .bind(signal_class.as_str())
+    .bind(behavioral_signal.map(BehavioralSignal::as_str))
+    .bind(semantic_weight)
+    .bind(clear_policy.as_str())
+    .execute(database.pool())
+    .await?;
+    Ok(PlaylistRecord {
+        signal_class: signal_class.as_str().to_owned(),
+        behavioral_signal: behavioral_signal.map(|signal| signal.as_str().to_owned()),
+        semantic_weight,
+        clear_policy: clear_policy.as_str().to_owned(),
+        ..selected
+    })
 }
 
 /// Lists the ordered tracks in one playlist's latest imported snapshot.

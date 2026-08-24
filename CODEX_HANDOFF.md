@@ -127,8 +127,9 @@ Temporary Spatial Audio workaround:
 
 1. Create a dedicated public Spotify playlist of candidates.
 2. Scan it at <https://helloatmos.app/spotify/>.
-3. Export the Atmos subset to Apple Music, or make a filtered Spotify playlist
-   and use Apple Music's built-in **Transfer Music** feature.
+3. Export the Atmos subset to a specially named Apple Music Spatial Audio
+   playlist, or make a temporary filtered Spotify playlist and mirror it with
+   SongShift.
 
 Hello Atmos is a third party. Its matches are temporary convenience results,
 not verified Neon provider state. Native Chordrift matching must retain exact
@@ -139,18 +140,90 @@ history parser from assumed examples; inspect the user's actual archive first,
 then apply the same immutable, cumulative, PII-excluding principles used for
 Spotify.
 
+Neon remains the durable identity, provenance, history, and orchestration
+ledger, while Spotify is the only active live provider for now. SongShift can
+mirror every canonical Spotify playlist individually, so do not replace the
+obsolete `Two Way Sync` playlist. Bootstrap the old Apple library once from the
+two SongShift JSON exports rather than transferring it through temporary
+Spotify playlists. SongShift remains a temporary publishing workaround, not an
+authoritative native provider adapter.
+
+The two 2026-08-24 exports are preserved under the Git-ignored
+`data/apple/personal/bootstrap/` content-addressed archive. They contain 952
+and 309 entries, 73 exact overlaps, and 1,185 unique Apple service IDs. Only 173
+unique ISRCs are present, so do not create canonical tracks from loose fuzzy
+matches. Automatically link unambiguous identities and stage ambiguous or
+unmatched metadata for review.
+
+Future native platforms are authoritative evidence for live user actions on
+their respective surfaces. A deletion should create a provider-scoped
+tombstone/override in Neon, not hard-delete the canonical track, history, or
+provenance. Reconciliation must distinguish intentional user removal from
+provider drift and prevent delete/re-add loops before propagating an action to
+another platform.
+
+The user approved the name **Excluded Tracks** for the provider-neutral view of
+intentional removals. Only removal from a Chordrift-managed playlist after its
+published state has been verified creates the account-level exclusion. Preserve
+provider, time, prior canonical assignment, and restore history. Removals from
+provider-curated, intake, transport, and legacy playlists are drift, not global
+exclusions. Do not create a Spotify playlist for this internal view.
+
 ## Current roadmap and next task
 
-Apple was removed from the critical release path. The next planned milestone is
-v0.0.5: versioned personal embeddings from Spotify playlist co-occurrence,
-artists, metadata, historical names, and available listening signals. See
-`ROADMAP.md` for the remaining sequence through Spotify apply readiness and
-v0.1.0.
+Apple was removed from the critical release path. v0.0.5 is active on
+`codex/embeddings`. The target representation is hybrid: a reusable pretrained
+music-audio foundation vector plus an independently versioned account-specific
+component. MERT v1 95M is the preferred first acoustic candidate; evaluate MuQ
+as an alternative. Both published weight sets are currently non-commercial, so
+revisit licensing before any commercial Chordrift use.
 
-Do not assume an embedding technique or external model before inspecting the
-canonical data distribution and defining reproducibility, versioning, and
-evaluation criteria. Preserve provider-policy boundaries: Spotify content is
-inventory/provenance and is not training data for a general ML model.
+The acoustic models require waveforms. Do not download, scrape, or record
+Spotify audio. Populate canonical acoustic embeddings only from lawful,
+locally owned DRM-free audio. Spotify-only tracks receive a deterministic
+semantic fallback from explicitly semantic playlist co-occurrence, artists,
+albums, and historical playlist-name tokens. Keep listening behavior separate:
+plays, recency, completion, skips, `On Repeat`, inbox state, and recommendation
+provenance are preference/lifecycle signals for composition and ordering, not
+musical-similarity dimensions.
+
+Language and region are desired semantic dimensions, but Spotify does not
+provide authoritative track language or origin. Do not equate availability
+markets with origin and do not guess from titles. Plan provenance-aware
+MusicBrainz enrichment for recording/release language, release country, and
+artist area, retaining unknown values and confidence. Re-check Spotify's
+current Platform policy before clustering ships. The intended operation is not
+model training: independently resolve artist/title/ISRC, run a pretrained model
+or import external semantic tags, and cache the inference with provenance,
+model/version, confidence, and retrieval time. Spotify remains the sync and
+user-action adapter.
+
+Playlist policy has three distinct classes: provider-curated signal sources
+(`On Repeat`, Daily Mix, prompted playlists), user-owned intake surfaces
+(initially Inbox and From Friends), and Chordrift-managed canonical playlists.
+Never clear provider-curated sources. Clear intake entries only after Neon
+retains provenance and a published canonical Spotify destination is verified.
+Do not feed Chordrift-managed output back into semantic training; use previous
+assignments only as stability constraints.
+
+Migrations 0009-0011 and the CLI keep canonical `track_embeddings`
+separate from immutable account-scoped `embedding_generations` and
+`account_track_embeddings`. New commands cover input audit, playlist semantic
+weights, deterministic generation/status, and nearest-neighbor inspection.
+The live Neon database is current at 11/11. `Collaboration Jessica ` is ignored;
+`Liked from Radio` is discovery intake. Signal generation v2
+`4fa57f0d-fce1-4c95-8d85-bba9d206afe2` covers 2,005 tracks: 1,554 history,
+927 saved, 30 rotation, 102 discovery, 65 intake, and zero recommendation or
+prompted tracks. Semantic audit finds 666 playlist-connected, 1,469
+artist-related, and 1,015 album-related tracks.
+
+The 128-dimensional diagnostic generation exposed obvious hash collisions. A
+1,024-dimensional generation (`a33ef4ef-bd70-4375-9cc5-ca2f2ef59eb7`) embeds
+1,733 of 2,005 tracks and produced materially cleaner inspected neighbors:
+Nine Inch Nails remained with Nine Inch Nails/Trent Reznor, and the spurious
+A. R. Rahman collision disappeared. The code default is now 1,024. Treat this
+as an inspectable semantic fallback, not the final acoustic representation or
+authorization to publish/modify playlists.
 
 ## Verification and release discipline
 
@@ -186,5 +259,10 @@ At the end of each focused task:
 4. Confirm the handoff contains no secrets or unnecessary personal data.
 5. Leave the active branch and working tree state explicit for the next task.
 
-Current handoff state: `main` is the intended active branch. The working tree
-should be clean after the roadmap and handoff documentation commit.
+Current handoff state: active branch `codex/embeddings`, PR
+<https://github.com/orbyts/chordrift/pull/1>. The implementation and handoff
+commits are green, migrations are live through 0011, and v0.0.5 release
+bookkeeping is being finalized before merge/tag/publish. No provider mutation
+was performed. After v0.0.5 is released and the main clone is updated, begin
+v0.0.6 with MusicBrainz-backed language/region and externally sourced mood/sound
+enrichment. The Excluded Tracks schema/apply behavior remains future work.

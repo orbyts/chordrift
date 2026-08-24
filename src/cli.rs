@@ -5,7 +5,10 @@ use std::{
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::{ChordriftError, Result, analysis, config, db, history, playlists, providers::spotify};
+use crate::{
+    ChordriftError, Result, analysis, config, db, embeddings, history, playlists,
+    providers::spotify, signals,
+};
 
 /// Chordrift command-line interface.
 #[derive(Clone, Debug, Parser)]
@@ -54,6 +57,18 @@ pub enum Command {
         /// Archive operation to perform.
         #[command(subcommand)]
         command: HistoryCommand,
+    },
+    /// Generate and inspect deterministic personal track embeddings.
+    Embeddings {
+        /// Embedding operation to perform.
+        #[command(subcommand)]
+        command: EmbeddingCommand,
+    },
+    /// Generate and inspect account-specific preference and lifecycle signals.
+    Signals {
+        /// Signal operation to perform.
+        #[command(subcommand)]
+        command: SignalCommand,
     },
 }
 
@@ -188,6 +203,99 @@ pub enum PlaylistCommand {
         #[arg(long, value_enum)]
         drift_policy: Option<DriftPolicyArg>,
     },
+    /// Configure semantic, behavioral, intake, or lifecycle evidence.
+    Signals {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Case-insensitive current playlist name; must be unambiguous.
+        #[arg(
+            long,
+            required_unless_present = "spotify_id",
+            conflicts_with = "spotify_id"
+        )]
+        name: Option<String>,
+        /// Stable Spotify playlist ID.
+        #[arg(long, required_unless_present = "name", conflicts_with = "name")]
+        spotify_id: Option<String>,
+        /// Evidence class, independent of sync authority.
+        #[arg(long, value_enum)]
+        class: PlaylistSignalClassArg,
+        /// Optional behavioral evidence supplied by this playlist.
+        #[arg(long, value_enum)]
+        behavior: Option<BehavioralSignalArg>,
+        /// Relative semantic contribution from 0 (excluded) through 10.
+        #[arg(long)]
+        semantic_weight: Option<f64>,
+        /// When a temporary intake may be cleared.
+        #[arg(long, value_enum)]
+        clear_policy: Option<ClearPolicyArg>,
+    },
+}
+
+/// Personal embedding commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum EmbeddingCommand {
+    /// Report source coverage and per-playlist semantic weights.
+    Audit {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Generate or reuse an immutable deterministic embedding generation.
+    Generate {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Vector dimensions; defaults to 128.
+        #[arg(long)]
+        dimensions: Option<usize>,
+        /// Reproducibility seed; defaults to 42.
+        #[arg(long)]
+        seed: Option<i64>,
+    },
+    /// Show the latest persisted embedding generation.
+    Status {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List nearest tracks from the latest generation.
+    Neighbors {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Case-insensitive exact track title; must be unambiguous.
+        #[arg(
+            long,
+            required_unless_present = "spotify_id",
+            conflicts_with = "spotify_id"
+        )]
+        name: Option<String>,
+        /// Stable Spotify track ID.
+        #[arg(long, required_unless_present = "name", conflicts_with = "name")]
+        spotify_id: Option<String>,
+        /// Maximum neighbors to report.
+        #[arg(long, default_value_t = 10)]
+        limit: u32,
+    },
+}
+
+/// Account-specific preference and lifecycle signal commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum SignalCommand {
+    /// Generate or reuse immutable signals from current provider state and history.
+    Generate {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Show the latest persisted signal generation.
+    Status {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
 }
 
 /// Spotify archive and listening-history commands.
@@ -269,6 +377,45 @@ pub enum DriftPolicyArg {
     NeonWins,
     /// Require an explicit resolution.
     Manual,
+}
+
+/// CLI representation of playlist evidence classes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum PlaylistSignalClassArg {
+    /// User-curated legacy vibe evidence.
+    SemanticLegacy,
+    /// Spotify-owned behavioral evidence.
+    ProviderCurated,
+    /// User-owned temporary intake.
+    Intake,
+    /// Chordrift-managed canonical output.
+    Canonical,
+    /// Temporary transfer infrastructure.
+    Transport,
+    /// Excluded from analysis.
+    Ignored,
+}
+
+/// CLI representation of optional behavioral evidence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum BehavioralSignalArg {
+    /// Current high rotation.
+    Rotation,
+    /// Provider discovery.
+    Discovery,
+    /// Explicit prompted interest.
+    Prompted,
+    /// Social or friend recommendation.
+    Recommendation,
+}
+
+/// CLI representation of intake clearing safeguards.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum ClearPolicyArg {
+    /// Never clear automatically.
+    Never,
+    /// Clear only after published canonical placement is verified.
+    AfterVerifiedAssignment,
 }
 
 /// Runs a parsed CLI command and writes its report to standard output.
@@ -453,6 +600,18 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                 result?;
             }
         },
+        Command::Embeddings { command } => {
+            let database = connect_current_database().await?;
+            let result = run_embedding_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
+        Command::Signals { command } => {
+            let database = connect_current_database().await?;
+            let result = run_signal_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
     }
 
     Ok(())
@@ -659,13 +818,20 @@ async fn run_playlist_command(
     match command {
         PlaylistCommand::List { account } => {
             let rows = playlists::list(database, &account).await?;
-            writeln!(output, "role\tpolicy\tpresent\titems\tname\tspotify_id")?;
+            writeln!(
+                output,
+                "role\tdrift\tsignal_class\tbehavior\tsemantic_weight\tclear_policy\tpresent\titems\tname\tspotify_id"
+            )?;
             for row in rows {
                 writeln!(
                     output,
-                    "{}\t{}\t{}\t{}\t{}\t{}",
+                    "{}\t{}\t{}\t{}\t{:.2}\t{}\t{}\t{}\t{}\t{}",
                     row.role,
                     row.drift_policy,
+                    row.signal_class,
+                    row.behavioral_signal.as_deref().unwrap_or("-"),
+                    row.semantic_weight,
+                    row.clear_policy,
                     row.present,
                     row.total_items
                         .map_or_else(|| "-".to_owned(), |value| value.to_string()),
@@ -728,6 +894,198 @@ async fn run_playlist_command(
             writeln!(output, "spotify_id: {}", updated.provider_playlist_id)?;
             writeln!(output, "role: {}", updated.role)?;
             writeln!(output, "drift_policy: {}", updated.drift_policy)?;
+            writeln!(output, "signal_class: {}", updated.signal_class)?;
+            writeln!(output, "semantic_weight: {:.2}", updated.semantic_weight)?;
+            Ok(())
+        }
+        PlaylistCommand::Signals {
+            account,
+            name,
+            spotify_id,
+            class,
+            behavior,
+            semantic_weight,
+            clear_policy: clear,
+        } => {
+            let selector = playlist_selector(name, spotify_id);
+            let updated = playlists::configure_signals(
+                database,
+                &account,
+                &selector,
+                playlist_signal_class(class),
+                behavior.map(behavioral_signal),
+                semantic_weight,
+                clear.map(clear_policy),
+            )
+            .await?;
+            writeln!(output, "playlist: {}", updated.name)?;
+            writeln!(output, "spotify_id: {}", updated.provider_playlist_id)?;
+            writeln!(output, "signal_class: {}", updated.signal_class)?;
+            writeln!(
+                output,
+                "behavioral_signal: {}",
+                updated.behavioral_signal.as_deref().unwrap_or("-")
+            )?;
+            writeln!(output, "semantic_weight: {:.2}", updated.semantic_weight)?;
+            writeln!(output, "clear_policy: {}", updated.clear_policy)?;
+            Ok(())
+        }
+    }
+}
+
+async fn run_embedding_command(
+    command: EmbeddingCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        EmbeddingCommand::Audit { account } => {
+            let report = embeddings::audit(database, &account).await?;
+            writeln!(output, "embeddings: ready")?;
+            writeln!(output, "snapshot_id: {}", report.snapshot_id)?;
+            writeln!(output, "eligible_tracks: {}", report.eligible_tracks)?;
+            writeln!(output, "playlist_tracks: {}", report.playlist_tracks)?;
+            writeln!(
+                output,
+                "artist_related_tracks: {}",
+                report.artist_related_tracks
+            )?;
+            writeln!(
+                output,
+                "album_related_tracks: {}",
+                report.album_related_tracks
+            )?;
+            writeln!(output, "history_tracks: {}", report.history_tracks)?;
+            writeln!(output)?;
+            writeln!(output, "semantic_weight\ttracks\tplaylist\tspotify_id")?;
+            for playlist in report.playlists {
+                writeln!(
+                    output,
+                    "{:.2}\t{}\t{}\t{}",
+                    playlist.semantic_weight,
+                    playlist.unique_tracks,
+                    clean_cell(&playlist.name),
+                    playlist.provider_playlist_id
+                )?;
+            }
+            Ok(())
+        }
+        EmbeddingCommand::Generate {
+            account,
+            dimensions,
+            seed,
+        } => {
+            let report = embeddings::generate(database, &account, dimensions, seed).await?;
+            writeln!(
+                output,
+                "embedding_generation: {}",
+                if report.reused {
+                    "already current"
+                } else {
+                    "created"
+                }
+            )?;
+            writeln!(output, "generation_id: {}", report.generation_id)?;
+            writeln!(output, "snapshot_id: {}", report.snapshot_id)?;
+            writeln!(output, "model: {}", report.model)?;
+            writeln!(output, "model_version: {}", report.model_version)?;
+            writeln!(output, "dimensions: {}", report.dimensions)?;
+            writeln!(output, "seed: {}", report.seed)?;
+            writeln!(output, "eligible_tracks: {}", report.eligible_tracks)?;
+            writeln!(output, "embedded_tracks: {}", report.embedded_tracks)?;
+            writeln!(output, "unembedded_tracks: {}", report.unembedded_tracks)?;
+            writeln!(output, "input_hash: {}", report.input_hash)?;
+            Ok(())
+        }
+        EmbeddingCommand::Status { account } => {
+            let status = embeddings::status(database, &account).await?;
+            writeln!(output, "embeddings: current")?;
+            writeln!(output, "generation_id: {}", status.generation_id)?;
+            writeln!(output, "snapshot_id: {}", status.snapshot_id)?;
+            writeln!(output, "model: {}", status.model)?;
+            writeln!(output, "model_version: {}", status.model_version)?;
+            writeln!(output, "dimensions: {}", status.dimensions)?;
+            writeln!(output, "seed: {}", status.seed)?;
+            writeln!(output, "tracks: {}", status.track_count)?;
+            writeln!(output, "input_hash: {}", status.input_hash)?;
+            writeln!(output, "created_at: {}", status.created_at.to_rfc3339())?;
+            Ok(())
+        }
+        EmbeddingCommand::Neighbors {
+            account,
+            name,
+            spotify_id,
+            limit,
+        } => {
+            let selector = match (name, spotify_id) {
+                (Some(name), None) => embeddings::TrackSelector::Name(name),
+                (None, Some(id)) => embeddings::TrackSelector::ProviderId(id),
+                _ => unreachable!("clap enforces exactly one track selector"),
+            };
+            let report = embeddings::neighbors(database, &account, &selector, limit).await?;
+            writeln!(output, "track: {} — {}", report.title, report.artists)?;
+            writeln!(output, "spotify_id: {}", report.provider_track_id)?;
+            writeln!(output, "generation_id: {}", report.generation_id)?;
+            writeln!(output, "similarity\ttrack\tartists\tspotify_track_id")?;
+            for neighbor in report.neighbors {
+                writeln!(
+                    output,
+                    "{:.6}\t{}\t{}\t{}",
+                    neighbor.similarity,
+                    clean_cell(&neighbor.title),
+                    clean_cell(&neighbor.artists),
+                    neighbor.provider_track_id
+                )?;
+            }
+            Ok(())
+        }
+    }
+}
+
+async fn run_signal_command(
+    command: SignalCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        SignalCommand::Generate { account } => {
+            let report = signals::generate(database, &account).await?;
+            writeln!(
+                output,
+                "signal_generation: {}",
+                if report.reused {
+                    "already current"
+                } else {
+                    "created"
+                }
+            )?;
+            writeln!(output, "generation_id: {}", report.generation_id)?;
+            writeln!(output, "snapshot_id: {}", report.snapshot_id)?;
+            writeln!(output, "tracks: {}", report.track_count)?;
+            writeln!(output, "history_tracks: {}", report.history_tracks)?;
+            writeln!(output, "saved_tracks: {}", report.saved_tracks)?;
+            writeln!(output, "rotation_tracks: {}", report.rotation_tracks)?;
+            writeln!(output, "discovery_tracks: {}", report.discovery_tracks)?;
+            writeln!(output, "prompted_tracks: {}", report.prompted_tracks)?;
+            writeln!(output, "intake_tracks: {}", report.intake_tracks)?;
+            writeln!(
+                output,
+                "recommendation_tracks: {}",
+                report.recommendation_tracks
+            )?;
+            writeln!(output, "input_hash: {}", report.input_hash)?;
+            Ok(())
+        }
+        SignalCommand::Status { account } => {
+            let status = signals::status(database, &account).await?;
+            writeln!(output, "signals: current")?;
+            writeln!(output, "generation_id: {}", status.generation_id)?;
+            writeln!(output, "snapshot_id: {}", status.snapshot_id)?;
+            writeln!(output, "model: {}", status.model)?;
+            writeln!(output, "model_version: {}", status.model_version)?;
+            writeln!(output, "tracks: {}", status.track_count)?;
+            writeln!(output, "input_hash: {}", status.input_hash)?;
+            writeln!(output, "created_at: {}", status.created_at.to_rfc3339())?;
             Ok(())
         }
     }
@@ -757,6 +1115,33 @@ fn playlist_drift_policy(value: DriftPolicyArg) -> playlists::DriftPolicy {
         DriftPolicyArg::ProviderWins => playlists::DriftPolicy::ProviderWins,
         DriftPolicyArg::NeonWins => playlists::DriftPolicy::NeonWins,
         DriftPolicyArg::Manual => playlists::DriftPolicy::Manual,
+    }
+}
+
+fn playlist_signal_class(value: PlaylistSignalClassArg) -> playlists::PlaylistSignalClass {
+    match value {
+        PlaylistSignalClassArg::SemanticLegacy => playlists::PlaylistSignalClass::SemanticLegacy,
+        PlaylistSignalClassArg::ProviderCurated => playlists::PlaylistSignalClass::ProviderCurated,
+        PlaylistSignalClassArg::Intake => playlists::PlaylistSignalClass::Intake,
+        PlaylistSignalClassArg::Canonical => playlists::PlaylistSignalClass::Canonical,
+        PlaylistSignalClassArg::Transport => playlists::PlaylistSignalClass::Transport,
+        PlaylistSignalClassArg::Ignored => playlists::PlaylistSignalClass::Ignored,
+    }
+}
+
+fn behavioral_signal(value: BehavioralSignalArg) -> playlists::BehavioralSignal {
+    match value {
+        BehavioralSignalArg::Rotation => playlists::BehavioralSignal::Rotation,
+        BehavioralSignalArg::Discovery => playlists::BehavioralSignal::Discovery,
+        BehavioralSignalArg::Prompted => playlists::BehavioralSignal::Prompted,
+        BehavioralSignalArg::Recommendation => playlists::BehavioralSignal::Recommendation,
+    }
+}
+
+fn clear_policy(value: ClearPolicyArg) -> playlists::ClearPolicy {
+    match value {
+        ClearPolicyArg::Never => playlists::ClearPolicy::Never,
+        ClearPolicyArg::AfterVerifiedAssignment => playlists::ClearPolicy::AfterVerifiedAssignment,
     }
 }
 
@@ -885,7 +1270,8 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        Cli, Command, DbCommand, HistoryCommand, PlaylistCommand, PlaylistRoleArg, SpotifyCommand,
+        BehavioralSignalArg, Cli, Command, DbCommand, EmbeddingCommand, HistoryCommand,
+        PlaylistCommand, PlaylistRoleArg, PlaylistSignalClassArg, SignalCommand, SpotifyCommand,
         SyncCommand, write_status,
     };
     use crate::db::DatabaseStatus;
@@ -967,6 +1353,85 @@ mod tests {
                     ..
                 }
             } if account == "personal" && name == "Smooth Morning Coffee (Curated)"
+        ));
+    }
+
+    #[test]
+    fn parses_playlist_signal_policy() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "playlists",
+            "signals",
+            "--name",
+            "On Repeat",
+            "--class",
+            "provider-curated",
+            "--behavior",
+            "rotation",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Playlists {
+                command: PlaylistCommand::Signals {
+                    account,
+                    name: Some(name),
+                    class: PlaylistSignalClassArg::ProviderCurated,
+                    behavior: Some(BehavioralSignalArg::Rotation),
+                    ..
+                }
+            } if account == "personal" && name == "On Repeat"
+        ));
+    }
+
+    #[test]
+    fn parses_default_signal_generation() {
+        let cli = Cli::try_parse_from(["chordrift", "signals", "generate"]).expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Signals {
+                command: SignalCommand::Generate { account }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_default_embedding_generation() {
+        let cli =
+            Cli::try_parse_from(["chordrift", "embeddings", "generate"]).expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Embeddings {
+                command: EmbeddingCommand::Generate {
+                    account,
+                    dimensions: None,
+                    seed: None
+                }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_embedding_neighbors_by_spotify_id() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "embeddings",
+            "neighbors",
+            "--spotify-id",
+            "track123",
+            "--limit",
+            "5",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Embeddings {
+                command: EmbeddingCommand::Neighbors {
+                    spotify_id: Some(id),
+                    limit: 5,
+                    ..
+                }
+            } if id == "track123"
         ));
     }
 

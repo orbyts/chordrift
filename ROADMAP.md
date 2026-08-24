@@ -86,17 +86,43 @@ clustering, naming, playlist proposals, and dry-run synchronization. Apple work
 will be rebased onto the then-current main line rather than reserving or
 blocking a release number.
 
+Neon remains the durable identity, provenance, history, and orchestration
+ledger; Spotify is the only active live provider and intake surface until
+native Apple support resumes. Bootstrap the existing Apple library once from
+SongShift JSON rather than creating temporary Spotify playlists. Retain the
+original exports in the Git-ignored content-addressed archive, automatically
+link only unambiguous identities, and stage uncertain metadata matches for
+review. After consolidation, SongShift can mirror multiple Chordrift-managed
+Spotify playlists to Apple Music using the same approved canonical names. No
+aggregate "two way sync" or transfer-relay playlist is required.
+
+When both native providers are active, each platform is authoritative evidence
+for user actions on that platform. A user removal creates a provider-scoped
+tombstone/override; it does not erase the canonical track, history, or
+provenance from Neon. Reconciliation policy decides whether an intentional
+removal propagates to other providers and must prevent deletion/re-addition
+loops.
+
+Chordrift also maintains a durable, provider-neutral **Excluded Tracks** view.
+Removing a track from a published and subsequently verified Chordrift-managed
+playlist records a reversible account-level exclusion with its provider,
+timestamp, and previous canonical assignment. It must not hard-delete the track
+or listening history, and it prevents the track from silently reappearing in a
+future generated playlist. Removal from provider-curated, intake, transport, or
+legacy playlists is ordinary source drift and must not create a global
+exclusion. Restore is always explicit and audited.
+
 Until native Apple matching resumes, Spatial Audio curation uses an explicit
-manual bridge:
+manual workaround:
 
 1. Chordrift or the user creates a dedicated Spotify playlist of candidate
    tracks.
 2. The user scans its public Spotify URL with
    [Hello Atmos](https://helloatmos.app/spotify/) to identify Apple Music Dolby
    Atmos matches.
-3. The filtered set is exported to Apple Music directly, or copied into a
-   second Spotify playlist and transferred with Apple Music's built-in
-   **Transfer Music** workflow.
+3. The filtered set is exported to a specially named Apple Music Spatial Audio
+   playlist directly, or copied into a temporary filtered Spotify playlist and
+   mirrored with SongShift.
 
 This third-party result is a convenience, not authoritative Chordrift provider
 state. It must not silently populate verified Apple identifiers or Spatial
@@ -106,8 +132,31 @@ retain storefront and evidence provenance, and cache Apple's extended
 
 ## v0.0.5 — Embeddings
 
-Build versioned personal embeddings from playlist co-occurrence, artist and
-metadata relationships, historical names, and any available listening signals.
+Build versioned hybrid representations. Use a pretrained music-audio foundation
+model (initially MERT, with MuQ evaluated as an alternative) as the reusable
+acoustic base whenever Chordrift has lawful access to locally owned, DRM-free
+audio. Add semantic context from explicitly semantic legacy playlists, artist
+and album relationships, and historical names. Add independently sourced
+recording/release language, release country, and artist-area evidence with
+source, confidence, and retrieval provenance; never infer origin from Spotify
+availability markets. Prefer MusicBrainz for this enrichment and keep unknown
+values unknown rather than guessing from titles. Store behavioral preference and
+lifecycle signals—plays, recency, completion, skips, provider-curated rotation,
+inbox status, and recommendation provenance—separately so unrelated favorites
+do not become acoustically similar merely because both are frequently played.
+Spotify-only tracks must retain a deterministic personal/metadata fallback
+rather than downloading or scraping provider audio.
+
+Chordrift does not train a music foundation model. It performs inference with
+pretrained models or imports independently sourced semantic tags for an
+identified recording, then caches the result with model/source, version,
+confidence, and retrieval time. Before clustering ships, review the then-current
+Spotify Platform policy and keep Spotify as the live synchronization and
+user-action provider; resolve the artist/title/ISRC identity independently for
+model inference and portable enrichment.
+
+Status: complete. Provenance-aware external semantic enrichment is the first
+input task for v0.0.6 before cluster generation begins.
 
 ## v0.0.6 — Vibe clustering
 
@@ -126,7 +175,8 @@ legacy or discovery playlist is represented before proposing its retirement.
 Plan idempotent Spotify diffs without mutating the service. Include discovery
 inbox ingestion, cross-playlist duplicate removal, and explicit retirement
 plans for legacy and consumed inbox playlists, with track-preservation checks
-and no implicit deletions. Provider-neutral plan structures must allow Apple
+and no implicit deletions. Show proposed additions to and restorations from
+Excluded Tracks separately from provider drift. Provider-neutral plan structures must allow Apple
 Music diffs and Spatial Audio variants to be added later without changing the
 canonical model.
 

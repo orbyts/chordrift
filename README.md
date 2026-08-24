@@ -15,11 +15,11 @@ and synchronization will not wait for it; when available, the export will add
 signals such as play counts, listening duration, first play, and last play.
 
 > [!WARNING]
-> Chordrift is in very early development. Version 0.0.4 adds privacy-conscious
-> Spotify history enrichment, repeatable local archive recovery, and basic
-> read-only query commands. Chordrift still performs no remote Spotify mutations.
+> Chordrift is in very early development. Version 0.0.5 adds versioned semantic
+> embeddings, independently versioned personal signals, and explicit playlist
+> evidence policies. Chordrift still performs no remote Spotify mutations.
 
-## v0.0.4 capabilities
+## v0.0.5 capabilities
 
 - Storexa-backed Neon PostgreSQL connection management
 - an application-owned canonical music-library schema
@@ -40,13 +40,18 @@ signals such as play counts, listening duration, first play, and last play.
 - cumulative event deduplication across periodic overlapping Spotify exports
 - account-scoped play, duration, skip, completion, and recency statistics
 - Git-ignored local inbox/archive recovery that preserves original ZIPs
+- immutable semantic embedding generations with reproducible parameters
+- independently versioned listening and lifecycle signal generations
+- explicit semantic, provider-curated, intake, canonical, transport, and
+  ignored playlist evidence classes
+- nearest-neighbor inspection before any embedding can feed clustering
 
 Set the canonical Neon connection URL through the application-specific
 `CHORDRIFT_DATABASE_URL` environment variable. Chordrift never prints it.
 
 ```console
 $ chordrift --version
-chordrift 0.0.4
+chordrift 0.0.5
 
 $ chordrift db status
 database: chordrift-primary
@@ -126,7 +131,7 @@ $ chordrift analyze overlap --limit 25
 $ chordrift analyze duplicates --limit 25
 ```
 
-Role and policy configuration is durable, but v0.0.4 remains pull-only. A
+Role and policy configuration is durable, but v0.0.5 remains pull-only. A
 future dry-run/apply milestone will use `neon-wins` for managed playlists and
 will require explicit, auditable approval before changing Spotify.
 
