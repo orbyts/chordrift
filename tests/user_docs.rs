@@ -10,6 +10,7 @@ fn user_guide_mentions_every_cli_leaf_command() {
         include_str!("../docs/how-to/ADDING_AND_DISCOVERY.md"),
         include_str!("../docs/how-to/DELETING_AND_EXCLUDING.md"),
         include_str!("../docs/how-to/ROUTING_AND_RECLASSIFYING.md"),
+        include_str!("../docs/how-to/CLASSIFICATION_DIMENSIONS.md"),
         include_str!("../docs/how-to/SYNC_AND_CONVERGENCE.md"),
     );
     let command = Cli::command();

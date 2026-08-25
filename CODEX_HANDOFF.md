@@ -28,6 +28,15 @@ Last updated: 2026-08-24.
   detected terminal width. A later configuration layer belongs at
   `$XDG_CONFIG_HOME/chordrift/config.toml` and should cover width/layout, color,
   inspection detail, and date formatting.
+- Migration `0038_user_classification_cohorts.sql` adds account-scoped,
+  multi-valued personal cohorts. `user_cohorts` is backward-compatible in CSV
+  schema v1 and is deliberately excluded from the sound embedding; it is future
+  composition intent. The dedicated glossary and copy/paste templates are in
+  `docs/how-to/CLASSIFICATION_DIMENSIONS.md`.
+- The current schema is shaped for multiple accounts, and classification lookup
+  now proves selected-account library membership. A complete two-account and
+  provider-neutrality audit remains mandatory before a friend trial; scope is
+  recorded in `docs/design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md`.
 
 ## Project and repositories
 

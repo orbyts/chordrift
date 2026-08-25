@@ -409,7 +409,9 @@ and verified without changing playlist membership.
 ## v0.1.2 — Listening review and preference learning
 
 - [x] Add a revisioned private user-classification sidecar (`collection`,
-  multi-valued `region`, `tradition`, and `language`, plus non-vector `notes`).
+  multi-valued `region`, `tradition`, `cohort`, and `language`, plus non-vector
+  `notes`). Cohorts express personal composition intent without claiming that
+  their tracks sound alike.
 - [x] Support immediate one-track corrections and inert CSV export → draft
   import → exact-ID approval for larger regional review passes.
 - [x] Feed active explicit facts into a separate higher-weight personalized
@@ -423,6 +425,12 @@ and verified without changing playlist membership.
   `$XDG_CONFIG_HOME/chordrift/config.toml` (table width/layout, color policy,
   compact versus detailed inspection, and date formatting). Keep automatic
   terminal-width detection and sensible interactive defaults when unset.
+- [x] Publish a user-dimension glossary with literal CSV/Excel templates and a
+  future account-scoped drag-and-drop token interaction model.
+- [ ] Before testing a friend's account, run the two-account isolation and
+  provider-boundary audit in
+  `docs/design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md`; fix Spotify-specific domain
+  leakage before treating the CLI as a reusable product foundation.
 
 Turn ongoing listening corrections into durable, explainable account knowledge
 rather than ad hoc Spotify edits. A correction distinguishes four separate

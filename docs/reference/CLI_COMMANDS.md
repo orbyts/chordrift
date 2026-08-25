@@ -78,7 +78,7 @@ the stable Spotify ID when several recordings share a title.
 Private account-specific dimensions are managed with:
 
 ```console
-$ chordrift classify set --spotify-id ID --region south-indian --reason "verified while listening"
+$ chordrift classify set --spotify-id ID --region south-indian --cohort ar-rahman-favorites --reason "verified while listening"
 $ chordrift classify clear --spotify-id ID --reason "superseded correction"
 $ chordrift classify history --spotify-id ID
 $ chordrift classify export --playlist "Monsoon Cinema" --file review.csv
@@ -86,8 +86,8 @@ $ chordrift classify import --file review.csv
 $ chordrift classify approve --batch BATCH_ID --confirm BATCH_ID
 ```
 
-See [Route and reclassify a track](../how-to/ROUTING_AND_RECLASSIFYING.md)
-for dimension semantics and the safe CSV approval workflow.
+See [Classify tracks with user dimensions](../how-to/CLASSIFICATION_DIMENSIONS.md)
+for the column glossary, cohort semantics, vocabulary, and safe CSV workflow.
 
 ## Installation and help
 

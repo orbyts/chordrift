@@ -75,6 +75,9 @@ publishes the corrective inboxes without prematurely clearing them.
 
 ## Add a private classification dimension
 
+The complete column glossary, recommended vocabulary, examples, and future UI
+token behavior live in [Classify tracks with user dimensions](CLASSIFICATION_DIMENSIONS.md).
+
 Use explicit classification when provider/public metadata is missing or your
 own cultural grouping should outrank sound similarity. These facts are private,
 revisioned, and separate from public or inferred facts. They affect the
@@ -88,6 +91,7 @@ $ chordrift classify set \
     --collection south-asian \
     --region south-indian \
     --tradition film \
+    --cohort ar-rahman-favorites \
     --language ta \
     --reason "Tamil film song; keep out of general ambient grouping"
 ```

@@ -24,6 +24,8 @@ pub struct ClassificationValues {
     pub regions: Vec<String>,
     /// Musical traditions, such as `film` or `carnatic-classical`.
     pub traditions: Vec<String>,
+    /// Personal cross-cutting cohorts, such as `ar-rahman-favorites`.
+    pub cohorts: Vec<String>,
     /// BCP-47/ISO-style language tags, plus `instrumental` when appropriate.
     pub languages: Vec<String>,
     /// Optional free-form context that does not become an embedding feature.
@@ -88,6 +90,8 @@ struct CsvRow {
     user_collection: String,
     user_regions: String,
     user_traditions: String,
+    #[serde(default)]
+    user_cohorts: String,
     user_languages: String,
     user_notes: String,
     reason: String,
@@ -102,7 +106,7 @@ pub async fn set(
     reason: &str,
 ) -> Result<Vec<ClassificationRevision>> {
     let account_id = account_id(database, account_label).await?;
-    let tracks = track_ids(database, spotify_ids).await?;
+    let tracks = track_ids(database, account_id, spotify_ids).await?;
     let values = normalize_values(values)?;
     if values == ClassificationValues::default() {
         return Err(configuration(
@@ -124,15 +128,16 @@ pub async fn set(
         ids.push(
             sqlx::query_scalar(
                 "INSERT INTO track_classification_revisions
-             (provider_account_id, track_id, collection, regions, traditions, languages,
+             (provider_account_id, track_id, collection, regions, traditions, cohorts, languages,
               notes, reason, source)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'cli') RETURNING id",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'cli') RETURNING id",
             )
             .bind(account_id)
             .bind(track_id)
             .bind(&values.collection)
             .bind(&values.regions)
             .bind(&values.traditions)
+            .bind(&values.cohorts)
             .bind(&values.languages)
             .bind(&values.notes)
             .bind(&reason)
@@ -156,7 +161,7 @@ pub async fn clear(
     reason: &str,
 ) -> Result<usize> {
     let account_id = account_id(database, account_label).await?;
-    let tracks = track_ids(database, spotify_ids).await?;
+    let tracks = track_ids(database, account_id, spotify_ids).await?;
     let reason = required(reason, "reason")?;
     let mut tx = database.pool().begin().await?;
     let mut changed = 0;
@@ -195,7 +200,7 @@ pub async fn history(
     spotify_id: &str,
 ) -> Result<Vec<ClassificationRevision>> {
     let account_id = account_id(database, account_label).await?;
-    let track_id = track_id(database, spotify_id).await?;
+    let track_id = track_id(database, account_id, spotify_id).await?;
     let rows = sqlx::query(
         "SELECT revision.id
          FROM track_classification_revisions revision
@@ -250,7 +255,7 @@ pub async fn export(
              GROUP BY provider_track.track_id, track.title, album.title
          )
          SELECT base.*, active.collection, active.regions, active.traditions,
-                active.languages, active.notes,
+                active.cohorts, active.languages, active.notes,
                 COALESCE((SELECT string_agg(DISTINCT fact.value, ';' ORDER BY fact.value)
                           FROM track_semantic_facts fact
                           WHERE fact.track_id = base.track_id
@@ -299,6 +304,10 @@ pub async fn export(
                     .try_get::<Option<Vec<String>>, _>("traditions")?
                     .unwrap_or_default()
                     .join(";"),
+                user_cohorts: row
+                    .try_get::<Option<Vec<String>>, _>("cohorts")?
+                    .unwrap_or_default()
+                    .join(";"),
                 user_languages: row
                     .try_get::<Option<Vec<String>>, _>("languages")?
                     .unwrap_or_default()
@@ -342,6 +351,7 @@ pub async fn import(database: &Database, account_label: &str, path: &Path) -> Re
             collection: optional(&row.user_collection),
             regions: split_values(&row.user_regions),
             traditions: split_values(&row.user_traditions),
+            cohorts: split_values(&row.user_cohorts),
             languages: split_values(&row.user_languages),
             notes: optional(&row.user_notes),
         })?;
@@ -362,9 +372,11 @@ pub async fn import(database: &Database, account_label: &str, path: &Path) -> Re
         .collect::<Vec<_>>();
     let resolved_rows = sqlx::query(
         "SELECT provider_track_id, track_id FROM provider_tracks
-         WHERE provider = 'spotify' AND provider_track_id = ANY($1)",
+         WHERE provider = 'spotify' AND provider_track_id = ANY($1)
+           AND account_track_is_library_candidate($2, track_id)",
     )
     .bind(&ids)
+    .bind(account_id)
     .fetch_all(database.pool())
     .await?;
     let resolved = resolved_rows
@@ -412,8 +424,8 @@ pub async fn import(database: &Database, account_label: &str, path: &Path) -> Re
     for (track_id, action, values, reason) in &entries {
         sqlx::query(
             "INSERT INTO track_classification_batch_entries
-             (batch_id, track_id, action, collection, regions, traditions, languages, notes, reason)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+             (batch_id, track_id, action, collection, regions, traditions, cohorts, languages, notes, reason)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
         )
         .bind(batch_id)
         .bind(track_id)
@@ -421,6 +433,7 @@ pub async fn import(database: &Database, account_label: &str, path: &Path) -> Re
         .bind(&values.collection)
         .bind(&values.regions)
         .bind(&values.traditions)
+        .bind(&values.cohorts)
         .bind(&values.languages)
         .bind(&values.notes)
         .bind(reason)
@@ -466,7 +479,7 @@ pub async fn approve(
         Some(_) => unreachable!("database status constraint"),
     }
     let rows = sqlx::query(
-        "SELECT track_id, action, collection, regions, traditions, languages, notes, reason
+        "SELECT track_id, action, collection, regions, traditions, cohorts, languages, notes, reason
          FROM track_classification_batch_entries WHERE batch_id = $1 ORDER BY id",
     )
     .bind(batch_id)
@@ -485,15 +498,16 @@ pub async fn approve(
         if row.try_get::<String, _>("action")? == "set" {
             sqlx::query(
                 "INSERT INTO track_classification_revisions
-                 (provider_account_id, track_id, collection, regions, traditions, languages,
+                 (provider_account_id, track_id, collection, regions, traditions, cohorts, languages,
                   notes, reason, source, source_batch_id)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'csv', $9)",
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'csv', $10)",
             )
             .bind(account_id)
             .bind(track_id)
             .bind(row.try_get::<Option<String>, _>("collection")?)
             .bind(row.try_get::<Vec<String>, _>("regions")?)
             .bind(row.try_get::<Vec<String>, _>("traditions")?)
+            .bind(row.try_get::<Vec<String>, _>("cohorts")?)
             .bind(row.try_get::<Vec<String>, _>("languages")?)
             .bind(row.try_get::<Option<String>, _>("notes")?)
             .bind(row.try_get::<String, _>("reason")?)
@@ -534,7 +548,8 @@ async fn revision(database: &Database, id: Uuid) -> Result<ClassificationRevisio
     let row = sqlx::query(
         "SELECT revision.id, provider.provider_track_id AS spotify_id, track.title,
                 COALESCE(string_agg(artist.name, ', ' ORDER BY credit.position), '') AS artists,
-                revision.collection, revision.regions, revision.traditions, revision.languages,
+                revision.collection, revision.regions, revision.traditions, revision.cohorts,
+                revision.languages,
                 revision.notes, revision.decision, revision.reason, revision.source,
                 revision.created_at, revision.superseded_at
          FROM track_classification_revisions revision
@@ -557,6 +572,7 @@ async fn revision(database: &Database, id: Uuid) -> Result<ClassificationRevisio
             collection: row.try_get("collection")?,
             regions: row.try_get("regions")?,
             traditions: row.try_get("traditions")?,
+            cohorts: row.try_get("cohorts")?,
             languages: row.try_get("languages")?,
             notes: row.try_get("notes")?,
         },
@@ -578,13 +594,29 @@ async fn account_id(database: &Database, label: &str) -> Result<Uuid> {
     .ok_or_else(|| configuration(format!("account `{label}` has not been imported")))
 }
 
-async fn track_id(database: &Database, spotify_id: &str) -> Result<Uuid> {
-    sqlx::query_scalar("SELECT track_id FROM provider_tracks WHERE provider = 'spotify' AND provider_track_id = $1")
-        .bind(spotify_id.trim()).fetch_optional(database.pool()).await?
-        .ok_or_else(|| configuration(format!("unknown Spotify track `{}`; run `chordrift sync pull` first", spotify_id.trim())))
+async fn track_id(database: &Database, account_id: Uuid, spotify_id: &str) -> Result<Uuid> {
+    sqlx::query_scalar(
+        "SELECT track_id FROM provider_tracks
+        WHERE provider = 'spotify' AND provider_track_id = $1
+          AND account_track_is_library_candidate($2, track_id)",
+    )
+    .bind(spotify_id.trim())
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        configuration(format!(
+            "unknown Spotify track `{}`; run `chordrift sync pull` first",
+            spotify_id.trim()
+        ))
+    })
 }
 
-async fn track_ids(database: &Database, spotify_ids: &[String]) -> Result<Vec<(String, Uuid)>> {
+async fn track_ids(
+    database: &Database,
+    account_id: Uuid,
+    spotify_ids: &[String],
+) -> Result<Vec<(String, Uuid)>> {
     if spotify_ids.is_empty() {
         return Err(configuration("provide at least one --spotify-id"));
     }
@@ -597,9 +629,11 @@ async fn track_ids(database: &Database, spotify_ids: &[String]) -> Result<Vec<(S
     }
     let rows = sqlx::query(
         "SELECT provider_track_id, track_id FROM provider_tracks
-         WHERE provider = 'spotify' AND provider_track_id = ANY($1)",
+         WHERE provider = 'spotify' AND provider_track_id = ANY($1)
+           AND account_track_is_library_candidate($2, track_id)",
     )
     .bind(&normalized)
+    .bind(account_id)
     .fetch_all(database.pool())
     .await?;
     let resolved = rows
@@ -634,6 +668,7 @@ fn normalize_values(mut values: ClassificationValues) -> Result<ClassificationVa
     values.collection = values.collection.as_deref().map(slug).transpose()?;
     values.regions = normalize_many(values.regions)?;
     values.traditions = normalize_many(values.traditions)?;
+    values.cohorts = normalize_many(values.cohorts)?;
     values.languages = normalize_many(values.languages)?;
     values.notes = values.notes.as_deref().and_then(optional);
     Ok(values)
@@ -684,7 +719,7 @@ fn configuration(message: impl Into<String>) -> ChordriftError {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClassificationValues, normalize_values, split_values};
+    use super::{ClassificationValues, CsvRow, normalize_values, split_values};
 
     #[test]
     fn normalizes_and_deduplicates_dimensions() {
@@ -692,13 +727,26 @@ mod tests {
             collection: Some("South Asian".to_owned()),
             regions: vec!["South Indian".to_owned(), "south-indian".to_owned()],
             traditions: vec!["Film".to_owned()],
+            cohorts: vec!["A R Rahman Favorites".to_owned()],
             languages: split_values("ta; instrumental"),
             notes: Some("  personal correction ".to_owned()),
         })
         .expect("valid values");
         assert_eq!(values.collection.as_deref(), Some("south-asian"));
         assert_eq!(values.regions, ["south-indian"]);
+        assert_eq!(values.cohorts, ["a-r-rahman-favorites"]);
         assert_eq!(values.languages, ["instrumental", "ta"]);
         assert_eq!(values.notes.as_deref(), Some("personal correction"));
+    }
+
+    #[test]
+    fn cohort_column_is_backward_compatible_with_existing_csv() {
+        let csv = "schema_version,spotify_id,title,artists,album,inferred_release_country,inferred_release_language,action,user_collection,user_regions,user_traditions,user_languages,user_notes,reason\n1,id,title,artist,album,,,set,south-asian,south-indian,film,ta,,reviewed\n";
+        let row: CsvRow = csv::Reader::from_reader(csv.as_bytes())
+            .deserialize()
+            .next()
+            .expect("one row")
+            .expect("old schema-v1 row remains valid");
+        assert!(row.user_cohorts.is_empty());
     }
 }

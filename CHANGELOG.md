@@ -4,6 +4,10 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Add account-scoped `user_cohorts`, a complete classification/CSV glossary,
+  Excel-ready A.R. Rahman examples, and stronger selected-account track
+  isolation as the `0.1.2-dev.3` checkpoint.
+
 - Add revisioned private collection, region, tradition, and language facts with
   atomic one-track/small-batch commands and an inert CSV review workflow.
 - Render `tracks inspect` as a human-oriented interactive report, retain raw

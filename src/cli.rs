@@ -619,6 +619,9 @@ pub enum ClassificationCommand {
         /// Musical tradition; repeat for multiple values.
         #[arg(long = "tradition")]
         traditions: Vec<String>,
+        /// Personal cohort; repeat for multiple values.
+        #[arg(long = "cohort")]
+        cohorts: Vec<String>,
         /// Language tag or `instrumental`; repeat for multiple values.
         #[arg(long = "language")]
         languages: Vec<String>,
@@ -2623,6 +2626,11 @@ async fn run_track_command(
                 )?;
                 writeln!(
                     output,
+                    "  cohorts: {}",
+                    list_or_dash(&classification.values.cohorts)
+                )?;
+                writeln!(
+                    output,
                     "  languages: {}",
                     list_or_dash(&classification.values.languages)
                 )?;
@@ -2678,6 +2686,7 @@ async fn run_classification_command(
             collection,
             regions,
             traditions,
+            cohorts,
             languages,
             notes,
             reason,
@@ -2690,6 +2699,7 @@ async fn run_classification_command(
                     collection,
                     regions,
                     traditions,
+                    cohorts,
                     languages,
                     notes,
                 },
@@ -2794,6 +2804,11 @@ fn write_classification_revision(
         output,
         "traditions: {}",
         list_or_dash(&revision.values.traditions)
+    )?;
+    writeln!(
+        output,
+        "cohorts: {}",
+        list_or_dash(&revision.values.cohorts)
     )?;
     writeln!(
         output,
@@ -4173,6 +4188,10 @@ fn write_pretty_track_inspection(
                 list_or_dash(&classification.values.traditions),
             ],
             vec![
+                "Cohorts".to_owned(),
+                list_or_dash(&classification.values.cohorts),
+            ],
+            vec![
                 "Languages".to_owned(),
                 list_or_dash(&classification.values.languages),
             ],
@@ -4497,11 +4516,11 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand, Cli,
-        ClusterCommand, Command, DbCommand, EmbeddingCommand, EnrichmentCommand, HistoryCommand,
-        LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg, PlaylistSignalClassArg,
-        RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand, SyncCommand,
-        TrackCommand, write_status,
+        AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand,
+        ClassificationCommand, Cli, ClusterCommand, Command, DbCommand, EmbeddingCommand,
+        EnrichmentCommand, HistoryCommand, LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg,
+        PlaylistSignalClassArg, RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand,
+        SyncCommand, TrackCommand, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -4513,6 +4532,30 @@ mod tests {
             Command::Db {
                 command: DbCommand::Status
             }
+        ));
+    }
+
+    #[test]
+    fn parses_atomic_cohort_classification() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "classify",
+            "set",
+            "--spotify-id",
+            "first",
+            "--spotify-id",
+            "second",
+            "--cohort",
+            "ar-rahman-favorites",
+            "--reason",
+            "reviewed",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Classify {
+                command: ClassificationCommand::Set { spotify_ids, cohorts, .. }
+            } if spotify_ids == ["first", "second"] && cohorts == ["ar-rahman-favorites"]
         ));
     }
 
