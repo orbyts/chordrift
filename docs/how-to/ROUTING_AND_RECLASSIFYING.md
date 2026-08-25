@@ -72,3 +72,70 @@ Chordrift clears route membership only after the selected destination has been
 published and verified. Full automatic route consumption is the next v0.1.2
 reconciliation slice; the current routing subslice safely captures and
 publishes the corrective inboxes without prematurely clearing them.
+
+## Add a private classification dimension
+
+Use explicit classification when provider/public metadata is missing or your
+own cultural grouping should outrank sound similarity. These facts are private,
+revisioned, and separate from public or inferred facts. They affect the
+personalized embedding without rewriting the base acoustic embedding.
+
+For one known track:
+
+```console
+$ chordrift classify set \
+    --spotify-id SPOTIFY_TRACK_ID \
+    --collection south-asian \
+    --region south-indian \
+    --tradition film \
+    --language ta \
+    --reason "Tamil film song; keep out of general ambient grouping"
+```
+
+For a handful with the same verified dimensions, repeat `--spotify-id` in one
+command. Chordrift resolves the whole set first and commits it atomically:
+
+```console
+$ chordrift classify set \
+    --spotify-id FIRST_ID --spotify-id SECOND_ID --spotify-id THIRD_ID \
+    --collection south-asian --region north-indian --tradition film \
+    --language hi --reason "Reviewed together as Hindi film songs"
+```
+
+Use `region` for cultural/geographic grouping and `tradition` for musical form.
+For example, `south-indian` is a region while `carnatic-classical` is a
+tradition. Repeat a dimension when multiple values apply. Values normalize to
+lowercase hyphenated slugs. `--notes` stores context but is not embedded.
+
+Review or reverse the decision without losing provenance:
+
+```console
+$ chordrift classify history --spotify-id SPOTIFY_TRACK_ID
+$ chordrift classify clear --spotify-id SPOTIFY_TRACK_ID \
+    --reason "classification replaced after listening review"
+```
+
+For a larger review, export one or more playlists into one deduplicated CSV:
+
+```console
+$ chordrift classify export \
+    --playlist "Monsoon Cinema" \
+    --playlist "Route — South Indian" \
+    --playlist "Route — North Indian" \
+    --file data/review/south-asian-classification.csv
+```
+
+The worksheet includes track identity, album, limited inferred release facts,
+and current `user_*` values. It is inert: edit only `user_*`, place `set` or
+`clear` in `action`, and add a reason to every changed row. Blank action means
+no change. Import creates a draft and changes no active facts:
+
+```console
+$ chordrift classify import --file data/review/south-asian-classification.csv
+$ chordrift classify approve --batch BATCH_ID --confirm BATCH_ID
+$ chordrift embeddings generate
+```
+
+Only exact-ID approval activates the batch. Classification does not immediately
+move Spotify tracks; use it to create/assign the next proposal, then follow the
+normal reviewed plan and apply workflow.

@@ -8,6 +8,22 @@ archive contents.
 
 Last updated: 2026-08-24.
 
+## Private classification sidecar (current v0.1.2 work)
+
+- Migrations `0036_user_track_classifications.sql` and
+  `0037_classification_decisions.sql` add set/clear revision history and
+  exact-approval CSV batches. User facts do not overwrite external/model facts.
+- CLI: `classify set`, `clear`, `history`, `export`, `import`, and `approve`.
+- CSV rows are inert unless `action` is `set` or `clear`; imports are drafts;
+  approval must repeat the exact batch UUID.
+- Embedding model v5 adds active collection/region/tradition/language facts in a
+  `user-classification@v1` namespace at weight 1.25. Notes are explainability
+  only. The base acoustic model vector is unchanged.
+- Next operational step: export Monsoon Cinema plus North/South routes, let
+  Suhail review the CSV over time, approve it, regenerate embeddings, then form
+  and name verified destinations. Do not retire Monsoon until all 410 tracks
+  have one verified destination or exclusion and route clearing is verified.
+
 ## Project and repositories
 
 - Project: Chordrift, a personal music-library intelligence and synchronization
@@ -1007,3 +1023,26 @@ with zero failures and verified against snapshot
 while `albums history` retains all 69 as retired. Fresh plan
 `6114972d-86d1-437f-877e-084c777d5a1a` has zero operations. Next work is route
 reconciliation, followed by verified Liked Songs consumption.
+
+## v0.1.2 Monsoon/regional reconciliation audit
+
+The next requested cleanup retires mixed destination `Monsoon Cinema` only
+after lossless reassignment. Snapshot `63f13a92-434f-4c90-b5f6-e432221f0da3`
+contains 410 Monsoon tracks across 112 albums. The three route surfaces contain
+75 entries / 73 unique tracks, but only 29 unique routed tracks are in Monsoon;
+44 routed tracks currently live in other managed destinations. Two tracks are
+present in both North and South routes. Therefore reconciliation must cover the
+whole approved proposal, not merely split Monsoon.
+
+Existing provider metadata is identity-rich but region-poor: the enrichment
+ledger has 39 semantic facts and only two tracks with artist-area facts across
+1,715 eligible tracks. Spotify supplies title, artist, album, ISRC, duration,
+and release metadata but no reliable track-language field. Use explicit routing
+as high-priority evidence, album/version evidence where unambiguous, and a
+reviewable semantic classification artifact for the remainder. Indian
+Classical is a style destination and requires positive classical evidence; do
+not infer it from artist nationality or an instrumental title. Non-South-Asian
+tracks return to existing sound-based poetic destinations, with a new poetic
+destination created only when their sound warrants it. Route cleanup requires
+a newer durable assignment and verified destination; current mere placement in
+the rejected destination is insufficient.

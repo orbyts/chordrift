@@ -6,9 +6,9 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
-    ChordriftError, Result, albums, analysis, apply, apply_readiness, artwork, bookmarks, clusters,
-    config, db, embeddings, enrichment, history, model_inference, playlists, proposals,
-    providers::spotify, routes, signals, sync_plan, terminal, tracks,
+    ChordriftError, Result, albums, analysis, apply, apply_readiness, artwork, bookmarks,
+    classifications, clusters, config, db, embeddings, enrichment, history, model_inference,
+    playlists, proposals, providers::spotify, routes, signals, sync_plan, terminal, tracks,
 };
 
 /// Chordrift command-line interface.
@@ -70,6 +70,12 @@ pub enum Command {
         /// Track operation to perform.
         #[command(subcommand)]
         command: TrackCommand,
+    },
+    /// Author private revisioned track dimensions directly or through reviewed CSV batches.
+    Classify {
+        /// Classification operation to perform.
+        #[command(subcommand)]
+        command: ClassificationCommand,
     },
     /// Inspect externally owned playlists retained as Neon bookmarks.
     Bookmarks {
@@ -587,6 +593,92 @@ pub enum TrackCommand {
         /// Stable Spotify track ID.
         #[arg(long, required_unless_present = "name", conflicts_with = "name")]
         spotify_id: Option<String>,
+    },
+}
+
+/// Private user-authored track classification commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ClassificationCommand {
+    /// Immediately set explicit dimensions for one known Spotify track.
+    Set {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Stable Spotify track ID; repeat for a small atomic batch.
+        #[arg(long = "spotify-id", required = true)]
+        spotify_ids: Vec<String>,
+        /// Broad collection such as `south-asian`.
+        #[arg(long)]
+        collection: Option<String>,
+        /// Region or cultural region; repeat for multiple values.
+        #[arg(long = "region")]
+        regions: Vec<String>,
+        /// Musical tradition; repeat for multiple values.
+        #[arg(long = "tradition")]
+        traditions: Vec<String>,
+        /// Language tag or `instrumental`; repeat for multiple values.
+        #[arg(long = "language")]
+        languages: Vec<String>,
+        /// Optional private context excluded from embedding features.
+        #[arg(long)]
+        notes: Option<String>,
+        /// Required explanation retained in revision history.
+        #[arg(long)]
+        reason: String,
+    },
+    /// Clear one active classification while retaining its history.
+    Clear {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Stable Spotify track ID; repeat for a small atomic batch.
+        #[arg(long = "spotify-id", required = true)]
+        spotify_ids: Vec<String>,
+        /// Required explanation retained in history.
+        #[arg(long)]
+        reason: String,
+    },
+    /// Show active and superseded user revisions for one track.
+    History {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Stable Spotify track ID.
+        #[arg(long = "spotify-id")]
+        spotify_id: String,
+    },
+    /// Export deduplicated playlist tracks to an inert CSV review worksheet.
+    Export {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Current Spotify playlist name; repeat to combine playlists.
+        #[arg(long = "playlist", required = true)]
+        playlists: Vec<String>,
+        /// Destination CSV file.
+        #[arg(long)]
+        file: PathBuf,
+    },
+    /// Stage CSV rows explicitly marked `set` or `clear` as a draft batch.
+    Import {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Reviewed CSV file.
+        #[arg(long)]
+        file: PathBuf,
+    },
+    /// Activate one exact staged CSV batch.
+    Approve {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Draft batch identity.
+        #[arg(long)]
+        batch: uuid::Uuid,
+        /// Must exactly repeat the batch identity.
+        #[arg(long)]
+        confirm: uuid::Uuid,
     },
 }
 
@@ -1479,6 +1571,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
         Command::Tracks { command } => {
             let database = connect_current_database().await?;
             let result = run_track_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
+        Command::Classify { command } => {
+            let database = connect_current_database().await?;
+            let result = run_classification_command(command, output, &database).await;
             database.close().await;
             result?;
         }
@@ -2499,6 +2597,33 @@ async fn run_track_command(
                     fact.model
                 )?;
             }
+            if let Some(classification) = &report.user_classification {
+                writeln!(output, "user_classification:")?;
+                writeln!(
+                    output,
+                    "  collection: {}",
+                    classification.values.collection.as_deref().unwrap_or("-")
+                )?;
+                writeln!(
+                    output,
+                    "  regions: {}",
+                    list_or_dash(&classification.values.regions)
+                )?;
+                writeln!(
+                    output,
+                    "  traditions: {}",
+                    list_or_dash(&classification.values.traditions)
+                )?;
+                writeln!(
+                    output,
+                    "  languages: {}",
+                    list_or_dash(&classification.values.languages)
+                )?;
+                writeln!(output, "  reason: {}", clean_cell(&classification.reason))?;
+                writeln!(output, "  revision_id: {}", classification.id)?;
+            } else {
+                writeln!(output, "user_classification: none")?;
+            }
             writeln!(
                 output,
                 "historical_source_playlists: {}",
@@ -2531,6 +2656,184 @@ async fn run_track_command(
             )?;
             Ok(())
         }
+    }
+}
+
+async fn run_classification_command(
+    command: ClassificationCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        ClassificationCommand::Set {
+            account,
+            spotify_ids,
+            collection,
+            regions,
+            traditions,
+            languages,
+            notes,
+            reason,
+        } => {
+            let revisions = classifications::set(
+                database,
+                &account,
+                &spotify_ids,
+                classifications::ClassificationValues {
+                    collection,
+                    regions,
+                    traditions,
+                    languages,
+                    notes,
+                },
+                &reason,
+            )
+            .await?;
+            writeln!(output, "classifications: active")?;
+            writeln!(output, "tracks: {}", revisions.len())?;
+            for revision in &revisions {
+                write_classification_revision(output, revision)?;
+            }
+            writeln!(
+                output,
+                "next: run `chordrift embeddings generate --account {account}`"
+            )?;
+        }
+        ClassificationCommand::Clear {
+            account,
+            spotify_ids,
+            reason,
+        } => {
+            let changed = classifications::clear(database, &account, &spotify_ids, &reason).await?;
+            writeln!(output, "classifications: cleared")?;
+            writeln!(output, "tracks: {}", spotify_ids.len())?;
+            writeln!(output, "previously_active: {changed}")?;
+        }
+        ClassificationCommand::History {
+            account,
+            spotify_id,
+        } => {
+            let revisions = classifications::history(database, &account, &spotify_id).await?;
+            writeln!(output, "classification_history: {}", revisions.len())?;
+            for revision in &revisions {
+                write_classification_revision(output, revision)?;
+            }
+        }
+        ClassificationCommand::Export {
+            account,
+            playlists,
+            file,
+        } => {
+            let report = classifications::export(database, &account, &playlists, &file).await?;
+            writeln!(output, "classification_export: created")?;
+            writeln!(output, "file: {}", report.path)?;
+            writeln!(output, "tracks: {}", report.tracks)?;
+            writeln!(output, "active_changes: 0")?;
+            writeln!(
+                output,
+                "next: edit only user_* columns, set action, and add a reason"
+            )?;
+        }
+        ClassificationCommand::Import { account, file } => {
+            let report = classifications::import(database, &account, &file).await?;
+            write_classification_batch(output, &report)?;
+            writeln!(output, "active_changes: 0")?;
+            writeln!(
+                output,
+                "next: chordrift classify approve --batch {} --confirm {}",
+                report.batch_id, report.batch_id
+            )?;
+        }
+        ClassificationCommand::Approve {
+            account,
+            batch,
+            confirm,
+        } => {
+            let report = classifications::approve(database, &account, batch, confirm).await?;
+            write_classification_batch(output, &report)?;
+            writeln!(
+                output,
+                "next: run `chordrift embeddings generate --account {account}`"
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn write_classification_revision(
+    output: &mut impl Write,
+    revision: &classifications::ClassificationRevision,
+) -> Result<()> {
+    writeln!(output, "revision_id: {}", revision.id)?;
+    writeln!(
+        output,
+        "track: {} — {}",
+        clean_cell(&revision.title),
+        clean_cell(&revision.artists)
+    )?;
+    writeln!(output, "spotify_id: {}", revision.spotify_id)?;
+    writeln!(output, "decision: {}", revision.decision)?;
+    writeln!(
+        output,
+        "collection: {}",
+        revision.values.collection.as_deref().unwrap_or("-")
+    )?;
+    writeln!(
+        output,
+        "regions: {}",
+        list_or_dash(&revision.values.regions)
+    )?;
+    writeln!(
+        output,
+        "traditions: {}",
+        list_or_dash(&revision.values.traditions)
+    )?;
+    writeln!(
+        output,
+        "languages: {}",
+        list_or_dash(&revision.values.languages)
+    )?;
+    writeln!(
+        output,
+        "notes: {}",
+        revision
+            .values
+            .notes
+            .as_deref()
+            .map(clean_cell)
+            .unwrap_or_else(|| "-".to_owned())
+    )?;
+    writeln!(output, "reason: {}", clean_cell(&revision.reason))?;
+    writeln!(output, "source: {}", revision.source)?;
+    writeln!(output, "created_at: {}", revision.created_at.to_rfc3339())?;
+    writeln!(
+        output,
+        "status: {}",
+        revision
+            .superseded_at
+            .map_or("active".to_owned(), |at| format!(
+                "superseded@{}",
+                at.to_rfc3339()
+            ))
+    )?;
+    Ok(())
+}
+
+fn write_classification_batch(
+    output: &mut impl Write,
+    report: &classifications::BatchReport,
+) -> Result<()> {
+    writeln!(output, "classification_batch: {}", report.status)?;
+    writeln!(output, "batch_id: {}", report.batch_id)?;
+    writeln!(output, "entries: {}", report.entries)?;
+    Ok(())
+}
+
+fn list_or_dash(values: &[String]) -> String {
+    if values.is_empty() {
+        "-".to_owned()
+    } else {
+        values.join(", ")
     }
 }
 

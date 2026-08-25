@@ -408,6 +408,18 @@ and verified without changing playlist membership.
 
 ## v0.1.2 — Listening review and preference learning
 
+- [x] Add a revisioned private user-classification sidecar (`collection`,
+  multi-valued `region`, `tradition`, and `language`, plus non-vector `notes`).
+- [x] Support immediate one-track corrections and inert CSV export → draft
+  import → exact-ID approval for larger regional review passes.
+- [x] Feed active explicit facts into a separate higher-weight personalized
+  feature namespace without altering pretrained acoustic vectors or public
+  metadata.
+- [ ] Use the approved South Asian classification batch to split Monsoon Cinema
+  into verified North Indian, South Indian, Indian Classical, and any justified
+  sound-based international destinations; then coin poetic names and approve
+  distinct artwork.
+
 Turn ongoing listening corrections into durable, explainable account knowledge
 rather than ad hoc Spotify edits. A correction distinguishes four separate
 intentions: reject the current destination, prefer or lock an existing
@@ -555,3 +567,12 @@ or inaccessible provenance, and capture corrections when a track belongs in a
 different vibe. Product validation should establish whether this library-
 entropy problem is shared before commercial scope or multi-user operations are
 assumed.
+Regional reconciliation must operate over the complete approved library, not
+only the playlist where mistakes were noticed. Treat explicit North/South route
+decisions as stronger than embedding similarity, require positive style
+evidence before using an Indian Classical destination, and return non-South-
+Asian tracks to sound-based poetic destinations rather than a generic
+"International" bucket. Retire a mixed legacy destination such as Monsoon
+Cinema only after every source track has exactly one verified replacement or a
+durable exclusion. Clear routing surfaces only after the newer assignment is
+published and verified.

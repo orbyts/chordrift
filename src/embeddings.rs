@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result};
 
 const MODEL: &str = "semantic-feature-hash";
-const MODEL_VERSION: &str = "4";
+const MODEL_VERSION: &str = "5";
 // This library exposes enough distinct playlist, artist, and album features
 // that 128 slots create visible signed-hash collisions during neighbor review.
 const DEFAULT_DIMENSIONS: usize = 1024;
@@ -22,6 +22,7 @@ const ARTIST_WEIGHT: f64 = 0.55;
 const ALBUM_WEIGHT: f64 = 0.35;
 const NAME_TOKEN_WEIGHT: f64 = 0.20;
 const SEMANTIC_FACT_WEIGHT: f64 = 0.45;
+const USER_CLASSIFICATION_WEIGHT: f64 = 1.25;
 const ACOUSTIC_MODEL_WEIGHT: f64 = 1.0;
 const LISTENING_SESSION_WEIGHT: f64 = 0.20;
 
@@ -304,6 +305,7 @@ pub async fn generate(
         "album_weight": ALBUM_WEIGHT,
         "historical_name_token_weight": NAME_TOKEN_WEIGHT,
         "semantic_fact_weight": SEMANTIC_FACT_WEIGHT,
+        "user_classification_weight": USER_CLASSIFICATION_WEIGHT,
         "acoustic_model_weight": ACOUSTIC_MODEL_WEIGHT,
         "acoustic_projection": "signed_feature_hash_after_l2_normalization",
         "semantic_sources": inputs.semantic_sources,
@@ -663,9 +665,28 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
          FROM track_model_facts fact
          JOIN track_model_inferences inference ON inference.id = fact.inference_id
          WHERE account_track_is_eligible($1, inference.track_id)
+         UNION ALL
+         SELECT revision.track_id,
+                'user-classification:v1:' || dimension.kind || ':' || dimension.value AS feature_key,
+                'user-classification@v1' AS provenance,
+                1::double precision AS weight,
+                $2::double precision / $3::double precision AS confidence
+         FROM track_classification_revisions revision
+         CROSS JOIN LATERAL (
+             SELECT 'collection'::text AS kind, revision.collection AS value
+             WHERE revision.collection IS NOT NULL
+             UNION ALL SELECT 'region', unnest(revision.regions)
+             UNION ALL SELECT 'tradition', unnest(revision.traditions)
+             UNION ALL SELECT 'language', unnest(revision.languages)
+         ) dimension
+         WHERE revision.provider_account_id = $1
+           AND revision.superseded_at IS NULL
+           AND account_track_is_eligible($1, revision.track_id)
          ORDER BY track_id, feature_key",
     )
     .bind(account_id)
+    .bind(USER_CLASSIFICATION_WEIGHT)
+    .bind(SEMANTIC_FACT_WEIGHT)
     .fetch_all(database.pool())
     .await?;
     let mut semantic_features: BTreeMap<Uuid, Vec<SemanticFeature>> = BTreeMap::new();

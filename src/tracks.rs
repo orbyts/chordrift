@@ -6,7 +6,7 @@ use sqlx::Row;
 use storexa::Database;
 use uuid::Uuid;
 
-use crate::{ChordriftError, Result};
+use crate::{ChordriftError, Result, classifications};
 
 /// Stable or human-readable selector for one canonical track.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -159,6 +159,8 @@ pub struct Inspection {
     pub vector: Option<VectorExplanation>,
     /// Independently inferred semantic facts.
     pub semantic_facts: Vec<SemanticFact>,
+    /// Active private user-authored classification, when present.
+    pub user_classification: Option<classifications::ClassificationRevision>,
     /// Active exclusion reason, if removed from managed output.
     pub exclusion_reason: Option<String>,
 }
@@ -180,6 +182,10 @@ pub async fn inspect(
     let signals = listening_signals(database, account_id, track_id).await?;
     let vector = vector_explanation(database, account_id, track_id).await?;
     let semantic_facts = semantic_facts(database, track_id).await?;
+    let user_classification = classifications::history(database, account_label, &spotify_id)
+        .await?
+        .into_iter()
+        .find(|revision| revision.superseded_at.is_none());
     let exclusion_reason = sqlx::query_scalar(
         "SELECT exclusion_reason FROM excluded_tracks
          WHERE provider_account_id = $1 AND track_id = $2 AND restored_at IS NULL
@@ -204,6 +210,7 @@ pub async fn inspect(
         signals,
         vector,
         semantic_facts,
+        user_classification,
         exclusion_reason,
     })
 }

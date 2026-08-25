@@ -18,6 +18,8 @@ pub mod apply_readiness;
 pub mod artwork;
 /// Durable metadata and last-known contents for externally owned playlists.
 pub mod bookmarks;
+/// Revisioned user-authored track classifications and CSV review batches.
+pub mod classifications;
 /// Command-line parsing and execution.
 pub mod cli;
 /// Reproducible account-scoped vibe cluster generations.
