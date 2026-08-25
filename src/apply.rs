@@ -374,7 +374,7 @@ pub async fn show(
     .await
 }
 
-/// Verifies awaiting publication runs against the newest imported snapshot.
+/// Verifies awaiting publication runs and current canonical state against the newest snapshot.
 ///
 /// A run becomes successful only when every canonical playlist has the exact
 /// approved ordered membership. The resulting immutable baseline enables later
@@ -425,6 +425,20 @@ pub async fn verify_pending_publications(
             .await?;
             verified += 1;
         }
+    }
+    let current_proposal: Option<Uuid> = sqlx::query_scalar(
+        "SELECT plan.proposal_generation_id
+         FROM sync_apply_runs apply
+         JOIN sync_runs plan ON plan.id = apply.plan_id
+         WHERE apply.provider_account_id = $1 AND apply.phase = 'publish'
+           AND apply.status = 'succeeded'
+         ORDER BY apply.started_at DESC, apply.id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?;
+    if let Some(proposal_id) = current_proposal {
+        verify_publication(database, account_id, snapshot_id, proposal_id).await?;
     }
     Ok(verified)
 }
