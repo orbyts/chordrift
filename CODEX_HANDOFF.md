@@ -536,6 +536,18 @@ clippy. Hosted CI run `32791199258` completed every job step successfully,
 including both disposable-PostgreSQL suites and package verification; confirm
 the final GitHub status after the follow-up preflight commit is pushed.
 
+The user completed v0.1.0 Spotify reauthorization for account `personal` on
+2026-08-24. Account identity `5DPKF9q1Xm` (`suhails`) matches Neon, and the
+system-keychain credential now has all seven required read, playlist-modify,
+library-modify, and image-upload scopes. Read-only readiness assessment
+`16c6c402-9f82-4179-8f18-f9cc24912dc9` is `ready` for exact plan
+`e89854e8-c1dc-42fc-b469-b7e113fcd831`: 10/10 gates passed, all 1,034
+operations recovered across five simulated restart checkpoints, and replay
+produced zero changes. No Spotify write has occurred. Publishing now requires
+the user to explicitly confirm that exact assessment ID before running
+`sync apply --phase publish`; do not infer authorization for cleanup or
+retirement from publication approval.
+
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the
 same package name/version, a plain `cargo run` reused an older final executable
