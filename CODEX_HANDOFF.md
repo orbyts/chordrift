@@ -607,6 +607,14 @@ operations are idempotent approved artwork uploads. v0.1.0 release metadata is
 being prepared; do not claim the crate/tag/release exists until publication is
 verified.
 
+v0.1.0 was released on 2026-08-24 from merged `main` commit
+`2968af5`: PR #3 merged with full audited history, hosted CI run `32795061524`
+passed formatting, warning-free clippy, all ordinary and documentation tests,
+both disposable-PostgreSQL integration suites, credential persistence, and
+package verification. `chordrift 0.1.0` is published on crates.io. Annotated Git
+tag `v0.1.0` was pushed, and the non-draft, non-prerelease GitHub release is
+available at `https://github.com/orbyts/chordrift/releases/tag/v0.1.0`.
+
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the
 same package name/version, a plain `cargo run` reused an older final executable
