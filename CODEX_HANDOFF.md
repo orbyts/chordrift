@@ -523,6 +523,19 @@ approved artwork uploads, 65 deferred intake removals, 13 deferred external
 relationship removals, and 42 deferred legacy retirements. No Spotify request
 was made while creating or inspecting it.
 
+`chordrift sync apply-preflight` now validates an exact current v6 publish plan
+without contacting Spotify. The live preflight for plan
+`e89854e8-c1dc-42fc-b469-b7e113fcd831` passed: all 14 approved source hashes,
+PNG decodes, and JPEG conversions are valid; the largest base64 JPEG is 221,788
+bytes, below Spotify's 256 KB limit. Publishing will create 16 containers,
+populate 14 canonical playlists with 884 ordered memberships through 17 item
+writes, and upload 14 covers. The estimated publish budget is 15 Spotify reads
+and 47 writes. The preflight made zero Spotify requests. Local verification is
+clean at 72 passing library tests plus the CLI/docs tests and warning-free
+clippy. Hosted CI run `32791199258` completed every job step successfully,
+including both disposable-PostgreSQL suites and package verification; confirm
+the final GitHub status after the follow-up preflight commit is pushed.
+
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the
 same package name/version, a plain `cargo run` reused an older final executable

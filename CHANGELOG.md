@@ -14,6 +14,8 @@ All notable changes to Chordrift are documented here.
   strict 256 KB payload enforcement, and explicit image-upload authorization.
 - Add exact-plan retirement approval and require every canonical destination to
   be verified in the current snapshot before cleanup or retirement.
+- Add a provider-free publish preflight that validates approved cover hashes and
+  JPEG payload limits while estimating the request budget.
 
 ## [0.0.9] - 2026-08-24
 

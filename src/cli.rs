@@ -210,6 +210,15 @@ pub enum SyncCommand {
         #[arg(long)]
         allow_destructive: bool,
     },
+    /// Validate local publish artifacts and estimate requests without contacting Spotify.
+    ApplyPreflight {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact plan ID; defaults to the newest plan.
+        #[arg(long)]
+        plan: Option<uuid::Uuid>,
+    },
     /// Approve all legacy retirement operations in one exact inspected plan.
     RetirementApprove {
         /// Local label for this Spotify account.
@@ -1048,6 +1057,48 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                     )
                     .await?;
                     write_apply_report(output, &report)
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            SyncCommand::ApplyPreflight { account, plan } => {
+                let database = connect_current_database().await?;
+                let result: Result<()> = async {
+                    let report = apply::preflight_publish(&database, &account, plan).await?;
+                    writeln!(output, "publish preflight: passed")?;
+                    writeln!(output, "plan_id: {}", report.plan_id)?;
+                    writeln!(output, "playlist_creates: {}", report.playlist_creates)?;
+                    writeln!(
+                        output,
+                        "populated_playlists: {}",
+                        report.populated_playlists
+                    )?;
+                    writeln!(output, "playlist_entries: {}", report.playlist_entries)?;
+                    writeln!(
+                        output,
+                        "playlist_item_writes: {}",
+                        report.playlist_item_writes
+                    )?;
+                    writeln!(output, "artwork_uploads: {}", report.artwork_uploads)?;
+                    writeln!(
+                        output,
+                        "largest_artwork_bytes: {}",
+                        report.largest_artwork_bytes
+                    )?;
+                    writeln!(
+                        output,
+                        "estimated_spotify_reads: {}",
+                        report.estimated_spotify_reads
+                    )?;
+                    writeln!(
+                        output,
+                        "estimated_spotify_writes: {}",
+                        report.estimated_spotify_writes
+                    )?;
+                    writeln!(output, "spotify_requests_made: 0")?;
+                    writeln!(output, "spotify_writes: disabled")?;
+                    Ok(())
                 }
                 .await;
                 database.close().await;
@@ -2846,6 +2897,21 @@ mod tests {
                     ..
                 }
             }
+        ));
+    }
+
+    #[test]
+    fn parses_provider_free_publish_preflight() {
+        let cli =
+            Cli::try_parse_from(["chordrift", "sync", "apply-preflight"]).expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Sync {
+                command: SyncCommand::ApplyPreflight {
+                    account,
+                    plan: None
+                }
+            } if account == "personal"
         ));
     }
 

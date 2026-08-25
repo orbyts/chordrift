@@ -74,6 +74,123 @@ pub struct ApplyReport {
     pub started_at: DateTime<Utc>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+/// Local validation and request estimate for one immutable publish plan.
+pub struct PublishPreflightReport {
+    /// Immutable plan inspected by the preflight.
+    pub plan_id: Uuid,
+    /// Playlist containers that the plan will create.
+    pub playlist_creates: usize,
+    /// Canonical playlists whose exact ordered membership will be written.
+    pub populated_playlists: usize,
+    /// Planned canonical track memberships.
+    pub playlist_entries: usize,
+    /// Replace/append requests needed for those memberships.
+    pub playlist_item_writes: usize,
+    /// Approved covers decoded, hash-checked, and converted successfully.
+    pub artwork_uploads: usize,
+    /// Largest converted base64 JPEG body.
+    pub largest_artwork_bytes: usize,
+    /// Estimated Spotify reads performed by the publish phase.
+    pub estimated_spotify_reads: usize,
+    /// Estimated Spotify writes performed by the publish phase.
+    pub estimated_spotify_writes: usize,
+}
+
+/// Validates every local publish artifact and estimates requests without contacting Spotify.
+pub async fn preflight_publish(
+    database: &Database,
+    account_label: &str,
+    requested_plan: Option<Uuid>,
+) -> Result<PublishPreflightReport> {
+    let plan = sqlx::query(
+        "SELECT run.id, run.planner_version, run.source_snapshot_id,
+                (SELECT id FROM provider_library_snapshots latest
+                 WHERE latest.provider_account_id = account.id
+                 ORDER BY captured_at DESC, id DESC LIMIT 1) AS latest_snapshot_id
+         FROM sync_runs run
+         JOIN provider_accounts account ON account.id = run.provider_account_id
+         WHERE account.provider = 'spotify' AND account.account_label = $1
+           AND ($2::uuid IS NULL OR run.id = $2)
+         ORDER BY run.started_at DESC, run.id DESC LIMIT 1",
+    )
+    .bind(account_label)
+    .bind(requested_plan)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("no matching Spotify plan exists"))?;
+    let plan_id: Uuid = plan.try_get("id")?;
+    if plan.try_get::<String, _>("planner_version")? != PLANNER_VERSION
+        || plan.try_get::<Uuid, _>("source_snapshot_id")?
+            != plan.try_get::<Uuid, _>("latest_snapshot_id")?
+    {
+        return Err(configuration("preflight requires a current v6 plan"));
+    }
+
+    let playlist_creates: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM sync_operations
+         WHERE sync_run_id = $1 AND phase = 'publish' AND operation_type = 'create_playlist'",
+    )
+    .bind(plan_id)
+    .fetch_one(database.pool())
+    .await?;
+    let groups = sqlx::query(
+        "SELECT playlist_id, count(*)::bigint AS entries
+         FROM sync_operations
+         WHERE sync_run_id = $1 AND phase = 'publish' AND operation_type = 'add_track'
+         GROUP BY playlist_id",
+    )
+    .bind(plan_id)
+    .fetch_all(database.pool())
+    .await?;
+    let playlist_entries = groups.iter().try_fold(0usize, |total, row| {
+        let entries: i64 = row.try_get("entries")?;
+        usize::try_from(entries)
+            .map(|entries| total + entries)
+            .map_err(|_| configuration("playlist entry count exceeds limits"))
+    })?;
+    let playlist_item_writes = groups.iter().try_fold(0usize, |total, row| {
+        let entries: i64 = row.try_get("entries")?;
+        let entries = usize::try_from(entries)
+            .map_err(|_| configuration("playlist entry count exceeds limits"))?;
+        Ok::<usize, ChordriftError>(total + entries.div_ceil(100))
+    })?;
+
+    let artwork = sqlx::query(
+        "SELECT payload FROM sync_operations
+         WHERE sync_run_id = $1 AND phase = 'publish' AND operation_type = 'upload_artwork'
+         ORDER BY operation_key",
+    )
+    .bind(plan_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut largest_artwork_bytes = 0;
+    for row in &artwork {
+        let payload: Value = row.try_get("payload")?;
+        let detail = payload
+            .get("detail")
+            .ok_or_else(|| configuration("artwork operation has no detail payload"))?;
+        let path = PathBuf::from(detail_string(&detail, "artifact_path")?);
+        let encoded = spotify_jpeg(&path, detail_string(&detail, "content_sha256")?)?;
+        largest_artwork_bytes = largest_artwork_bytes.max(encoded.len());
+    }
+    let playlist_creates = usize::try_from(playlist_creates)
+        .map_err(|_| configuration("playlist create count exceeds limits"))?;
+    let estimated_spotify_reads = 1 + groups.len();
+    let estimated_spotify_writes = playlist_creates + playlist_item_writes + artwork.len();
+    Ok(PublishPreflightReport {
+        plan_id,
+        playlist_creates,
+        populated_playlists: groups.len(),
+        playlist_entries,
+        playlist_item_writes,
+        artwork_uploads: artwork.len(),
+        largest_artwork_bytes,
+        estimated_spotify_reads,
+        estimated_spotify_writes,
+    })
+}
+
 /// Exact durable approval for the retirement operations in one immutable plan.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RetirementApproval {

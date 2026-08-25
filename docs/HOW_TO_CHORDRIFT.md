@@ -752,6 +752,7 @@ $ chordrift spotify auth --account personal
 $ chordrift sync pull --account personal
 $ chordrift sync plan --account personal
 $ chordrift sync plan-show --account personal --details
+$ chordrift sync apply-preflight --account personal --plan PLAN_UUID
 $ chordrift sync readiness --account personal --probe
 $ chordrift sync apply --account personal \
     --assessment ASSESSMENT_UUID --phase publish --confirm ASSESSMENT_UUID
@@ -764,6 +765,8 @@ reads each target playlist once, records already-present tracks as successful,
 and adds only missing tracks. Repeating the exact apply command resumes its
 durable run rather than creating a second execution. Approved PNG covers are
 locally converted to Spotify-compatible JPEG payloads no larger than 256 KB.
+`sync apply-preflight` performs that hash, decode, and conversion check for every
+approved cover and prints the publish request estimate without contacting Spotify.
 
 After the pull reports `verified_apply_runs`, create and assess a new plan.
 Only then may intake or external-bookmark cleanup run, with an additional
