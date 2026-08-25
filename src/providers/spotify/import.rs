@@ -259,6 +259,33 @@ async fn persist(
         .execute(&mut *transaction)
         .await?;
         sqlx::query(
+            "UPDATE provider_account_playlists account_playlist
+             SET role = 'inbox', drift_policy = 'provider_wins',
+                 signal_class = 'intake', semantic_weight = 0.0,
+                 clear_policy = 'after_verified_assignment', updated_at = now()
+             WHERE account_playlist.provider_account_id = $1
+               AND account_playlist.provider_playlist_id = $2
+               AND EXISTS (
+                   SELECT 1
+                   FROM provider_playlists provider
+                   JOIN sync_apply_playlist_targets target
+                     ON target.spotify_playlist_id = provider.provider_playlist_id
+                   JOIN sync_apply_runs run ON run.id = target.apply_run_id
+                   JOIN sync_apply_operations execution ON execution.apply_run_id = run.id
+                   JOIN sync_operations planned
+                     ON planned.id = execution.planned_operation_id
+                   WHERE provider.id = account_playlist.provider_playlist_id
+                     AND run.status = 'succeeded'
+                     AND planned.operation_type = 'create_playlist'
+                     AND planned.payload->>'playlist_name' = target.playlist_name
+                     AND planned.payload->'detail'->>'surface' = 'intake'
+               )",
+        )
+        .bind(account_id)
+        .bind(provider_playlist_id)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
             "INSERT INTO provider_playlist_snapshots
              (snapshot_id, provider_playlist_id, name, description,
               provider_snapshot_id, public, collaborative, total_items, metadata)

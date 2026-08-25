@@ -548,6 +548,23 @@ the user to explicitly confirm that exact assessment ID before running
 `sync apply --phase publish`; do not infer authorization for cleanup or
 retirement from publication approval.
 
+The user explicitly approved publication. Apply run
+`35db437b-f348-434d-8402-ddde1ecb3eb8` executed all 914 publish operations
+(16 creates, 884 memberships, 14 covers) with zero failures, then the pull
+committed snapshot `98ec0798-c946-4b0b-bd9d-5dbf2fe64679` and reported
+`verified_apply_runs: 1`. The first verification pull exposed and safely rolled
+back a canonical semantic-weight constraint mismatch; no snapshot was partially
+committed. The corrected importer sets canonical semantic weight to zero.
+A second pre-cleanup audit caught newly created empty `Inbox` and `From Friends`
+being imported with the default legacy policy. The importer now recovers intake
+policy from the succeeded create operation. Read-only snapshot
+`2ce8e24f-e88b-4051-8927-3501c65edc34` confirms both are protected `inbox /
+provider_wins / intake / after_verified_assignment` surfaces. Current plan
+`74caa6d4-8cee-40d1-a507-f8141dff5799` contains zero creates/additions, 65
+deferred `Liked from Radio` removals, 13 deferred external relationship removals,
+and the original 42 legacy retirements. No cleanup or retirement approval has
+been inferred from publication.
+
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the
 same package name/version, a plain `cargo run` reused an older final executable
