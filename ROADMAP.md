@@ -419,6 +419,10 @@ and verified without changing playlist membership.
   into verified North Indian, South Indian, Indian Classical, and any justified
   sound-based international destinations; then coin poetic names and approve
   distinct artwork.
+- [ ] Add display preferences under
+  `$XDG_CONFIG_HOME/chordrift/config.toml` (table width/layout, color policy,
+  compact versus detailed inspection, and date formatting). Keep automatic
+  terminal-width detection and sensible interactive defaults when unset.
 
 Turn ongoing listening corrections into durable, explainable account knowledge
 rather than ad hoc Spotify edits. A correction distinguishes four separate

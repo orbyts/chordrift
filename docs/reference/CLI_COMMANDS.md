@@ -59,6 +59,14 @@ $ chordrift tracks inspect --name "Do Your Best" --artist "John Maus"
 $ chordrift tracks inspect --spotify-id SPOTIFY_TRACK_ID
 ```
 
+Interactive output uses a sectioned, colored report. Internal generation IDs,
+stable keys, and raw placement provenance are hidden by default; reveal them
+when diagnosing a decision:
+
+```console
+$ chordrift tracks inspect --spotify-id SPOTIFY_TRACK_ID --technical
+```
+
 `chordrift tracks inspect` reports current Spotify playlists, the approved
 Chordrift destination and position, retained historical source playlists,
 saved/rotation/discovery/prompt/intake/recommendation signals, listening counts,

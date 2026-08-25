@@ -4,6 +4,14 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Add revisioned private collection, region, tradition, and language facts with
+  atomic one-track/small-batch commands and an inert CSV review workflow.
+- Render `tracks inspect` as a human-oriented interactive report, retain raw
+  generation/provenance detail behind `--technical`, and expand interactive
+  tables across the detected terminal width.
+- Label this checkpoint `0.1.2-dev.2`; route reconciliation and the reviewed
+  Monsoon Cinema split remain required before stable `0.1.2`.
+
 - Add durable, zero-signal routing playlists for low-friction correction
   capture while listening. Route consumption into verified canonical
   destinations remains under development for v0.1.2.

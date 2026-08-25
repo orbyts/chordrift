@@ -23,6 +23,11 @@ Last updated: 2026-08-24.
   Suhail review the CSV over time, approve it, regenerate embeddings, then form
   and name verified destinations. Do not retire Monsoon until all 410 tracks
   have one verified destination or exclusion and route clearing is verified.
+- Interactive `tracks inspect` now presents human sections and tables; raw
+  provenance is opt-in with `--technical`. Interactive tables use the full
+  detected terminal width. A later configuration layer belongs at
+  `$XDG_CONFIG_HOME/chordrift/config.toml` and should cover width/layout, color,
+  inspection detail, and date formatting.
 
 ## Project and repositories
 
@@ -943,6 +948,12 @@ Until it is, a wrong-destination track must be added to a route without also
 being removed from its canonical playlist; canonical removal currently means
 exclusion. Different tracks may carry deletion, discovery, and routing intent
 in the same pull, but one track must not express conflicting intents.
+
+The next named checkpoint is `0.1.2-dev.2`. It adds revisioned private track
+classification, safe direct/CSV review paths, a sectioned interactive track
+inspection report, opt-in `--technical` provenance, and full-width interactive
+tables. Stable `0.1.2` remains gated on route reconciliation and the verified
+Monsoon Cinema regional split.
 
 Remaining v0.1.2 gates are: clone the approved library into a focused review
 draft without rebuilding unaffected playlists; turn route captures into durable

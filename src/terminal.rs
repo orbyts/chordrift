@@ -75,7 +75,7 @@ pub(crate) fn pretty_table(headers: &[&str], rows: Vec<Vec<String>>) -> String {
     let mut table = Table::new();
     table
         .load_preset(UTF8_FULL_CONDENSED)
-        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_content_arrangement(ContentArrangement::DynamicFullWidth)
         .set_header(headers.iter().map(|header| {
             Cell::new(header)
                 .fg(Color::Cyan)

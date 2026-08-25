@@ -593,6 +593,9 @@ pub enum TrackCommand {
         /// Stable Spotify track ID.
         #[arg(long, required_unless_present = "name", conflicts_with = "name")]
         spotify_id: Option<String>,
+        /// Include internal generation IDs, stable keys, and raw placement provenance.
+        #[arg(long)]
+        technical: bool,
     },
 }
 
@@ -2473,6 +2476,7 @@ async fn run_track_command(
             name,
             artist,
             spotify_id,
+            technical,
         } => {
             let selector = match (name, spotify_id) {
                 (Some(title), None) => tracks::TrackSelector::Name { title, artist },
@@ -2480,6 +2484,9 @@ async fn run_track_command(
                 _ => unreachable!("clap enforces one track selector"),
             };
             let report = tracks::inspect(database, &account, &selector).await?;
+            if terminal::stdout_is_terminal() {
+                return write_pretty_track_inspection(output, &report, technical);
+            }
             writeln!(
                 output,
                 "track: {} — {}",
@@ -3985,6 +3992,325 @@ fn clean_cell(value: &str) -> String {
     value.replace(['\t', '\r', '\n'], " ")
 }
 
+fn write_pretty_track_inspection(
+    output: &mut impl Write,
+    report: &tracks::Inspection,
+    technical: bool,
+) -> Result<()> {
+    writeln!(
+        output,
+        "\x1b[1;36m{}\x1b[0m  \x1b[2m— {}\x1b[0m",
+        clean_cell(&report.title),
+        clean_cell(&report.artists)
+    )?;
+    writeln!(
+        output,
+        "{}",
+        terminal::pretty_table(
+            &["Track details", "Value"],
+            vec![
+                vec![
+                    "Album".to_owned(),
+                    clean_cell(report.album.as_deref().unwrap_or("—")),
+                ],
+                vec![
+                    "Duration".to_owned(),
+                    report
+                        .duration_ms
+                        .map_or_else(|| "—".to_owned(), human_duration),
+                ],
+                vec!["Spotify ID".to_owned(), report.spotify_id.clone()],
+                vec![
+                    "ISRC".to_owned(),
+                    report.isrc.clone().unwrap_or_else(|| "—".to_owned()),
+                ],
+                vec![
+                    "Liked now".to_owned(),
+                    yes_no(report.signals.saved).to_owned(),
+                ],
+                vec![
+                    "Excluded".to_owned(),
+                    report
+                        .exclusion_reason
+                        .as_deref()
+                        .map(clean_cell)
+                        .unwrap_or_else(|| "No".to_owned()),
+                ],
+            ],
+        )
+    )?;
+
+    writeln!(output, "\n\x1b[1;36mCurrent location\x1b[0m")?;
+    let location_rows = if report.current_playlists.is_empty() {
+        vec![vec![
+            "—".to_owned(),
+            "—".to_owned(),
+            "Not in a current playlist".to_owned(),
+        ]]
+    } else {
+        report
+            .current_playlists
+            .iter()
+            .map(|playlist| {
+                vec![
+                    clean_cell(&playlist.name),
+                    playlist.position.to_string(),
+                    format!("{} · {}", playlist.role, playlist.signal_class),
+                ]
+            })
+            .collect()
+    };
+    writeln!(
+        output,
+        "{}",
+        terminal::pretty_table(&["Spotify playlist", "Position", "Meaning"], location_rows)
+    )?;
+
+    writeln!(output, "\n\x1b[1;36mChordrift placement\x1b[0m")?;
+    let placement_rows = if report.canonical_placements.is_empty() {
+        vec![vec![
+            "—".to_owned(),
+            "—".to_owned(),
+            "No canonical placement".to_owned(),
+            "—".to_owned(),
+        ]]
+    } else {
+        report
+            .canonical_placements
+            .iter()
+            .map(|placement| {
+                let provenance = &placement.provenance;
+                let decision = placement
+                    .manual_reason
+                    .as_deref()
+                    .map(clean_cell)
+                    .unwrap_or_else(|| {
+                        let method = provenance
+                            .get("method")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or(&placement.source)
+                            .replace('-', " ");
+                        let dominance = provenance
+                            .get("dominance")
+                            .and_then(serde_json::Value::as_f64);
+                        let known = provenance
+                            .get("dominant_known_tracks")
+                            .and_then(serde_json::Value::as_u64);
+                        let total = provenance
+                            .get("known_placed_tracks")
+                            .and_then(serde_json::Value::as_u64);
+                        match (dominance, known, total) {
+                            (Some(dominance), Some(known), Some(total)) => format!(
+                                "{method} · {:.1}% consensus ({known}/{total})",
+                                dominance * 100.0
+                            ),
+                            _ => method,
+                        }
+                    });
+                let score = provenance
+                    .get("cluster_membership_score")
+                    .and_then(serde_json::Value::as_f64)
+                    .map_or_else(|| "—".to_owned(), |value| format!("{value:.3}"));
+                vec![
+                    clean_cell(&placement.name),
+                    placement.position.to_string(),
+                    decision,
+                    score,
+                ]
+            })
+            .collect()
+    };
+    writeln!(
+        output,
+        "{}",
+        terminal::pretty_table(
+            &["Destination", "Desired position", "Why", "Model score"],
+            placement_rows
+        )
+    )?;
+
+    writeln!(output, "\n\x1b[1;36mListening and preference\x1b[0m")?;
+    let last_played = report
+        .signals
+        .last_played_at
+        .map_or_else(|| "—".to_owned(), |at| at.format("%Y-%m-%d").to_string());
+    writeln!(
+        output,
+        "{}",
+        terminal::pretty_table(
+            &[
+                "Meaningful plays",
+                "Listening time",
+                "Last played",
+                "Current signals"
+            ],
+            vec![vec![
+                report.signals.play_count.to_string(),
+                format!("{:.1} hours", hours(report.signals.total_ms_played)),
+                last_played,
+                active_signals(&report.signals),
+            ]],
+        )
+    )?;
+
+    writeln!(output, "\n\x1b[1;36mClassification\x1b[0m")?;
+    let classification_rows = if let Some(classification) = &report.user_classification {
+        vec![
+            vec![
+                "Collection".to_owned(),
+                classification
+                    .values
+                    .collection
+                    .clone()
+                    .unwrap_or_else(|| "—".to_owned()),
+            ],
+            vec![
+                "Regions".to_owned(),
+                list_or_dash(&classification.values.regions),
+            ],
+            vec![
+                "Traditions".to_owned(),
+                list_or_dash(&classification.values.traditions),
+            ],
+            vec![
+                "Languages".to_owned(),
+                list_or_dash(&classification.values.languages),
+            ],
+            vec!["Reason".to_owned(), clean_cell(&classification.reason)],
+        ]
+    } else {
+        vec![vec!["User classification".to_owned(), "None".to_owned()]]
+    };
+    writeln!(
+        output,
+        "{}",
+        terminal::pretty_table(&["Dimension", "Value"], classification_rows)
+    )?;
+
+    writeln!(output, "\n\x1b[1;36mRetained history\x1b[0m")?;
+    let history_rows: Vec<Vec<String>> = report
+        .historical_playlists
+        .iter()
+        .map(|playlist| {
+            vec![
+                clean_cell(&playlist.names),
+                if playlist.present {
+                    "Current".to_owned()
+                } else {
+                    "Retired".to_owned()
+                },
+                format!(
+                    "{}{}",
+                    playlist.signal_class,
+                    playlist
+                        .behavioral_signal
+                        .as_deref()
+                        .map_or_else(String::new, |value| format!(" · {value}"))
+                ),
+                playlist.first_seen_at.format("%Y-%m-%d").to_string(),
+                playlist.last_seen_at.format("%Y-%m-%d").to_string(),
+            ]
+        })
+        .collect();
+    writeln!(
+        output,
+        "{}",
+        terminal::pretty_table(
+            &[
+                "Source playlist",
+                "State",
+                "Meaning",
+                "First seen",
+                "Last seen"
+            ],
+            history_rows
+        )
+    )?;
+
+    if technical {
+        writeln!(output, "\n\x1b[1;36mTechnical details\x1b[0m")?;
+        let mut rows = vec![vec![
+            "Canonical track ID".to_owned(),
+            report.track_id.to_string(),
+        ]];
+        if let Some(vector) = &report.vector {
+            rows.push(vec![
+                "Embedding".to_owned(),
+                format!(
+                    "{}@{} · {} dimensions · {}",
+                    vector.embedding_model,
+                    vector.embedding_version,
+                    vector.dimensions,
+                    vector.embedding_generation_id
+                ),
+            ]);
+            rows.push(vec![
+                "Cluster".to_owned(),
+                format!(
+                    "{} · similarity {} · rank {}",
+                    vector.cluster_label.as_deref().unwrap_or("unassigned"),
+                    vector
+                        .membership_score
+                        .map_or_else(|| "—".to_owned(), |value| format!("{value:.4}")),
+                    vector
+                        .representative_rank
+                        .map_or_else(|| "—".to_owned(), |value| value.to_string())
+                ),
+            ]);
+        }
+        for placement in &report.canonical_placements {
+            rows.push(vec![
+                format!("Placement · {}", placement.stable_key),
+                clean_cell(&placement.provenance.to_string()),
+            ]);
+        }
+        writeln!(
+            output,
+            "{}",
+            terminal::pretty_table(&["Reference", "Value"], rows)
+        )?;
+    } else {
+        writeln!(
+            output,
+            "\n\x1b[2mUse --technical to show generation IDs and raw placement provenance.\x1b[0m"
+        )?;
+    }
+    Ok(())
+}
+
+fn human_duration(milliseconds: i32) -> String {
+    let seconds = milliseconds.max(0) / 1000;
+    format!("{}:{:02}", seconds / 60, seconds % 60)
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value { "Yes" } else { "No" }
+}
+
+fn active_signals(signals: &tracks::ListeningSignals) -> String {
+    let mut values = Vec::new();
+    if signals.rotation {
+        values.push("high rotation");
+    }
+    if signals.discovery {
+        values.push("discovery");
+    }
+    if signals.prompted {
+        values.push("prompted");
+    }
+    if signals.intake {
+        values.push("intake");
+    }
+    if signals.recommendation {
+        values.push("friend recommendation");
+    }
+    if values.is_empty() {
+        "—".to_owned()
+    } else {
+        values.join(" · ")
+    }
+}
+
 fn write_auth_report(output: &mut impl Write, report: &spotify::AuthReport) -> Result<()> {
     writeln!(output, "spotify authorization: stored")?;
     writeln!(output, "account: {}", report.account_label)?;
@@ -4552,7 +4878,8 @@ mod tests {
                     account,
                     name: Some(name),
                     artist: Some(artist),
-                    spotify_id: None
+                    spotify_id: None,
+                    technical: false
                 }
             } if account == "personal" && name == "Do Your Best" && artist == "John Maus"
         ));
