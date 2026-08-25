@@ -796,3 +796,30 @@ coverage test passes, formatting is clean, clippy is warning-free across all
 targets and features with `-D warnings`, and `cargo package --allow-dirty`
 successfully verifies 80 packaged files. The live disposable-PostgreSQL suites
 remain hosted-CI responsibilities.
+
+## v0.1.2 listening-review decision
+
+The next milestone is an ongoing listening-review loop, not a fresh global
+recluster. The user has already noticed placements that may be acoustically
+plausible but personally wrong—for example, some A. R. Rahman or other South
+Asian recordings inside `Tidal Hush`. Preserve four distinct intents: reject a
+destination, prefer/lock another destination, hold for review, or exclude from
+active Chordrift playlists. Prior assignments and scores remain auditable.
+
+Build a first-class review session over a cloned approved generation, with
+ranked alternatives, batch correction, coherent new-playlist promotion, exact
+diff approval, normal sync readiness/apply, and post-pull convergence. Keep
+track-specific feedback as a hard constraint. Region, culture, language,
+soundtrack context, instrumentation, and mood are separate facets; never infer
+a universal placement rule from an artist name or one correction. Repeated
+consistent corrections may produce an evidence-backed rule suggestion that
+still requires approval.
+
+Direct edits to Chordrift-managed Spotify playlists should be staged as
+possible feedback by comparing them with the last verified baseline. A remove
+plus add suggests a move; remove-only is ambiguous among wrong vibe, review,
+and exclusion; an addition suggests destination preference; reorder is an
+ordering-policy question. Never silently learn or reverse ambiguous edits.
+This allows Spotify to remain the familiar consumer editing surface while
+Chordrift acts as the preservation-first assistant and Neon remains the durable
+ledger. The complete design is in the v0.1.2 section of `ROADMAP.md`.

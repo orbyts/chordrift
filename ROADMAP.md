@@ -388,19 +388,81 @@ one-cover plan for a newer approved artifact without admitting membership or
 cleanup operations. Spotify folders remain manual presentation state because
 the Web API exposes neither folder structure nor folder artwork.
 
-Status: implemented; release preparation remains.
+Status: complete and released as v0.1.1.
 
 The complete-library repair is implemented and proven in Neon for the personal
-account: 1,711 distinct preserved tracks, 1,711 canonical placements, zero
+account: 1,715 distinct preserved tracks, 1,715 canonical placements, zero
 active exclusions, zero unresolved tracks, and zero conflicting dispositions.
 Embedding v4 adds normalized meaningful listening-session co-occurrence so
 personal listening context helps singleton tracks without turning every played
 track into library membership. Stable extension, centroid, group-consensus,
 and reversible manual-assignment paths preserve the 14 approved playlist
 identities; evidence did not warrant another canonical playlist in this repair.
-The repaired proposal and its 1,711-track Spotify publication are verified.
+The repaired proposal and its 1,715-track Spotify publication are verified.
 Drift Atlas v3's 18 larger, lower-anchored covers are also approved, uploaded,
 and verified without changing playlist membership.
+
+## v0.1.2 — Listening review and preference learning
+
+Turn ongoing listening corrections into durable, explainable account knowledge
+rather than ad hoc Spotify edits. A correction distinguishes four separate
+intentions: reject the current destination, prefer or lock an existing
+destination, hold the track for review, or exclude the track from active
+Chordrift playlists. Every decision retains the prior assignment, model score,
+reason, actor, timestamp, and affected provider state; no correction erases the
+track, its provenance, or listening history.
+
+Add a first-class review session that starts from the currently approved
+library without rebuilding or renaming unaffected playlists. The CLI and future
+UI should support:
+
+1. Identify a track by provider ID or unambiguous title and artist.
+2. Reject its current playlist and record why it feels wrong to the listener.
+3. Rank existing destinations with both model evidence and the user's prior
+   corrections visible.
+4. Move or lock the track to an existing destination, or place it in an
+   internal review cohort.
+5. Promote a coherent review cohort into a newly named and illustrated
+   Chordrift playlist only when it genuinely warrants a new identity.
+6. Preview the exact membership/order delta, approve it, publish through the
+   existing immutable-plan/readiness gates, pull, and prove convergence.
+
+Track-specific corrections are hard account constraints in later generations:
+“not Tidal Hush” must prevent the track from drifting back there. Cultural,
+regional, linguistic, soundtrack, instrumentation, and mood facts remain
+separate semantic facets. Artist identity alone must not force placement—for
+example, an A. R. Rahman recording may be South Asian cinematic, Western
+orchestral, ambient, pop, or a mixture. One correction stays local; after
+multiple consistent corrections Chordrift may propose a broader account rule
+or destination concept, but it must show the evidence and obtain approval
+before applying that rule to other tracks.
+
+Treat edits made directly in Spotify as possible feedback rather than either
+ignoring them or automatically declaring Neon wrong. Compare each pull with the
+last verified managed baseline and stage ambiguous intent for review:
+
+- removal from one managed playlist plus addition to another is a proposed
+  move;
+- removal alone asks whether the user meant wrong vibe, temporary review, or
+  exclusion;
+- addition to a managed playlist is a proposed destination preference;
+- reordering asks whether the sequence should be locked or remain
+  Chordrift-generated.
+
+No ambiguous provider edit is silently learned or reversed. Once confirmed,
+the decision is written to Neon and becomes part of future orchestration. This
+lets a consumer use Spotify as the familiar editing surface while Chordrift
+acts as a preservation-first assistant on top; the dedicated Chordrift review
+surface remains the faster, more explainable path for batch corrections.
+
+For the personal CLI workflow, add concise `review` commands that clone the
+approved generation into a draft, show suggestions, record single or batch
+corrections, display an exact diff, and approve the draft. Reuse the existing
+stable playlist concepts, assignment-revision ledger, complete-inventory
+invariant, artwork approval, sync planning, readiness, and apply machinery
+rather than creating a second source of truth.
+
+Status: planned.
 
 ## Post-v0.1 product direction — Review UI
 
