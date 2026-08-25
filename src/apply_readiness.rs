@@ -16,8 +16,8 @@ use crate::{
 };
 
 const PROVIDER: &str = "spotify";
-const ASSESSMENT_VERSION: &str = "spotify-apply-readiness-v2";
-const PLANNER_VERSION: &str = "spotify-dry-run-v6";
+const ASSESSMENT_VERSION: &str = "spotify-apply-readiness-v4";
+const PLANNER_VERSION: &str = "spotify-dry-run-v8";
 
 /// One inspectable apply-readiness check.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -150,11 +150,18 @@ pub async fn assess(
             .fetch_one(database.pool())
             .await?;
     let artwork = sqlx::query(
-        "SELECT id, input_hash, artifact_count
-         FROM playlist_artwork_batches
-         WHERE provider_account_id = $1 AND proposal_generation_id = $2
-           AND state = 'approved'
-         ORDER BY approved_at DESC, id DESC LIMIT 1",
+        "SELECT batch.id, batch.input_hash, batch.artifact_count,
+                count(*) FILTER (WHERE artifact.target_kind = 'canonical')::bigint
+                    AS canonical_count,
+                count(*) FILTER (WHERE artifact.target_kind = 'intake')::bigint
+                    AS intake_count
+         FROM playlist_artwork_batches batch
+         JOIN playlist_artwork_artifacts artifact ON artifact.batch_id = batch.id
+         WHERE batch.provider_account_id = $1 AND batch.proposal_generation_id = $2
+           AND batch.state = 'approved'
+         GROUP BY batch.id, batch.input_hash, batch.artifact_count,
+                  batch.approved_at
+         ORDER BY batch.approved_at DESC, batch.id DESC LIMIT 1",
     )
     .bind(account_id)
     .bind(proposal_id)
@@ -167,6 +174,14 @@ pub async fn assess(
     let artwork_count = artwork
         .as_ref()
         .map(|row| row.get::<i32, _>("artifact_count"))
+        .unwrap_or_default();
+    let canonical_artwork_count = artwork
+        .as_ref()
+        .map(|row| row.get::<i64, _>("canonical_count"))
+        .unwrap_or_default();
+    let intake_artwork_count = artwork
+        .as_ref()
+        .map(|row| row.get::<i64, _>("intake_count"))
         .unwrap_or_default();
 
     let policy = retry_policy();
@@ -190,6 +205,44 @@ pub async fn assess(
     .fetch_one(database.pool())
     .await?;
     let cleanup_passed = external_cleanup_count == 0 || approved_cleanup_count == 1;
+    let inventory = sqlx::query(
+        "WITH candidate AS (
+             SELECT track.id AS track_id
+             FROM tracks track
+             WHERE account_track_is_library_candidate($1, track.id)
+         ), placement AS (
+             SELECT membership.track_id, count(DISTINCT membership.playlist_id)::bigint AS destinations
+             FROM playlists playlist
+             JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+             WHERE playlist.generation_id = $2
+             GROUP BY membership.track_id
+         ), disposition AS (
+             SELECT candidate.track_id, COALESCE(placement.destinations, 0) AS destinations,
+                    exclusion.id IS NOT NULL AS excluded
+             FROM candidate
+             LEFT JOIN placement USING (track_id)
+             LEFT JOIN excluded_tracks exclusion
+               ON exclusion.provider_account_id = $1
+              AND exclusion.track_id = candidate.track_id
+              AND exclusion.restored_at IS NULL
+         )
+         SELECT count(*)::bigint AS inventory,
+                count(*) FILTER (WHERE destinations = 1 AND NOT excluded)::bigint AS placed,
+                count(*) FILTER (WHERE destinations = 0 AND excluded)::bigint AS excluded,
+                count(*) FILTER (WHERE destinations = 0 AND NOT excluded)::bigint AS unresolved,
+                count(*) FILTER (WHERE destinations > 1 OR (destinations > 0 AND excluded))::bigint
+                    AS conflicting
+         FROM disposition",
+    )
+    .bind(account_id)
+    .bind(proposal_id)
+    .fetch_one(database.pool())
+    .await?;
+    let inventory_count: i64 = inventory.try_get("inventory")?;
+    let placed_count: i64 = inventory.try_get("placed")?;
+    let excluded_count: i64 = inventory.try_get("excluded")?;
+    let unresolved_count: i64 = inventory.try_get("unresolved")?;
+    let conflicting_count: i64 = inventory.try_get("conflicting")?;
     let probe_passed = probe.is_some_and(|status| has_required_apply_scopes(&status.scopes));
     let checks = vec![
         check(
@@ -210,9 +263,24 @@ pub async fn assess(
             json!({"proposal_generation_id": proposal_id, "state": proposal_state}),
         ),
         check(
+            "complete_library_inventory",
+            unresolved_count == 0
+                && conflicting_count == 0
+                && inventory_count == placed_count + excluded_count,
+            json!({"inventory": inventory_count, "placed": placed_count,
+                "excluded": excluded_count, "unresolved": unresolved_count,
+                "conflicting_dispositions": conflicting_count}),
+        ),
+        check(
             "artwork_approved",
-            artwork_batch_id.is_some() && i64::from(artwork_count) == named_count,
-            json!({"batch_id": artwork_batch_id, "artifacts": artwork_count, "playlists": named_count}),
+            artwork_batch_id.is_some()
+                && canonical_artwork_count == named_count
+                && intake_artwork_count == 4,
+            json!({"batch_id": artwork_batch_id, "artifacts": artwork_count,
+                "canonical_artifacts": canonical_artwork_count,
+                "canonical_playlists": named_count,
+                "intake_artifacts": intake_artwork_count,
+                "required_intake_artifacts": 4}),
         ),
         check("operation_integrity", integrity_passed, integrity_evidence),
         check(
@@ -442,7 +510,7 @@ fn operation_integrity(operations: &[Operation]) -> (bool, Value) {
     let targets_resolvable = operations.iter().all(|operation| {
         !matches!(
             operation.kind.as_str(),
-            "add_track" | "restore_track" | "upload_artwork"
+            "add_track" | "restore_track" | "reorder_playlist" | "upload_artwork"
         ) || operation.spotify_playlist_id.is_some()
             || creates.contains(operation.playlist_name.as_str())
     });

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::{Value, json};
 use sqlx::{Postgres, Row, Transaction};
 use storexa::Database;
@@ -55,6 +55,12 @@ pub struct ImportReport {
     pub external_bookmarks_reused: usize,
     /// Ordered track entries retained in external bookmark snapshots.
     pub external_bookmark_entries: usize,
+    /// Incremental player-history observations returned by Spotify.
+    pub recent_plays_seen: usize,
+    /// New provisional player-history observations retained in Neon.
+    pub recent_plays_inserted: usize,
+    /// Newest player-history observation returned by Spotify.
+    pub recent_plays_through: Option<DateTime<Utc>>,
 }
 
 /// Fetches a complete read-only Spotify inventory and persists it atomically.
@@ -66,6 +72,17 @@ pub async fn import(account_label: &str, database: &Database) -> Result<ImportRe
 }
 
 async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<ReusePlan> {
+    let recent_after = sqlx::query_scalar(
+        "SELECT max(event.played_at)
+         FROM listening_events event
+         JOIN provider_accounts account ON account.id = event.provider_account_id
+         WHERE account.provider = $1 AND account.account_label = $2
+           AND event.provider = $1 AND event.superseded_at IS NULL",
+    )
+    .bind(PROVIDER)
+    .bind(account_label)
+    .fetch_one(database.pool())
+    .await?;
     let latest = sqlx::query(
         "SELECT snapshots.id, snapshots.metadata
          FROM provider_library_snapshots snapshots
@@ -78,7 +95,10 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
     .fetch_optional(database.pool())
     .await?;
     let Some(latest) = latest else {
-        return Ok(ReusePlan::default());
+        return Ok(ReusePlan {
+            recent_after,
+            ..ReusePlan::default()
+        });
     };
     let source_snapshot_id: Uuid = latest.try_get("id")?;
     let metadata: Value = latest.try_get("metadata")?;
@@ -173,6 +193,7 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
         playlists,
         bookmark_playlists,
         saved_tracks,
+        recent_after,
     })
 }
 
@@ -226,6 +247,13 @@ async fn persist(
     let mut unsupported_items = 0;
     let mut external_bookmark_entries = 0;
     let mut external_bookmarks_reused = 0;
+    let recent_plays_seen = inventory.recently_played.len();
+    let recent_plays_through = inventory
+        .recently_played
+        .iter()
+        .map(|item| item.played_at)
+        .max()
+        .or(inventory.recent_requested_after);
 
     for playlist_inventory in &inventory.playlists {
         let playlist = &playlist_inventory.playlist;
@@ -262,6 +290,22 @@ async fn persist(
             "UPDATE provider_account_playlists account_playlist
              SET role = 'inbox', drift_policy = 'provider_wins',
                  signal_class = 'intake', semantic_weight = 0.0,
+                 behavioral_signal = (
+                     SELECT NULLIF(planned.payload->'detail'->>'behavioral_signal', '')
+                     FROM provider_playlists provider
+                     JOIN sync_apply_playlist_targets target
+                       ON target.spotify_playlist_id = provider.provider_playlist_id
+                     JOIN sync_apply_runs run ON run.id = target.apply_run_id
+                     JOIN sync_apply_operations execution ON execution.apply_run_id = run.id
+                     JOIN sync_operations planned
+                       ON planned.id = execution.planned_operation_id
+                     WHERE provider.id = account_playlist.provider_playlist_id
+                       AND run.status = 'succeeded'
+                       AND planned.operation_type = 'create_playlist'
+                       AND planned.payload->>'playlist_name' = target.playlist_name
+                       AND planned.payload->'detail'->>'surface' = 'intake'
+                     ORDER BY run.started_at DESC LIMIT 1
+                 ),
                  clear_policy = 'after_verified_assignment', updated_at = now()
              WHERE account_playlist.provider_account_id = $1
                AND account_playlist.provider_playlist_id = $2
@@ -481,6 +525,81 @@ async fn persist(
         saved_tracks += 1;
     }
 
+    let mut recent_plays_inserted = 0_usize;
+    for item in &inventory.recently_played {
+        let Some(provider_track_row_id) = persist_track(
+            &item.track,
+            &mut tracks,
+            &mut transaction,
+            &mut unsupported_items,
+        )
+        .await?
+        else {
+            continue;
+        };
+        let canonical_track_id: Uuid =
+            sqlx::query_scalar("SELECT track_id FROM provider_tracks WHERE id = $1")
+                .bind(provider_track_row_id)
+                .fetch_one(&mut *transaction)
+                .await?;
+        let Some(provider_track_id) = item.track.id.as_deref() else {
+            continue;
+        };
+        let source_event_id = format!(
+            "spotify-recent-v1:{provider_track_id}:{}",
+            item.played_at.to_rfc3339()
+        );
+        let inserted = sqlx::query(
+            "INSERT INTO listening_events
+             (id, provider_account_id, track_id, provider, provider_track_id,
+              source_event_id, played_at, context_uri, source_file, media_type,
+              source_kind, raw_metadata)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'spotify_web_api', 'track',
+                     'recent_api', $9)
+             ON CONFLICT (provider_account_id, source_event_id)
+               WHERE provider_account_id IS NOT NULL AND source_event_id IS NOT NULL
+             DO NOTHING",
+        )
+        .bind(Uuid::new_v4())
+        .bind(account_id)
+        .bind(canonical_track_id)
+        .bind(PROVIDER)
+        .bind(provider_track_id)
+        .bind(source_event_id)
+        .bind(item.played_at)
+        .bind(item.context.as_ref().map(|context| context.uri.as_str()))
+        .bind(json!({
+            "track_name": item.track.name,
+            "artist_name": item.track.artists.first().map(|artist| artist.name.as_str()),
+            "album_name": item.track.album.as_ref().map(|album| album.name.as_str()),
+            "context_type": item.context.as_ref().map(|context| context.kind.as_str()),
+            "observation": "recently_played",
+            "duration_unknown": true,
+        }))
+        .execute(&mut *transaction)
+        .await?
+        .rows_affected();
+        recent_plays_inserted =
+            recent_plays_inserted.saturating_add(usize::try_from(inserted).map_err(|_| {
+                ChordriftError::Configuration(
+                    "recent play insert count exceeded platform limits".to_owned(),
+                )
+            })?);
+    }
+    sqlx::query(
+        "INSERT INTO spotify_recent_play_syncs
+         (provider_account_id, requested_after, newest_played_at,
+          observations_seen, observations_inserted)
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(account_id)
+    .bind(inventory.recent_requested_after)
+    .bind(recent_plays_through)
+    .bind(to_i32(recent_plays_seen, "recent play observation count")?)
+    .bind(to_i32(recent_plays_inserted, "inserted recent play count")?)
+    .execute(&mut *transaction)
+    .await?;
+
     let playlists_imported = inventory.playlists.len();
     sqlx::query(
         "INSERT INTO provider_import_runs
@@ -503,6 +622,8 @@ async fn persist(
         "unique_tracks": tracks.len(),
         "external_bookmarks": inventory.external_playlists.len(),
         "external_bookmark_entries": external_bookmark_entries,
+        "recent_plays_seen": recent_plays_seen,
+        "recent_plays_inserted": recent_plays_inserted,
     }))
     .execute(&mut *transaction)
     .await?;
@@ -534,6 +655,9 @@ async fn persist(
         external_bookmarks: inventory.external_playlists.len(),
         external_bookmarks_reused,
         external_bookmark_entries,
+        recent_plays_seen,
+        recent_plays_inserted,
+        recent_plays_through,
     })
 }
 
@@ -1057,6 +1181,8 @@ mod tests {
                 items: saved_tracks.items,
                 reused_from_snapshot: None,
             },
+            recently_played: Vec::new(),
+            recent_requested_after: None,
             playlists_seen: 2,
             followed_playlists_skipped: 1,
             inaccessible_collaborative_playlists: 0,

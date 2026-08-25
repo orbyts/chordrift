@@ -4,6 +4,7 @@ use std::{
     collections::HashMap,
     fs,
     path::{Component, Path, PathBuf},
+    process::Command,
 };
 
 use chrono::{DateTime, Utc};
@@ -15,6 +16,8 @@ use storexa::Database;
 use uuid::Uuid;
 
 use crate::{ChordriftError, Result};
+
+const LABEL_RENDERER: &str = include_str!("../scripts/render_artwork_label.swift");
 
 /// Strict local artwork manifest.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -52,6 +55,9 @@ pub struct ArtworkGenerator {
 pub struct ArtworkArtifact {
     /// Stable Chordrift playlist key.
     pub stable_key: String,
+    /// Whether this cover targets a canonical output or a Chordrift intake surface.
+    #[serde(default)]
+    pub target: ArtworkTarget,
     /// Approved playlist name.
     pub name: String,
     /// PNG path relative to the manifest.
@@ -68,6 +74,26 @@ pub struct ArtworkArtifact {
     pub tags: Vec<String>,
     /// Exact generation prompt summary.
     pub prompt: String,
+}
+
+/// Supported Chordrift-owned artwork targets.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtworkTarget {
+    /// One playlist in the exact approved proposal.
+    #[default]
+    Canonical,
+    /// A stable, user-owned intake surface.
+    Intake,
+}
+
+impl ArtworkTarget {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Canonical => "canonical",
+            Self::Intake => "intake",
+        }
+    }
 }
 
 /// Result of importing or reusing one immutable artwork review set.
@@ -119,6 +145,8 @@ pub struct Status {
 pub struct ArtifactSummary {
     /// Stable playlist key.
     pub stable_key: String,
+    /// Canonical or intake target.
+    pub target_kind: String,
     /// Approved playlist name.
     pub name: String,
     /// Local artifact path.
@@ -131,6 +159,73 @@ pub struct ArtifactSummary {
     pub byte_size: i64,
     /// Content SHA-256.
     pub sha256: String,
+}
+
+/// Result of deterministically labeling one supplied artwork background.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RenderReport {
+    /// Generated PNG path.
+    pub path: PathBuf,
+    /// Output width.
+    pub width: u32,
+    /// Output height.
+    pub height: u32,
+    /// Output byte length.
+    pub byte_size: u64,
+    /// Output content SHA-256.
+    pub sha256: String,
+}
+
+/// Renders one Spotify-scale title onto a supplied pristine background.
+pub fn render_label(background: &Path, output: &Path, title: &str) -> Result<RenderReport> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(configuration("artwork title cannot be empty"));
+    }
+    let background = background.canonicalize()?;
+    if output.exists() && output.canonicalize()? == background {
+        return Err(configuration(
+            "artwork output must not overwrite the pristine background",
+        ));
+    }
+    if let Some(parent) = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
+    let script =
+        std::env::temp_dir().join(format!("chordrift-artwork-label-{}.swift", Uuid::new_v4()));
+    fs::write(&script, LABEL_RENDERER)?;
+    let rendered = Command::new("/usr/bin/swift")
+        .arg(&script)
+        .arg(&background)
+        .arg(output)
+        .arg(title)
+        .output();
+    let _ = fs::remove_file(&script);
+    let rendered = rendered?;
+    if !rendered.status.success() {
+        return Err(configuration(format!(
+            "artwork label renderer failed: {}",
+            String::from_utf8_lossy(&rendered.stderr).trim()
+        )));
+    }
+    let bytes = fs::read(output)?;
+    let (width, height) = png_dimensions(&bytes)?;
+    if (width, height) != (1_254, 1_254) {
+        return Err(configuration(format!(
+            "artwork renderer produced {width}x{height}; expected 1254x1254"
+        )));
+    }
+    Ok(RenderReport {
+        path: output.canonicalize()?,
+        width,
+        height,
+        byte_size: u64::try_from(bytes.len())
+            .map_err(|_| configuration("rendered artwork size exceeds u64"))?,
+        sha256: format!("{:x}", Sha256::digest(bytes)),
+    })
 }
 
 /// Validates every local artifact and records an immutable pending review set.
@@ -190,7 +285,44 @@ pub async fn import(
         let stable_key: String = row.try_get("stable_key")?;
         let name: String = row.try_get("name")?;
         let tags: Value = row.try_get("machine_tags")?;
-        playlists.insert(stable_key, (id, name, tags));
+        playlists.insert(stable_key, (Some(id), name, tags, ArtworkTarget::Canonical));
+    }
+    if manifest.schema_version == 2 {
+        let intake_rows = sqlx::query(
+            "SELECT current.name, provider.playlist_id
+             FROM current_spotify_playlists current
+             JOIN provider_playlists provider ON provider.id = current.provider_playlist_id
+             WHERE current.provider_account_id = $1
+               AND current.signal_class = 'intake'",
+        )
+        .bind(account_id)
+        .fetch_all(database.pool())
+        .await?;
+        let current_intakes: HashMap<String, Uuid> = intake_rows
+            .into_iter()
+            .map(|row| {
+                Ok((
+                    row.try_get::<String, _>("name")?.to_lowercase(),
+                    row.try_get("playlist_id")?,
+                ))
+            })
+            .collect::<Result<_>>()?;
+        for (stable_key, name) in [
+            ("intake-inbox", "Inbox"),
+            ("intake-from-friends", "From Friends"),
+            ("intake-liked-from-radio", "Liked from Radio"),
+            ("intake-from-prompts", "From Prompts"),
+        ] {
+            playlists.insert(
+                stable_key.to_owned(),
+                (
+                    current_intakes.get(&name.to_lowercase()).copied(),
+                    name.to_owned(),
+                    Value::Array(Vec::new()),
+                    ArtworkTarget::Intake,
+                ),
+            );
+        }
     }
     if playlists.len() != manifest.artifacts.len() {
         return Err(configuration(format!(
@@ -202,10 +334,16 @@ pub async fn import(
 
     let mut verified = Vec::with_capacity(manifest.artifacts.len());
     for artifact in &manifest.artifacts {
-        let (playlist_id, approved_name, approved_tags) =
+        let (playlist_id, approved_name, approved_tags, approved_target) =
             playlists.remove(&artifact.stable_key).ok_or_else(|| {
                 configuration(format!("unknown stable key `{}`", artifact.stable_key))
             })?;
+        if artifact.target != approved_target {
+            return Err(configuration(format!(
+                "artwork target for `{}` does not match its stable surface",
+                artifact.stable_key
+            )));
+        }
         if artifact.name != approved_name {
             return Err(configuration(format!(
                 "artwork name `{}` does not match approved name `{approved_name}`",
@@ -235,6 +373,7 @@ pub async fn import(
             playlist_id,
             artifact,
             approved_tags.clone(),
+            artifact.target,
             path.to_string_lossy().into_owned(),
             bytes.len() as i64,
         ));
@@ -288,13 +427,13 @@ pub async fn import(
     .bind(verified.len() as i32)
     .fetch_one(&mut *transaction)
     .await?;
-    for (playlist_id, artifact, approved_tags, path, byte_size) in verified {
+    for (playlist_id, artifact, approved_tags, target, path, byte_size) in verified {
         sqlx::query(
             "INSERT INTO playlist_artwork_artifacts
              (batch_id, playlist_id, stable_key, playlist_name, artifact_path,
               media_type, pixel_width, pixel_height, byte_size, content_sha256,
-              prompt, semantic_tags)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+              prompt, semantic_tags, target_kind)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
         )
         .bind(batch_id)
         .bind(playlist_id)
@@ -308,6 +447,7 @@ pub async fn import(
         .bind(&artifact.sha256)
         .bind(&artifact.prompt)
         .bind(approved_tags)
+        .bind(target.as_str())
         .execute(&mut *transaction)
         .await?;
     }
@@ -341,7 +481,7 @@ pub async fn status(database: &Database, account_label: &str) -> Result<Status> 
 pub async fn list(database: &Database, account_label: &str) -> Result<Vec<ArtifactSummary>> {
     let account_id = account_id(database, account_label).await?;
     let rows = sqlx::query(
-        "SELECT artifact.stable_key, artifact.playlist_name, artifact.artifact_path,
+        "SELECT artifact.stable_key, artifact.target_kind, artifact.playlist_name, artifact.artifact_path,
                 artifact.pixel_width, artifact.pixel_height, artifact.byte_size,
                 artifact.content_sha256
          FROM playlist_artwork_artifacts artifact
@@ -357,6 +497,7 @@ pub async fn list(database: &Database, account_label: &str) -> Result<Vec<Artifa
         .into_iter()
         .map(|row| ArtifactSummary {
             stable_key: row.get("stable_key"),
+            target_kind: row.get("target_kind"),
             name: row.get("playlist_name"),
             path: row.get("artifact_path"),
             width: row.get::<i32, _>("pixel_width") as u32,
@@ -451,7 +592,7 @@ fn report_from_status(status: Status, reused: bool) -> ImportReport {
 }
 
 fn validate_manifest_shape(manifest: &ArtworkManifest) -> Result<()> {
-    if manifest.schema_version != 1 {
+    if !matches!(manifest.schema_version, 1 | 2) {
         return Err(configuration(format!(
             "unsupported artwork schema version {}",
             manifest.schema_version
@@ -530,5 +671,22 @@ mod tests {
     fn rejects_parent_paths() {
         let error = resolve_local_file(Path::new("."), "../cover.png").unwrap_err();
         assert!(error.to_string().contains("simple relative path"));
+    }
+
+    #[test]
+    fn artwork_target_defaults_to_canonical_for_v1_manifests() {
+        let artifact: ArtworkArtifact = serde_json::from_value(serde_json::json!({
+            "stable_key": "playlist-test",
+            "name": "Test",
+            "file": "test.png",
+            "media_type": "image/png",
+            "width": 1254,
+            "height": 1254,
+            "sha256": "0".repeat(64),
+            "tags": [],
+            "prompt": "test prompt"
+        }))
+        .unwrap();
+        assert_eq!(artifact.target, ArtworkTarget::Canonical);
     }
 }

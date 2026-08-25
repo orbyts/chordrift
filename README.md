@@ -28,11 +28,11 @@ and synchronization will not wait for it; when available, the export will add
 signals such as play counts, listening duration, first play, and last play.
 
 > [!WARNING]
-> Chordrift is in early development. v0.1.0 permits remote Spotify
+> Chordrift is in early development. v0.1.1 permits remote Spotify
 > mutation only through exact, audited, resumable phase confirmations. Never
 > run an apply command without inspecting its immutable plan and readiness ID.
 
-## v0.1.0 capabilities
+## v0.1.1 capabilities
 
 - Storexa-backed Neon PostgreSQL connection management
 - an application-owned canonical music-library schema
@@ -49,6 +49,8 @@ signals such as play counts, listening duration, first play, and last play.
 - explicit provider-wins, Neon-wins, and manual drift policies
 - current overlap, duplicate-membership, and aggregate library reports
 - ordered track queries for individual current playlists
+- one-command track inspection across current placement, retained playlist
+  provenance, listening signals, embedding/cluster rationale, and semantic facts
 - idempotent account-data and extended streaming-history archive ingestion
 - cumulative event deduplication across periodic overlapping Spotify exports
 - account-scoped play, duration, skip, completion, and recency statistics
@@ -60,7 +62,8 @@ signals such as play counts, listening duration, first play, and last play.
 - nearest-neighbor inspection before any embedding can feed clustering
 - immutable, exact Spotify publication, cleanup, and retirement plans
 - resumable per-operation apply history with post-pull convergence proof
-- approved canonical cover uploads and provider-free payload preflight
+- approved labeled canonical and intake cover uploads, reusable label-free
+  masters, convergent upload receipts, and provider-free payload preflight
 - preserved external-playlist bookmarks separated from the active library
 
 Set the canonical Neon connection URL through the application-specific
@@ -68,7 +71,7 @@ Set the canonical Neon connection URL through the application-specific
 
 ```console
 $ chordrift --version
-chordrift 0.1.0
+chordrift 0.1.1
 
 $ chordrift db status
 database: chordrift-primary
@@ -107,11 +110,18 @@ $ chordrift sync pull --account personal
 ```
 
 Authorization requests `playlist-read-private`, `playlist-read-collaborative`,
-`user-library-read`, `playlist-modify-private`, `playlist-modify-public`,
-`user-library-modify`, and `ugc-image-upload`. The refresh token is
+`user-library-read`, `user-read-recently-played`, `user-top-read`,
+`playlist-modify-private`, `playlist-modify-public`, `user-library-modify`, and
+`ugc-image-upload`. The refresh token is
 stored under an account-scoped entry in macOS Passwords/Keychain; it is never
 written to a shell initialization file or the database. `spotify logout`
 removes that local credential without revoking access in Spotify.
+
+OAuth consent is consolidated into that one authorization. Normal sessions
+read the credential once and no longer rewrite an unchanged refresh token. A
+signed distribution is still required for a non-technical user's stable,
+one-time macOS Keychain trust experience; frequently rebuilt unsigned debug
+binaries may otherwise be treated as different applications by macOS.
 
 Spotify imports materialize a complete inventory from remote reads and reusable
 Neon state before opening one database transaction. A failed fetch or
@@ -130,16 +140,20 @@ pages. A detected change triggers a complete reconciliation so removals are not
 silently missed.
 
 For routine use, `chordrift sync pull` imports the current Spotify state and
-then refreshes account-scoped canonical analysis in the same invocation. The
+incrementally retains new Recently Played observations before refreshing
+account-scoped canonical analysis in the same invocation. The lifetime privacy
+export remains the authoritative duration/skip baseline; later exports
+supersede overlapping API observations so plays are not counted twice. The
 local account label defaults to `personal`, while the stable Spotify user ID is
 persisted in Neon; playlist identities and roles are also scoped to that
 account. A playlist rename therefore does not create a new identity, and a
 playlist that disappears from the latest snapshot remains historically known
 but is marked absent.
 
-Imported playlists begin as `observed` with a `provider-wins` drift policy.
-Discovery surfaces can be marked as `inbox`, and future Chordrift outputs as
-`managed`:
+Imported user playlists begin protected as `user_managed`, `observed`, and
+`provider-wins`. Chordrift does not retire them unless the user explicitly
+changes retirement intent. Discovery surfaces can be marked as `inbox`, and
+future Chordrift outputs as `managed`:
 
 ```console
 $ chordrift playlists configure --name "Discovery" --role inbox

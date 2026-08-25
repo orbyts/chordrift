@@ -35,14 +35,23 @@ approved the LLM-suggested names and organization. Retiring an old or inbox
 playlist must be an explicit, auditable synchronization operation performed
 only after all of its tracks are accounted for in approved canonical playlists.
 
+For every account except an explicitly selected migration, the default is
+**retire none**. User-created playlists are protected, remain provider-owned,
+and retain their custom names and exact ordering in Neon. Users may opt named
+playlists into retirement, select all with explicit exclusions, or reset to
+none; those policy commands never mutate a provider and do not bypass coverage,
+review, readiness, or destructive-apply gates.
+
 Stable user-managed intake names are `Inbox` for direct personal discoveries,
-`From Friends` for explicit recommendations, and `Liked from Radio` for
-radio/autoplay discoveries. Spotify manages `On Repeat`, `Daily Mix`, and
-prompted playlists. Chordrift-managed outputs receive approved generated vibe
+`From Friends` for explicit recommendations, `Liked from Radio` for
+radio/autoplay discoveries, and `From Prompts` for tracks intentionally carried
+forward from Spotify prompt-generated playlists. Spotify manages `On Repeat`,
+`Daily Mix`, and the source prompted playlists. Chordrift-managed outputs receive approved generated vibe
 names and must not be edited as intake surfaces. The temporary Atmos workaround
 uses `Chordrift Spatial Audio`.
 
-The intended final Spotify surface contains only those three user-managed
+Suhail's explicitly approved one-time cleanup targets a final Spotify surface
+containing only those four user-managed
 intakes, Spotify-managed sources, Chordrift-managed canonical playlists, and
 the temporary `Chordrift Spatial Audio` companion. All other user-created
 legacy vibe and utility playlists are retirement candidates once their
@@ -63,6 +72,11 @@ Add configuration, CLI boundaries, Storexa-backed Neon access, migrations, and
 the canonical schema. Provide version and database-status commands.
 
 Status: complete.
+
+The post-v0.1.1 listening path combines one lifetime extended-history baseline
+with cursor-based Recently Played ingestion during every normal pull. Annual
+cumulative exports supersede overlapping provisional observations and repair
+any gaps without duplicating events.
 
 ## v0.0.2 — Spotify read-only inventory
 
@@ -257,6 +271,14 @@ and is blocked by stale or incomplete naming, unassigned retirement-source
 tracks, or incomplete legacy/intake coverage. This milestone never writes to
 Spotify.
 
+The preservation universe is account-scoped and durable: latest saved tracks
+plus tracks ever retained through semantic-legacy, transport, intake, or
+Chordrift-managed playlist membership. Listening history influences ranking
+and classification but is not library membership by itself. A proposal is
+publishable only when every preserved track has exactly one acceptable
+disposition: canonical placement or an explicit reversible exclusion. This
+invariant must hold independently for every future connected account.
+
 ## v0.0.8 — Full dry-run synchronization
 
 Plan idempotent Spotify diffs without mutating the service. Include discovery
@@ -345,6 +367,40 @@ and 884 ordered memberships, preserved three intake surfaces, archived external
 bookmarks before cleanup, and retired every approved legacy and utility
 container. The final imported Spotify surface contains 19 purposeful playlists
 with zero duplicate entries and no pending destructive operations.
+
+## v0.1.1 — Explainability and complete visual surfaces
+
+Add one fast track-inspection command that answers whether a song is already in
+the current Spotify surface, its approved canonical destination, retained
+source-playlist history, listening/lifecycle signals, embedding generation,
+cluster score, independent mood/sound facts, and any manual assignment or
+exclusion rationale. Title lookup supports artist disambiguation and stable
+Spotify IDs.
+
+Extend Drift Atlas artwork to every Chordrift-owned intake, retain pristine
+label-free masters for future provider-specific typography, and render exact
+labels locally with an approved platform font rather than generated text. Add
+`From Prompts` as a fourth intake carrying prompted-discovery provenance. Cover
+planning is convergent: an identical content hash already uploaded to the same
+stable Spotify playlist is not requested again. A focused
+`chordrift artwork update --playlist NAME` command builds an immutable
+one-cover plan for a newer approved artifact without admitting membership or
+cleanup operations. Spotify folders remain manual presentation state because
+the Web API exposes neither folder structure nor folder artwork.
+
+Status: implemented; release preparation remains.
+
+The complete-library repair is implemented and proven in Neon for the personal
+account: 1,711 distinct preserved tracks, 1,711 canonical placements, zero
+active exclusions, zero unresolved tracks, and zero conflicting dispositions.
+Embedding v4 adds normalized meaningful listening-session co-occurrence so
+personal listening context helps singleton tracks without turning every played
+track into library membership. Stable extension, centroid, group-consensus,
+and reversible manual-assignment paths preserve the 14 approved playlist
+identities; evidence did not warrant another canonical playlist in this repair.
+The repaired proposal and its 1,711-track Spotify publication are verified.
+Drift Atlas v3's 18 larger, lower-anchored covers are also approved, uploaded,
+and verified without changing playlist membership.
 
 ## Post-v0.1 product direction — Review UI
 

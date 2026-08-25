@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use crate::{
     ChordriftError, Result, analysis, apply, apply_readiness, artwork, bookmarks, clusters, config,
     db, embeddings, enrichment, history, model_inference, playlists, proposals, providers::spotify,
-    signals, sync_plan,
+    signals, sync_plan, tracks,
 };
 
 /// Chordrift command-line interface.
@@ -52,6 +52,12 @@ pub enum Command {
         /// Playlist operation to perform.
         #[command(subcommand)]
         command: PlaylistCommand,
+    },
+    /// Find one song and explain its placement, provenance, signals, and clustering.
+    Tracks {
+        /// Track operation to perform.
+        #[command(subcommand)]
+        command: TrackCommand,
     },
     /// Inspect externally owned playlists retained as Neon bookmarks.
     Bookmarks {
@@ -376,6 +382,48 @@ pub enum PlaylistCommand {
         #[arg(long, value_enum)]
         clear_policy: Option<ClearPolicyArg>,
     },
+    /// Select user playlists eligible for a separately approved future retirement.
+    Retirement {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Mark this exact playlist name for retirement; repeat for multiple names.
+        #[arg(long)]
+        include: Vec<String>,
+        /// Mark all eligible user playlists for retirement.
+        #[arg(long)]
+        all: bool,
+        /// Protect this exact name when using --all; repeat for multiple names.
+        #[arg(long, requires = "all")]
+        except: Vec<String>,
+        /// Protect every eligible user playlist and retire none.
+        #[arg(long)]
+        none: bool,
+    },
+}
+
+/// Canonical track lookup commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum TrackCommand {
+    /// Explain where one track is, where it came from, and why Chordrift placed it.
+    Inspect {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Case-insensitive exact track title; must be unambiguous.
+        #[arg(
+            long,
+            required_unless_present = "spotify_id",
+            conflicts_with = "spotify_id"
+        )]
+        name: Option<String>,
+        /// Optional artist substring used to disambiguate an exact title.
+        #[arg(long, requires = "name")]
+        artist: Option<String>,
+        /// Stable Spotify track ID.
+        #[arg(long, required_unless_present = "name", conflicts_with = "name")]
+        spotify_id: Option<String>,
+    },
 }
 
 /// External playlist bookmark commands.
@@ -588,6 +636,69 @@ pub enum ProposalCommand {
         #[arg(long, default_value_t = 100)]
         limit: u32,
     },
+    /// Audit the complete preserved-library inventory by source class.
+    Inventory {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List preserved tracks that have neither a placement nor an explicit exclusion.
+    Unresolved {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Maximum tracks to report.
+        #[arg(long, default_value_t = 100)]
+        limit: u32,
+    },
+    /// Score unresolved inventory against the approved playlist destinations.
+    PlacementAudit {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Clone the approved structure and append credible existing-destination fits.
+    Extend {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Minimum cosine similarity to an approved playlist centroid.
+        #[arg(long, default_value_t = 0.05, allow_hyphen_values = true)]
+        min_similarity: f64,
+    },
+    /// List currently unresolved tracks in one analytical cluster.
+    GroupTracks {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Machine cluster label reported by `proposals placement-audit`.
+        #[arg(long)]
+        cluster: String,
+        /// Maximum tracks to report.
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+    },
+    /// Assign unresolved embedded tracks using dominant analytical-group evidence.
+    ConsensusAssign {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Minimum dominant share among already placed group members.
+        #[arg(long, default_value_t = 0.55)]
+        min_dominance: f64,
+        /// Minimum already placed members required as evidence.
+        #[arg(long, default_value_t = 10)]
+        min_evidence: u32,
+    },
+    /// Assign unresolved embedded tracks with credible direct centroid fit.
+    CentroidAssign {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Minimum cosine similarity to the current destination centroid.
+        #[arg(long, default_value_t = 0.05, allow_hyphen_values = true)]
+        min_similarity: f64,
+    },
     /// Create a stable manual destination in the latest proposal.
     CategoryCreate {
         /// Local label for this Spotify account.
@@ -662,6 +773,18 @@ pub enum ProposalCommand {
 /// Local canonical playlist artwork commands.
 #[derive(Clone, Debug, Subcommand)]
 pub enum ArtworkCommand {
+    /// Overlay a Spotify-style title on one pristine 1254px background.
+    Render {
+        /// Label-free PNG background to preserve and use as input.
+        #[arg(long)]
+        background: PathBuf,
+        /// Playlist title to render.
+        #[arg(long)]
+        title: String,
+        /// New labeled PNG output; must differ from the background.
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Validate a strict manifest and register an immutable local review set.
     Import {
         /// Local label for this Spotify account.
@@ -691,6 +814,15 @@ pub enum ArtworkCommand {
         /// Exact batch ID printed by `artwork import` or `artwork status`.
         #[arg(long)]
         confirm: uuid::Uuid,
+    },
+    /// Build an immutable one-cover update plan for a playlist or stable key.
+    Update {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact playlist name or stable artwork key.
+        #[arg(long)]
+        playlist: String,
     },
 }
 
@@ -842,6 +974,8 @@ pub enum DriftPolicyArg {
 /// CLI representation of playlist evidence classes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub enum PlaylistSignalClassArg {
+    /// Protected user-created playlist that Chordrift never retires implicitly.
+    UserManaged,
     /// User-curated legacy vibe evidence.
     SemanticLegacy,
     /// Spotify-owned behavioral evidence.
@@ -1147,6 +1281,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
             database.close().await;
             result?;
         }
+        Command::Tracks { command } => {
+            let database = connect_current_database().await?;
+            let result = run_track_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
         Command::Bookmarks { command } => {
             let database = connect_current_database().await?;
             let result = run_bookmark_command(command, output, &database).await;
@@ -1347,6 +1487,20 @@ async fn run_artwork_command(
     database: &storexa::Database,
 ) -> Result<()> {
     match command {
+        ArtworkCommand::Render {
+            background,
+            title,
+            output: path,
+        } => {
+            let report = artwork::render_label(&background, &path, &title)?;
+            writeln!(output, "artwork: rendered")?;
+            writeln!(output, "path: {}", report.path.display())?;
+            writeln!(output, "dimensions: {}x{}", report.width, report.height)?;
+            writeln!(output, "bytes: {}", report.byte_size)?;
+            writeln!(output, "sha256: {}", report.sha256)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
         ArtworkCommand::Import { account, manifest } => {
             let report = artwork::import(database, &account, &manifest).await?;
             writeln!(
@@ -1377,14 +1531,18 @@ async fn run_artwork_command(
         }
         ArtworkCommand::List { account } => {
             let rows = artwork::list(database, &account).await?;
-            writeln!(output, "dimensions\tbytes\tname\tstable_key\tsha256\tpath")?;
+            writeln!(
+                output,
+                "dimensions\tbytes\ttarget\tname\tstable_key\tsha256\tpath"
+            )?;
             for row in rows {
                 writeln!(
                     output,
-                    "{}x{}\t{}\t{}\t{}\t{}\t{}",
+                    "{}x{}\t{}\t{}\t{}\t{}\t{}\t{}",
                     row.width,
                     row.height,
                     row.byte_size,
+                    row.target_kind,
                     clean_cell(&row.name),
                     row.stable_key,
                     row.sha256,
@@ -1396,6 +1554,10 @@ async fn run_artwork_command(
         ArtworkCommand::Approve { account, confirm } => {
             let status = artwork::approve(database, &account, confirm).await?;
             write_artwork_status(output, &status)
+        }
+        ArtworkCommand::Update { account, playlist } => {
+            let report = sync_plan::create_artwork_update(database, &account, &playlist).await?;
+            write_sync_plan_report(output, &report)
         }
     }
 }
@@ -1738,6 +1900,201 @@ async fn run_playlist_command(
             writeln!(output, "clear_policy: {}", updated.clear_policy)?;
             Ok(())
         }
+        PlaylistCommand::Retirement {
+            account,
+            include,
+            all,
+            except,
+            none,
+        } => {
+            let report =
+                playlists::configure_retirement(database, &account, &include, all, &except, none)
+                    .await?;
+            writeln!(output, "retirement_policy: updated")?;
+            writeln!(output, "changed: {}", report.changed)?;
+            writeln!(
+                output,
+                "retirement_candidates: {}",
+                report.retirement_candidates
+            )?;
+            writeln!(
+                output,
+                "protected_playlists: {}",
+                report.protected_playlists
+            )?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+    }
+}
+
+async fn run_track_command(
+    command: TrackCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        TrackCommand::Inspect {
+            account,
+            name,
+            artist,
+            spotify_id,
+        } => {
+            let selector = match (name, spotify_id) {
+                (Some(title), None) => tracks::TrackSelector::Name { title, artist },
+                (None, Some(id)) => tracks::TrackSelector::SpotifyId(id),
+                _ => unreachable!("clap enforces one track selector"),
+            };
+            let report = tracks::inspect(database, &account, &selector).await?;
+            writeln!(
+                output,
+                "track: {} — {}",
+                clean_cell(&report.title),
+                clean_cell(&report.artists)
+            )?;
+            writeln!(output, "spotify_id: {}", report.spotify_id)?;
+            writeln!(output, "canonical_id: {}", report.track_id)?;
+            writeln!(
+                output,
+                "album: {}",
+                clean_cell(report.album.as_deref().unwrap_or("-"))
+            )?;
+            writeln!(output, "isrc: {}", report.isrc.as_deref().unwrap_or("-"))?;
+            writeln!(
+                output,
+                "duration_ms: {}",
+                report
+                    .duration_ms
+                    .map_or_else(|| "-".to_owned(), |value| value.to_string())
+            )?;
+            writeln!(
+                output,
+                "current_playlists: {}",
+                report.current_playlists.len()
+            )?;
+            for playlist in &report.current_playlists {
+                writeln!(
+                    output,
+                    "  - {} (position {}, role {}, signal {})",
+                    clean_cell(&playlist.name),
+                    playlist.position,
+                    playlist.role,
+                    playlist.signal_class
+                )?;
+            }
+            writeln!(
+                output,
+                "canonical_placements: {}",
+                report.canonical_placements.len()
+            )?;
+            for placement in &report.canonical_placements {
+                writeln!(
+                    output,
+                    "  - {} (position {}, key {}, source {})",
+                    clean_cell(&placement.name),
+                    placement.position,
+                    placement.stable_key,
+                    placement.source
+                )?;
+                writeln!(
+                    output,
+                    "    provenance: {}",
+                    clean_cell(&placement.provenance.to_string())
+                )?;
+                if let Some(reason) = &placement.manual_reason {
+                    writeln!(output, "    manual_reason: {}", clean_cell(reason))?;
+                }
+            }
+            writeln!(output, "signals:")?;
+            writeln!(
+                output,
+                "  listening: plays={} events={} skips={} hours={:.2} last_played={}",
+                report.signals.play_count,
+                report.signals.event_count,
+                report.signals.skip_count,
+                hours(report.signals.total_ms_played),
+                report
+                    .signals
+                    .last_played_at
+                    .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+            )?;
+            writeln!(
+                output,
+                "  lifecycle: saved={} rotation={} discovery={} prompted={} intake={} recommendation={}",
+                report.signals.saved,
+                report.signals.rotation,
+                report.signals.discovery,
+                report.signals.prompted,
+                report.signals.intake,
+                report.signals.recommendation
+            )?;
+            if let Some(vector) = &report.vector {
+                writeln!(output, "embedding:")?;
+                writeln!(
+                    output,
+                    "  generation={} model={}@{} dimensions={}",
+                    vector.embedding_generation_id,
+                    vector.embedding_model,
+                    vector.embedding_version,
+                    vector.dimensions
+                )?;
+                writeln!(
+                    output,
+                    "  cluster={} similarity={} rank={}",
+                    vector.cluster_label.as_deref().unwrap_or("unassigned"),
+                    vector
+                        .membership_score
+                        .map_or_else(|| "-".to_owned(), |value| format!("{value:.4}")),
+                    vector
+                        .representative_rank
+                        .map_or_else(|| "-".to_owned(), |value| value.to_string())
+                )?;
+            } else {
+                writeln!(output, "embedding: unavailable")?;
+            }
+            writeln!(output, "semantic_facts: {}", report.semantic_facts.len())?;
+            for fact in &report.semantic_facts {
+                writeln!(
+                    output,
+                    "  - {}={} ({:.3}, {})",
+                    fact.kind,
+                    clean_cell(&fact.value),
+                    fact.confidence,
+                    fact.model
+                )?;
+            }
+            writeln!(
+                output,
+                "historical_source_playlists: {}",
+                report.historical_playlists.len()
+            )?;
+            for playlist in &report.historical_playlists {
+                writeln!(
+                    output,
+                    "  - {} (signal {}{}, present {}, first {}, last {}, spotify_id {})",
+                    clean_cell(&playlist.names),
+                    playlist.signal_class,
+                    playlist
+                        .behavioral_signal
+                        .as_deref()
+                        .map_or_else(String::new, |value| format!("/{value}")),
+                    playlist.present,
+                    playlist.first_seen_at.to_rfc3339(),
+                    playlist.last_seen_at.to_rfc3339(),
+                    playlist.spotify_id
+                )?;
+            }
+            writeln!(
+                output,
+                "excluded: {}",
+                report
+                    .exclusion_reason
+                    .as_deref()
+                    .map(clean_cell)
+                    .unwrap_or_else(|| "false".to_owned())
+            )?;
+            Ok(())
+        }
     }
 }
 
@@ -1931,6 +2288,11 @@ async fn run_embedding_command(
                 report.album_related_tracks
             )?;
             writeln!(output, "history_tracks: {}", report.history_tracks)?;
+            writeln!(
+                output,
+                "session_related_tracks: {}",
+                report.session_related_tracks
+            )?;
             writeln!(
                 output,
                 "semantic_fact_tracks: {}",
@@ -2265,6 +2627,194 @@ async fn run_proposal_command(
             }
             Ok(())
         }
+        ProposalCommand::Inventory { account } => {
+            let rows = proposals::historical_coverage(database, &account).await?;
+            writeln!(
+                output,
+                "inventory\tplaylists\tplaced\texcluded\tunresolved\tconflicting\tsource_class"
+            )?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    row.unique_tracks,
+                    row.playlist_count,
+                    row.represented_tracks,
+                    row.excluded_tracks,
+                    row.missing_tracks,
+                    row.conflicting_tracks,
+                    row.signal_class
+                )?;
+            }
+            Ok(())
+        }
+        ProposalCommand::Unresolved { account, limit } => {
+            let rows = proposals::historical_missing(database, &account, limit).await?;
+            writeln!(
+                output,
+                "track\tartists\tsource_classes\tsource_playlists\tspotify_id"
+            )?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}",
+                    clean_cell(&row.title),
+                    clean_cell(&row.artists),
+                    clean_cell(&row.signal_classes),
+                    clean_cell(&row.source_playlists),
+                    row.spotify_id
+                )?;
+            }
+            Ok(())
+        }
+        ProposalCommand::PlacementAudit { account } => {
+            let report = proposals::placement_audit(database, &account).await?;
+            writeln!(output, "placement_audit: complete")?;
+            writeln!(
+                output,
+                "proposal_generation_id: {}",
+                report.proposal_generation_id
+            )?;
+            writeln!(
+                output,
+                "embedding_generation_id: {}",
+                report.embedding_generation_id
+            )?;
+            writeln!(output, "inventory_tracks: {}", report.inventory_tracks)?;
+            writeln!(
+                output,
+                "already_placed_tracks: {}",
+                report.already_placed_tracks
+            )?;
+            writeln!(
+                output,
+                "embedded_unresolved_tracks: {}",
+                report.embedded_unresolved_tracks
+            )?;
+            writeln!(
+                output,
+                "unembedded_unresolved_tracks: {}",
+                report.unembedded_unresolved_tracks
+            )?;
+            writeln!(output, "strong_existing_fit: {}", report.strong_fit_tracks)?;
+            writeln!(output, "usable_existing_fit: {}", report.usable_fit_tracks)?;
+            writeln!(output, "weak_fit_review: {}", report.weak_fit_tracks)?;
+            writeln!(output, "\nstrong\tusable\tdestination\tstable_key")?;
+            for destination in report.destinations {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}",
+                    destination.strong_fit_tracks,
+                    destination.usable_fit_tracks,
+                    clean_cell(&destination.name),
+                    destination.stable_key
+                )?;
+            }
+            writeln!(
+                output,
+                "\nweak\tplaced\tdominant\tdominant_tracks\tcluster_tracks\trepresentative\tcluster"
+            )?;
+            for group in report.new_group_candidates {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    group.weak_fit_tracks,
+                    group.placed_tracks,
+                    clean_cell(group.dominant_destination.as_deref().unwrap_or("-")),
+                    group.dominant_tracks,
+                    group.cluster_tracks,
+                    clean_cell(&group.representative),
+                    group.machine_label
+                )?;
+            }
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        ProposalCommand::Extend {
+            account,
+            min_similarity,
+        } => {
+            let report = proposals::extend_approved(database, &account, min_similarity).await?;
+            writeln!(
+                output,
+                "proposal_extension: {}",
+                if report.reused {
+                    "already current"
+                } else {
+                    "created"
+                }
+            )?;
+            writeln!(output, "generation_id: {}", report.generation_id)?;
+            writeln!(output, "playlists: {}", report.playlist_count)?;
+            writeln!(output, "assigned_tracks: {}", report.assigned_track_count)?;
+            writeln!(output, "required_tracks: {}", report.required_track_count)?;
+            writeln!(
+                output,
+                "represented_tracks: {}",
+                report.represented_track_count
+            )?;
+            writeln!(output, "coverage_complete: {}", report.coverage_complete)?;
+            writeln!(output, "input_hash: {}", report.input_hash)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        ProposalCommand::GroupTracks {
+            account,
+            cluster,
+            limit,
+        } => {
+            let rows =
+                proposals::unresolved_group_tracks(database, &account, &cluster, limit).await?;
+            writeln!(output, "rank\tscore\ttrack\tartists\tspotify_id")?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{:.4}\t{}\t{}\t{}",
+                    row.position,
+                    row.score,
+                    clean_cell(&row.title),
+                    clean_cell(&row.artists),
+                    row.spotify_id
+                )?;
+            }
+            Ok(())
+        }
+        ProposalCommand::ConsensusAssign {
+            account,
+            min_dominance,
+            min_evidence,
+        } => {
+            let report = proposals::assign_by_group_consensus(
+                database,
+                &account,
+                min_dominance,
+                min_evidence,
+            )
+            .await?;
+            writeln!(output, "consensus_assignment: succeeded")?;
+            writeln!(output, "generation_id: {}", report.generation_id)?;
+            writeln!(output, "assigned_tracks: {}", report.assigned_tracks)?;
+            writeln!(output, "required_tracks: {}", report.required_tracks)?;
+            writeln!(output, "represented_tracks: {}", report.represented_tracks)?;
+            writeln!(output, "unresolved_tracks: {}", report.unresolved_tracks)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        ProposalCommand::CentroidAssign {
+            account,
+            min_similarity,
+        } => {
+            let report =
+                proposals::assign_by_existing_centroid(database, &account, min_similarity).await?;
+            writeln!(output, "centroid_assignment: succeeded")?;
+            writeln!(output, "generation_id: {}", report.generation_id)?;
+            writeln!(output, "assigned_tracks: {}", report.assigned_tracks)?;
+            writeln!(output, "required_tracks: {}", report.required_tracks)?;
+            writeln!(output, "represented_tracks: {}", report.represented_tracks)?;
+            writeln!(output, "unresolved_tracks: {}", report.unresolved_tracks)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
         ProposalCommand::CategoryCreate {
             account,
             name,
@@ -2552,6 +3102,7 @@ fn playlist_drift_policy(value: DriftPolicyArg) -> playlists::DriftPolicy {
 
 fn playlist_signal_class(value: PlaylistSignalClassArg) -> playlists::PlaylistSignalClass {
     match value {
+        PlaylistSignalClassArg::UserManaged => playlists::PlaylistSignalClass::UserManaged,
         PlaylistSignalClassArg::SemanticLegacy => playlists::PlaylistSignalClass::SemanticLegacy,
         PlaylistSignalClassArg::ProviderCurated => playlists::PlaylistSignalClass::ProviderCurated,
         PlaylistSignalClassArg::Intake => playlists::PlaylistSignalClass::Intake,
@@ -2667,6 +3218,19 @@ fn write_import_report(output: &mut impl Write, report: &spotify::ImportReport) 
         "external_bookmark_entries: {}",
         report.external_bookmark_entries
     )?;
+    writeln!(output, "recent_plays_seen: {}", report.recent_plays_seen)?;
+    writeln!(
+        output,
+        "recent_plays_inserted: {}",
+        report.recent_plays_inserted
+    )?;
+    writeln!(
+        output,
+        "recent_plays_through: {}",
+        report
+            .recent_plays_through
+            .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+    )?;
     Ok(())
 }
 
@@ -2726,6 +3290,7 @@ fn write_sync_plan_report(output: &mut impl Write, report: &sync_plan::PlanRepor
     writeln!(output, "operations: {}", report.operation_count)?;
     writeln!(output, "creates: {}", report.creates)?;
     writeln!(output, "renames: {}", report.renames)?;
+    writeln!(output, "reorders: {}", report.reorders)?;
     writeln!(output, "additions: {}", report.additions)?;
     writeln!(output, "restorations: {}", report.restorations)?;
     writeln!(output, "artwork_uploads: {}", report.artwork_uploads)?;
@@ -2768,7 +3333,7 @@ mod tests {
         ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand, Cli, ClusterCommand,
         Command, DbCommand, EmbeddingCommand, EnrichmentCommand, HistoryCommand, PlaylistCommand,
         PlaylistRoleArg, PlaylistSignalClassArg, SignalCommand, SpotifyCommand, SyncCommand,
-        write_status,
+        TrackCommand, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -2934,6 +3499,40 @@ mod tests {
     }
 
     #[test]
+    fn parses_focused_artwork_update() {
+        let cli = Cli::try_parse_from(["chordrift", "artwork", "update", "--playlist", "Inbox"])
+            .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Artwork {
+                command: ArtworkCommand::Update { account, playlist }
+            } if account == "personal" && playlist == "Inbox"
+        ));
+    }
+
+    #[test]
+    fn parses_on_demand_artwork_render() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "artwork",
+            "render",
+            "--background",
+            "background.png",
+            "--title",
+            "Made for Suhail",
+            "--output",
+            "made-for-suhail.png",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Artwork {
+                command: ArtworkCommand::Render { title, .. }
+            } if title == "Made for Suhail"
+        ));
+    }
+
+    #[test]
     fn parses_account_scoped_inbox_configuration() {
         let cli = Cli::try_parse_from([
             "chordrift",
@@ -2977,6 +3576,31 @@ mod tests {
                     ..
                 }
             } if account == "personal" && name == "Smooth Morning Coffee (Curated)"
+        ));
+    }
+
+    #[test]
+    fn parses_track_inspection_with_artist_disambiguation() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "tracks",
+            "inspect",
+            "--name",
+            "Do Your Best",
+            "--artist",
+            "John Maus",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Tracks {
+                command: TrackCommand::Inspect {
+                    account,
+                    name: Some(name),
+                    artist: Some(artist),
+                    spotify_id: None
+                }
+            } if account == "personal" && name == "Do Your Best" && artist == "John Maus"
         ));
     }
 
@@ -3067,6 +3691,30 @@ mod tests {
                     ..
                 }
             } if account == "personal" && name == "On Repeat"
+        ));
+    }
+
+    #[test]
+    fn parses_protected_retirement_selection() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "playlists",
+            "retirement",
+            "--all",
+            "--except",
+            "Road Trip Order",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Playlists {
+                command: PlaylistCommand::Retirement {
+                    account,
+                    all: true,
+                    except,
+                    ..
+                }
+            } if account == "personal" && except == ["Road Trip Order"]
         ));
     }
 

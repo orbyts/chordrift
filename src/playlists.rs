@@ -1,5 +1,7 @@
 //! Account-scoped provider playlist roles and drift policy.
 
+use std::collections::HashSet;
+
 use sqlx::Row;
 use storexa::Database;
 use uuid::Uuid;
@@ -53,6 +55,8 @@ impl DriftPolicy {
 /// How a playlist contributes evidence without conflating sync authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PlaylistSignalClass {
+    /// A protected user-created playlist retained without Chordrift ownership.
+    UserManaged,
     /// A user-curated legacy playlist whose membership and name describe vibe.
     SemanticLegacy,
     /// A Spotify-owned surface observed for behavioral evidence.
@@ -71,6 +75,7 @@ impl PlaylistSignalClass {
     /// Stable database representation.
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::UserManaged => "user_managed",
             Self::SemanticLegacy => "semantic_legacy",
             Self::ProviderCurated => "provider_curated",
             Self::Intake => "intake",
@@ -174,6 +179,17 @@ pub struct PlaylistTracks {
     pub snapshot_id: Uuid,
     /// Ordered entries. Canonical duplicates remain separate rows.
     pub tracks: Vec<PlaylistTrackRecord>,
+}
+
+/// Result of changing non-destructive retirement intent for user playlists.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RetirementPolicyReport {
+    /// User playlists now explicitly eligible for a future retirement plan.
+    pub retirement_candidates: usize,
+    /// User playlists explicitly protected from retirement.
+    pub protected_playlists: usize,
+    /// Rows whose policy changed in this command.
+    pub changed: usize,
 }
 
 /// Selects one playlist without relying exclusively on a mutable display name.
@@ -296,6 +312,120 @@ pub async fn configure_signals(
         semantic_weight,
         clear_policy: clear_policy.as_str().to_owned(),
         ..selected
+    })
+}
+
+/// Changes retirement intent without creating or executing a Spotify plan.
+///
+/// Newly imported user playlists are protected. `include` marks only named
+/// playlists as legacy candidates, `all` marks every eligible user playlist
+/// except the named exclusions, and `none` protects every eligible playlist.
+pub async fn configure_retirement(
+    database: &Database,
+    account_label: &str,
+    include: &[String],
+    all: bool,
+    except: &[String],
+    none: bool,
+) -> Result<RetirementPolicyReport> {
+    let modes = usize::from(!include.is_empty()) + usize::from(all) + usize::from(none);
+    if modes != 1 || (!all && !except.is_empty()) {
+        return Err(ChordriftError::Configuration(
+            "choose exactly one retirement mode: --include NAME (repeatable), --all [--except NAME], or --none"
+                .to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let rows = sqlx::query(
+        "SELECT policy.provider_playlist_id, lower(snapshot.name) AS normalized_name,
+                policy.signal_class
+         FROM provider_account_playlists policy
+         JOIN provider_playlists provider ON provider.id = policy.provider_playlist_id
+         JOIN provider_accounts account ON account.id = policy.provider_account_id
+         JOIN LATERAL (
+             SELECT item.name, item.metadata
+             FROM provider_playlist_snapshots item
+             JOIN provider_library_snapshots library ON library.id = item.snapshot_id
+             WHERE item.provider_playlist_id = provider.id
+               AND library.provider_account_id = policy.provider_account_id
+             ORDER BY library.captured_at DESC, library.id DESC LIMIT 1
+         ) snapshot ON TRUE
+         WHERE policy.provider_account_id = $1 AND policy.present_in_latest_snapshot
+           AND provider.concept_id IS NULL
+           AND snapshot.metadata->'owner'->>'id' = account.metadata->>'id'
+           AND policy.signal_class NOT IN ('canonical', 'intake', 'provider_curated')",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    let include = include
+        .iter()
+        .map(|name| name.trim().to_lowercase())
+        .collect::<HashSet<_>>();
+    let except = except
+        .iter()
+        .map(|name| name.trim().to_lowercase())
+        .collect::<HashSet<_>>();
+    let available = rows
+        .iter()
+        .map(|row| row.try_get::<String, _>("normalized_name"))
+        .collect::<std::result::Result<HashSet<_>, _>>()?;
+    let missing = include
+        .iter()
+        .chain(except.iter())
+        .filter(|name| !available.contains(*name))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(ChordriftError::Configuration(format!(
+            "retirement selectors did not match protected user playlists: {}",
+            missing.join(", ")
+        )));
+    }
+    let mut transaction = database.pool().begin().await?;
+    let mut changed = 0_usize;
+    let mut retirement_candidates = 0_usize;
+    let mut protected_playlists = 0_usize;
+    for row in rows {
+        let provider_playlist_id: Uuid = row.try_get("provider_playlist_id")?;
+        let name: String = row.try_get("normalized_name")?;
+        let current: String = row.try_get("signal_class")?;
+        let retire = if none {
+            false
+        } else if all {
+            !except.contains(&name)
+        } else {
+            include.contains(&name)
+        };
+        let desired = if retire {
+            retirement_candidates += 1;
+            "semantic_legacy"
+        } else {
+            protected_playlists += 1;
+            "user_managed"
+        };
+        if current != desired {
+            sqlx::query(
+                "UPDATE provider_account_playlists
+                 SET signal_class = $3, behavioral_signal = NULL,
+                     semantic_weight = CASE WHEN $3 = 'semantic_legacy' THEN 1.0 ELSE 0.0 END,
+                     clear_policy = 'never', role = 'observed',
+                     drift_policy = 'provider_wins', updated_at = now()
+                 WHERE provider_account_id = $1 AND provider_playlist_id = $2",
+            )
+            .bind(account_id)
+            .bind(provider_playlist_id)
+            .bind(desired)
+            .execute(&mut *transaction)
+            .await?;
+            changed += 1;
+        }
+    }
+    transaction.commit().await?;
+    Ok(RetirementPolicyReport {
+        retirement_candidates,
+        protected_playlists,
+        changed,
     })
 }
 

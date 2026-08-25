@@ -16,9 +16,9 @@ use crate::{
     providers::spotify::{self, MutationSession},
 };
 
-const APPLY_VERSION: &str = "spotify-apply-v1";
-const READINESS_VERSION: &str = "spotify-apply-readiness-v2";
-const PLANNER_VERSION: &str = "spotify-dry-run-v6";
+const APPLY_VERSION: &str = "spotify-apply-v2";
+const READINESS_VERSION: &str = "spotify-apply-readiness-v4";
+const PLANNER_VERSION: &str = "spotify-dry-run-v8";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Independently gated execution phases in a synchronization plan.
@@ -124,7 +124,7 @@ pub async fn preflight_publish(
         || plan.try_get::<Uuid, _>("source_snapshot_id")?
             != plan.try_get::<Uuid, _>("latest_snapshot_id")?
     {
-        return Err(configuration("preflight requires a current v6 plan"));
+        return Err(configuration("preflight requires a current v8 plan"));
     }
 
     let playlist_creates: i64 = sqlx::query_scalar(
@@ -135,10 +135,17 @@ pub async fn preflight_publish(
     .fetch_one(database.pool())
     .await?;
     let groups = sqlx::query(
-        "SELECT playlist_id, count(*)::bigint AS entries
-         FROM sync_operations
-         WHERE sync_run_id = $1 AND phase = 'publish' AND operation_type = 'add_track'
-         GROUP BY playlist_id",
+        "WITH targets AS (
+             SELECT DISTINCT playlist_id
+             FROM sync_operations
+             WHERE sync_run_id = $1 AND phase = 'publish'
+               AND operation_type IN ('add_track', 'restore_track', 'reorder_playlist')
+               AND playlist_id IS NOT NULL
+         )
+         SELECT target.playlist_id, count(membership.id)::bigint AS entries
+         FROM targets target
+         LEFT JOIN playlist_tracks membership ON membership.playlist_id = target.playlist_id
+         GROUP BY target.playlist_id",
     )
     .bind(plan_id)
     .fetch_all(database.pool())
@@ -234,7 +241,7 @@ pub async fn approve_retirement(
             != row.try_get::<Uuid, _>("latest_snapshot_id")?
     {
         return Err(configuration(
-            "retirement approval requires a current v6 plan",
+            "retirement approval requires a current v8 plan",
         ));
     }
     let count: i64 = row.try_get("operations")?;
@@ -508,11 +515,11 @@ async fn verify_publication(
     snapshot_id: Uuid,
     proposal_id: Uuid,
 ) -> Result<bool> {
-    type Desired = (Uuid, Vec<(i32, Uuid)>);
+    type Desired = (Uuid, Vec<Uuid>);
     let desired_rows = sqlx::query(
         "SELECT playlist.concept_id, membership.position, membership.track_id
          FROM playlists playlist
-         JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+         LEFT JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
          WHERE playlist.generation_id = $1
          ORDER BY playlist.concept_id, membership.position",
     )
@@ -522,11 +529,12 @@ async fn verify_publication(
     let mut desired: BTreeMap<Uuid, Desired> = BTreeMap::new();
     for row in desired_rows {
         let concept: Uuid = row.try_get("concept_id")?;
-        desired
+        let entry = desired
             .entry(concept)
-            .or_insert_with(|| (concept, Vec::new()))
-            .1
-            .push((row.try_get("position")?, row.try_get("track_id")?));
+            .or_insert_with(|| (concept, Vec::new()));
+        if let Some(track_id) = row.try_get::<Option<Uuid>, _>("track_id")? {
+            entry.1.push(track_id);
+        }
     }
     let current_rows = sqlx::query(
         "SELECT provider.id AS provider_playlist_id, provider.concept_id,
@@ -545,7 +553,7 @@ async fn verify_publication(
     .bind(snapshot_id)
     .fetch_all(database.pool())
     .await?;
-    let mut current: BTreeMap<Uuid, (Uuid, Vec<(i32, Uuid)>)> = BTreeMap::new();
+    let mut current: BTreeMap<Uuid, (Uuid, Vec<Uuid>)> = BTreeMap::new();
     for row in current_rows {
         let concept: Uuid = row.try_get("concept_id")?;
         let entry = current.entry(concept).or_insert_with(|| {
@@ -555,11 +563,8 @@ async fn verify_publication(
                 Vec::new(),
             )
         });
-        if let (Some(position), Some(track_id)) = (
-            row.try_get::<Option<i32>, _>("position")?,
-            row.try_get::<Option<Uuid>, _>("track_id")?,
-        ) {
-            entry.1.push((position, track_id));
+        if let Some(track_id) = row.try_get::<Option<Uuid>, _>("track_id")? {
+            entry.1.push(track_id);
         }
     }
     if desired.is_empty()
@@ -592,7 +597,9 @@ async fn verify_publication(
         .bind(hash)
         .fetch_one(&mut *tx)
         .await?;
-        for (position, track_id) in tracks {
+        for (position, track_id) in tracks.into_iter().enumerate() {
+            let position = i32::try_from(position)
+                .map_err(|_| configuration("verified playlist position exceeds i32"))?;
             sqlx::query(
                 "INSERT INTO managed_playlist_verified_tracks
                  (verification_id, track_id, position) VALUES ($1, $2, $3)
@@ -646,7 +653,7 @@ async fn load_gate(
         || row.try_get::<String, _>("planner_version")? != PLANNER_VERSION
     {
         return Err(configuration(
-            "apply requires a ready v0.1.0 assessment of a v6 plan",
+            "apply requires a ready v0.1.1 assessment of a v8 plan",
         ));
     }
     if row.try_get::<Uuid, _>("source_snapshot_id")?
@@ -885,7 +892,11 @@ async fn execute_publish(
     let current_operations = operations(database, run_id).await?;
     let mut additions: BTreeMap<String, Vec<&Operation>> = BTreeMap::new();
     for operation in current_operations.iter().filter(|op| {
-        op.status != "succeeded" && matches!(op.kind.as_str(), "add_track" | "restore_track")
+        op.status != "succeeded"
+            && matches!(
+                op.kind.as_str(),
+                "add_track" | "restore_track" | "reorder_playlist"
+            )
     }) {
         let target = target_for(database, run_id, operation).await?;
         additions.entry(target).or_default().push(operation);
@@ -928,7 +939,7 @@ async fn execute_publish(
             continue;
         }
         for operation in &pending {
-            if operation.spotify_track_id.is_none() {
+            if operation.kind != "reorder_playlist" && operation.spotify_track_id.is_none() {
                 return Err(configuration(
                     "planned track addition has no Spotify track ID",
                 ));
@@ -1170,9 +1181,19 @@ async fn target_for(database: &Database, run_id: Uuid, operation: &Operation) ->
     if let Some(id) = &operation.spotify_playlist_id {
         return Ok(id.clone());
     }
-    resolved_target(database, run_id, operation.playlist_id)
-        .await?
-        .ok_or_else(|| configuration("a prior create operation has not resolved this playlist"))
+    if let Some(target) = resolved_target(database, run_id, operation.playlist_id).await? {
+        return Ok(target);
+    }
+    sqlx::query_scalar(
+        "SELECT spotify_playlist_id FROM sync_apply_playlist_targets
+         WHERE apply_run_id = $1 AND lower(playlist_name) = lower($2)
+         ORDER BY resolved_at DESC LIMIT 1",
+    )
+    .bind(run_id)
+    .bind(&operation.playlist_name)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("a prior create operation has not resolved this playlist"))
 }
 
 async fn persist_target(
