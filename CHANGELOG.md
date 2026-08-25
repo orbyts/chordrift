@@ -4,6 +4,15 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Add durable, zero-signal routing playlists for low-friction correction
+  capture while listening. Route consumption into verified canonical
+  destinations remains under development for v0.1.2.
+- Avoid rewriting unchanged Spotify track metadata after a saved-library
+  change, batch immutable saved-track membership in Neon, and expose TTY
+  progress bars with plain redirected fallbacks.
+- Render interactive playlist and song listings as compact colored tables while
+  retaining complete tab-separated output for scripts and logs.
+
 ## [0.1.1] - 2026-08-24
 
 - Add cursor-based Recently Played ingestion to normal Spotify pulls while
