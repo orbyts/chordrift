@@ -177,8 +177,9 @@ duration, skips, completions, and recency without changing or replacing Web API
 inventory snapshots. Neon remains authoritative; unchanged local ZIPs are
 retained only for recovery and future reprocessing.
 
-See [docs/HOW_TO_CHORDRIFT.md](docs/HOW_TO_CHORDRIFT.md) for the complete CLI
-guide, [ROADMAP.md](ROADMAP.md) for planned milestones, and
+See [docs/HOW_TO_CHORDRIFT.md](docs/HOW_TO_CHORDRIFT.md) for the task-oriented
+guide and table of contents, the linked CLI reference for every command,
+[ROADMAP.md](ROADMAP.md) for planned milestones, and
 [CHANGELOG.md](CHANGELOG.md) for release history. New focused development tasks
 should begin with [CODEX_HANDOFF.md](CODEX_HANDOFF.md) for current decisions and
 operational state.

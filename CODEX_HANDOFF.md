@@ -298,8 +298,10 @@ cargo package
 
 Postgres integration tests require the disposable test database environment
 documented in the repository. Apply migrations to live Neon only after local
-and disposable-database verification. Keep `docs/HOW_TO_CHORDRIFT.md` updated
-for every CLI leaf command; `tests/user_docs.rs` enforces that coverage.
+and disposable-database verification. Keep the task-oriented
+`docs/HOW_TO_CHORDRIFT.md`, focused `docs/how-to/` pages, and
+`docs/reference/CLI_COMMANDS.md` synchronized with CLI changes;
+`tests/user_docs.rs` enforces aggregate leaf-command coverage.
 
 For a release: confirm CI is green, tag the exact tested commit, create the
 GitHub release, publish to crates.io, install the released version, fast-forward
@@ -885,3 +887,12 @@ universe is unchanged; the six route entries are preserved review duplicates.
 The subsequent v9 plan `88b31b13-f1c8-4a24-960b-6e68ca64a350` contains zero
 operations, proving route creation, exact order, and artwork publication are
 idempotently converged.
+
+The user documentation is now split by intent. `docs/HOW_TO_CHORDRIFT.md` is an
+80-line entry point and table of contents; the former comprehensive guide is
+preserved as `docs/reference/CLI_COMMANDS.md`. Focused pages under
+`docs/how-to/` cover adding/discovery, deleting/excluding,
+routing/reclassification, and sync/convergence. The product-facing inference
+rules live in `docs/design/PLATFORM_INTENT_MODEL.md`: high-confidence provider
+actions may be captured automatically, ambiguous actions must be staged, and
+destructive interpretations are never silently inferred.

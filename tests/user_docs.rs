@@ -4,7 +4,14 @@ use chordrift::cli::Cli;
 
 #[test]
 fn user_guide_mentions_every_cli_leaf_command() {
-    let guide = include_str!("../docs/HOW_TO_CHORDRIFT.md");
+    let guide = concat!(
+        include_str!("../docs/HOW_TO_CHORDRIFT.md"),
+        include_str!("../docs/reference/CLI_COMMANDS.md"),
+        include_str!("../docs/how-to/ADDING_AND_DISCOVERY.md"),
+        include_str!("../docs/how-to/DELETING_AND_EXCLUDING.md"),
+        include_str!("../docs/how-to/ROUTING_AND_RECLASSIFYING.md"),
+        include_str!("../docs/how-to/SYNC_AND_CONVERGENCE.md"),
+    );
     let command = Cli::command();
     let mut leaf_commands = Vec::new();
     collect_leaf_commands(&command, "chordrift", &mut leaf_commands);
@@ -12,7 +19,7 @@ fn user_guide_mentions_every_cli_leaf_command() {
     for command in leaf_commands {
         assert!(
             guide.contains(&command),
-            "docs/HOW_TO_CHORDRIFT.md must document `{command}`"
+            "the user guide or CLI reference must document `{command}`"
         );
     }
 }

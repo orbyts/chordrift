@@ -483,6 +483,14 @@ lets a consumer use Spotify as the familiar editing surface while Chordrift
 acts as a preservation-first assistant on top; the dedicated Chordrift review
 surface remains the faster, more explainable path for batch corrections.
 
+Maintain the provider-change interpretation matrix in
+`docs/design/PLATFORM_INTENT_MODEL.md`. Each personal CLI edge case should
+graduate into an explicit product rule: the observed mutation, plausible
+intents, confidence boundary, reversible automatic action, and point at which
+the user must confirm. Task-oriented personal workflows live under
+`docs/how-to/`; the large command catalog is reference material rather than the
+primary user journey.
+
 For immediate provider-native capture, adding the playing track to a routing
 queue must be enough; the user need not also remove it from the current
 canonical playlist. A normal pull records the queue event in Neon. Publication
