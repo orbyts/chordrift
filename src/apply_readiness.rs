@@ -12,12 +12,12 @@ use uuid::Uuid;
 
 use crate::{
     ChordriftError, Result,
-    providers::spotify::{AuthStatus, RetryPolicy, retry_policy},
+    providers::spotify::{AuthStatus, RetryPolicy, has_required_apply_scopes, retry_policy},
 };
 
 const PROVIDER: &str = "spotify";
-const ASSESSMENT_VERSION: &str = "spotify-apply-readiness-v1";
-const PLANNER_VERSION: &str = "spotify-dry-run-v5";
+const ASSESSMENT_VERSION: &str = "spotify-apply-readiness-v2";
+const PLANNER_VERSION: &str = "spotify-dry-run-v6";
 
 /// One inspectable apply-readiness check.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -190,7 +190,7 @@ pub async fn assess(
     .fetch_one(database.pool())
     .await?;
     let cleanup_passed = external_cleanup_count == 0 || approved_cleanup_count == 1;
-    let probe_passed = probe.is_some_and(read_only_probe_is_valid);
+    let probe_passed = probe.is_some_and(|status| has_required_apply_scopes(&status.scopes));
     let checks = vec![
         check(
             "plan_identity",
@@ -245,10 +245,10 @@ pub async fn assess(
             json!({"second_pass_changes": replay_changes, "operation_keys": operations.len()}),
         ),
         check(
-            "read_only_provider_probe",
+            "provider_identity_and_scopes",
             probe_passed,
             json!({"performed": probe.is_some(), "scopes": probe.map(|value| &value.scopes),
-                "forbidden_write_scopes_present": probe.map(has_write_scope).unwrap_or(false)}),
+                "required_v010_scopes_present": probe_passed}),
         ),
     ];
 
@@ -440,8 +440,10 @@ fn operation_integrity(operations: &[Operation]) -> (bool, Value) {
         .map(|operation| operation.playlist_name.as_str())
         .collect();
     let targets_resolvable = operations.iter().all(|operation| {
-        !matches!(operation.kind.as_str(), "add_track" | "restore_track")
-            || operation.spotify_playlist_id.is_some()
+        !matches!(
+            operation.kind.as_str(),
+            "add_track" | "restore_track" | "upload_artwork"
+        ) || operation.spotify_playlist_id.is_some()
             || creates.contains(operation.playlist_name.as_str())
     });
     (
@@ -509,25 +511,6 @@ fn simulate_recovery(operations: &[Operation]) -> (usize, usize) {
         completed.insert(&operation.key);
     }
     (checkpoints.len(), completed.len() - before)
-}
-
-fn read_only_probe_is_valid(status: &AuthStatus) -> bool {
-    let required = [
-        "playlist-read-private",
-        "playlist-read-collaborative",
-        "user-library-read",
-    ];
-    required
-        .iter()
-        .all(|scope| status.scopes.iter().any(|granted| granted == scope))
-        && !has_write_scope(status)
-}
-
-fn has_write_scope(status: &AuthStatus) -> bool {
-    status
-        .scopes
-        .iter()
-        .any(|scope| scope.starts_with("playlist-modify-") || scope == "ugc-image-upload")
 }
 
 fn check(name: &str, passed: bool, evidence: Value) -> ReadinessCheck {

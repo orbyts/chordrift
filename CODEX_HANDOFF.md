@@ -503,6 +503,110 @@ Repository artwork is intentionally excluded from the crates.io archive
 because the 14 approved full-resolution PNGs are review/publication assets
 rather than runtime data; they remain in Git.
 
+v0.1.0 work is on `codex/v010-spotify-apply`. Migration 0026, planner v6,
+readiness v2, and `src/apply.rs` introduce the first provider-write path. Apply
+is phase-scoped, requires exact assessment confirmation, persists every
+operation and resolved Spotify target, batches at current API limits, resumes
+against live membership, uploads only approved artwork, and stops at
+`awaiting_pull`. The next pull verifies exact ordered canonical membership and
+records immutable managed baselines. Cleanup/retirement additionally require
+`--allow-destructive`; retirement also requires exact-plan durable approval.
+No v0.1.0 live Spotify mutation has occurred yet. The existing stored OAuth
+credential is read-only and must be explicitly reauthorized for the seven
+documented v0.1.0 scopes before a new v6 readiness assessment can pass.
+Migration 0026 is live and Neon is healthy at 26/26. Current v6 plan
+`e89854e8-c1dc-42fc-b469-b7e113fcd831` is bound to snapshot
+`c187fc99-5e7c-42f7-a694-86bcb9d1930b` and input hash
+`520fa5b82c70fccfa3024927ad568ced0594732cecec2c0c415f2689780e7793`.
+It is current and contains 1,034 operations: 16 creates, 884 additions, 14
+approved artwork uploads, 65 deferred intake removals, 13 deferred external
+relationship removals, and 42 deferred legacy retirements. No Spotify request
+was made while creating or inspecting it.
+
+`chordrift sync apply-preflight` now validates an exact current v6 publish plan
+without contacting Spotify. The live preflight for plan
+`e89854e8-c1dc-42fc-b469-b7e113fcd831` passed: all 14 approved source hashes,
+PNG decodes, and JPEG conversions are valid; the largest base64 JPEG is 221,788
+bytes, below Spotify's 256 KB limit. Publishing will create 16 containers,
+populate 14 canonical playlists with 884 ordered memberships through 17 item
+writes, and upload 14 covers. The estimated publish budget is 15 Spotify reads
+and 47 writes. The preflight made zero Spotify requests. Local verification is
+clean at 72 passing library tests plus the CLI/docs tests and warning-free
+clippy. Hosted CI run `32791199258` completed every job step successfully,
+including both disposable-PostgreSQL suites and package verification; confirm
+the final GitHub status after the follow-up preflight commit is pushed.
+
+The user completed v0.1.0 Spotify reauthorization for account `personal` on
+2026-08-24. Account identity `5DPKF9q1Xm` (`suhails`) matches Neon, and the
+system-keychain credential now has all seven required read, playlist-modify,
+library-modify, and image-upload scopes. Read-only readiness assessment
+`16c6c402-9f82-4179-8f18-f9cc24912dc9` is `ready` for exact plan
+`e89854e8-c1dc-42fc-b469-b7e113fcd831`: 10/10 gates passed, all 1,034
+operations recovered across five simulated restart checkpoints, and replay
+produced zero changes. No Spotify write has occurred. Publishing now requires
+the user to explicitly confirm that exact assessment ID before running
+`sync apply --phase publish`; do not infer authorization for cleanup or
+retirement from publication approval.
+
+The user explicitly approved publication. Apply run
+`35db437b-f348-434d-8402-ddde1ecb3eb8` executed all 914 publish operations
+(16 creates, 884 memberships, 14 covers) with zero failures, then the pull
+committed snapshot `98ec0798-c946-4b0b-bd9d-5dbf2fe64679` and reported
+`verified_apply_runs: 1`. The first verification pull exposed and safely rolled
+back a canonical semantic-weight constraint mismatch; no snapshot was partially
+committed. The corrected importer sets canonical semantic weight to zero.
+A second pre-cleanup audit caught newly created empty `Inbox` and `From Friends`
+being imported with the default legacy policy. The importer now recovers intake
+policy from the succeeded create operation. Read-only snapshot
+`2ce8e24f-e88b-4051-8927-3501c65edc34` confirms both are protected `inbox /
+provider_wins / intake / after_verified_assignment` surfaces. Current plan
+`74caa6d4-8cee-40d1-a507-f8141dff5799` contains zero creates/additions, 65
+deferred `Liked from Radio` removals, 13 deferred external relationship removals,
+and the original 42 legacy retirements. No cleanup or retirement approval has
+been inferred from publication.
+
+The user explicitly approved cleanup. The first attempt was safely blocked
+before writes because a repeated pull had a newer snapshot without a carried
+verification baseline. `verify_pending_publications` now recomputes canonical
+proof on every pull rather than trusting or blindly copying an older baseline.
+Cleanup apply run `20f5f69c-f74a-464e-a9af-fd9643556718` then completed all 78
+operations: 65 `Liked from Radio` removals plus 13 external relationship
+removals, with zero failures. Spotify's playlist index briefly returned the old
+snapshot marker for `Liked from Radio`; the following read-only pull observed
+the new marker and exact 65-entry decrease. Destructive apply runs are now also
+marked succeeded only when a later imported snapshot proves every planned track
+and relationship absent. Snapshot `b9e8d29e-b409-4de4-802b-7e77f78c1d85`
+reports 65 active playlists, 2,309 entries, zero followed/external playlists,
+and `verified_apply_runs: 1`. All 13 external bookmark records remain in Neon as
+not-present history. No legacy retirement has occurred.
+
+The user then explicitly approved exact retirement plan
+`f7c926c3-26f7-4adc-ad69-4e40d62fbf0f`. Apply run
+`f767f050-ddff-4758-9a1c-6085eb9cff27` removed all 42 legacy relationships with
+zero failures; snapshot `e38b7c81-9513-4d98-9d9d-9ecc73575d69` proves the live
+playlist count fell from 65 to 23 and reports `verified_apply_runs: 1`. The
+post-retirement audit found four documented obsolete utilities still present
+because ignored/transport classes were unintentionally omitted from planner
+retirement. Planner cleanup now includes `ignored` and `transport` sources in
+the separately approved retirement phase while intake remains protected. Exact
+plan `fa8289fc-d636-448c-8203-a8bd1ca67ae6` contains only four retirements:
+`All my saved songs`, `Collaboration Jessica`, `My top tracks playlist`, and
+`Two Way Sync` (plus 14 non-destructive artwork operations in publish). These
+four have not been approved or removed yet.
+
+The user explicitly approved the four utility retirements. Apply run
+`ffe42fb9-7fe9-40c9-bd97-ef9e468bb9ca` completed 4/4 with zero failures, and
+snapshot `5280abe1-7220-4cbb-8e9c-9acf7ef72121` verified the final live surface:
+19 playlists, 951 entries, 902 unique playlist tracks, zero duplicate entries,
+zero followed/external playlists, and `verified_apply_runs: 1`. The 19 are
+exactly 14 canonical Chordrift playlists, `Inbox`, `From Friends`, `Liked from
+Radio`, `Daily Mix`, and `On Repeat`. Current plan
+`c64d615a-1fd8-4c80-afc9-08d82a42b58d` has zero creates, additions, removals,
+retirements, external cleanups, or deferred destructive operations; its only 14
+operations are idempotent approved artwork uploads. v0.1.0 release metadata is
+being prepared; do not claim the crate/tag/release exists until publication is
+verified.
+
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the
 same package name/version, a plain `cargo run` reused an older final executable

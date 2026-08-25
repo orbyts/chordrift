@@ -24,7 +24,16 @@ const TOKEN_ENDPOINT: &str = "https://accounts.spotify.com/api/token";
 const CLIENT_ID_VARIABLE: &str = "CHORDRIFT_SPOTIFY_CLIENT_ID";
 const REDIRECT_URI_VARIABLE: &str = "CHORDRIFT_SPOTIFY_REDIRECT_URI";
 const DEFAULT_REDIRECT_URI: &str = "http://127.0.0.1:8888/callback";
-const SCOPES: &str = "playlist-read-private playlist-read-collaborative user-library-read";
+const SCOPES: &str = "playlist-read-private playlist-read-collaborative user-library-read playlist-modify-private playlist-modify-public user-library-modify ugc-image-upload";
+pub(crate) const REQUIRED_SCOPES: [&str; 7] = [
+    "playlist-read-private",
+    "playlist-read-collaborative",
+    "user-library-read",
+    "playlist-modify-private",
+    "playlist-modify-public",
+    "user-library-modify",
+    "ugc-image-upload",
+];
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 /// Secret-free Spotify OAuth application configuration.
@@ -148,6 +157,7 @@ pub struct AuthStatus {
 pub(crate) struct SpotifySession {
     pub client: SpotifyClient,
     pub profile: CurrentUser,
+    pub scopes: Vec<String>,
 }
 
 /// Runs browser-based Authorization Code with PKCE and stores the refresh token.
@@ -165,7 +175,10 @@ pub async fn authenticate(account_label: &str) -> Result<AuthReport> {
     })?;
     let client = SpotifyClient::new(&token.access_token)?;
     let profile = client.current_user().await?;
-    let scopes = token_scopes(&token);
+    let mut scopes = token_scopes(&token);
+    if scopes.is_empty() {
+        scopes = requested_scopes();
+    }
     let credential = StoredCredential {
         account_id: profile.account_id.clone(),
         spotify_user_id: profile.id.clone(),
@@ -186,12 +199,11 @@ pub async fn authenticate(account_label: &str) -> Result<AuthReport> {
 /// Verifies a stored refresh token against Spotify.
 pub async fn status(account_label: &str) -> Result<AuthStatus> {
     let session = session(account_label).await?;
-    let credential = load_credential(account_label)?;
     Ok(AuthStatus {
         account_label: account_label.to_owned(),
         account_id: session.profile.account_id,
         display_name: session.profile.display_name,
-        scopes: credential.scopes,
+        scopes: session.scopes,
     })
 }
 
@@ -223,7 +235,17 @@ pub(crate) async fn session(account_label: &str) -> Result<SpotifySession> {
     }
     credential.spotify_user_id = profile.id.clone();
     SystemCredentialStore.save(&credential_id, &serde_json::to_vec(&credential)?)?;
-    Ok(SpotifySession { client, profile })
+    Ok(SpotifySession {
+        client,
+        profile,
+        scopes: credential.scopes,
+    })
+}
+
+pub(crate) fn has_required_apply_scopes(scopes: &[String]) -> bool {
+    REQUIRED_SCOPES
+        .iter()
+        .all(|required| scopes.iter().any(|scope| scope == required))
 }
 
 fn load_credential(account_label: &str) -> Result<StoredCredential> {
@@ -335,10 +357,14 @@ fn token_scopes(token: &TokenResponse) -> Vec<String> {
     token
         .scope
         .as_deref()
-        .unwrap_or(SCOPES)
+        .unwrap_or_default()
         .split_ascii_whitespace()
         .map(str::to_owned)
         .collect()
+}
+
+fn requested_scopes() -> Vec<String> {
+    SCOPES.split_ascii_whitespace().map(str::to_owned).collect()
 }
 
 fn random_urlsafe(bytes: usize) -> String {
@@ -472,18 +498,18 @@ async fn write_callback_response(
 mod tests {
     use url::Url;
 
-    use super::{SpotifyOAuthConfig, authorization_code};
+    use super::{REQUIRED_SCOPES, SpotifyOAuthConfig, authorization_code};
 
     #[test]
-    fn builds_a_read_only_pkce_request() {
+    fn builds_v010_pkce_request() {
         let config = SpotifyOAuthConfig::new("abc123".to_owned(), "http://127.0.0.1:8888/callback")
             .expect("valid config");
         let request = config.authorization_request();
         let query = request.authorization_url.query().expect("query");
         assert!(query.contains("code_challenge_method=S256"));
-        assert!(query.contains("playlist-read-private"));
-        assert!(query.contains("user-library-read"));
-        assert!(!query.contains("modify"));
+        for scope in REQUIRED_SCOPES {
+            assert!(query.contains(scope));
+        }
     }
 
     #[test]

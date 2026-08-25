@@ -5,14 +5,127 @@ mod client;
 mod import;
 mod models;
 
+pub(crate) use auth::has_required_apply_scopes;
 pub use auth::{AuthReport, AuthStatus, SpotifyOAuthConfig, authenticate, logout, status};
 pub(crate) use client::{RetryPolicy, retry_policy};
 pub use import::{ImportReport, import};
+use models::SpotifyPlaylist;
 
 use crate::{
     ChordriftError, Result,
     bookmarks::{BookmarkFetchOutcome, FetchedBookmark, FetchedBookmarkItem},
 };
+
+pub(crate) struct MutationSession {
+    session: auth::SpotifySession,
+}
+
+pub(crate) async fn mutation_session(account_label: &str) -> Result<MutationSession> {
+    let session = auth::session(account_label).await?;
+    if !has_required_apply_scopes(&session.scopes) {
+        return Err(ChordriftError::Configuration(format!(
+            "Spotify authorization lacks v0.1.0 write scopes; run `chordrift spotify auth --account {account_label}` and approve the requested access"
+        )));
+    }
+    Ok(MutationSession { session })
+}
+
+impl MutationSession {
+    pub(crate) fn account_id(&self) -> &str {
+        &self.session.profile.account_id
+    }
+
+    pub(crate) fn user_id(&self) -> &str {
+        &self.session.profile.id
+    }
+
+    pub(crate) async fn playlists(&self) -> Result<Vec<SpotifyPlaylist>> {
+        self.session.client.current_playlists().await
+    }
+
+    pub(crate) async fn playlist_items(&self, id: &str) -> Result<Vec<String>> {
+        let (_, items) = self.session.client.external_playlist(id).await?;
+        Ok(items
+            .into_iter()
+            .filter_map(|item| item.track().and_then(|track| track.id.clone()))
+            .collect())
+    }
+
+    pub(crate) async fn create_playlist(
+        &self,
+        name: &str,
+        description: &str,
+        public: bool,
+    ) -> Result<SpotifyPlaylist> {
+        self.session
+            .client
+            .create_playlist(name, description, public)
+            .await
+    }
+
+    pub(crate) async fn update_playlist(
+        &self,
+        id: &str,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<()> {
+        self.session
+            .client
+            .update_playlist(id, name, description)
+            .await
+    }
+
+    pub(crate) async fn add_items(
+        &self,
+        id: &str,
+        track_ids: &[String],
+        position: Option<usize>,
+    ) -> Result<String> {
+        let uris = track_ids
+            .iter()
+            .map(|track_id| format!("spotify:track:{track_id}"))
+            .collect::<Vec<_>>();
+        self.session
+            .client
+            .add_playlist_items(id, &uris, position)
+            .await
+    }
+
+    pub(crate) async fn replace_items(&self, id: &str, track_ids: &[String]) -> Result<String> {
+        let uris = track_ids
+            .iter()
+            .map(|track_id| format!("spotify:track:{track_id}"))
+            .collect::<Vec<_>>();
+        self.session.client.replace_playlist_items(id, &uris).await
+    }
+
+    pub(crate) async fn remove_items(
+        &self,
+        id: &str,
+        track_ids: &[String],
+        snapshot_id: Option<&str>,
+    ) -> Result<String> {
+        let uris = track_ids
+            .iter()
+            .map(|track_id| format!("spotify:track:{track_id}"))
+            .collect::<Vec<_>>();
+        self.session
+            .client
+            .remove_playlist_items(id, &uris, snapshot_id)
+            .await
+    }
+
+    pub(crate) async fn remove_library_playlists(&self, ids: &[String]) -> Result<()> {
+        self.session.client.remove_library_playlists(ids).await
+    }
+
+    pub(crate) async fn upload_cover(&self, id: &str, jpeg_base64: &str) -> Result<()> {
+        self.session
+            .client
+            .upload_playlist_cover(id, jpeg_base64)
+            .await
+    }
+}
 
 /// Fetches exactly one known bookmark on explicit request.
 pub async fn fetch_bookmark(

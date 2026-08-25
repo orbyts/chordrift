@@ -28,11 +28,11 @@ and synchronization will not wait for it; when available, the export will add
 signals such as play counts, listening duration, first play, and last play.
 
 > [!WARNING]
-> Chordrift is in very early development. Version 0.0.5 adds versioned semantic
-> embeddings, independently versioned personal signals, and explicit playlist
-> evidence policies. Chordrift still performs no remote Spotify mutations.
+> Chordrift is in early development. v0.1.0 permits remote Spotify
+> mutation only through exact, audited, resumable phase confirmations. Never
+> run an apply command without inspecting its immutable plan and readiness ID.
 
-## v0.0.5 capabilities
+## v0.1.0 capabilities
 
 - Storexa-backed Neon PostgreSQL connection management
 - an application-owned canonical music-library schema
@@ -58,13 +58,17 @@ signals such as play counts, listening duration, first play, and last play.
 - explicit semantic, provider-curated, intake, canonical, transport, and
   ignored playlist evidence classes
 - nearest-neighbor inspection before any embedding can feed clustering
+- immutable, exact Spotify publication, cleanup, and retirement plans
+- resumable per-operation apply history with post-pull convergence proof
+- approved canonical cover uploads and provider-free payload preflight
+- preserved external-playlist bookmarks separated from the active library
 
 Set the canonical Neon connection URL through the application-specific
 `CHORDRIFT_DATABASE_URL` environment variable. Chordrift never prints it.
 
 ```console
 $ chordrift --version
-chordrift 0.0.5
+chordrift 0.1.0
 
 $ chordrift db status
 database: chordrift-primary
@@ -102,8 +106,9 @@ $ chordrift spotify import --account personal
 $ chordrift sync pull --account personal
 ```
 
-Authorization requests only `playlist-read-private`,
-`playlist-read-collaborative`, and `user-library-read`. The refresh token is
+Authorization requests `playlist-read-private`, `playlist-read-collaborative`,
+`user-library-read`, `playlist-modify-private`, `playlist-modify-public`,
+`user-library-modify`, and `ugc-image-upload`. The refresh token is
 stored under an account-scoped entry in macOS Passwords/Keychain; it is never
 written to a shell initialization file or the database. `spotify logout`
 removes that local credential without revoking access in Spotify.

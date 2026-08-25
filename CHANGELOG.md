@@ -4,6 +4,21 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-24
+
+- Add a gated, resumable Spotify apply engine with exact assessment
+  confirmation, separately acknowledged destructive phases, durable
+  per-operation execution history, and post-pull convergence verification.
+- Batch playlist additions and removals at Spotify's current limits, reconcile
+  live membership before interrupted resumes, and use the February 2026
+  `/items` and `/me/library` endpoints.
+- Add approved cover uploads with deterministic local PNG-to-JPEG conversion,
+  strict 256 KB payload enforcement, and explicit image-upload authorization.
+- Add exact-plan retirement approval and require every canonical destination to
+  be verified in the current snapshot before cleanup or retirement.
+- Add a provider-free publish preflight that validates approved cover hashes and
+  JPEG payload limits while estimating the request budget.
+
 ## [0.0.9] - 2026-08-24
 
 - Add immutable, idempotent Spotify dry-run plans bound to one approved
@@ -152,7 +167,8 @@ All notable changes to Chordrift are documented here.
 
 - Reserve the Chordrift crate and repository namespaces.
 
-[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.9...HEAD
+[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/orbyts/chordrift/compare/v0.0.9...v0.1.0
 [0.0.9]: https://github.com/orbyts/chordrift/compare/v0.0.5...v0.0.9
 [0.0.5]: https://github.com/orbyts/chordrift/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/orbyts/chordrift/compare/v0.0.3...v0.0.4

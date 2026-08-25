@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result};
 
 const PROVIDER: &str = "spotify";
-const PLANNER_VERSION: &str = "spotify-dry-run-v5";
+const PLANNER_VERSION: &str = "spotify-dry-run-v6";
 const INTAKE_SURFACES: [(&str, &str); 3] = [
     (
         "Inbox",
@@ -52,6 +52,8 @@ pub struct PlanReport {
     pub additions: usize,
     /// Explicit Excluded Tracks restores.
     pub restorations: usize,
+    /// Approved cover uploads.
+    pub artwork_uploads: usize,
     /// New Excluded Tracks entries inferred from verified managed state.
     pub exclusions: usize,
     /// Provider-drift or inbox removals.
@@ -144,6 +146,8 @@ struct Summary {
     renames: usize,
     additions: usize,
     restorations: usize,
+    #[serde(default)]
+    artwork_uploads: usize,
     exclusions: usize,
     removals: usize,
     retirements: usize,
@@ -166,6 +170,7 @@ pub async fn create(
     let desired = desired_playlists(database, account_id, proposal_id).await?;
     let current = current_managed_playlists(database, account_id, snapshot_id).await?;
     let mut operations = playlist_diff(&desired, &current);
+    operations.extend(artwork_operations(database, account_id, proposal_id, &current).await?);
     operations.extend(intake_surface_operations(database, account_id, snapshot_id).await?);
     operations.extend(cleanup_operations(database, account_id, snapshot_id, proposal_id).await?);
     operations.extend(external_cleanup_operations(database, account_id).await?);
@@ -264,6 +269,57 @@ pub async fn create(
         summary,
         created_at,
     ))
+}
+
+async fn artwork_operations(
+    database: &Database,
+    account_id: Uuid,
+    proposal_id: Uuid,
+    current: &BTreeMap<Uuid, CurrentPlaylist>,
+) -> Result<Vec<PlanOperationInput>> {
+    let rows = sqlx::query(
+        "SELECT artifact.playlist_id, playlist.concept_id, concept.stable_key,
+                artifact.playlist_name, artifact.artifact_path,
+                artifact.content_sha256, artifact.batch_id
+         FROM playlist_artwork_batches batch
+         JOIN playlist_artwork_artifacts artifact ON artifact.batch_id = batch.id
+         JOIN playlists playlist ON playlist.id = artifact.playlist_id
+         JOIN playlist_concepts concept ON concept.id = playlist.concept_id
+         WHERE batch.provider_account_id = $1
+           AND batch.proposal_generation_id = $2 AND batch.state = 'approved'
+         ORDER BY lower(artifact.playlist_name), artifact.playlist_id",
+    )
+    .bind(account_id)
+    .bind(proposal_id)
+    .fetch_all(database.pool())
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            let concept_id: Uuid = row.try_get("concept_id")?;
+            let observed = current.get(&concept_id);
+            let stable_key: String = row.try_get("stable_key")?;
+            Ok(PlanOperationInput {
+                phase: "publish".to_owned(),
+                operation_type: "upload_artwork".to_owned(),
+                operation_key: format!(
+                    "artwork:{stable_key}:{}",
+                    row.try_get::<String, _>("content_sha256")?
+                ),
+                playlist_id: Some(row.try_get("playlist_id")?),
+                provider_playlist_id: observed.map(|value| value.provider_playlist_id),
+                playlist_name: row.try_get("playlist_name")?,
+                spotify_playlist_id: observed.map(|value| value.spotify_id.clone()),
+                spotify_track_id: None,
+                payload: json!({
+                    "artifact_path": row.try_get::<String, _>("artifact_path")?,
+                    "content_sha256": row.try_get::<String, _>("content_sha256")?,
+                    "artwork_batch_id": row.try_get::<Uuid, _>("batch_id")?,
+                    "stable_key": stable_key,
+                }),
+                safety: json!({"destructive": false, "requires_approved_artwork": true}),
+            })
+        })
+        .collect()
 }
 
 async fn intake_surface_operations(
@@ -551,7 +607,8 @@ async fn cleanup_operations(
           AND exclusion.restored_at IS NULL
          WHERE account_playlist.provider_account_id = $1
            AND account_playlist.present_in_latest_snapshot
-           AND account_playlist.signal_class IN ('semantic_legacy', 'intake')
+           AND account_playlist.signal_class IN
+               ('semantic_legacy', 'intake', 'ignored', 'transport')
          ORDER BY lower(snapshot.name), provider.provider_playlist_id, membership.position",
     )
     .bind(account_id)
@@ -602,7 +659,7 @@ async fn cleanup_operations(
         let all_resolved = tracks.iter().all(|track| track.3 || track.4);
         let assigned_tracks = tracks.iter().filter(|track| track.3).count();
         let excluded_tracks = tracks.iter().filter(|track| track.4).count();
-        if class == "semantic_legacy" {
+        if class != "intake" {
             operations.push(PlanOperationInput {
                 phase: "retirement".to_owned(),
                 operation_type: "archive_playlist".to_owned(),
@@ -613,7 +670,7 @@ async fn cleanup_operations(
                 spotify_playlist_id: Some(spotify_id),
                 spotify_track_id: None,
                 payload: json!({"track_count": tracks.len(), "assigned_tracks": assigned_tracks,
-                    "excluded_tracks": excluded_tracks,
+                    "excluded_tracks": excluded_tracks, "source_class": class,
                     "expected_snapshot_id": signature, "container_only": true}),
                 safety: json!({"destructive": true, "deferred": true,
                     "requires_separate_approval": true,
@@ -1007,6 +1064,7 @@ fn summarize(operations: &[PlanOperationInput]) -> Summary {
         renames: count_kind(operations, "rename_playlist"),
         additions: count_kind(operations, "add_track"),
         restorations: count_kind(operations, "restore_track"),
+        artwork_uploads: count_kind(operations, "upload_artwork"),
         exclusions: count_kind(operations, "exclude_track"),
         removals: count_kind(operations, "remove_track"),
         retirements: count_kind(operations, "archive_playlist"),
@@ -1040,6 +1098,7 @@ fn report(
         renames: summary.renames,
         additions: summary.additions,
         restorations: summary.restorations,
+        artwork_uploads: summary.artwork_uploads,
         exclusions: summary.exclusions,
         removals: summary.removals,
         retirements: summary.retirements,
@@ -1072,10 +1131,11 @@ fn operation_rank(operation_type: &str) -> u8 {
         "rename_playlist" => 1,
         "add_track" | "restore_track" => 2,
         "reorder_track" => 3,
-        "exclude_track" => 4,
-        "remove_track" => 5,
-        "remove_external_playlist" => 6,
-        "archive_playlist" => 7,
+        "upload_artwork" => 4,
+        "exclude_track" => 5,
+        "remove_track" => 6,
+        "remove_external_playlist" => 7,
+        "archive_playlist" => 8,
         _ => 8,
     }
 }

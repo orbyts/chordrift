@@ -8,6 +8,8 @@
 
 /// Account-scoped canonical library analysis.
 pub mod analysis;
+/// Gated, resumable execution of approved Spotify synchronization plans.
+pub mod apply;
 /// Read-only proof that an immutable sync plan is safe for a future apply engine.
 pub mod apply_readiness;
 /// Local-only, content-addressed playlist artwork approval records.

@@ -337,6 +337,15 @@ playlist. Apple Music publishing and Spatial Audio companions remain a
 subsequent provider
 milestone unless the deferred provider track is completed earlier.
 
+Status: complete. The v6 planner and v2 readiness probe gate durable phase
+executions, per-operation retry history, provider target resolution, exact
+retirement approval, post-pull convergence proof, and batched Spotify requests.
+The first live migration published 14 canonical playlists with approved covers
+and 884 ordered memberships, preserved three intake surfaces, archived external
+bookmarks before cleanup, and retired every approved legacy and utility
+container. The final imported Spotify surface contains 19 purposeful playlists
+with zero duplicate entries and no pending destructive operations.
+
 ## Post-v0.1 product direction — Review UI
 
 If the personal workflow proves useful, build a provider-neutral review UI

@@ -1,0 +1,1330 @@
+//! Gated, resumable execution of one phase from an approved Spotify plan.
+
+use std::{collections::BTreeMap, fs, io::Cursor, path::PathBuf};
+
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use chrono::{DateTime, Utc};
+use image::{codecs::jpeg::JpegEncoder, imageops::FilterType};
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use sqlx::Row;
+use storexa::Database;
+use uuid::Uuid;
+
+use crate::{
+    ChordriftError, Result,
+    providers::spotify::{self, MutationSession},
+};
+
+const APPLY_VERSION: &str = "spotify-apply-v1";
+const READINESS_VERSION: &str = "spotify-apply-readiness-v2";
+const PLANNER_VERSION: &str = "spotify-dry-run-v6";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Independently gated execution phases in a synchronization plan.
+pub enum ApplyPhase {
+    /// Create and populate canonical surfaces, then upload approved covers.
+    Publish,
+    /// Apply non-deferred managed drift and Neon-only exclusions.
+    Reconcile,
+    /// Clear verified intake entries and remove approved external relationships.
+    Cleanup,
+    /// Remove separately approved legacy playlist relationships.
+    Retirement,
+}
+
+impl ApplyPhase {
+    /// Returns the stable database representation.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Publish => "publish",
+            Self::Reconcile => "reconcile",
+            Self::Cleanup => "cleanup",
+            Self::Retirement => "retirement",
+        }
+    }
+
+    fn destructive(self) -> bool {
+        matches!(self, Self::Cleanup | Self::Retirement)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+/// Summary of one completed or resumed phase execution.
+pub struct ApplyReport {
+    /// Durable apply execution identity.
+    pub apply_run_id: Uuid,
+    /// Immutable dry-run plan being executed.
+    pub plan_id: Uuid,
+    /// Exact ready assessment confirmed by the user.
+    pub assessment_id: Uuid,
+    /// Executed safety phase.
+    pub phase: String,
+    /// Current execution state.
+    pub status: String,
+    /// Planned operation count in the phase.
+    pub operation_count: usize,
+    /// Successfully executed or reconciled operations.
+    pub succeeded_count: usize,
+    /// Failed operations.
+    pub failed_count: usize,
+    /// Whether this execution resumed a durable prior run.
+    pub resumed: bool,
+    /// Original execution start time.
+    pub started_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+/// Local validation and request estimate for one immutable publish plan.
+pub struct PublishPreflightReport {
+    /// Immutable plan inspected by the preflight.
+    pub plan_id: Uuid,
+    /// Playlist containers that the plan will create.
+    pub playlist_creates: usize,
+    /// Canonical playlists whose exact ordered membership will be written.
+    pub populated_playlists: usize,
+    /// Planned canonical track memberships.
+    pub playlist_entries: usize,
+    /// Replace/append requests needed for those memberships.
+    pub playlist_item_writes: usize,
+    /// Approved covers decoded, hash-checked, and converted successfully.
+    pub artwork_uploads: usize,
+    /// Largest converted base64 JPEG body.
+    pub largest_artwork_bytes: usize,
+    /// Estimated Spotify reads performed by the publish phase.
+    pub estimated_spotify_reads: usize,
+    /// Estimated Spotify writes performed by the publish phase.
+    pub estimated_spotify_writes: usize,
+}
+
+/// Validates every local publish artifact and estimates requests without contacting Spotify.
+pub async fn preflight_publish(
+    database: &Database,
+    account_label: &str,
+    requested_plan: Option<Uuid>,
+) -> Result<PublishPreflightReport> {
+    let plan = sqlx::query(
+        "SELECT run.id, run.planner_version, run.source_snapshot_id,
+                (SELECT id FROM provider_library_snapshots latest
+                 WHERE latest.provider_account_id = account.id
+                 ORDER BY captured_at DESC, id DESC LIMIT 1) AS latest_snapshot_id
+         FROM sync_runs run
+         JOIN provider_accounts account ON account.id = run.provider_account_id
+         WHERE account.provider = 'spotify' AND account.account_label = $1
+           AND ($2::uuid IS NULL OR run.id = $2)
+         ORDER BY run.started_at DESC, run.id DESC LIMIT 1",
+    )
+    .bind(account_label)
+    .bind(requested_plan)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("no matching Spotify plan exists"))?;
+    let plan_id: Uuid = plan.try_get("id")?;
+    if plan.try_get::<String, _>("planner_version")? != PLANNER_VERSION
+        || plan.try_get::<Uuid, _>("source_snapshot_id")?
+            != plan.try_get::<Uuid, _>("latest_snapshot_id")?
+    {
+        return Err(configuration("preflight requires a current v6 plan"));
+    }
+
+    let playlist_creates: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM sync_operations
+         WHERE sync_run_id = $1 AND phase = 'publish' AND operation_type = 'create_playlist'",
+    )
+    .bind(plan_id)
+    .fetch_one(database.pool())
+    .await?;
+    let groups = sqlx::query(
+        "SELECT playlist_id, count(*)::bigint AS entries
+         FROM sync_operations
+         WHERE sync_run_id = $1 AND phase = 'publish' AND operation_type = 'add_track'
+         GROUP BY playlist_id",
+    )
+    .bind(plan_id)
+    .fetch_all(database.pool())
+    .await?;
+    let playlist_entries = groups.iter().try_fold(0usize, |total, row| {
+        let entries: i64 = row.try_get("entries")?;
+        usize::try_from(entries)
+            .map(|entries| total + entries)
+            .map_err(|_| configuration("playlist entry count exceeds limits"))
+    })?;
+    let playlist_item_writes = groups.iter().try_fold(0usize, |total, row| {
+        let entries: i64 = row.try_get("entries")?;
+        let entries = usize::try_from(entries)
+            .map_err(|_| configuration("playlist entry count exceeds limits"))?;
+        Ok::<usize, ChordriftError>(total + entries.div_ceil(100))
+    })?;
+
+    let artwork = sqlx::query(
+        "SELECT payload FROM sync_operations
+         WHERE sync_run_id = $1 AND phase = 'publish' AND operation_type = 'upload_artwork'
+         ORDER BY operation_key",
+    )
+    .bind(plan_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut largest_artwork_bytes = 0;
+    for row in &artwork {
+        let payload: Value = row.try_get("payload")?;
+        let detail = payload
+            .get("detail")
+            .ok_or_else(|| configuration("artwork operation has no detail payload"))?;
+        let path = PathBuf::from(detail_string(detail, "artifact_path")?);
+        let encoded = spotify_jpeg(&path, detail_string(detail, "content_sha256")?)?;
+        largest_artwork_bytes = largest_artwork_bytes.max(encoded.len());
+    }
+    let playlist_creates = usize::try_from(playlist_creates)
+        .map_err(|_| configuration("playlist create count exceeds limits"))?;
+    let estimated_spotify_reads = 1 + groups.len();
+    let estimated_spotify_writes = playlist_creates + playlist_item_writes + artwork.len();
+    Ok(PublishPreflightReport {
+        plan_id,
+        playlist_creates,
+        populated_playlists: groups.len(),
+        playlist_entries,
+        playlist_item_writes,
+        artwork_uploads: artwork.len(),
+        largest_artwork_bytes,
+        estimated_spotify_reads,
+        estimated_spotify_writes,
+    })
+}
+
+/// Exact durable approval for the retirement operations in one immutable plan.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RetirementApproval {
+    /// Approved plan.
+    pub plan_id: Uuid,
+    /// Number of retirement operations covered.
+    pub operation_count: usize,
+    /// Approval time.
+    pub approved_at: DateTime<Utc>,
+}
+
+/// Approves every retirement operation in one exact, current plan.
+pub async fn approve_retirement(
+    database: &Database,
+    account_label: &str,
+    plan_id: Uuid,
+    confirmation: Uuid,
+) -> Result<RetirementApproval> {
+    if plan_id != confirmation {
+        return Err(configuration("--confirm must exactly match the plan ID"));
+    }
+    let row = sqlx::query(
+        "SELECT account.id AS account_id, run.input_hash, run.planner_version,
+                run.source_snapshot_id,
+                (SELECT id FROM provider_library_snapshots latest
+                 WHERE latest.provider_account_id = account.id
+                 ORDER BY captured_at DESC, id DESC LIMIT 1) AS latest_snapshot_id,
+                (SELECT count(*)::bigint FROM sync_operations operation
+                 WHERE operation.sync_run_id = run.id AND operation.phase = 'retirement') AS operations
+         FROM sync_runs run
+         JOIN provider_accounts account ON account.id = run.provider_account_id
+         WHERE run.id = $1 AND account.provider = 'spotify' AND account.account_label = $2",
+    )
+    .bind(plan_id)
+    .bind(account_label)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("no matching Spotify plan exists"))?;
+    if row.try_get::<String, _>("planner_version")? != PLANNER_VERSION
+        || row.try_get::<Uuid, _>("source_snapshot_id")?
+            != row.try_get::<Uuid, _>("latest_snapshot_id")?
+    {
+        return Err(configuration(
+            "retirement approval requires a current v6 plan",
+        ));
+    }
+    let count: i64 = row.try_get("operations")?;
+    if count == 0 {
+        return Err(configuration("the plan has no retirement operations"));
+    }
+    let approved_at: DateTime<Utc> = sqlx::query_scalar(
+        "INSERT INTO sync_retirement_approvals
+         (provider_account_id, plan_id, plan_input_hash, operation_count)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (provider_account_id, plan_id) DO UPDATE
+         SET plan_input_hash = EXCLUDED.plan_input_hash
+         RETURNING approved_at",
+    )
+    .bind(row.try_get::<Uuid, _>("account_id")?)
+    .bind(plan_id)
+    .bind(row.try_get::<String, _>("input_hash")?)
+    .bind(i32::try_from(count).map_err(|_| configuration("retirement count exceeds limits"))?)
+    .fetch_one(database.pool())
+    .await?;
+    Ok(RetirementApproval {
+        plan_id,
+        operation_count: count as usize,
+        approved_at,
+    })
+}
+
+#[derive(Clone, Debug)]
+struct Operation {
+    id: Uuid,
+    kind: String,
+    playlist_id: Option<Uuid>,
+    playlist_name: String,
+    spotify_playlist_id: Option<String>,
+    spotify_track_id: Option<String>,
+    detail: Value,
+    status: String,
+}
+
+/// Executes one explicitly confirmed phase after revalidating every durable gate.
+pub async fn execute(
+    database: &Database,
+    account_label: &str,
+    assessment_id: Uuid,
+    phase: ApplyPhase,
+    confirmation: Uuid,
+    allow_destructive: bool,
+) -> Result<ApplyReport> {
+    if confirmation != assessment_id {
+        return Err(configuration(
+            "--confirm must exactly match the apply-readiness assessment ID",
+        ));
+    }
+    if phase.destructive() && !allow_destructive {
+        return Err(configuration(
+            "cleanup and retirement require --allow-destructive in addition to the exact confirmation",
+        ));
+    }
+
+    let gate = load_gate(database, account_label, assessment_id, phase).await?;
+    let session = spotify::mutation_session(account_label).await?;
+    if session.account_id() != gate.provider_account_id {
+        return Err(configuration(
+            "Spotify credential identity does not match the planned Neon account",
+        ));
+    }
+    let (apply_run_id, resumed, completed, started_at) =
+        prepare_run(database, &gate, assessment_id, phase).await?;
+    if completed {
+        return report(database, apply_run_id, true, started_at).await;
+    }
+    let result = execute_phase(database, &session, apply_run_id, phase).await;
+    match result {
+        Ok(()) => {
+            sqlx::query(
+                "UPDATE sync_apply_runs SET status = 'awaiting_pull', finished_at = now(),
+                   succeeded_count = (SELECT count(*) FROM sync_apply_operations
+                                      WHERE apply_run_id = $1 AND status = 'succeeded'),
+                   failed_count = 0, last_error = NULL WHERE id = $1",
+            )
+            .bind(apply_run_id)
+            .execute(database.pool())
+            .await?;
+        }
+        Err(error) => {
+            sqlx::query(
+                "UPDATE sync_apply_operations SET status = 'failed', last_error = $2
+                 WHERE apply_run_id = $1 AND status = 'running'",
+            )
+            .bind(apply_run_id)
+            .bind(error.to_string())
+            .execute(database.pool())
+            .await?;
+            sqlx::query(
+                "UPDATE sync_apply_runs SET status = 'failed', finished_at = now(),
+                   succeeded_count = (SELECT count(*) FROM sync_apply_operations
+                                      WHERE apply_run_id = $1 AND status = 'succeeded'),
+                   failed_count = (SELECT count(*) FROM sync_apply_operations
+                                   WHERE apply_run_id = $1 AND status = 'failed'),
+                   last_error = $2 WHERE id = $1",
+            )
+            .bind(apply_run_id)
+            .bind(error.to_string())
+            .execute(database.pool())
+            .await?;
+            return Err(error);
+        }
+    }
+    report(database, apply_run_id, resumed, started_at).await
+}
+
+/// Shows the latest or selected durable apply execution without contacting Spotify.
+pub async fn show(
+    database: &Database,
+    account_label: &str,
+    requested: Option<Uuid>,
+) -> Result<ApplyReport> {
+    let row = sqlx::query(
+        "SELECT apply.id, apply.started_at
+         FROM sync_apply_runs apply
+         JOIN provider_accounts account ON account.id = apply.provider_account_id
+         WHERE account.provider = 'spotify' AND account.account_label = $1
+           AND ($2::uuid IS NULL OR apply.id = $2)
+         ORDER BY apply.started_at DESC, apply.id DESC LIMIT 1",
+    )
+    .bind(account_label)
+    .bind(requested)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("no matching Spotify apply run exists"))?;
+    report(
+        database,
+        row.try_get("id")?,
+        false,
+        row.try_get("started_at")?,
+    )
+    .await
+}
+
+/// Verifies awaiting publication runs and current canonical state against the newest snapshot.
+///
+/// A run becomes successful only when every canonical playlist has the exact
+/// approved ordered membership. The resulting immutable baseline enables later
+/// user-removal detection and deferred cleanup gates.
+pub async fn verify_pending_publications(
+    database: &Database,
+    account_label: &str,
+) -> Result<usize> {
+    let account_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM provider_accounts
+         WHERE provider = 'spotify' AND account_label = $1",
+    )
+    .bind(account_label)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("Spotify account is not imported"))?;
+    let snapshot_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM provider_library_snapshots WHERE provider_account_id = $1
+         ORDER BY captured_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    let runs = sqlx::query(
+        "SELECT apply.id, plan.proposal_generation_id
+         FROM sync_apply_runs apply
+         JOIN sync_runs plan ON plan.id = apply.plan_id
+         WHERE apply.provider_account_id = $1 AND apply.phase = 'publish'
+           AND apply.status = 'awaiting_pull'
+         ORDER BY apply.started_at, apply.id",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut verified = 0;
+    for run in runs {
+        let run_id: Uuid = run.try_get("id")?;
+        let proposal_id: Uuid = run.try_get("proposal_generation_id")?;
+        if verify_publication(database, account_id, snapshot_id, proposal_id).await? {
+            sqlx::query(
+                "UPDATE sync_apply_runs SET status = 'succeeded', finished_at = now(),
+                 summary = summary || jsonb_build_object('verified_snapshot_id', $2::text)
+                 WHERE id = $1",
+            )
+            .bind(run_id)
+            .bind(snapshot_id)
+            .execute(database.pool())
+            .await?;
+            verified += 1;
+        }
+    }
+    let current_proposal: Option<Uuid> = sqlx::query_scalar(
+        "SELECT plan.proposal_generation_id
+         FROM sync_apply_runs apply
+         JOIN sync_runs plan ON plan.id = apply.plan_id
+         WHERE apply.provider_account_id = $1 AND apply.phase = 'publish'
+           AND apply.status = 'succeeded'
+         ORDER BY apply.started_at DESC, apply.id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?;
+    if let Some(proposal_id) = current_proposal {
+        verify_publication(database, account_id, snapshot_id, proposal_id).await?;
+    }
+    let destructive_runs: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM sync_apply_runs
+         WHERE provider_account_id = $1 AND phase IN ('cleanup', 'retirement')
+           AND status = 'awaiting_pull'
+         ORDER BY started_at, id",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    for run_id in destructive_runs {
+        let remaining: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint
+             FROM sync_apply_operations execution
+             JOIN sync_operations planned ON planned.id = execution.planned_operation_id
+             WHERE execution.apply_run_id = $1 AND (
+                 (planned.operation_type = 'remove_track' AND EXISTS (
+                     SELECT 1
+                     FROM provider_account_playlists account_playlist
+                     JOIN provider_playlists playlist
+                       ON playlist.id = account_playlist.provider_playlist_id
+                     JOIN provider_playlist_tracks membership
+                       ON membership.provider_playlist_id = playlist.id
+                      AND membership.snapshot_id = $3
+                     JOIN provider_tracks track ON track.id = membership.provider_track_id
+                     WHERE account_playlist.provider_account_id = $2
+                       AND playlist.provider_playlist_id = planned.payload->>'spotify_playlist_id'
+                       AND track.provider = 'spotify'
+                       AND track.provider_track_id = planned.payload->>'spotify_track_id'
+                 )) OR
+                 (planned.operation_type IN ('remove_external_playlist', 'archive_playlist')
+                  AND EXISTS (
+                     SELECT 1
+                     FROM provider_account_playlists account_playlist
+                     JOIN provider_playlists playlist
+                       ON playlist.id = account_playlist.provider_playlist_id
+                     WHERE account_playlist.provider_account_id = $2
+                       AND account_playlist.present_in_latest_snapshot
+                       AND playlist.provider_playlist_id = planned.payload->>'spotify_playlist_id'
+                 ))
+             )",
+        )
+        .bind(run_id)
+        .bind(account_id)
+        .bind(snapshot_id)
+        .fetch_one(database.pool())
+        .await?;
+        if remaining == 0 {
+            sqlx::query(
+                "UPDATE sync_apply_runs SET status = 'succeeded', finished_at = now(),
+                 summary = summary || jsonb_build_object('verified_snapshot_id', $2::text)
+                 WHERE id = $1",
+            )
+            .bind(run_id)
+            .bind(snapshot_id)
+            .execute(database.pool())
+            .await?;
+            verified += 1;
+        }
+    }
+    Ok(verified)
+}
+
+async fn verify_publication(
+    database: &Database,
+    account_id: Uuid,
+    snapshot_id: Uuid,
+    proposal_id: Uuid,
+) -> Result<bool> {
+    type Desired = (Uuid, Vec<(i32, Uuid)>);
+    let desired_rows = sqlx::query(
+        "SELECT playlist.concept_id, membership.position, membership.track_id
+         FROM playlists playlist
+         JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+         WHERE playlist.generation_id = $1
+         ORDER BY playlist.concept_id, membership.position",
+    )
+    .bind(proposal_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut desired: BTreeMap<Uuid, Desired> = BTreeMap::new();
+    for row in desired_rows {
+        let concept: Uuid = row.try_get("concept_id")?;
+        desired
+            .entry(concept)
+            .or_insert_with(|| (concept, Vec::new()))
+            .1
+            .push((row.try_get("position")?, row.try_get("track_id")?));
+    }
+    let current_rows = sqlx::query(
+        "SELECT provider.id AS provider_playlist_id, provider.concept_id,
+                membership.position, track.track_id
+         FROM provider_account_playlists account_playlist
+         JOIN provider_playlists provider ON provider.id = account_playlist.provider_playlist_id
+         LEFT JOIN provider_playlist_tracks membership
+           ON membership.provider_playlist_id = provider.id AND membership.snapshot_id = $2
+         LEFT JOIN provider_tracks track ON track.id = membership.provider_track_id
+         WHERE account_playlist.provider_account_id = $1
+           AND account_playlist.present_in_latest_snapshot
+           AND provider.concept_id IS NOT NULL
+         ORDER BY provider.concept_id, membership.position",
+    )
+    .bind(account_id)
+    .bind(snapshot_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut current: BTreeMap<Uuid, (Uuid, Vec<(i32, Uuid)>)> = BTreeMap::new();
+    for row in current_rows {
+        let concept: Uuid = row.try_get("concept_id")?;
+        let entry = current.entry(concept).or_insert_with(|| {
+            (
+                row.try_get("provider_playlist_id")
+                    .expect("selected provider playlist ID"),
+                Vec::new(),
+            )
+        });
+        if let (Some(position), Some(track_id)) = (
+            row.try_get::<Option<i32>, _>("position")?,
+            row.try_get::<Option<Uuid>, _>("track_id")?,
+        ) {
+            entry.1.push((position, track_id));
+        }
+    }
+    if desired.is_empty()
+        || desired.len() != current.len()
+        || desired.iter().any(|(concept, (_, tracks))| {
+            current.get(concept).is_none_or(|value| &value.1 != tracks)
+        })
+    {
+        return Ok(false);
+    }
+    let mut tx = database.pool().begin().await?;
+    for (concept, (_, tracks)) in desired {
+        let provider_playlist_id = current[&concept].0;
+        let bytes = serde_json::to_vec(&tracks)?;
+        let hash = format!("{:x}", Sha256::digest(bytes));
+        let verification_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO managed_playlist_verifications
+             (provider_account_id, provider_playlist_id, concept_id,
+              proposal_generation_id, verified_snapshot_id, desired_state_hash)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (provider_account_id, provider_playlist_id, verified_snapshot_id)
+             DO UPDATE SET desired_state_hash = EXCLUDED.desired_state_hash
+             RETURNING id",
+        )
+        .bind(account_id)
+        .bind(provider_playlist_id)
+        .bind(concept)
+        .bind(proposal_id)
+        .bind(snapshot_id)
+        .bind(hash)
+        .fetch_one(&mut *tx)
+        .await?;
+        for (position, track_id) in tracks {
+            sqlx::query(
+                "INSERT INTO managed_playlist_verified_tracks
+                 (verification_id, track_id, position) VALUES ($1, $2, $3)
+                 ON CONFLICT (verification_id, track_id) DO NOTHING",
+            )
+            .bind(verification_id)
+            .bind(track_id)
+            .bind(position)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+    tx.commit().await?;
+    Ok(true)
+}
+
+struct Gate {
+    account_id: Uuid,
+    provider_account_id: String,
+    plan_id: Uuid,
+    plan_hash: String,
+}
+
+async fn load_gate(
+    database: &Database,
+    account_label: &str,
+    assessment_id: Uuid,
+    phase: ApplyPhase,
+) -> Result<Gate> {
+    let row = sqlx::query(
+        "SELECT account.id AS account_id, account.provider_account_id,
+                assessment.sync_run_id AS plan_id, assessment.status AS readiness_status,
+                assessment.assessment_version, run.planner_version, run.input_hash,
+                run.source_snapshot_id, run.proposal_generation_id,
+                (SELECT id FROM provider_library_snapshots latest
+                 WHERE latest.provider_account_id = account.id
+                 ORDER BY captured_at DESC, id DESC LIMIT 1) AS latest_snapshot_id
+         FROM sync_readiness_assessments assessment
+         JOIN provider_accounts account ON account.id = assessment.provider_account_id
+         JOIN sync_runs run ON run.id = assessment.sync_run_id
+         WHERE assessment.id = $1 AND account.provider = 'spotify'
+           AND account.account_label = $2",
+    )
+    .bind(assessment_id)
+    .bind(account_label)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("no matching readiness assessment exists for this account"))?;
+    if row.try_get::<String, _>("readiness_status")? != "ready"
+        || row.try_get::<String, _>("assessment_version")? != READINESS_VERSION
+        || row.try_get::<String, _>("planner_version")? != PLANNER_VERSION
+    {
+        return Err(configuration(
+            "apply requires a ready v0.1.0 assessment of a v6 plan",
+        ));
+    }
+    if row.try_get::<Uuid, _>("source_snapshot_id")?
+        != row.try_get::<Uuid, _>("latest_snapshot_id")?
+    {
+        return Err(configuration(
+            "the assessed Spotify snapshot is stale; pull, plan, and assess again",
+        ));
+    }
+    let plan_id: Uuid = row.try_get("plan_id")?;
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM sync_operations
+         WHERE sync_run_id = $1 AND phase = $2",
+    )
+    .bind(plan_id)
+    .bind(phase.as_str())
+    .fetch_one(database.pool())
+    .await?;
+    if count == 0 {
+        return Err(configuration(
+            "the selected plan has no operations in this phase",
+        ));
+    }
+    if phase.destructive() {
+        let proposal_id: Uuid = row.try_get("proposal_generation_id")?;
+        let snapshot_id: Uuid = row.try_get("latest_snapshot_id")?;
+        let verification = sqlx::query(
+            "SELECT
+               (SELECT count(*)::bigint FROM playlists WHERE generation_id = $2) AS required,
+               count(DISTINCT verification.concept_id)::bigint AS verified
+             FROM managed_playlist_verifications verification
+             WHERE verification.provider_account_id = $1
+               AND verification.proposal_generation_id = $2
+               AND verification.verified_snapshot_id = $3",
+        )
+        .bind(row.try_get::<Uuid, _>("account_id")?)
+        .bind(proposal_id)
+        .bind(snapshot_id)
+        .fetch_one(database.pool())
+        .await?;
+        if verification.try_get::<i64, _>("required")?
+            != verification.try_get::<i64, _>("verified")?
+        {
+            return Err(configuration(
+                "destructive phases require every canonical destination to be verified in the current pulled snapshot",
+            ));
+        }
+    }
+    if phase == ApplyPhase::Retirement {
+        let approved: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sync_retirement_approvals
+             WHERE provider_account_id = $1 AND plan_id = $2
+               AND plan_input_hash = $3)",
+        )
+        .bind(row.try_get::<Uuid, _>("account_id")?)
+        .bind(plan_id)
+        .bind(row.try_get::<String, _>("input_hash")?)
+        .fetch_one(database.pool())
+        .await?;
+        if !approved {
+            return Err(configuration(
+                "retirement requires `chordrift sync retirement-approve` for this exact plan",
+            ));
+        }
+    }
+    Ok(Gate {
+        account_id: row.try_get("account_id")?,
+        provider_account_id: row.try_get("provider_account_id")?,
+        plan_id,
+        plan_hash: row.try_get("input_hash")?,
+    })
+}
+
+async fn prepare_run(
+    database: &Database,
+    gate: &Gate,
+    assessment_id: Uuid,
+    phase: ApplyPhase,
+) -> Result<(Uuid, bool, bool, DateTime<Utc>)> {
+    let input_hash = format!(
+        "{:x}",
+        Sha256::digest(
+            format!(
+                "{}:{assessment_id}:{}:{APPLY_VERSION}",
+                gate.plan_hash,
+                phase.as_str()
+            )
+            .as_bytes()
+        )
+    );
+    if let Some(row) = sqlx::query(
+        "SELECT id, status, started_at FROM sync_apply_runs
+         WHERE provider_account_id = $1 AND plan_id = $2
+           AND readiness_assessment_id = $3 AND apply_version = $4 AND phase = $5",
+    )
+    .bind(gate.account_id)
+    .bind(gate.plan_id)
+    .bind(assessment_id)
+    .bind(APPLY_VERSION)
+    .bind(phase.as_str())
+    .fetch_optional(database.pool())
+    .await?
+    {
+        let id: Uuid = row.try_get("id")?;
+        let status: String = row.try_get("status")?;
+        if status == "succeeded" {
+            return Ok((id, true, true, row.try_get("started_at")?));
+        }
+        sqlx::query(
+            "UPDATE sync_apply_runs SET status = 'running', finished_at = NULL,
+             last_error = NULL WHERE id = $1",
+        )
+        .bind(id)
+        .execute(database.pool())
+        .await?;
+        return Ok((id, true, false, row.try_get("started_at")?));
+    }
+    let mut tx = database.pool().begin().await?;
+    let row = sqlx::query(
+        "INSERT INTO sync_apply_runs
+         (provider_account_id, plan_id, readiness_assessment_id, apply_version,
+          phase, input_hash, operation_count)
+         SELECT $1, $2, $3, $4, $5, $6, count(*)::integer
+         FROM sync_operations WHERE sync_run_id = $2 AND phase = $5
+         RETURNING id, started_at",
+    )
+    .bind(gate.account_id)
+    .bind(gate.plan_id)
+    .bind(assessment_id)
+    .bind(APPLY_VERSION)
+    .bind(phase.as_str())
+    .bind(input_hash)
+    .fetch_one(&mut *tx)
+    .await?;
+    let id: Uuid = row.try_get("id")?;
+    sqlx::query(
+        "INSERT INTO sync_apply_operations
+         (apply_run_id, planned_operation_id, sequence, operation_key)
+         SELECT $1, id, sequence, operation_key FROM sync_operations
+         WHERE sync_run_id = $2 AND phase = $3 ORDER BY sequence",
+    )
+    .bind(id)
+    .bind(gate.plan_id)
+    .bind(phase.as_str())
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok((id, false, false, row.try_get("started_at")?))
+}
+
+async fn execute_phase(
+    database: &Database,
+    session: &MutationSession,
+    apply_run_id: Uuid,
+    phase: ApplyPhase,
+) -> Result<()> {
+    let operations = operations(database, apply_run_id).await?;
+    match phase {
+        ApplyPhase::Publish => execute_publish(database, session, apply_run_id, operations).await,
+        ApplyPhase::Reconcile => {
+            execute_reconcile(database, session, apply_run_id, operations).await
+        }
+        ApplyPhase::Cleanup | ApplyPhase::Retirement => {
+            execute_destructive(database, session, apply_run_id, operations).await
+        }
+    }
+}
+
+async fn execute_publish(
+    database: &Database,
+    session: &MutationSession,
+    run_id: Uuid,
+    initial_operations: Vec<Operation>,
+) -> Result<()> {
+    let live = session.playlists().await?;
+    for operation in initial_operations.iter().filter(|op| {
+        op.status != "succeeded"
+            && matches!(op.kind.as_str(), "create_playlist" | "rename_playlist")
+    }) {
+        mark_running(database, run_id, operation).await?;
+        let target = if operation.kind == "create_playlist" {
+            if let Some(existing) = resolved_target(database, run_id, operation.playlist_id).await?
+            {
+                existing
+            } else {
+                let description = detail_string(&operation.detail, "description")?;
+                let matches: Vec<_> = live
+                    .iter()
+                    .filter(|playlist| {
+                        playlist.owner.id == session.user_id()
+                            && playlist.name == operation.playlist_name
+                            && playlist.description.as_deref().unwrap_or("") == description
+                    })
+                    .collect();
+                let playlist = match matches.as_slice() {
+                    [existing] => (*existing).clone(),
+                    [] => {
+                        session
+                            .create_playlist(
+                                &operation.playlist_name,
+                                description,
+                                operation
+                                    .detail
+                                    .get("public")
+                                    .and_then(Value::as_bool)
+                                    .unwrap_or(false),
+                            )
+                            .await?
+                    }
+                    _ => {
+                        return Err(configuration(
+                            "multiple owned playlists match a pending create",
+                        ));
+                    }
+                };
+                persist_target(
+                    database,
+                    run_id,
+                    operation,
+                    &playlist.id,
+                    playlist.snapshot_id.as_deref(),
+                )
+                .await?;
+                playlist.id
+            }
+        } else {
+            let target = target_for(database, run_id, operation).await?;
+            session
+                .update_playlist(&target, &operation.playlist_name, None)
+                .await?;
+            target
+        };
+        mark_succeeded(database, run_id, operation, &target, json!({})).await?;
+    }
+
+    let current_operations = operations(database, run_id).await?;
+    let mut additions: BTreeMap<String, Vec<&Operation>> = BTreeMap::new();
+    for operation in current_operations.iter().filter(|op| {
+        op.status != "succeeded" && matches!(op.kind.as_str(), "add_track" | "restore_track")
+    }) {
+        let target = target_for(database, run_id, operation).await?;
+        additions.entry(target).or_default().push(operation);
+    }
+    for (target, mut pending) in additions {
+        pending.sort_by_key(|operation| {
+            operation
+                .detail
+                .get("position")
+                .and_then(Value::as_i64)
+                .unwrap_or(i64::MAX)
+        });
+        let live_items = session.playlist_items(&target).await?;
+        let playlist_id = pending
+            .first()
+            .and_then(|operation| operation.playlist_id)
+            .ok_or_else(|| configuration("planned canonical addition has no playlist identity"))?;
+        let desired: Vec<String> = sqlx::query_scalar(
+            "SELECT provider.provider_track_id
+             FROM playlist_tracks membership
+             JOIN provider_tracks provider ON provider.track_id = membership.track_id
+              AND provider.provider = 'spotify'
+             WHERE membership.playlist_id = $1
+             ORDER BY membership.position",
+        )
+        .bind(playlist_id)
+        .fetch_all(database.pool())
+        .await?;
+        if live_items == desired {
+            for operation in &pending {
+                mark_succeeded(
+                    database,
+                    run_id,
+                    operation,
+                    &target,
+                    json!({"reused_exact_live_membership": true}),
+                )
+                .await?;
+            }
+            continue;
+        }
+        for operation in &pending {
+            if operation.spotify_track_id.is_none() {
+                return Err(configuration(
+                    "planned track addition has no Spotify track ID",
+                ));
+            }
+            if operation.status != "succeeded" {
+                mark_running(database, run_id, operation).await?;
+            }
+        }
+        let first = desired.len().min(100);
+        let mut snapshot = session.replace_items(&target, &desired[..first]).await?;
+        for chunk in desired[first..].chunks(100) {
+            snapshot = session.add_items(&target, chunk, None).await?;
+        }
+        for operation in &pending {
+            mark_succeeded(
+                database,
+                run_id,
+                operation,
+                &target,
+                json!({"snapshot_id": snapshot, "exact_order_replaced": true}),
+            )
+            .await?;
+        }
+    }
+
+    let artwork_operations = operations(database, run_id).await?;
+    for operation in artwork_operations
+        .iter()
+        .filter(|op| op.status != "succeeded" && op.kind == "upload_artwork")
+    {
+        let target = target_for(database, run_id, operation).await?;
+        mark_running(database, run_id, operation).await?;
+        let path = PathBuf::from(detail_string(&operation.detail, "artifact_path")?);
+        let encoded = spotify_jpeg(&path, detail_string(&operation.detail, "content_sha256")?)?;
+        session.upload_cover(&target, &encoded).await?;
+        mark_succeeded(
+            database,
+            run_id,
+            operation,
+            &target,
+            json!({"source_sha256": operation.detail.get("content_sha256"), "jpeg_base64_bytes": encoded.len()}),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+async fn execute_reconcile(
+    database: &Database,
+    session: &MutationSession,
+    run_id: Uuid,
+    operations: Vec<Operation>,
+) -> Result<()> {
+    for operation in operations
+        .iter()
+        .filter(|op| op.status != "succeeded" && op.kind == "exclude_track")
+    {
+        mark_running(database, run_id, operation).await?;
+        sqlx::query(
+            "INSERT INTO excluded_tracks
+                 (provider_account_id, track_id, source_provider,
+                  source_provider_playlist_id, previous_concept_id, excluded_at,
+                  exclusion_reason)
+                 SELECT run.provider_account_id, provider_track.track_id, 'spotify',
+                        planned.provider_playlist_id,
+                        (planned.payload->'detail'->>'previous_concept_id')::uuid,
+                        now(), 'removed_from_verified_managed_playlist'
+                 FROM sync_apply_runs run
+                 JOIN sync_operations planned ON planned.id = $2
+                 JOIN provider_tracks provider_track
+                   ON provider_track.provider = 'spotify'
+                  AND provider_track.provider_track_id = planned.payload->>'spotify_track_id'
+                 WHERE run.id = $1
+                 ON CONFLICT (provider_account_id, track_id) WHERE restored_at IS NULL DO NOTHING",
+        )
+        .bind(run_id)
+        .bind(operation.id)
+        .execute(database.pool())
+        .await?;
+        mark_succeeded(
+            database,
+            run_id,
+            operation,
+            "neon",
+            json!({"neon_only": true}),
+        )
+        .await?;
+    }
+    let mut removals: BTreeMap<String, Vec<&Operation>> = BTreeMap::new();
+    for operation in operations
+        .iter()
+        .filter(|op| op.status != "succeeded" && op.kind == "remove_track")
+    {
+        let target = target_for(database, run_id, operation).await?;
+        mark_running(database, run_id, operation).await?;
+        removals.entry(target).or_default().push(operation);
+    }
+    for (target, pending) in removals {
+        let mut expected = pending.first().and_then(|operation| {
+            detail_optional_string(&operation.detail, "expected_snapshot_id").map(str::to_owned)
+        });
+        for chunk in pending.chunks(100) {
+            let tracks = chunk
+                .iter()
+                .map(|operation| {
+                    operation
+                        .spotify_track_id
+                        .clone()
+                        .ok_or_else(|| configuration("planned removal has no Spotify track ID"))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let snapshot = session
+                .remove_items(&target, &tracks, expected.as_deref())
+                .await?;
+            for operation in chunk {
+                mark_succeeded(
+                    database,
+                    run_id,
+                    operation,
+                    &target,
+                    json!({"snapshot_id": snapshot}),
+                )
+                .await?;
+            }
+            expected = Some(snapshot);
+        }
+    }
+    Ok(())
+}
+
+async fn execute_destructive(
+    database: &Database,
+    session: &MutationSession,
+    run_id: Uuid,
+    operations: Vec<Operation>,
+) -> Result<()> {
+    let track_removals = operations
+        .iter()
+        .filter(|operation| operation.kind == "remove_track")
+        .cloned()
+        .collect();
+    execute_reconcile(database, session, run_id, track_removals).await?;
+    let relationships = operations
+        .iter()
+        .filter(|operation| {
+            operation.status != "succeeded"
+                && matches!(
+                    operation.kind.as_str(),
+                    "remove_external_playlist" | "archive_playlist"
+                )
+        })
+        .collect::<Vec<_>>();
+    for chunk in relationships.chunks(40) {
+        let targets = chunk
+            .iter()
+            .map(|operation| {
+                operation.spotify_playlist_id.clone().ok_or_else(|| {
+                    configuration("planned library removal has no Spotify playlist ID")
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        for operation in chunk {
+            mark_running(database, run_id, operation).await?;
+        }
+        session.remove_library_playlists(&targets).await?;
+        for (operation, target) in chunk.iter().zip(&targets) {
+            mark_succeeded(
+                database,
+                run_id,
+                operation,
+                target,
+                json!({"relationship_only": true}),
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn operations(database: &Database, run_id: Uuid) -> Result<Vec<Operation>> {
+    let rows = sqlx::query(
+        "SELECT planned.id, planned.sequence, planned.operation_type,
+                planned.operation_key, planned.playlist_id, planned.payload,
+                execution.status
+         FROM sync_apply_operations execution
+         JOIN sync_operations planned ON planned.id = execution.planned_operation_id
+         WHERE execution.apply_run_id = $1 ORDER BY planned.sequence",
+    )
+    .bind(run_id)
+    .fetch_all(database.pool())
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            let payload: Value = row.try_get("payload")?;
+            Ok(Operation {
+                id: row.try_get("id")?,
+                kind: row.try_get("operation_type")?,
+                playlist_id: row.try_get("playlist_id")?,
+                playlist_name: payload
+                    .get("playlist_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-")
+                    .to_owned(),
+                spotify_playlist_id: payload
+                    .get("spotify_playlist_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                spotify_track_id: payload
+                    .get("spotify_track_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                detail: payload.get("detail").cloned().unwrap_or_else(|| json!({})),
+                status: row.try_get("status")?,
+            })
+        })
+        .collect()
+}
+
+async fn resolved_target(
+    database: &Database,
+    run_id: Uuid,
+    playlist_id: Option<Uuid>,
+) -> Result<Option<String>> {
+    let Some(playlist_id) = playlist_id else {
+        return Ok(None);
+    };
+    sqlx::query_scalar(
+        "SELECT spotify_playlist_id FROM sync_apply_playlist_targets
+         WHERE apply_run_id = $1 AND playlist_id = $2",
+    )
+    .bind(run_id)
+    .bind(playlist_id)
+    .fetch_optional(database.pool())
+    .await
+    .map_err(Into::into)
+}
+
+async fn target_for(database: &Database, run_id: Uuid, operation: &Operation) -> Result<String> {
+    if let Some(id) = &operation.spotify_playlist_id {
+        return Ok(id.clone());
+    }
+    resolved_target(database, run_id, operation.playlist_id)
+        .await?
+        .ok_or_else(|| configuration("a prior create operation has not resolved this playlist"))
+}
+
+async fn persist_target(
+    database: &Database,
+    run_id: Uuid,
+    operation: &Operation,
+    spotify_id: &str,
+    snapshot_id: Option<&str>,
+) -> Result<()> {
+    let concept_id = operation
+        .detail
+        .get("concept_id")
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok());
+    sqlx::query(
+        "INSERT INTO sync_apply_playlist_targets
+         (apply_run_id, playlist_id, concept_id, playlist_name,
+          spotify_playlist_id, provider_snapshot_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (apply_run_id, spotify_playlist_id) DO NOTHING",
+    )
+    .bind(run_id)
+    .bind(operation.playlist_id)
+    .bind(concept_id)
+    .bind(&operation.playlist_name)
+    .bind(spotify_id)
+    .bind(snapshot_id)
+    .execute(database.pool())
+    .await?;
+    Ok(())
+}
+
+async fn mark_running(database: &Database, run_id: Uuid, operation: &Operation) -> Result<()> {
+    sqlx::query(
+        "UPDATE sync_apply_operations SET status = 'running', attempt_count = attempt_count + 1,
+         started_at = now(), last_error = NULL WHERE apply_run_id = $1 AND planned_operation_id = $2",
+    )
+    .bind(run_id).bind(operation.id).execute(database.pool()).await?;
+    Ok(())
+}
+
+async fn mark_succeeded(
+    database: &Database,
+    run_id: Uuid,
+    operation: &Operation,
+    target: &str,
+    response: Value,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE sync_apply_operations SET status = 'succeeded',
+         resolved_spotify_playlist_id = $3, provider_response = $4,
+         executed_at = now(), last_error = NULL
+         WHERE apply_run_id = $1 AND planned_operation_id = $2",
+    )
+    .bind(run_id)
+    .bind(operation.id)
+    .bind(target)
+    .bind(response)
+    .execute(database.pool())
+    .await?;
+    Ok(())
+}
+
+async fn report(
+    database: &Database,
+    id: Uuid,
+    resumed: bool,
+    started_at: DateTime<Utc>,
+) -> Result<ApplyReport> {
+    let row = sqlx::query(
+        "SELECT plan_id, readiness_assessment_id, phase, status, operation_count,
+                succeeded_count, failed_count FROM sync_apply_runs WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_one(database.pool())
+    .await?;
+    Ok(ApplyReport {
+        apply_run_id: id,
+        plan_id: row.try_get("plan_id")?,
+        assessment_id: row.try_get("readiness_assessment_id")?,
+        phase: row.try_get("phase")?,
+        status: row.try_get("status")?,
+        operation_count: row.try_get::<i32, _>("operation_count")? as usize,
+        succeeded_count: row.try_get::<i32, _>("succeeded_count")? as usize,
+        failed_count: row.try_get::<i32, _>("failed_count")? as usize,
+        resumed,
+        started_at,
+    })
+}
+
+fn spotify_jpeg(path: &PathBuf, expected_sha256: &str) -> Result<String> {
+    let source = fs::read(path).map_err(|error| {
+        configuration(format!(
+            "cannot read approved artwork {}: {error}",
+            path.display()
+        ))
+    })?;
+    let actual = format!("{:x}", Sha256::digest(&source));
+    if actual != expected_sha256 {
+        return Err(configuration(format!(
+            "approved artwork hash changed for {}",
+            path.display()
+        )));
+    }
+    let image = image::load_from_memory(&source)
+        .map_err(|error| {
+            configuration(format!(
+                "cannot decode approved artwork {}: {error}",
+                path.display()
+            ))
+        })?
+        .resize(640, 640, FilterType::Lanczos3)
+        .to_rgb8();
+    for quality in [88, 80, 72, 64, 56, 48] {
+        let mut bytes = Vec::new();
+        JpegEncoder::new_with_quality(Cursor::new(&mut bytes), quality)
+            .encode_image(&image)
+            .map_err(|error| configuration(format!("cannot encode Spotify artwork: {error}")))?;
+        let encoded = STANDARD.encode(bytes);
+        if encoded.len() <= 256 * 1024 {
+            return Ok(encoded);
+        }
+    }
+    Err(configuration(
+        "approved artwork cannot fit Spotify's 256 KB base64 limit",
+    ))
+}
+
+fn detail_string<'a>(detail: &'a Value, key: &str) -> Result<&'a str> {
+    detail
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| configuration(format!("planned operation is missing {key}")))
+}
+
+fn detail_optional_string<'a>(detail: &'a Value, key: &str) -> Option<&'a str> {
+    detail.get(key).and_then(Value::as_str)
+}
+
+fn configuration(message: impl Into<String>) -> ChordriftError {
+    ChordriftError::Configuration(message.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApplyPhase;
+
+    #[test]
+    fn destructive_phases_require_the_extra_gate() {
+        assert!(!ApplyPhase::Publish.destructive());
+        assert!(!ApplyPhase::Reconcile.destructive());
+        assert!(ApplyPhase::Cleanup.destructive());
+        assert!(ApplyPhase::Retirement.destructive());
+    }
+}
