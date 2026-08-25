@@ -440,6 +440,65 @@ pub async fn verify_pending_publications(
     if let Some(proposal_id) = current_proposal {
         verify_publication(database, account_id, snapshot_id, proposal_id).await?;
     }
+    let destructive_runs: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM sync_apply_runs
+         WHERE provider_account_id = $1 AND phase IN ('cleanup', 'retirement')
+           AND status = 'awaiting_pull'
+         ORDER BY started_at, id",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    for run_id in destructive_runs {
+        let remaining: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint
+             FROM sync_apply_operations execution
+             JOIN sync_operations planned ON planned.id = execution.planned_operation_id
+             WHERE execution.apply_run_id = $1 AND (
+                 (planned.operation_type = 'remove_track' AND EXISTS (
+                     SELECT 1
+                     FROM provider_account_playlists account_playlist
+                     JOIN provider_playlists playlist
+                       ON playlist.id = account_playlist.provider_playlist_id
+                     JOIN provider_playlist_tracks membership
+                       ON membership.provider_playlist_id = playlist.id
+                      AND membership.snapshot_id = $3
+                     JOIN provider_tracks track ON track.id = membership.provider_track_id
+                     WHERE account_playlist.provider_account_id = $2
+                       AND playlist.provider_playlist_id = planned.payload->>'spotify_playlist_id'
+                       AND track.provider = 'spotify'
+                       AND track.provider_track_id = planned.payload->>'spotify_track_id'
+                 )) OR
+                 (planned.operation_type IN ('remove_external_playlist', 'archive_playlist')
+                  AND EXISTS (
+                     SELECT 1
+                     FROM provider_account_playlists account_playlist
+                     JOIN provider_playlists playlist
+                       ON playlist.id = account_playlist.provider_playlist_id
+                     WHERE account_playlist.provider_account_id = $2
+                       AND account_playlist.present_in_latest_snapshot
+                       AND playlist.provider_playlist_id = planned.payload->>'spotify_playlist_id'
+                 ))
+             )",
+        )
+        .bind(run_id)
+        .bind(account_id)
+        .bind(snapshot_id)
+        .fetch_one(database.pool())
+        .await?;
+        if remaining == 0 {
+            sqlx::query(
+                "UPDATE sync_apply_runs SET status = 'succeeded', finished_at = now(),
+                 summary = summary || jsonb_build_object('verified_snapshot_id', $2::text)
+                 WHERE id = $1",
+            )
+            .bind(run_id)
+            .bind(snapshot_id)
+            .execute(database.pool())
+            .await?;
+            verified += 1;
+        }
+    }
     Ok(verified)
 }
 

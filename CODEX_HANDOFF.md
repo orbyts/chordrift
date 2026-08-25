@@ -565,6 +565,21 @@ deferred `Liked from Radio` removals, 13 deferred external relationship removals
 and the original 42 legacy retirements. No cleanup or retirement approval has
 been inferred from publication.
 
+The user explicitly approved cleanup. The first attempt was safely blocked
+before writes because a repeated pull had a newer snapshot without a carried
+verification baseline. `verify_pending_publications` now recomputes canonical
+proof on every pull rather than trusting or blindly copying an older baseline.
+Cleanup apply run `20f5f69c-f74a-464e-a9af-fd9643556718` then completed all 78
+operations: 65 `Liked from Radio` removals plus 13 external relationship
+removals, with zero failures. Spotify's playlist index briefly returned the old
+snapshot marker for `Liked from Radio`; the following read-only pull observed
+the new marker and exact 65-entry decrease. Destructive apply runs are now also
+marked succeeded only when a later imported snapshot proves every planned track
+and relationship absent. Snapshot `b9e8d29e-b409-4de4-802b-7e77f78c1d85`
+reports 65 active playlists, 2,309 entries, zero followed/external playlists,
+and `verified_apply_runs: 1`. All 13 external bookmark records remain in Neon as
+not-present history. No legacy retirement has occurred.
+
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the
 same package name/version, a plain `cargo run` reused an older final executable
