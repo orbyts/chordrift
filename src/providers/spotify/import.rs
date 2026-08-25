@@ -246,7 +246,8 @@ async fn persist(
         sqlx::query(
             "UPDATE provider_account_playlists account_playlist
              SET role = 'managed', drift_policy = 'neon_wins',
-                 signal_class = 'canonical', clear_policy = 'never', updated_at = now()
+                 signal_class = 'canonical', semantic_weight = 0.0,
+                 clear_policy = 'never', updated_at = now()
              FROM provider_playlists provider
              WHERE account_playlist.provider_account_id = $1
                AND account_playlist.provider_playlist_id = $2
