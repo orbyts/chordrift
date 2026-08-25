@@ -170,8 +170,8 @@ pub async fn preflight_publish(
         let detail = payload
             .get("detail")
             .ok_or_else(|| configuration("artwork operation has no detail payload"))?;
-        let path = PathBuf::from(detail_string(&detail, "artifact_path")?);
-        let encoded = spotify_jpeg(&path, detail_string(&detail, "content_sha256")?)?;
+        let path = PathBuf::from(detail_string(detail, "artifact_path")?);
+        let encoded = spotify_jpeg(&path, detail_string(detail, "content_sha256")?)?;
         largest_artwork_bytes = largest_artwork_bytes.max(encoded.len());
     }
     let playlist_creates = usize::try_from(playlist_creates)
