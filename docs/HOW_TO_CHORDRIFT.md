@@ -13,7 +13,7 @@ is staged for inspection rather than silently guessed.
 | I want to… | Guide | Spotify action |
 | --- | --- | --- |
 | Add or discover a song | [Add songs and preserve discovery context](how-to/ADDING_AND_DISCOVERY.md) | Like/Save it; use a named intake only for a richer signal. |
-| Review saved albums | [Saved albums and album cleanup](how-to/SAVED_ALBUMS.md) | Inventory first; never bulk-unsave before coverage review. |
+| Inventory or retire saved albums | [Saved albums and album cleanup](how-to/SAVED_ALBUMS.md) | Archive-only retirement keeps immutable album and track history. |
 | Stop hearing a song | [Delete or exclude a track safely](how-to/DELETING_AND_EXCLUDING.md) | Remove it from its verified Chordrift playlist, then reconcile. |
 | Keep a song but reject its current vibe | [Route and reclassify a track](how-to/ROUTING_AND_RECLASSIFYING.md) | Add it to a `Route — …` corrective inbox. |
 | Bring Neon up to date | [Synchronize and prove convergence](how-to/SYNC_AND_CONVERGENCE.md) | Run a pull after provider changes. |

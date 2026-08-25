@@ -991,3 +991,19 @@ album audit reports 485 distinct tracks already preserved in Liked Songs or a
 current playlist, 69 explicitly excluded, and 103 awaiting review across six
 albums. Both personal policies remain `preserve`; do not enable cleanup until
 the user reviews those 103 tracks.
+
+The user subsequently chose an archive-only personal album policy: retire all
+saved-album containers while retaining immutable album and ordered-track
+history, without forcing album-only tracks into playlists. Migration 0035 and
+planner v10 implement exact retirement operations, separately approved apply,
+and post-pull verification. The product default remains `preserve`.
+
+Live album retirement completed on 2026-08-25. Exact plan
+`89173e61-35a5-43a1-a837-8479a310094a` contained 69 container-only operations;
+assessment `84f94a04-77b9-4845-8189-81b72592ebc8` passed 11/11 checks. Apply run
+`4958307f-8df1-40fb-85ee-2b7672115ec0` removed all 69 Spotify album containers
+with zero failures and verified against snapshot
+`63f13a92-434f-4c90-b5f6-e432221f0da3`. That snapshot has zero saved albums,
+while `albums history` retains all 69 as retired. Fresh plan
+`6114972d-86d1-437f-877e-084c777d5a1a` has zero operations. Next work is route
+reconciliation, followed by verified Liked Songs consumption.

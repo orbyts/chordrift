@@ -123,6 +123,10 @@ impl MutationSession {
         self.session.client.remove_library_tracks(ids).await
     }
 
+    pub(crate) async fn remove_library_albums(&self, ids: &[String]) -> Result<()> {
+        self.session.client.remove_library_albums(ids).await
+    }
+
     pub(crate) async fn upload_cover(&self, id: &str, jpeg_base64: &str) -> Result<()> {
         self.session
             .client

@@ -538,9 +538,10 @@ progress.
 
 Saved-album inventory, opt-in Liked Songs consumption, exclusion-aware
 readiness/execution/verification, batched changed-surface persistence, and live
-zero-plan convergence are implemented. Album unsave planning remains disabled
-until the account's album-only tracks have explicit preserve/exclude
-dispositions; the default policies for both albums and Liked Songs remain
+zero-plan convergence are implemented. Exact archive-only album-container
+retirement retains immutable album and ordered-track history without forcing
+album tracks into playlists; review-then-unsave remains the stricter
+alternative. The default policies for both albums and Liked Songs remain
 preserve.
 
 ## Post-v0.1 product direction — Review UI

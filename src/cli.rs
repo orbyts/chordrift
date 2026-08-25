@@ -450,6 +450,12 @@ pub enum AlbumCommand {
         #[arg(long, default_value = "personal")]
         account: String,
     },
+    /// List every saved album ever inventoried, including retired containers.
+    History {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
     /// Summarize whether every album track is preserved, excluded, or awaiting review.
     Audit {
         /// Local label for this Spotify account.
@@ -492,6 +498,8 @@ pub enum SavedAlbumPolicyArg {
     InventoryOnly,
     /// Require every album track to be reviewed before a future unsave operation.
     ReviewThenUnsave,
+    /// Retire album containers while retaining their immutable Neon inventory.
+    ArchiveOnly,
 }
 
 impl SavedAlbumPolicyArg {
@@ -500,6 +508,7 @@ impl SavedAlbumPolicyArg {
             Self::Preserve => "preserve",
             Self::InventoryOnly => "inventory_only",
             Self::ReviewThenUnsave => "review_then_unsave",
+            Self::ArchiveOnly => "archive_only",
         }
     }
 }
@@ -2056,6 +2065,52 @@ async fn run_album_command(
                 audit.review_complete_albums
             )?;
             writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        AlbumCommand::History { account } => {
+            let rows = albums::history(database, &account).await?;
+            if terminal::stdout_is_terminal() {
+                let rendered = terminal::pretty_table(
+                    &["State", "Tracks", "Album", "Last saved"],
+                    rows.into_iter()
+                        .map(|row| {
+                            vec![
+                                row.state,
+                                row.tracks.to_string(),
+                                format!(
+                                    "{}\n{}",
+                                    row.title,
+                                    row.artist.unwrap_or_else(|| "—".to_owned())
+                                ),
+                                row.last_saved_at
+                                    .map_or_else(|| "—".to_owned(), |v| v.to_rfc3339()),
+                            ]
+                        })
+                        .collect(),
+                );
+                writeln!(output, "\x1b[1;36mSaved-album history · {account}\x1b[0m")?;
+                writeln!(output, "{rendered}")?;
+                return Ok(());
+            }
+            writeln!(
+                output,
+                "state\ttracks\tfirst_saved_at\tlast_saved_at\tartist\talbum\tspotify_id"
+            )?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    row.state,
+                    row.tracks,
+                    row.first_saved_at
+                        .map_or_else(|| "-".to_owned(), |v| v.to_rfc3339()),
+                    row.last_saved_at
+                        .map_or_else(|| "-".to_owned(), |v| v.to_rfc3339()),
+                    clean_cell(row.artist.as_deref().unwrap_or("-")),
+                    clean_cell(&row.title),
+                    row.spotify_id
+                )?;
+            }
             Ok(())
         }
         AlbumCommand::Tracks {
@@ -3816,8 +3871,8 @@ mod tests {
         AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand, Cli,
         ClusterCommand, Command, DbCommand, EmbeddingCommand, EnrichmentCommand, HistoryCommand,
         LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg, PlaylistSignalClassArg,
-        RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand, SyncCommand, TrackCommand,
-        write_status,
+        RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand, SyncCommand,
+        TrackCommand, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -3881,6 +3936,30 @@ mod tests {
                     account,
                     mode: SavedAlbumPolicyArg::ReviewThenUnsave,
                 }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_saved_album_archive_and_history() {
+        let policy =
+            Cli::try_parse_from(["chordrift", "albums", "policy", "--mode", "archive-only"])
+                .expect("valid command");
+        assert!(matches!(
+            policy.command,
+            Command::Albums {
+                command: AlbumCommand::Policy {
+                    account,
+                    mode: SavedAlbumPolicyArg::ArchiveOnly,
+                }
+            } if account == "personal"
+        ));
+        let history =
+            Cli::try_parse_from(["chordrift", "albums", "history"]).expect("valid command");
+        assert!(matches!(
+            history.command,
+            Command::Albums {
+                command: AlbumCommand::History { account }
             } if account == "personal"
         ));
     }

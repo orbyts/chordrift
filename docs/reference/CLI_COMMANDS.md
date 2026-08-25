@@ -238,6 +238,7 @@ List the current saved-album surface and its preservation coverage:
 ```console
 $ chordrift albums list --account personal
 $ chordrift albums audit --account personal
+$ chordrift albums history --account personal
 ```
 
 Inspect an album's ordered tracks:
@@ -253,7 +254,11 @@ Set the account-specific album policy without changing Spotify:
 $ chordrift albums policy --account personal --mode preserve
 $ chordrift albums policy --account personal --mode inventory-only
 $ chordrift albums policy --account personal --mode review-then-unsave
+$ chordrift albums policy --account personal --mode archive-only
 ```
+
+`archive-only` proposes separately approved retirement operations for album
+containers while retaining immutable album and ordered-track history in Neon.
 
 The account label is local convenience. Neon also retains Spotify's stable user
 identity, and all playlist roles are scoped to that account.

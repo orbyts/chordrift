@@ -17,7 +17,7 @@ use crate::{
 
 const PROVIDER: &str = "spotify";
 const ASSESSMENT_VERSION: &str = "spotify-apply-readiness-v5";
-const PLANNER_VERSION: &str = "spotify-dry-run-v9";
+const PLANNER_VERSION: &str = "spotify-dry-run-v10";
 
 /// One inspectable apply-readiness check.
 #[derive(Clone, Debug, PartialEq, Serialize)]

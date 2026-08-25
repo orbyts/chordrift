@@ -204,6 +204,22 @@ impl SpotifyClient {
         self.request_empty(Method::DELETE, url, None).await
     }
 
+    pub(crate) async fn remove_library_albums(&self, album_ids: &[String]) -> Result<()> {
+        if album_ids.is_empty() || album_ids.len() > 40 {
+            return Err(ChordriftError::Configuration(
+                "Spotify saved-album removals must contain between 1 and 40 album IDs".to_owned(),
+            ));
+        }
+        let mut url = api_url("me/library")?;
+        let uris = album_ids
+            .iter()
+            .map(|id| format!("spotify:album:{id}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        url.query_pairs_mut().append_pair("uris", &uris);
+        self.request_empty(Method::DELETE, url, None).await
+    }
+
     pub(crate) async fn upload_playlist_cover(
         &self,
         playlist_id: &str,

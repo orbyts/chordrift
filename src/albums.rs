@@ -64,6 +64,25 @@ pub struct SavedAlbumTrack {
     pub disposition: String,
 }
 
+/// One album ever captured in an immutable Spotify snapshot.
+#[derive(Clone, Debug)]
+pub struct SavedAlbumHistory {
+    /// Stable Spotify album ID.
+    pub spotify_id: String,
+    /// Album title.
+    pub title: String,
+    /// First credited artist, when present.
+    pub artist: Option<String>,
+    /// Current or retired from the provider library.
+    pub state: String,
+    /// Inventoried tracks in the most recent snapshot containing the album.
+    pub tracks: i64,
+    /// Earliest observed save time.
+    pub first_saved_at: Option<DateTime<Utc>>,
+    /// Latest observed save time.
+    pub last_saved_at: Option<DateTime<Utc>>,
+}
+
 async fn account_and_snapshot(database: &Database, account: &str) -> Result<(Uuid, Uuid)> {
     sqlx::query_as(
         "SELECT account.id, snapshot.id
@@ -142,6 +161,65 @@ pub async fn list(database: &Database, account: &str) -> Result<Vec<SavedAlbumSu
                 preserved,
                 excluded,
                 pending: tracks - preserved - excluded,
+            })
+        })
+        .collect()
+}
+
+/// Lists current and retired album containers from immutable snapshot history.
+pub async fn history(database: &Database, account: &str) -> Result<Vec<SavedAlbumHistory>> {
+    let (account_id, latest_snapshot_id) = account_and_snapshot(database, account).await?;
+    let rows = sqlx::query(
+        "WITH observations AS (
+             SELECT saved.provider_album_id, saved.saved_at, snapshot.captured_at,
+                    saved.snapshot_id,
+                    row_number() OVER (
+                      PARTITION BY saved.provider_album_id
+                      ORDER BY snapshot.captured_at DESC, saved.snapshot_id DESC
+                    ) AS recency
+             FROM provider_saved_albums saved
+             JOIN provider_library_snapshots snapshot ON snapshot.id = saved.snapshot_id
+             WHERE snapshot.provider_account_id = $1
+         ), aggregate AS (
+             SELECT provider_album_id, min(saved_at) AS first_saved_at,
+                    max(saved_at) AS last_saved_at
+             FROM observations GROUP BY provider_album_id
+         )
+         SELECT provider.provider_album_id, album.title,
+                latest.metadata #>> '{artists,0,name}' AS artist,
+                aggregate.first_saved_at, aggregate.last_saved_at,
+                CASE WHEN current.provider_album_id IS NULL THEN 'retired' ELSE 'current' END AS state,
+                (SELECT count(*)::bigint FROM provider_saved_album_tracks membership
+                 WHERE membership.snapshot_id = latest.snapshot_id
+                   AND membership.provider_album_id = latest.provider_album_id) AS tracks
+         FROM aggregate
+         JOIN observations observation
+           ON observation.provider_album_id = aggregate.provider_album_id
+          AND observation.recency = 1
+         JOIN provider_saved_albums latest
+           ON latest.snapshot_id = observation.snapshot_id
+          AND latest.provider_album_id = observation.provider_album_id
+         JOIN provider_albums provider ON provider.id = aggregate.provider_album_id
+         JOIN albums album ON album.id = provider.album_id
+         LEFT JOIN provider_saved_albums current
+           ON current.snapshot_id = $2
+          AND current.provider_album_id = aggregate.provider_album_id
+         ORDER BY state, lower(album.title), provider.provider_album_id",
+    )
+    .bind(account_id)
+    .bind(latest_snapshot_id)
+    .fetch_all(database.pool())
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(SavedAlbumHistory {
+                spotify_id: row.try_get("provider_album_id")?,
+                title: row.try_get("title")?,
+                artist: row.try_get("artist")?,
+                state: row.try_get("state")?,
+                tracks: row.try_get("tracks")?,
+                first_saved_at: row.try_get("first_saved_at")?,
+                last_saved_at: row.try_get("last_saved_at")?,
             })
         })
         .collect()

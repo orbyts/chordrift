@@ -18,7 +18,7 @@ use crate::{
 
 const APPLY_VERSION: &str = "spotify-apply-v3";
 const READINESS_VERSION: &str = "spotify-apply-readiness-v5";
-const PLANNER_VERSION: &str = "spotify-dry-run-v9";
+const PLANNER_VERSION: &str = "spotify-dry-run-v10";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Independently gated execution phases in a synchronization plan.
@@ -124,7 +124,7 @@ pub async fn preflight_publish(
         || plan.try_get::<Uuid, _>("source_snapshot_id")?
             != plan.try_get::<Uuid, _>("latest_snapshot_id")?
     {
-        return Err(configuration("preflight requires a current v9 plan"));
+        return Err(configuration("preflight requires a current v10 plan"));
     }
 
     let playlist_creates: i64 = sqlx::query_scalar(
@@ -241,7 +241,7 @@ pub async fn approve_retirement(
             != row.try_get::<Uuid, _>("latest_snapshot_id")?
     {
         return Err(configuration(
-            "retirement approval requires a current v9 plan",
+            "retirement approval requires a current v10 plan",
         ));
     }
     let count: i64 = row.try_get("operations")?;
@@ -539,13 +539,21 @@ pub async fn verify_pending_publications(
                        AND track.provider = 'spotify'
                        AND track.provider_track_id = planned.payload->>'spotify_track_id'
                  )) OR
-                 (planned.operation_type = 'remove_saved_track' AND EXISTS (
+                (planned.operation_type = 'remove_saved_track' AND EXISTS (
                      SELECT 1
                      FROM provider_saved_tracks saved
                      JOIN provider_tracks track ON track.id = saved.provider_track_id
                      WHERE saved.snapshot_id = $3
                        AND track.provider = 'spotify'
                        AND track.provider_track_id = planned.payload->>'spotify_track_id'
+                 )) OR
+                 (planned.operation_type = 'remove_saved_album' AND EXISTS (
+                     SELECT 1
+                     FROM provider_saved_albums saved
+                     JOIN provider_albums album ON album.id = saved.provider_album_id
+                     WHERE saved.snapshot_id = $3
+                       AND album.provider = 'spotify'
+                       AND album.provider_album_id = planned.payload #>> '{detail,spotify_album_id}'
                  )) OR
                  (planned.operation_type IN ('remove_external_playlist', 'archive_playlist')
                   AND EXISTS (
@@ -810,7 +818,7 @@ async fn load_gate(
         || row.try_get::<String, _>("planner_version")? != PLANNER_VERSION
     {
         return Err(configuration(
-            "apply requires a ready v0.1.2 assessment of a v9 plan",
+            "apply requires a ready v0.1.2 assessment of a v10 plan",
         ));
     }
     if row.try_get::<Uuid, _>("source_snapshot_id")?
@@ -1271,6 +1279,34 @@ async fn execute_destructive(
                 operation,
                 target,
                 json!({"library_surface": "saved_tracks"}),
+            )
+            .await?;
+        }
+    }
+    let saved_album_removals = operations
+        .iter()
+        .filter(|operation| {
+            operation.status != "succeeded" && operation.kind == "remove_saved_album"
+        })
+        .collect::<Vec<_>>();
+    for chunk in saved_album_removals.chunks(40) {
+        let targets = chunk
+            .iter()
+            .map(|operation| {
+                detail_string(&operation.detail, "spotify_album_id").map(str::to_owned)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        for operation in chunk {
+            mark_running(database, run_id, operation).await?;
+        }
+        session.remove_library_albums(&targets).await?;
+        for (operation, target) in chunk.iter().zip(&targets) {
+            mark_succeeded(
+                database,
+                run_id,
+                operation,
+                target,
+                json!({"library_surface": "saved_albums", "container_only": true}),
             )
             .await?;
         }

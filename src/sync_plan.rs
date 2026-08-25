@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result};
 
 const PROVIDER: &str = "spotify";
-const PLANNER_VERSION: &str = "spotify-dry-run-v9";
+const PLANNER_VERSION: &str = "spotify-dry-run-v10";
 const INTAKE_SURFACES: [(&str, &str, Option<&str>); 4] = [
     (
         "Inbox",
@@ -186,6 +186,7 @@ pub async fn create(
     operations.extend(intake_surface_operations(database, account_id, snapshot_id).await?);
     operations.extend(routing_surface_operations(database, account_id, snapshot_id).await?);
     operations.extend(cleanup_operations(database, account_id, snapshot_id, proposal_id).await?);
+    operations.extend(album_retirement_operations(database, account_id, snapshot_id).await?);
     operations.extend(external_cleanup_operations(database, account_id).await?);
     operations.sort_by(|left, right| {
         phase_rank(&left.phase)
@@ -1241,6 +1242,76 @@ async fn external_cleanup_operations(
         .collect()
 }
 
+async fn album_retirement_operations(
+    database: &Database,
+    account_id: Uuid,
+    snapshot_id: Uuid,
+) -> Result<Vec<PlanOperationInput>> {
+    let policy: String = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT saved_album_policy
+                          FROM provider_account_library_policies
+                          WHERE provider_account_id = $1), 'preserve')",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    if policy != "archive_only" {
+        return Ok(Vec::new());
+    }
+    let rows = sqlx::query(
+        "SELECT provider.id AS provider_album_row_id, provider.provider_album_id,
+                album.title, saved.position, saved.saved_at,
+                count(membership.*)::bigint AS track_count
+         FROM provider_saved_albums saved
+         JOIN provider_albums provider ON provider.id = saved.provider_album_id
+         JOIN albums album ON album.id = provider.album_id
+         LEFT JOIN provider_saved_album_tracks membership
+           ON membership.snapshot_id = saved.snapshot_id
+          AND membership.provider_album_id = saved.provider_album_id
+         WHERE saved.snapshot_id = $1
+         GROUP BY provider.id, provider.provider_album_id, album.title,
+                  saved.position, saved.saved_at
+         ORDER BY saved.position",
+    )
+    .bind(snapshot_id)
+    .fetch_all(database.pool())
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            let spotify_id: String = row.try_get("provider_album_id")?;
+            let title: String = row.try_get("title")?;
+            Ok(PlanOperationInput {
+                phase: "retirement".to_owned(),
+                operation_type: "remove_saved_album".to_owned(),
+                operation_key: format!("retire-album:{spotify_id}"),
+                playlist_id: None,
+                provider_playlist_id: None,
+                playlist_name: title,
+                spotify_playlist_id: None,
+                spotify_track_id: None,
+                payload: json!({
+                    "spotify_album_id": spotify_id,
+                    "provider_album_row_id": row.try_get::<Uuid, _>("provider_album_row_id")?,
+                    "position": row.try_get::<i32, _>("position")?,
+                    "saved_at": row.try_get::<Option<DateTime<Utc>>, _>("saved_at")?,
+                    "track_count": row.try_get::<i64, _>("track_count")?,
+                    "source_snapshot_id": snapshot_id,
+                    "container_only": true,
+                    "inventory_retained": true
+                }),
+                safety: json!({
+                    "destructive": true,
+                    "deferred": true,
+                    "requires_separate_approval": true,
+                    "requires_snapshot_match": true,
+                    "album_tracks_unchanged": true,
+                    "immutable_inventory_retained": true
+                }),
+            })
+        })
+        .collect()
+}
+
 async fn desired_playlists(
     database: &Database,
     account_id: Uuid,
@@ -1516,7 +1587,8 @@ fn summarize(operations: &[PlanOperationInput]) -> Summary {
         exclusions: count_kind(operations, "exclude_track"),
         removals: count_kind(operations, "remove_track")
             + count_kind(operations, "remove_saved_track"),
-        retirements: count_kind(operations, "archive_playlist"),
+        retirements: count_kind(operations, "archive_playlist")
+            + count_kind(operations, "remove_saved_album"),
         external_cleanups: count_kind(operations, "remove_external_playlist"),
         deferred: operations
             .iter()
@@ -1585,7 +1657,7 @@ fn operation_rank(operation_type: &str) -> u8 {
         "exclude_track" => 5,
         "remove_track" | "remove_saved_track" => 6,
         "remove_external_playlist" => 7,
-        "archive_playlist" => 8,
+        "archive_playlist" | "remove_saved_album" => 8,
         _ => 8,
     }
 }
@@ -1642,14 +1714,15 @@ mod tests {
             operation("restore_track", "publish", false),
             operation("remove_external_playlist", "cleanup", true),
             operation("archive_playlist", "retirement", true),
+            operation("remove_saved_album", "retirement", true),
         ];
         let summary = summarize(&operations);
         assert_eq!(summary.additions, 1);
         assert_eq!(summary.restorations, 1);
         assert_eq!(summary.exclusions, 0);
-        assert_eq!(summary.retirements, 1);
+        assert_eq!(summary.retirements, 2);
         assert_eq!(summary.external_cleanups, 1);
-        assert_eq!(summary.deferred, 2);
+        assert_eq!(summary.deferred, 3);
         assert_eq!(count_kind(&operations, "remove_track"), 0);
     }
 

@@ -11,6 +11,7 @@ playlist and do not block ordinary playlist readiness.
 $ chordrift sync pull --account personal
 $ chordrift albums list --account personal
 $ chordrift albums audit --account personal
+$ chordrift albums history --account personal
 ```
 
 Inspect one album by exact title or stable Spotify ID:
@@ -26,10 +27,10 @@ Every track has one review disposition:
 - `excluded`: explicitly recorded as unwanted;
 - `review`: neither preserved nor excluded yet.
 
-Do not unsave an album while any of its tracks remain `review`. Add wanted
-tracks to Inbox or Like them, pull again, and explicitly exclude only tracks
-you genuinely do not want retained. Neon keeps every historical album snapshot
-even after a future cleanup.
+`review` matters for `review-then-unsave`, where every album track needs an
+explicit disposition. It does not block the separate `archive-only` workflow:
+that mode retires only the saved-album container and retains the complete album
+and ordered track inventory in Neon. Album tracks are not forced into playlists.
 
 ## Account policy
 
@@ -39,12 +40,18 @@ The product default is safe and non-mutating:
 $ chordrift albums policy --account personal --mode preserve
 ```
 
-Suhail's intended personal cleanup policy is:
+For an account that intentionally wants playlists as its active library surface,
+retain the inventory but propose retirement of every current album container:
 
 ```console
-$ chordrift albums policy --account personal --mode review-then-unsave
+$ chordrift albums policy --account personal --mode archive-only
+$ chordrift sync plan --account personal
+$ chordrift sync plan-show --account personal --details
 ```
 
-This records intent only. v0.1.2 will not propose an album unsave until every
-track has an explicit disposition, and applying that future cleanup will still
-require exact readiness confirmation plus `--allow-destructive`.
+The policy command is Neon-only. Inspect the immutable plan, approve its exact
+plan ID with `sync retirement-approve`, run readiness, and apply only the
+`retirement` phase with its exact assessment confirmation and
+`--allow-destructive`. Then run `sync pull`; verification succeeds only when
+all planned albums are absent from Spotify. `albums history` continues to list
+the retired albums and their last inventoried track counts.
