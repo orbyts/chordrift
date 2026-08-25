@@ -98,6 +98,21 @@ pub struct PlaylistTrack {
     pub spotify_id: String,
 }
 
+/// One unresolved track within an analytical cluster.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GroupTrack {
+    /// Representative rank within the analytical cluster.
+    pub position: usize,
+    /// Cluster membership score.
+    pub score: f64,
+    /// Track title.
+    pub title: String,
+    /// Display artists.
+    pub artists: String,
+    /// Spotify track identity.
+    pub spotify_id: String,
+}
+
 /// Coverage for one retireable source playlist.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoverageRow {
@@ -126,6 +141,114 @@ pub struct MissingTrack {
     pub spotify_id: String,
     /// Current semantic-legacy or intake playlists containing the track.
     pub source_playlists: String,
+}
+
+/// Coverage across the complete preserved-library inventory.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HistoricalCoverageRow {
+    /// Source class, or `complete_inventory` for the deduplicated total.
+    pub signal_class: String,
+    /// Distinct source playlists in this row; zero for saved tracks and exclusions.
+    pub playlist_count: usize,
+    /// Distinct source tracks.
+    pub unique_tracks: usize,
+    /// Tracks placed in the approved canonical proposal.
+    pub represented_tracks: usize,
+    /// Tracks intentionally excluded from canonical output.
+    pub excluded_tracks: usize,
+    /// Tracks with neither a canonical placement nor an active exclusion.
+    pub missing_tracks: usize,
+    /// Tracks placed in multiple destinations or both placed and excluded.
+    pub conflicting_tracks: usize,
+}
+
+/// One unresolved track from the complete preserved-library inventory.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HistoricalMissingTrack {
+    /// Track title.
+    pub title: String,
+    /// Display artists.
+    pub artists: String,
+    /// Stable Spotify track ID.
+    pub spotify_id: String,
+    /// Preserving source names.
+    pub source_playlists: String,
+    /// Preserving source classes.
+    pub signal_classes: String,
+}
+
+/// Read-only fit of unresolved inventory against approved playlist centroids.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlacementAudit {
+    /// Approved proposal used as stable destinations.
+    pub proposal_generation_id: Uuid,
+    /// Complete-inventory embedding generation used for scoring.
+    pub embedding_generation_id: Uuid,
+    /// Distinct tracks in the complete inventory.
+    pub inventory_tracks: usize,
+    /// Tracks already placed in the approved proposal.
+    pub already_placed_tracks: usize,
+    /// Unresolved tracks with an embedding.
+    pub embedded_unresolved_tracks: usize,
+    /// Unresolved tracks without an embedding.
+    pub unembedded_unresolved_tracks: usize,
+    /// Strong existing-destination fits (cosine similarity at least 0.20).
+    pub strong_fit_tracks: usize,
+    /// Usable existing-destination fits (similarity 0.05 through 0.20).
+    pub usable_fit_tracks: usize,
+    /// Weak fits that should be tested as possible new playlist groups.
+    pub weak_fit_tracks: usize,
+    /// Proposed additions by stable existing destination.
+    pub destinations: Vec<PlacementDestinationAudit>,
+    /// Weak-fit tracks grouped by the latest analytical cluster.
+    pub new_group_candidates: Vec<PlacementGroupAudit>,
+}
+
+/// One existing playlist's projected additions.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlacementDestinationAudit {
+    /// Stable concept key.
+    pub stable_key: String,
+    /// Approved display name.
+    pub name: String,
+    /// Strong-fit additions.
+    pub strong_fit_tracks: usize,
+    /// Usable-fit additions.
+    pub usable_fit_tracks: usize,
+}
+
+/// One analytical group that may warrant a new managed playlist.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlacementGroupAudit {
+    /// Content-derived analytical cluster label.
+    pub machine_label: String,
+    /// Representative track and artist display.
+    pub representative: String,
+    /// All tracks in the analytical cluster.
+    pub cluster_tracks: usize,
+    /// Weak existing-destination fits in this group.
+    pub weak_fit_tracks: usize,
+    /// Existing members already represented in the current proposal.
+    pub placed_tracks: usize,
+    /// Existing destination with the largest membership overlap.
+    pub dominant_destination: Option<String>,
+    /// Members already assigned to the dominant destination.
+    pub dominant_tracks: usize,
+}
+
+/// Result of assigning unresolved embedded tracks by analytical-group consensus.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConsensusAssignmentReport {
+    /// Proposal generation modified in Neon.
+    pub generation_id: Uuid,
+    /// Tracks assigned by this operation.
+    pub assigned_tracks: usize,
+    /// Complete preserved inventory.
+    pub required_tracks: usize,
+    /// Tracks represented after the operation.
+    pub represented_tracks: usize,
+    /// Tracks still unresolved.
+    pub unresolved_tracks: usize,
 }
 
 /// Result of creating a stable manual playlist category.
@@ -601,10 +724,12 @@ pub async fn missing(
                AND account_playlist.signal_class IN ('semantic_legacy', 'intake')
              GROUP BY provider_track.track_id
          ), proposed AS (
-             SELECT DISTINCT membership.track_id
+             SELECT membership.track_id,
+                    count(DISTINCT membership.playlist_id)::bigint AS destinations
              FROM playlists playlist
              JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
              WHERE playlist.generation_id = $2
+             GROUP BY membership.track_id
          )
          SELECT track.title,
                 COALESCE(string_agg(DISTINCT artist.name, ', '), '') AS artists,
@@ -637,6 +762,1080 @@ pub async fn missing(
             })
         })
         .collect()
+}
+
+/// Audits the complete preserved-library universe.
+pub async fn historical_coverage(
+    database: &Database,
+    account_label: &str,
+) -> Result<Vec<HistoricalCoverageRow>> {
+    let account_id = account_id(database, account_label).await?;
+    let generation = status(database, account_label).await?;
+    let rows = sqlx::query(
+        "WITH latest AS (
+             SELECT id FROM provider_library_snapshots
+             WHERE provider_account_id = $1
+             ORDER BY captured_at DESC, id DESC LIMIT 1
+         ), sources AS (
+             SELECT DISTINCT 'saved'::text AS signal_class, NULL::uuid AS playlist_id,
+                    provider_track.track_id
+             FROM latest
+             JOIN provider_saved_tracks saved ON saved.snapshot_id = latest.id
+             JOIN provider_tracks provider_track ON provider_track.id = saved.provider_track_id
+             UNION ALL
+             SELECT DISTINCT policy.signal_class, policy.provider_playlist_id,
+                    provider_track.track_id
+             FROM provider_account_playlists policy
+             JOIN provider_library_snapshots library
+               ON library.provider_account_id = policy.provider_account_id
+             JOIN provider_playlist_tracks membership
+               ON membership.snapshot_id = library.id
+              AND membership.provider_playlist_id = policy.provider_playlist_id
+             JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
+             WHERE policy.provider_account_id = $1
+               AND policy.signal_class IN ('semantic_legacy', 'transport', 'intake', 'canonical')
+             UNION ALL
+             SELECT 'exclusion'::text, NULL::uuid, exclusion.track_id
+             FROM excluded_tracks exclusion
+             WHERE exclusion.provider_account_id = $1 AND exclusion.restored_at IS NULL
+         ), proposed AS (
+             SELECT membership.track_id,
+                    count(DISTINCT membership.playlist_id)::bigint AS destinations
+             FROM playlists playlist
+             JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+             WHERE playlist.generation_id = $2
+             GROUP BY membership.track_id
+         ), active_exclusion AS (
+             SELECT DISTINCT track_id FROM excluded_tracks
+             WHERE provider_account_id = $1 AND restored_at IS NULL
+         ), grouped AS (
+             SELECT signal_class, count(DISTINCT playlist_id)::bigint AS playlist_count,
+                    count(DISTINCT track_id)::bigint AS unique_tracks,
+                    count(DISTINCT track_id) FILTER (WHERE proposed.track_id IS NOT NULL)::bigint
+                        AS represented_tracks,
+                    count(DISTINCT track_id) FILTER (WHERE active_exclusion.track_id IS NOT NULL)::bigint
+                        AS excluded_tracks,
+                    count(DISTINCT track_id) FILTER (
+                        WHERE proposed.track_id IS NULL AND active_exclusion.track_id IS NULL
+                    )::bigint AS missing_tracks,
+                    count(DISTINCT track_id) FILTER (
+                        WHERE proposed.destinations > 1 OR (
+                            proposed.track_id IS NOT NULL AND active_exclusion.track_id IS NOT NULL
+                        )
+                    )::bigint AS conflicting_tracks
+             FROM sources
+             LEFT JOIN proposed USING (track_id)
+             LEFT JOIN active_exclusion USING (track_id)
+             GROUP BY signal_class
+         ), total AS (
+             SELECT 'complete_inventory'::text AS signal_class,
+                    count(DISTINCT playlist_id)::bigint AS playlist_count,
+                    count(DISTINCT track_id)::bigint AS unique_tracks,
+                    count(DISTINCT track_id) FILTER (WHERE proposed.track_id IS NOT NULL)::bigint
+                        AS represented_tracks,
+                    count(DISTINCT track_id) FILTER (WHERE active_exclusion.track_id IS NOT NULL)::bigint
+                        AS excluded_tracks,
+                    count(DISTINCT track_id) FILTER (
+                        WHERE proposed.track_id IS NULL AND active_exclusion.track_id IS NULL
+                    )::bigint AS missing_tracks,
+                    count(DISTINCT track_id) FILTER (
+                        WHERE proposed.destinations > 1 OR (
+                            proposed.track_id IS NOT NULL AND active_exclusion.track_id IS NOT NULL
+                        )
+                    )::bigint AS conflicting_tracks
+             FROM sources
+             LEFT JOIN proposed USING (track_id)
+             LEFT JOIN active_exclusion USING (track_id)
+         )
+         SELECT * FROM (SELECT * FROM total UNION ALL SELECT * FROM grouped) inventory_rows
+         ORDER BY CASE WHEN signal_class = 'complete_inventory' THEN 0 ELSE 1 END,
+                  signal_class",
+    )
+    .bind(account_id)
+    .bind(generation.generation_id)
+    .fetch_all(database.pool())
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(HistoricalCoverageRow {
+                signal_class: row.try_get("signal_class")?,
+                playlist_count: as_usize_i64(row.try_get("playlist_count")?)?,
+                unique_tracks: as_usize_i64(row.try_get("unique_tracks")?)?,
+                represented_tracks: as_usize_i64(row.try_get("represented_tracks")?)?,
+                excluded_tracks: as_usize_i64(row.try_get("excluded_tracks")?)?,
+                missing_tracks: as_usize_i64(row.try_get("missing_tracks")?)?,
+                conflicting_tracks: as_usize_i64(row.try_get("conflicting_tracks")?)?,
+            })
+        })
+        .collect()
+}
+
+/// Lists unresolved tracks across the complete preserved-library universe.
+pub async fn historical_missing(
+    database: &Database,
+    account_label: &str,
+    limit: u32,
+) -> Result<Vec<HistoricalMissingTrack>> {
+    if limit == 0 || limit > 10_000 {
+        return Err(ChordriftError::Configuration(
+            "inventory unresolved-track limit must be between 1 and 10000".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let generation = status(database, account_label).await?;
+    let rows = sqlx::query(
+        "WITH latest AS (
+             SELECT id FROM provider_library_snapshots
+             WHERE provider_account_id = $1
+             ORDER BY captured_at DESC, id DESC LIMIT 1
+         ), sources AS (
+             SELECT DISTINCT provider_track.track_id, 'Saved tracks'::text AS name,
+                    'saved'::text AS signal_class
+             FROM latest
+             JOIN provider_saved_tracks saved ON saved.snapshot_id = latest.id
+             JOIN provider_tracks provider_track ON provider_track.id = saved.provider_track_id
+             UNION ALL
+             SELECT DISTINCT provider_track.track_id, snapshot.name, policy.signal_class
+             FROM provider_account_playlists policy
+             JOIN provider_library_snapshots library
+               ON library.provider_account_id = policy.provider_account_id
+             JOIN provider_playlist_snapshots snapshot
+               ON snapshot.snapshot_id = library.id
+              AND snapshot.provider_playlist_id = policy.provider_playlist_id
+             JOIN provider_playlist_tracks membership
+               ON membership.snapshot_id = library.id
+              AND membership.provider_playlist_id = policy.provider_playlist_id
+             JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
+             WHERE policy.provider_account_id = $1
+               AND policy.signal_class IN ('semantic_legacy', 'transport', 'intake', 'canonical')
+             UNION ALL
+             SELECT exclusion.track_id, 'Explicit exclusion'::text, 'exclusion'::text
+             FROM excluded_tracks exclusion
+             WHERE exclusion.provider_account_id = $1 AND exclusion.restored_at IS NULL
+         ), proposed AS (
+             SELECT DISTINCT membership.track_id
+             FROM playlists playlist
+             JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+             WHERE playlist.generation_id = $2
+         )
+         SELECT track.title,
+                COALESCE(string_agg(DISTINCT artist.name, ', '), '') AS artists,
+                min(provider_track.provider_track_id) AS spotify_id,
+                string_agg(DISTINCT sources.name, ' / ' ORDER BY sources.name)
+                    AS source_playlists,
+                string_agg(DISTINCT sources.signal_class, ', ' ORDER BY sources.signal_class)
+                    AS signal_classes
+         FROM sources
+         JOIN tracks track ON track.id = sources.track_id
+         JOIN provider_tracks provider_track
+           ON provider_track.track_id = track.id AND provider_track.provider = 'spotify'
+         LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
+         LEFT JOIN artists artist ON artist.id = track_artist.artist_id
+         LEFT JOIN proposed ON proposed.track_id = sources.track_id
+         LEFT JOIN excluded_tracks exclusion
+           ON exclusion.provider_account_id = $1 AND exclusion.track_id = sources.track_id
+          AND exclusion.restored_at IS NULL
+         WHERE proposed.track_id IS NULL AND exclusion.id IS NULL
+         GROUP BY track.id, track.title
+         ORDER BY lower(track.title), spotify_id LIMIT $3",
+    )
+    .bind(account_id)
+    .bind(generation.generation_id)
+    .bind(i64::from(limit))
+    .fetch_all(database.pool())
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(HistoricalMissingTrack {
+                title: row.try_get("title")?,
+                artists: row.try_get("artists")?,
+                spotify_id: row.try_get("spotify_id")?,
+                source_playlists: row.try_get("source_playlists")?,
+                signal_classes: row.try_get("signal_classes")?,
+            })
+        })
+        .collect()
+}
+
+/// Scores unresolved preserved tracks against the stable approved destinations.
+pub async fn placement_audit(database: &Database, account_label: &str) -> Result<PlacementAudit> {
+    let account_id = account_id(database, account_label).await?;
+    let proposal_generation_id = status(database, account_label).await?.generation_id;
+    let embedding_generation_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM embedding_generations WHERE provider_account_id = $1
+         ORDER BY created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| ChordriftError::Configuration("no embedding generation exists".to_owned()))?;
+
+    struct Destination {
+        stable_key: String,
+        name: String,
+        sum: Vec<f64>,
+        count: usize,
+        strong: usize,
+        usable: usize,
+    }
+    let rows = sqlx::query(
+        "SELECT playlist.id, concept.stable_key, playlist.name, embedding.embedding
+         FROM playlists playlist
+         JOIN playlist_concepts concept ON concept.id = playlist.concept_id
+         JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+         JOIN account_track_embeddings embedding
+           ON embedding.track_id = membership.track_id AND embedding.generation_id = $2
+         WHERE playlist.generation_id = $1
+         ORDER BY playlist.id, membership.position",
+    )
+    .bind(proposal_generation_id)
+    .bind(embedding_generation_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut destinations: HashMap<Uuid, Destination> = HashMap::new();
+    for row in rows {
+        let playlist_id: Uuid = row.try_get("id")?;
+        let vector: Vec<f64> = row.try_get("embedding")?;
+        let destination = destinations
+            .entry(playlist_id)
+            .or_insert_with(|| Destination {
+                stable_key: row
+                    .try_get("stable_key")
+                    .expect("selected stable key has correct type"),
+                name: row
+                    .try_get("name")
+                    .expect("selected playlist name has correct type"),
+                sum: vec![0.0; vector.len()],
+                count: 0,
+                strong: 0,
+                usable: 0,
+            });
+        if destination.sum.len() != vector.len() {
+            return Err(ChordriftError::Configuration(
+                "approved playlist embeddings have inconsistent dimensions".to_owned(),
+            ));
+        }
+        for (total, value) in destination.sum.iter_mut().zip(vector) {
+            *total += value;
+        }
+        destination.count += 1;
+    }
+    if destinations.is_empty() {
+        return Err(ChordriftError::Configuration(
+            "approved proposal has no embedded destination tracks".to_owned(),
+        ));
+    }
+    for destination in destinations.values_mut() {
+        normalize(&mut destination.sum)?;
+    }
+
+    let rows = sqlx::query(
+        "WITH placement AS (
+             SELECT DISTINCT membership.track_id
+             FROM playlists playlist
+             JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+             WHERE playlist.generation_id = $2
+         )
+         SELECT track.id, embedding.embedding
+         FROM tracks track
+         LEFT JOIN placement ON placement.track_id = track.id
+         LEFT JOIN account_track_embeddings embedding
+           ON embedding.track_id = track.id AND embedding.generation_id = $3
+         LEFT JOIN excluded_tracks exclusion
+           ON exclusion.provider_account_id = $1 AND exclusion.track_id = track.id
+          AND exclusion.restored_at IS NULL
+         WHERE account_track_is_library_candidate($1, track.id)
+           AND placement.track_id IS NULL AND exclusion.id IS NULL
+         ORDER BY track.id",
+    )
+    .bind(account_id)
+    .bind(proposal_generation_id)
+    .bind(embedding_generation_id)
+    .fetch_all(database.pool())
+    .await?;
+    let unresolved_tracks = rows.len();
+    let mut embedded_unresolved_tracks = 0;
+    let mut strong_fit_tracks = 0;
+    let mut usable_fit_tracks = 0;
+    let mut weak_fit_tracks = 0;
+    let mut weak_track_ids = Vec::new();
+    for row in rows {
+        let track_id: Uuid = row.try_get("id")?;
+        let Some(vector) = row.try_get::<Option<Vec<f64>>, _>("embedding")? else {
+            continue;
+        };
+        embedded_unresolved_tracks += 1;
+        let (destination_id, score) = destinations
+            .iter()
+            .map(|(id, destination)| (*id, dot(&vector, &destination.sum)))
+            .max_by(|left, right| {
+                left.1
+                    .total_cmp(&right.1)
+                    .then_with(|| left.0.cmp(&right.0))
+            })
+            .ok_or_else(|| {
+                ChordriftError::Configuration("no destination centroid exists".to_owned())
+            })?;
+        if score >= 0.20 {
+            strong_fit_tracks += 1;
+            destinations
+                .get_mut(&destination_id)
+                .expect("selected destination exists")
+                .strong += 1;
+        } else if score >= 0.05 {
+            usable_fit_tracks += 1;
+            destinations
+                .get_mut(&destination_id)
+                .expect("selected destination exists")
+                .usable += 1;
+        } else {
+            weak_fit_tracks += 1;
+            weak_track_ids.push(track_id);
+        }
+    }
+    let inventory_tracks: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM tracks track
+         WHERE account_track_is_library_candidate($1, track.id)",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    let already_placed_tracks: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT membership.track_id)::bigint
+         FROM playlists playlist
+         JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+         WHERE playlist.generation_id = $1",
+    )
+    .bind(proposal_generation_id)
+    .fetch_one(database.pool())
+    .await?;
+    let mut destination_rows: Vec<_> = destinations
+        .into_values()
+        .map(|destination| PlacementDestinationAudit {
+            stable_key: destination.stable_key,
+            name: destination.name,
+            strong_fit_tracks: destination.strong,
+            usable_fit_tracks: destination.usable,
+        })
+        .collect();
+    destination_rows.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.stable_key.cmp(&right.stable_key))
+    });
+    let cluster_generation = clusters::status(database, account_label).await?;
+    let current_proposal = status(database, account_label).await?;
+    let group_rows = sqlx::query(
+        "SELECT cluster.machine_label,
+                representative_track.title || ' — ' ||
+                    COALESCE(string_agg(DISTINCT artist.name, ', '), '') AS representative,
+                count(DISTINCT all_member.track_id)::bigint AS cluster_tracks,
+                count(DISTINCT weak_member.track_id)::bigint AS weak_fit_tracks,
+                COALESCE(placed.placed_tracks, 0)::bigint AS placed_tracks,
+                dominant.name AS dominant_destination,
+                COALESCE(dominant.dominant_tracks, 0)::bigint AS dominant_tracks
+         FROM clusters cluster
+         JOIN cluster_tracks all_member ON all_member.cluster_id = cluster.id
+         JOIN cluster_tracks representative
+           ON representative.cluster_id = cluster.id AND representative.representative_rank = 1
+         JOIN tracks representative_track ON representative_track.id = representative.track_id
+         LEFT JOIN track_artists track_artist ON track_artist.track_id = representative.track_id
+         LEFT JOIN artists artist ON artist.id = track_artist.artist_id
+         LEFT JOIN cluster_tracks weak_member
+           ON weak_member.cluster_id = cluster.id AND weak_member.track_id = ANY($2)
+         LEFT JOIN LATERAL (
+             SELECT count(DISTINCT current_member.track_id)::bigint AS placed_tracks
+             FROM cluster_tracks current_member
+             JOIN playlist_tracks proposed ON proposed.track_id = current_member.track_id
+             JOIN playlists playlist
+               ON playlist.id = proposed.playlist_id AND playlist.generation_id = $3
+             WHERE current_member.cluster_id = cluster.id
+         ) placed ON TRUE
+         LEFT JOIN LATERAL (
+             SELECT playlist.name,
+                    count(DISTINCT current_member.track_id)::bigint AS dominant_tracks
+             FROM cluster_tracks current_member
+             JOIN playlist_tracks proposed ON proposed.track_id = current_member.track_id
+             JOIN playlists playlist
+               ON playlist.id = proposed.playlist_id AND playlist.generation_id = $3
+             WHERE current_member.cluster_id = cluster.id
+             GROUP BY playlist.id, playlist.name
+             ORDER BY count(DISTINCT current_member.track_id) DESC, playlist.name
+             LIMIT 1
+         ) dominant ON TRUE
+         WHERE cluster.generation_id = $1
+         GROUP BY cluster.id, cluster.machine_label, representative_track.title,
+                  placed.placed_tracks, dominant.name, dominant.dominant_tracks
+         HAVING count(DISTINCT weak_member.track_id) > 0
+         ORDER BY count(DISTINCT weak_member.track_id) DESC, cluster.machine_label",
+    )
+    .bind(cluster_generation.generation_id)
+    .bind(&weak_track_ids)
+    .bind(current_proposal.generation_id)
+    .fetch_all(database.pool())
+    .await?;
+    let new_group_candidates = group_rows
+        .into_iter()
+        .map(|row| {
+            Ok(PlacementGroupAudit {
+                machine_label: row.try_get("machine_label")?,
+                representative: row.try_get("representative")?,
+                cluster_tracks: as_usize_i64(row.try_get("cluster_tracks")?)?,
+                weak_fit_tracks: as_usize_i64(row.try_get("weak_fit_tracks")?)?,
+                placed_tracks: as_usize_i64(row.try_get("placed_tracks")?)?,
+                dominant_destination: row.try_get("dominant_destination")?,
+                dominant_tracks: as_usize_i64(row.try_get("dominant_tracks")?)?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(PlacementAudit {
+        proposal_generation_id,
+        embedding_generation_id,
+        inventory_tracks: as_usize_i64(inventory_tracks)?,
+        already_placed_tracks: as_usize_i64(already_placed_tracks)?,
+        embedded_unresolved_tracks,
+        unembedded_unresolved_tracks: unresolved_tracks.saturating_sub(embedded_unresolved_tracks),
+        strong_fit_tracks,
+        usable_fit_tracks,
+        weak_fit_tracks,
+        destinations: destination_rows,
+        new_group_candidates,
+    })
+}
+
+fn normalize(vector: &mut [f64]) -> Result<()> {
+    let norm = vector.iter().map(|value| value * value).sum::<f64>().sqrt();
+    if norm <= f64::EPSILON {
+        return Err(ChordriftError::Configuration(
+            "playlist centroid has zero norm".to_owned(),
+        ));
+    }
+    for value in vector {
+        *value /= norm;
+    }
+    Ok(())
+}
+
+fn dot(left: &[f64], right: &[f64]) -> f64 {
+    left.iter()
+        .zip(right)
+        .map(|(left, right)| left * right)
+        .sum()
+}
+
+/// Lists unresolved tracks from one current analytical cluster.
+pub async fn unresolved_group_tracks(
+    database: &Database,
+    account_label: &str,
+    machine_label: &str,
+    limit: u32,
+) -> Result<Vec<GroupTrack>> {
+    if limit == 0 || limit > 1_000 {
+        return Err(ChordriftError::Configuration(
+            "group-track limit must be between 1 and 1000".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let proposal = status(database, account_label).await?;
+    let cluster_generation = clusters::status(database, account_label).await?;
+    let rows = sqlx::query(
+        "WITH placed AS (
+             SELECT DISTINCT membership.track_id
+             FROM playlists playlist
+             JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+             WHERE playlist.generation_id = $3
+         )
+         SELECT membership.representative_rank, membership.membership_score,
+                track.title,
+                COALESCE(string_agg(DISTINCT artist.name, ', '), '') AS artists,
+                min(provider_track.provider_track_id) AS spotify_id
+         FROM clusters cluster
+         JOIN cluster_tracks membership ON membership.cluster_id = cluster.id
+         JOIN tracks track ON track.id = membership.track_id
+         JOIN provider_tracks provider_track
+           ON provider_track.track_id = track.id AND provider_track.provider = 'spotify'
+         LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
+         LEFT JOIN artists artist ON artist.id = track_artist.artist_id
+         LEFT JOIN placed ON placed.track_id = track.id
+         LEFT JOIN excluded_tracks exclusion
+           ON exclusion.provider_account_id = $4 AND exclusion.track_id = track.id
+          AND exclusion.restored_at IS NULL
+         WHERE cluster.generation_id = $1 AND cluster.machine_label = $2
+           AND placed.track_id IS NULL AND exclusion.id IS NULL
+         GROUP BY membership.representative_rank, membership.membership_score,
+                  track.id, track.title
+         ORDER BY membership.representative_rank, track.id LIMIT $5",
+    )
+    .bind(cluster_generation.generation_id)
+    .bind(machine_label)
+    .bind(proposal.generation_id)
+    .bind(account_id)
+    .bind(i64::from(limit))
+    .fetch_all(database.pool())
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(GroupTrack {
+                position: as_usize(row.try_get("representative_rank")?)?,
+                score: row.try_get("membership_score")?,
+                title: row.try_get("title")?,
+                artists: row.try_get("artists")?,
+                spotify_id: row.try_get("spotify_id")?,
+            })
+        })
+        .collect()
+}
+
+/// Assigns unresolved embedded tracks to a cluster's dominant existing destination.
+pub async fn assign_by_group_consensus(
+    database: &Database,
+    account_label: &str,
+    min_dominance: f64,
+    min_evidence: u32,
+) -> Result<ConsensusAssignmentReport> {
+    if !(0.5..=1.0).contains(&min_dominance) || !min_dominance.is_finite() {
+        return Err(ChordriftError::Configuration(
+            "minimum group dominance must be finite and between 0.5 and 1".to_owned(),
+        ));
+    }
+    if !(2..=10_000).contains(&min_evidence) {
+        return Err(ChordriftError::Configuration(
+            "minimum group evidence must be between 2 and 10000".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let proposal = status(database, account_label).await?;
+    require_editable(&proposal)?;
+    let cluster_generation = clusters::status(database, account_label).await?;
+    let rows = sqlx::query(
+        "WITH placed AS (
+             SELECT membership.track_id, playlist.id AS playlist_id
+             FROM playlists playlist
+             JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+             WHERE playlist.generation_id = $2
+         ), destination_count AS (
+             SELECT cluster.id AS cluster_id, placed.playlist_id,
+                    count(DISTINCT membership.track_id)::bigint AS destination_tracks
+             FROM clusters cluster
+             JOIN cluster_tracks membership ON membership.cluster_id = cluster.id
+             JOIN placed ON placed.track_id = membership.track_id
+             WHERE cluster.generation_id = $1
+             GROUP BY cluster.id, placed.playlist_id
+         ), ranked AS (
+             SELECT destination_count.*,
+                    sum(destination_tracks) OVER (PARTITION BY cluster_id)::bigint AS placed_tracks,
+                    row_number() OVER (
+                        PARTITION BY cluster_id
+                        ORDER BY destination_tracks DESC, playlist_id
+                    ) AS destination_rank
+             FROM destination_count
+         ), dominant AS (
+             SELECT cluster_id, playlist_id, destination_tracks, placed_tracks
+             FROM ranked
+             WHERE destination_rank = 1 AND placed_tracks >= $3
+               AND destination_tracks::double precision / placed_tracks >= $4
+         )
+         SELECT membership.track_id, dominant.playlist_id,
+                dominant.destination_tracks, dominant.placed_tracks,
+                membership.membership_score, cluster.machine_label
+         FROM clusters cluster
+         JOIN dominant ON dominant.cluster_id = cluster.id
+         JOIN cluster_tracks membership ON membership.cluster_id = cluster.id
+         JOIN account_track_embeddings embedding
+           ON embedding.track_id = membership.track_id
+          AND embedding.generation_id = (
+              SELECT id FROM embedding_generations
+              WHERE provider_account_id = $5 ORDER BY created_at DESC, id DESC LIMIT 1
+          )
+         LEFT JOIN placed ON placed.track_id = membership.track_id
+         LEFT JOIN excluded_tracks exclusion
+           ON exclusion.provider_account_id = $5
+          AND exclusion.track_id = membership.track_id AND exclusion.restored_at IS NULL
+         WHERE cluster.generation_id = $1
+           AND placed.track_id IS NULL AND exclusion.id IS NULL
+         ORDER BY dominant.playlist_id, membership.representative_rank, membership.track_id",
+    )
+    .bind(cluster_generation.generation_id)
+    .bind(proposal.generation_id)
+    .bind(i64::from(min_evidence))
+    .bind(min_dominance)
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    let assigned_tracks = rows.len();
+    let mut transaction = database.pool().begin().await?;
+    let mut next_positions: HashMap<Uuid, i32> = HashMap::new();
+    for row in rows {
+        let playlist_id: Uuid = row.try_get("playlist_id")?;
+        let position = if let Some(position) = next_positions.get_mut(&playlist_id) {
+            position
+        } else {
+            let next: i32 = sqlx::query_scalar(
+                "SELECT COALESCE(max(position) + 1, 0) FROM playlist_tracks WHERE playlist_id = $1",
+            )
+            .bind(playlist_id)
+            .fetch_one(&mut *transaction)
+            .await?;
+            next_positions.entry(playlist_id).or_insert(next)
+        };
+        let destination_tracks: i64 = row.try_get("destination_tracks")?;
+        let placed_tracks: i64 = row.try_get("placed_tracks")?;
+        sqlx::query(
+            "INSERT INTO playlist_tracks
+             (playlist_id, track_id, position, source, provenance)
+             VALUES ($1, $2, $3, 'generated', $4)",
+        )
+        .bind(playlist_id)
+        .bind(row.try_get::<Uuid, _>("track_id")?)
+        .bind(*position)
+        .bind(json!({
+            "method": "analytical-cluster-dominant-destination",
+            "cluster_generation_id": cluster_generation.generation_id,
+            "cluster": row.try_get::<String, _>("machine_label")?,
+            "cluster_membership_score": row.try_get::<f64, _>("membership_score")?,
+            "dominant_known_tracks": destination_tracks,
+            "known_placed_tracks": placed_tracks,
+            "dominance": destination_tracks as f64 / placed_tracks as f64,
+            "minimum_dominance": min_dominance,
+            "minimum_evidence": min_evidence
+        }))
+        .execute(&mut *transaction)
+        .await?;
+        *position += 1;
+    }
+    let represented_tracks = refresh_coverage_tx(
+        &mut transaction,
+        account_id,
+        proposal.generation_id,
+        proposal.required_track_count,
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(ConsensusAssignmentReport {
+        generation_id: proposal.generation_id,
+        assigned_tracks,
+        required_tracks: proposal.required_track_count,
+        represented_tracks,
+        unresolved_tracks: proposal
+            .required_track_count
+            .saturating_sub(represented_tracks),
+    })
+}
+
+/// Assigns unresolved embedded tracks directly to sufficiently similar destinations.
+pub async fn assign_by_existing_centroid(
+    database: &Database,
+    account_label: &str,
+    min_similarity: f64,
+) -> Result<ConsensusAssignmentReport> {
+    if !(-1.0..=1.0).contains(&min_similarity) || !min_similarity.is_finite() {
+        return Err(ChordriftError::Configuration(
+            "centroid minimum similarity must be finite and between -1 and 1".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let proposal = status(database, account_label).await?;
+    require_editable(&proposal)?;
+    let embedding_generation_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM embedding_generations WHERE provider_account_id = $1
+         ORDER BY created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    let rows = sqlx::query(
+        "SELECT playlist.id, embedding.embedding
+         FROM playlists playlist
+         JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+         JOIN account_track_embeddings embedding
+           ON embedding.track_id = membership.track_id AND embedding.generation_id = $2
+         WHERE playlist.generation_id = $1 ORDER BY playlist.id, membership.position",
+    )
+    .bind(proposal.generation_id)
+    .bind(embedding_generation_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut centroids: HashMap<Uuid, Vec<f64>> = HashMap::new();
+    for row in rows {
+        let playlist_id: Uuid = row.try_get("id")?;
+        let vector: Vec<f64> = row.try_get("embedding")?;
+        let centroid = centroids
+            .entry(playlist_id)
+            .or_insert_with(|| vec![0.0; vector.len()]);
+        for (total, value) in centroid.iter_mut().zip(vector) {
+            *total += value;
+        }
+    }
+    for centroid in centroids.values_mut() {
+        normalize(centroid)?;
+    }
+    let rows = sqlx::query(
+        "WITH placed AS (
+             SELECT DISTINCT membership.track_id
+             FROM playlists playlist
+             JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+             WHERE playlist.generation_id = $2
+         )
+         SELECT track.id, embedding.embedding
+         FROM tracks track
+         JOIN account_track_embeddings embedding
+           ON embedding.track_id = track.id AND embedding.generation_id = $3
+         LEFT JOIN placed ON placed.track_id = track.id
+         LEFT JOIN excluded_tracks exclusion
+           ON exclusion.provider_account_id = $1 AND exclusion.track_id = track.id
+          AND exclusion.restored_at IS NULL
+         WHERE account_track_is_library_candidate($1, track.id)
+           AND placed.track_id IS NULL AND exclusion.id IS NULL
+         ORDER BY track.id",
+    )
+    .bind(account_id)
+    .bind(proposal.generation_id)
+    .bind(embedding_generation_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut assignments = Vec::new();
+    for row in rows {
+        let track_id: Uuid = row.try_get("id")?;
+        let vector: Vec<f64> = row.try_get("embedding")?;
+        if let Some((playlist_id, score)) = centroids
+            .iter()
+            .map(|(id, centroid)| (*id, dot(&vector, centroid)))
+            .max_by(|left, right| {
+                left.1
+                    .total_cmp(&right.1)
+                    .then_with(|| left.0.cmp(&right.0))
+            })
+            .filter(|(_, score)| *score >= min_similarity)
+        {
+            assignments.push((playlist_id, track_id, score));
+        }
+    }
+    assignments.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| right.2.total_cmp(&left.2))
+            .then_with(|| left.1.cmp(&right.1))
+    });
+    let assigned_tracks = assignments.len();
+    let mut transaction = database.pool().begin().await?;
+    let mut next_positions: HashMap<Uuid, i32> = HashMap::new();
+    for (playlist_id, track_id, score) in assignments {
+        let position = if let Some(position) = next_positions.get_mut(&playlist_id) {
+            position
+        } else {
+            let next: i32 = sqlx::query_scalar(
+                "SELECT COALESCE(max(position) + 1, 0) FROM playlist_tracks WHERE playlist_id = $1",
+            )
+            .bind(playlist_id)
+            .fetch_one(&mut *transaction)
+            .await?;
+            next_positions.entry(playlist_id).or_insert(next)
+        };
+        sqlx::query(
+            "INSERT INTO playlist_tracks
+             (playlist_id, track_id, position, source, provenance)
+             VALUES ($1, $2, $3, 'generated', $4)",
+        )
+        .bind(playlist_id)
+        .bind(track_id)
+        .bind(*position)
+        .bind(json!({
+            "method": "current-playlist-centroid",
+            "similarity": score,
+            "minimum_similarity": min_similarity,
+            "embedding_generation_id": embedding_generation_id
+        }))
+        .execute(&mut *transaction)
+        .await?;
+        *position += 1;
+    }
+    let represented_tracks = refresh_coverage_tx(
+        &mut transaction,
+        account_id,
+        proposal.generation_id,
+        proposal.required_track_count,
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(ConsensusAssignmentReport {
+        generation_id: proposal.generation_id,
+        assigned_tracks,
+        required_tracks: proposal.required_track_count,
+        represented_tracks,
+        unresolved_tracks: proposal
+            .required_track_count
+            .saturating_sub(represented_tracks),
+    })
+}
+
+/// Preserves an approved playlist structure and appends credible centroid fits.
+pub async fn extend_approved(
+    database: &Database,
+    account_label: &str,
+    min_similarity: f64,
+) -> Result<GenerationReport> {
+    if !(-1.0..=1.0).contains(&min_similarity) || !min_similarity.is_finite() {
+        return Err(ChordriftError::Configuration(
+            "extension minimum similarity must be finite and between -1 and 1".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let base = sqlx::query(
+        "SELECT id, cluster_generation_id, input_hash
+         FROM playlist_generations
+         WHERE provider_account_id = $1 AND status = 'approved'
+         ORDER BY approved_at DESC, created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| ChordriftError::Configuration("no approved proposal exists".to_owned()))?;
+    let base_generation_id: Uuid = base.try_get("id")?;
+    let cluster_generation_id: Uuid = base.try_get("cluster_generation_id")?;
+    let base_input_hash: String = base.try_get("input_hash")?;
+    let embedding = sqlx::query(
+        "SELECT id, input_hash FROM embedding_generations
+         WHERE provider_account_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    let embedding_generation_id: Uuid = embedding.try_get("id")?;
+    let embedding_input_hash: String = embedding.try_get("input_hash")?;
+    let input_hash = hash_parts(&[
+        "stable-playlist-extension",
+        "1",
+        &base_generation_id.to_string(),
+        &base_input_hash,
+        &embedding_generation_id.to_string(),
+        &embedding_input_hash,
+        &min_similarity.to_bits().to_string(),
+    ]);
+    if let Some(report) = reused_report(database, account_id, &input_hash).await? {
+        return Ok(report);
+    }
+
+    struct Centroid {
+        sum: Vec<f64>,
+    }
+    let rows = sqlx::query(
+        "SELECT playlist.id, embedding.embedding
+         FROM playlists playlist
+         JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+         JOIN account_track_embeddings embedding
+           ON embedding.track_id = membership.track_id AND embedding.generation_id = $2
+         WHERE playlist.generation_id = $1
+         ORDER BY playlist.id, membership.position",
+    )
+    .bind(base_generation_id)
+    .bind(embedding_generation_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut centroids: HashMap<Uuid, Centroid> = HashMap::new();
+    for row in rows {
+        let playlist_id: Uuid = row.try_get("id")?;
+        let vector: Vec<f64> = row.try_get("embedding")?;
+        let centroid = centroids.entry(playlist_id).or_insert_with(|| Centroid {
+            sum: vec![0.0; vector.len()],
+        });
+        for (total, value) in centroid.sum.iter_mut().zip(vector) {
+            *total += value;
+        }
+    }
+    for centroid in centroids.values_mut() {
+        normalize(&mut centroid.sum)?;
+    }
+    let candidate_rows = sqlx::query(
+        "WITH placement AS (
+             SELECT DISTINCT membership.track_id
+             FROM playlists playlist
+             JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+             WHERE playlist.generation_id = $2
+         )
+         SELECT track.id, embedding.embedding
+         FROM tracks track
+         JOIN account_track_embeddings embedding
+           ON embedding.track_id = track.id AND embedding.generation_id = $3
+         LEFT JOIN placement ON placement.track_id = track.id
+         LEFT JOIN excluded_tracks exclusion
+           ON exclusion.provider_account_id = $1 AND exclusion.track_id = track.id
+          AND exclusion.restored_at IS NULL
+         WHERE account_track_is_library_candidate($1, track.id)
+           AND placement.track_id IS NULL AND exclusion.id IS NULL
+         ORDER BY track.id",
+    )
+    .bind(account_id)
+    .bind(base_generation_id)
+    .bind(embedding_generation_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut assignments = Vec::new();
+    for row in candidate_rows {
+        let track_id: Uuid = row.try_get("id")?;
+        let vector: Vec<f64> = row.try_get("embedding")?;
+        let Some((playlist_id, score)) = centroids
+            .iter()
+            .map(|(id, centroid)| (*id, dot(&vector, &centroid.sum)))
+            .max_by(|left, right| {
+                left.1
+                    .total_cmp(&right.1)
+                    .then_with(|| left.0.cmp(&right.0))
+            })
+        else {
+            continue;
+        };
+        if score >= min_similarity {
+            assignments.push((playlist_id, track_id, score));
+        }
+    }
+    assignments.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| right.2.total_cmp(&left.2))
+            .then_with(|| left.1.cmp(&right.1))
+    });
+
+    let required_track_count = required_track_count(database, account_id).await?;
+    let mut transaction = database.pool().begin().await?;
+    let generation_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlist_generations
+         (model, model_version, status, parameters, provider_account_id,
+          cluster_generation_id, input_hash)
+         VALUES ('stable-playlist-extension', '1', 'proposed', $1, $2, $3, $4)
+         RETURNING id",
+    )
+    .bind(json!({
+        "base_generation_id": base_generation_id,
+        "embedding_generation_id": embedding_generation_id,
+        "min_similarity": min_similarity,
+        "preserves_existing_membership": true,
+        "spotify_writes": false
+    }))
+    .bind(account_id)
+    .bind(cluster_generation_id)
+    .bind(&input_hash)
+    .fetch_one(&mut *transaction)
+    .await?;
+    let playlist_rows = sqlx::query(
+        "SELECT id, concept_id, name, description, kind, machine_label, machine_tags
+         FROM playlists WHERE generation_id = $1 ORDER BY id",
+    )
+    .bind(base_generation_id)
+    .fetch_all(&mut *transaction)
+    .await?;
+    let mut playlist_map = HashMap::new();
+    let mut next_positions = HashMap::new();
+    for row in playlist_rows {
+        let old_id: Uuid = row.try_get("id")?;
+        let new_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO playlists
+             (generation_id, concept_id, name, description, kind, machine_label, machine_tags)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+        )
+        .bind(generation_id)
+        .bind(row.try_get::<Uuid, _>("concept_id")?)
+        .bind(row.try_get::<String, _>("name")?)
+        .bind(row.try_get::<Option<String>, _>("description")?)
+        .bind(row.try_get::<String, _>("kind")?)
+        .bind(row.try_get::<Option<String>, _>("machine_label")?)
+        .bind(row.try_get::<Value, _>("machine_tags")?)
+        .fetch_one(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO playlist_tracks (playlist_id, track_id, position, source, provenance)
+             SELECT $2, track_id, position, source, provenance ||
+                    jsonb_build_object('extended_from_generation_id', $3::uuid)
+             FROM playlist_tracks WHERE playlist_id = $1 ORDER BY position",
+        )
+        .bind(old_id)
+        .bind(new_id)
+        .bind(base_generation_id)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO playlist_name_revisions
+             (playlist_id, name, description, machine_tags, generator_provider,
+              generator_model, generator_model_version, artifact_sha256, selected)
+             SELECT $2, name, description, machine_tags, generator_provider,
+                    generator_model, generator_model_version, artifact_sha256, selected
+             FROM playlist_name_revisions WHERE playlist_id = $1 AND selected",
+        )
+        .bind(old_id)
+        .bind(new_id)
+        .execute(&mut *transaction)
+        .await?;
+        let next: i32 = sqlx::query_scalar(
+            "SELECT COALESCE(max(position) + 1, 0) FROM playlist_tracks WHERE playlist_id = $1",
+        )
+        .bind(new_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+        playlist_map.insert(old_id, new_id);
+        next_positions.insert(old_id, next);
+    }
+    for (old_playlist_id, track_id, score) in assignments {
+        let new_playlist_id = playlist_map[&old_playlist_id];
+        let position = next_positions
+            .get_mut(&old_playlist_id)
+            .expect("copied destination has next position");
+        sqlx::query(
+            "INSERT INTO playlist_tracks
+             (playlist_id, track_id, position, source, provenance)
+             VALUES ($1, $2, $3, 'generated', $4)",
+        )
+        .bind(new_playlist_id)
+        .bind(track_id)
+        .bind(*position)
+        .bind(json!({
+            "method": "approved-playlist-centroid",
+            "similarity": score,
+            "embedding_generation_id": embedding_generation_id,
+            "base_generation_id": base_generation_id
+        }))
+        .execute(&mut *transaction)
+        .await?;
+        *position += 1;
+    }
+    replay_assignment_overrides(&mut transaction, account_id, generation_id).await?;
+    let assigned_track_count: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT membership.track_id)::bigint
+         FROM playlists playlist JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+         WHERE playlist.generation_id = $1",
+    )
+    .bind(generation_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    let represented_track_count =
+        represented_required_track_count_tx(&mut transaction, account_id, generation_id).await?;
+    let playlist_count: i64 =
+        sqlx::query_scalar("SELECT count(*)::bigint FROM playlists WHERE generation_id = $1")
+            .bind(generation_id)
+            .fetch_one(&mut *transaction)
+            .await?;
+    let coverage_complete = represented_track_count == required_track_count;
+    sqlx::query(
+        "UPDATE playlist_generations SET required_track_count = $2,
+         represented_track_count = $3, coverage_complete = $4 WHERE id = $1",
+    )
+    .bind(generation_id)
+    .bind(as_i32(required_track_count)?)
+    .bind(as_i32(represented_track_count)?)
+    .bind(coverage_complete)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+    Ok(GenerationReport {
+        generation_id,
+        cluster_generation_id,
+        reused: false,
+        playlist_count: as_usize_i64(playlist_count)?,
+        assigned_track_count: as_usize_i64(assigned_track_count)?,
+        required_track_count,
+        represented_track_count,
+        coverage_complete,
+        input_hash,
+    })
 }
 
 /// Creates a stable manual category in the latest proposal.
@@ -1048,9 +2247,8 @@ async fn change_assignment(
         "SELECT track.id, track.title
          FROM provider_tracks provider_track
          JOIN tracks track ON track.id = provider_track.track_id
-         JOIN account_track_statistics account_track
-           ON account_track.track_id = track.id AND account_track.provider_account_id = $1
-         WHERE provider_track.provider = 'spotify' AND provider_track.provider_track_id = $2",
+         WHERE provider_track.provider = 'spotify' AND provider_track.provider_track_id = $2
+           AND account_track_is_library_candidate($1, track.id)",
     )
     .bind(account_id)
     .bind(spotify_id)
@@ -1058,7 +2256,7 @@ async fn change_assignment(
     .await?
     .ok_or_else(|| {
         ChordriftError::Configuration(
-            "Spotify track ID is not in this account's current canonical library".to_owned(),
+            "Spotify track ID is not in this account's preserved library inventory".to_owned(),
         )
     })?;
     let track_id: Uuid = row.try_get("id")?;
@@ -1358,17 +2556,15 @@ async fn find_lineage_concept(
 
 async fn required_track_count(database: &Database, account_id: Uuid) -> Result<usize> {
     let count: i64 = sqlx::query_scalar(
-        "WITH latest AS (
-             SELECT id FROM provider_library_snapshots WHERE provider_account_id = $1
-             ORDER BY captured_at DESC, id DESC LIMIT 1)
-         SELECT count(DISTINCT provider_track.track_id)::bigint
-         FROM provider_account_playlists account_playlist
-         JOIN provider_playlist_tracks membership
-           ON membership.provider_playlist_id = account_playlist.provider_playlist_id
-         JOIN latest ON latest.id = membership.snapshot_id
-         JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
-         WHERE account_playlist.provider_account_id = $1
-           AND account_playlist.signal_class IN ('semantic_legacy', 'intake')",
+        "SELECT count(*)::bigint
+         FROM tracks track
+         WHERE account_track_is_library_candidate($1, track.id)
+           AND NOT EXISTS (
+               SELECT 1 FROM excluded_tracks exclusion
+               WHERE exclusion.provider_account_id = $1
+                 AND exclusion.track_id = track.id
+                 AND exclusion.restored_at IS NULL
+           )",
     )
     .bind(account_id)
     .fetch_one(database.pool())
@@ -1382,17 +2578,16 @@ async fn represented_required_track_count_tx(
     generation_id: Uuid,
 ) -> Result<usize> {
     let count: i64 = sqlx::query_scalar(
-        "WITH latest AS (
-             SELECT id FROM provider_library_snapshots WHERE provider_account_id = $1
-             ORDER BY captured_at DESC, id DESC LIMIT 1), required AS (
-             SELECT DISTINCT provider_track.track_id
-             FROM provider_account_playlists account_playlist
-             JOIN provider_playlist_tracks membership
-               ON membership.provider_playlist_id = account_playlist.provider_playlist_id
-             JOIN latest ON latest.id = membership.snapshot_id
-             JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
-             WHERE account_playlist.provider_account_id = $1
-               AND account_playlist.signal_class IN ('semantic_legacy', 'intake'))
+        "WITH required AS (
+             SELECT track.id AS track_id
+             FROM tracks track
+             WHERE account_track_is_library_candidate($1, track.id)
+               AND NOT EXISTS (
+                   SELECT 1 FROM excluded_tracks exclusion
+                   WHERE exclusion.provider_account_id = $1
+                     AND exclusion.track_id = track.id
+                     AND exclusion.restored_at IS NULL
+               ))
          SELECT count(DISTINCT required.track_id)::bigint FROM required
          JOIN playlist_tracks proposed ON proposed.track_id = required.track_id
          JOIN playlists playlist ON playlist.id = proposed.playlist_id

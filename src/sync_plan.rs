@@ -13,19 +13,27 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result};
 
 const PROVIDER: &str = "spotify";
-const PLANNER_VERSION: &str = "spotify-dry-run-v6";
-const INTAKE_SURFACES: [(&str, &str); 3] = [
+const PLANNER_VERSION: &str = "spotify-dry-run-v8";
+const INTAKE_SURFACES: [(&str, &str, Option<&str>); 4] = [
     (
         "Inbox",
         "Strong recent personal discoveries awaiting verified Chordrift placement.",
+        None,
     ),
     (
         "From Friends",
         "Explicit recommendations from friends awaiting verified Chordrift placement.",
+        Some("recommendation"),
     ),
     (
         "Liked from Radio",
         "Radio or autoplay discoveries awaiting verified Chordrift placement.",
+        Some("discovery"),
+    ),
+    (
+        "From Prompts",
+        "Intentional discoveries carried forward from Spotify prompt-generated playlists.",
+        Some("prompted"),
     ),
 ];
 
@@ -48,6 +56,8 @@ pub struct PlanReport {
     pub creates: usize,
     /// Playlist renames.
     pub renames: usize,
+    /// Exact-order replacements where membership is already correct.
+    pub reorders: usize,
     /// Track additions, excluding explicit restores.
     pub additions: usize,
     /// Explicit Excluded Tracks restores.
@@ -144,6 +154,8 @@ struct CurrentTrack {
 struct Summary {
     creates: usize,
     renames: usize,
+    #[serde(default)]
+    reorders: usize,
     additions: usize,
     restorations: usize,
     #[serde(default)]
@@ -185,8 +197,90 @@ pub async fn create(
             .then_with(|| left.operation_key.cmp(&right.operation_key))
     });
 
+    persist_operations(
+        database,
+        account_id,
+        proposal_id,
+        snapshot_id,
+        operations,
+        "full",
+    )
+    .await
+}
+
+/// Builds a one-cover immutable update plan for an approved playlist artifact.
+pub async fn create_artwork_update(
+    database: &Database,
+    account_label: &str,
+    playlist: &str,
+) -> Result<PlanReport> {
+    let selector = playlist.trim();
+    if selector.is_empty() {
+        return Err(ChordriftError::Configuration(
+            "artwork playlist selector cannot be empty".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let proposal_id = approved_proposal(database, account_id, None).await?;
+    let snapshot_id = latest_snapshot(database, account_id).await?;
+    validate_proposal(database, proposal_id).await?;
+    let current = current_managed_playlists(database, account_id, snapshot_id).await?;
+    let mut operations = artwork_operations(database, account_id, proposal_id, &current)
+        .await?
+        .into_iter()
+        .filter(|operation| {
+            operation.playlist_name.eq_ignore_ascii_case(selector)
+                || operation
+                    .payload
+                    .get("stable_key")
+                    .and_then(Value::as_str)
+                    .is_some_and(|key| key.eq_ignore_ascii_case(selector))
+        })
+        .collect::<Vec<_>>();
+    if operations.is_empty() {
+        return Err(ChordriftError::Configuration(format!(
+            "no pending approved artwork update matches playlist or stable key {selector:?}"
+        )));
+    }
+    if operations.len() != 1 {
+        return Err(ChordriftError::Configuration(format!(
+            "artwork selector {selector:?} is ambiguous"
+        )));
+    }
+    let operation = &operations[0];
+    if operation.spotify_playlist_id.is_none() {
+        return Err(ChordriftError::Configuration(format!(
+            "playlist {:?} has no current Spotify target",
+            operation.playlist_name
+        )));
+    }
+    operations[0].safety = json!({
+        "destructive": false,
+        "requires_approved_artwork": true,
+        "focused_artwork_update": true
+    });
+    persist_operations(
+        database,
+        account_id,
+        proposal_id,
+        snapshot_id,
+        operations,
+        &format!("artwork:{selector}"),
+    )
+    .await
+}
+
+async fn persist_operations(
+    database: &Database,
+    account_id: Uuid,
+    proposal_id: Uuid,
+    snapshot_id: Uuid,
+    operations: Vec<PlanOperationInput>,
+    scope: &str,
+) -> Result<PlanReport> {
     let input = json!({
         "planner_version": PLANNER_VERSION,
+        "scope": scope,
         "provider": PROVIDER,
         "account_id": account_id,
         "source_snapshot_id": snapshot_id,
@@ -278,48 +372,108 @@ async fn artwork_operations(
     current: &BTreeMap<Uuid, CurrentPlaylist>,
 ) -> Result<Vec<PlanOperationInput>> {
     let rows = sqlx::query(
-        "SELECT artifact.playlist_id, playlist.concept_id, concept.stable_key,
-                artifact.playlist_name, artifact.artifact_path,
-                artifact.content_sha256, artifact.batch_id
+        "SELECT artifact.playlist_id, artifact.target_kind, playlist.concept_id,
+                artifact.stable_key, artifact.playlist_name, artifact.artifact_path,
+                artifact.content_sha256, artifact.batch_id,
+                intake.provider_playlist_row_id AS intake_provider_playlist_row_id,
+                intake.spotify_playlist_id AS intake_spotify_playlist_id
          FROM playlist_artwork_batches batch
          JOIN playlist_artwork_artifacts artifact ON artifact.batch_id = batch.id
-         JOIN playlists playlist ON playlist.id = artifact.playlist_id
-         JOIN playlist_concepts concept ON concept.id = playlist.concept_id
-         WHERE batch.provider_account_id = $1
-           AND batch.proposal_generation_id = $2 AND batch.state = 'approved'
+         LEFT JOIN playlists playlist ON playlist.id = artifact.playlist_id
+         LEFT JOIN LATERAL (
+             SELECT provider.id AS provider_playlist_row_id,
+                    provider.provider_playlist_id AS spotify_playlist_id
+             FROM current_spotify_playlists current
+             JOIN provider_playlists provider ON provider.id = current.provider_playlist_id
+             WHERE current.provider_account_id = $1
+               AND current.signal_class = 'intake'
+               AND lower(current.name) = lower(artifact.playlist_name)
+             ORDER BY provider.id LIMIT 1
+         ) intake ON artifact.target_kind = 'intake'
+         WHERE batch.id = (
+             SELECT latest.id
+             FROM playlist_artwork_batches latest
+             WHERE latest.provider_account_id = $1
+               AND latest.proposal_generation_id = $2
+               AND latest.state = 'approved'
+             ORDER BY latest.approved_at DESC, latest.created_at DESC, latest.id DESC
+             LIMIT 1
+         )
          ORDER BY lower(artifact.playlist_name), artifact.playlist_id",
     )
     .bind(account_id)
     .bind(proposal_id)
     .fetch_all(database.pool())
     .await?;
-    rows.into_iter()
-        .map(|row| {
-            let concept_id: Uuid = row.try_get("concept_id")?;
-            let observed = current.get(&concept_id);
-            let stable_key: String = row.try_get("stable_key")?;
-            Ok(PlanOperationInput {
-                phase: "publish".to_owned(),
-                operation_type: "upload_artwork".to_owned(),
-                operation_key: format!(
-                    "artwork:{stable_key}:{}",
-                    row.try_get::<String, _>("content_sha256")?
-                ),
-                playlist_id: Some(row.try_get("playlist_id")?),
-                provider_playlist_id: observed.map(|value| value.provider_playlist_id),
-                playlist_name: row.try_get("playlist_name")?,
-                spotify_playlist_id: observed.map(|value| value.spotify_id.clone()),
-                spotify_track_id: None,
-                payload: json!({
-                    "artifact_path": row.try_get::<String, _>("artifact_path")?,
-                    "content_sha256": row.try_get::<String, _>("content_sha256")?,
-                    "artwork_batch_id": row.try_get::<Uuid, _>("batch_id")?,
-                    "stable_key": stable_key,
-                }),
-                safety: json!({"destructive": false, "requires_approved_artwork": true}),
-            })
-        })
-        .collect()
+    let mut operations = Vec::new();
+    for row in rows {
+        let target_kind: String = row.try_get("target_kind")?;
+        let concept_id: Option<Uuid> = row.try_get("concept_id")?;
+        let observed = concept_id.and_then(|id| current.get(&id));
+        let stable_key: String = row.try_get("stable_key")?;
+        let spotify_playlist_id = if target_kind == "intake" {
+            row.try_get("intake_spotify_playlist_id")?
+        } else {
+            observed.map(|value| value.spotify_id.clone())
+        };
+        let operation_key = format!(
+            "artwork:{stable_key}:{}",
+            row.try_get::<String, _>("content_sha256")?
+        );
+        if let Some(spotify_id) = &spotify_playlist_id
+            && artwork_already_uploaded(database, account_id, &operation_key, spotify_id).await?
+        {
+            continue;
+        }
+        operations.push(PlanOperationInput {
+            phase: "publish".to_owned(),
+            operation_type: "upload_artwork".to_owned(),
+            operation_key,
+            playlist_id: row.try_get("playlist_id")?,
+            provider_playlist_id: if target_kind == "intake" {
+                row.try_get("intake_provider_playlist_row_id")?
+            } else {
+                observed.map(|value| value.provider_playlist_id)
+            },
+            playlist_name: row.try_get("playlist_name")?,
+            spotify_playlist_id,
+            spotify_track_id: None,
+            payload: json!({
+                "artifact_path": row.try_get::<String, _>("artifact_path")?,
+                "content_sha256": row.try_get::<String, _>("content_sha256")?,
+                "artwork_batch_id": row.try_get::<Uuid, _>("batch_id")?,
+                "stable_key": stable_key,
+                "target_kind": target_kind,
+            }),
+            safety: json!({"destructive": false, "requires_approved_artwork": true}),
+        });
+    }
+    Ok(operations)
+}
+
+async fn artwork_already_uploaded(
+    database: &Database,
+    account_id: Uuid,
+    operation_key: &str,
+    spotify_playlist_id: &str,
+) -> Result<bool> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM sync_apply_operations execution
+             JOIN sync_apply_runs apply ON apply.id = execution.apply_run_id
+             JOIN sync_operations planned ON planned.id = execution.planned_operation_id
+             WHERE apply.provider_account_id = $1
+               AND execution.status = 'succeeded'
+               AND planned.operation_key = $2
+               AND execution.resolved_spotify_playlist_id = $3
+         )",
+    )
+    .bind(account_id)
+    .bind(operation_key)
+    .bind(spotify_playlist_id)
+    .fetch_one(database.pool())
+    .await
+    .map_err(Into::into)
 }
 
 async fn intake_surface_operations(
@@ -346,27 +500,30 @@ async fn intake_surface_operations(
         .collect();
     Ok(INTAKE_SURFACES
         .iter()
-        .filter(|(name, _)| !normalized.contains(&name.to_lowercase()))
-        .map(|(name, description)| PlanOperationInput {
-            phase: "publish".to_owned(),
-            operation_type: "create_playlist".to_owned(),
-            operation_key: format!("create-intake:{}", name.to_lowercase().replace(' ', "-")),
-            playlist_id: None,
-            provider_playlist_id: None,
-            playlist_name: (*name).to_owned(),
-            spotify_playlist_id: None,
-            spotify_track_id: None,
-            payload: json!({
-                "description": description,
-                "public": false,
-                "surface": "intake",
-                "role": "inbox",
-                "drift_policy": "provider_wins",
-                "signal_class": "intake",
-                "clear_policy": "after_verified_assignment"
-            }),
-            safety: json!({"destructive": false}),
-        })
+        .filter(|(name, _, _)| !normalized.contains(&name.to_lowercase()))
+        .map(
+            |(name, description, behavioral_signal)| PlanOperationInput {
+                phase: "publish".to_owned(),
+                operation_type: "create_playlist".to_owned(),
+                operation_key: format!("create-intake:{}", name.to_lowercase().replace(' ', "-")),
+                playlist_id: None,
+                provider_playlist_id: None,
+                playlist_name: (*name).to_owned(),
+                spotify_playlist_id: None,
+                spotify_track_id: None,
+                payload: json!({
+                    "description": description,
+                    "public": false,
+                    "surface": "intake",
+                    "role": "inbox",
+                    "drift_policy": "provider_wins",
+                    "signal_class": "intake",
+                    "behavioral_signal": behavioral_signal,
+                    "clear_policy": "after_verified_assignment"
+                }),
+                safety: json!({"destructive": false}),
+            },
+        )
         .collect())
 }
 
@@ -503,6 +660,36 @@ fn playlist_diff(
             .iter()
             .map(|track| track.canonical_id)
             .collect();
+        if let Some(observed) = observed {
+            let current_order = observed
+                .tracks
+                .iter()
+                .map(|track| track.canonical_id)
+                .collect::<Vec<_>>();
+            let desired_order = playlist
+                .tracks
+                .iter()
+                .map(|track| track.canonical_id)
+                .collect::<Vec<_>>();
+            if current_tracks == desired_tracks && current_order != desired_order {
+                operations.push(PlanOperationInput {
+                    phase: "publish".to_owned(),
+                    operation_type: "reorder_playlist".to_owned(),
+                    operation_key: format!("reorder:{}", playlist.stable_key),
+                    playlist_id: Some(playlist.playlist_id),
+                    provider_playlist_id: Some(observed.provider_playlist_id),
+                    playlist_name: playlist.name.clone(),
+                    spotify_playlist_id: Some(observed.spotify_id.clone()),
+                    spotify_track_id: None,
+                    payload: json!({"concept_id": playlist.concept_id,
+                        "track_count": desired_order.len(),
+                        "expected_snapshot_id": observed.provider_snapshot_id}),
+                    safety: json!({"destructive": false,
+                        "membership_unchanged": true,
+                        "exact_order_replacement": true}),
+                });
+            }
+        }
         for track in &playlist.tracks {
             if !current_tracks.contains(&track.canonical_id) {
                 if let Some(observed) = observed
@@ -1062,6 +1249,7 @@ fn summarize(operations: &[PlanOperationInput]) -> Summary {
     Summary {
         creates: count_kind(operations, "create_playlist"),
         renames: count_kind(operations, "rename_playlist"),
+        reorders: count_kind(operations, "reorder_playlist"),
         additions: count_kind(operations, "add_track"),
         restorations: count_kind(operations, "restore_track"),
         artwork_uploads: count_kind(operations, "upload_artwork"),
@@ -1096,6 +1284,7 @@ fn report(
         operation_count,
         creates: summary.creates,
         renames: summary.renames,
+        reorders: summary.reorders,
         additions: summary.additions,
         restorations: summary.restorations,
         artwork_uploads: summary.artwork_uploads,
@@ -1130,7 +1319,7 @@ fn operation_rank(operation_type: &str) -> u8 {
         "create_playlist" => 0,
         "rename_playlist" => 1,
         "add_track" | "restore_track" => 2,
-        "reorder_track" => 3,
+        "reorder_playlist" => 3,
         "upload_artwork" => 4,
         "exclude_track" => 5,
         "remove_track" => 6,

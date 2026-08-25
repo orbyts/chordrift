@@ -10,9 +10,9 @@ use url::Url;
 use crate::{ChordriftError, Result};
 
 use super::models::{
-    BookmarkContentStatus, CurrentUser, ExternalPlaylistInventory, ExternalPlaylistRelationship,
-    Page, PlaylistInventory, PlaylistItem, ReusePlan, SavedTrack, SavedTrackReuse,
-    SavedTracksInventory, SpotifyInventory, SpotifyPlaylist,
+    BookmarkContentStatus, CurrentUser, CursorPage, ExternalPlaylistInventory,
+    ExternalPlaylistRelationship, Page, PlaylistInventory, PlaylistItem, ReusePlan, SavedTrack,
+    SavedTrackReuse, SavedTracksInventory, SpotifyInventory, SpotifyPlaylist,
 };
 
 const API_ROOT: &str = "https://api.spotify.com/v1/";
@@ -346,11 +346,29 @@ impl SpotifyClient {
             .saved_tracks(saved_url, reuse.saved_tracks.as_ref())
             .await?;
 
+        eprintln!("spotify fetch: recently played");
+        let mut recent_url = api_url("me/player/recently-played")?;
+        recent_url
+            .query_pairs_mut()
+            .append_pair("limit", PAGE_LIMIT);
+        if let Some(after) = reuse.recent_after {
+            recent_url
+                .query_pairs_mut()
+                .append_pair("after", &after.timestamp_millis().to_string());
+        }
+        let recently_played = self.all_cursor_pages(recent_url).await?;
+        eprintln!(
+            "spotify fetch: recently played {} new observations",
+            recently_played.len()
+        );
+
         Ok(SpotifyInventory {
             profile,
             playlists,
             external_playlists,
             saved_tracks,
+            recently_played,
+            recent_requested_after: reuse.recent_after,
             playlists_seen,
             followed_playlists_skipped,
             inaccessible_collaborative_playlists,
@@ -438,6 +456,30 @@ impl SpotifyClient {
             url = Url::parse(&next).map_err(|_| {
                 ChordriftError::Configuration(
                     "Spotify pagination returned an invalid URL".to_owned(),
+                )
+            })?;
+        }
+        Ok(values)
+    }
+
+    async fn all_cursor_pages<T: DeserializeOwned>(&self, mut url: Url) -> Result<Vec<T>> {
+        let mut values = Vec::new();
+        let mut visited = HashSet::new();
+        loop {
+            validate_api_url(&url)?;
+            if !visited.insert(url.as_str().to_owned()) {
+                return Err(ChordriftError::Configuration(
+                    "Spotify cursor pagination returned a repeated page".to_owned(),
+                ));
+            }
+            let page: CursorPage<T> = self.get_json(url).await?;
+            values.extend(page.items);
+            let Some(next) = page.next else {
+                break;
+            };
+            url = Url::parse(&next).map_err(|_| {
+                ChordriftError::Configuration(
+                    "Spotify cursor pagination returned an invalid URL".to_owned(),
                 )
             })?;
         }

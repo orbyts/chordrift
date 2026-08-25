@@ -24,11 +24,13 @@ const TOKEN_ENDPOINT: &str = "https://accounts.spotify.com/api/token";
 const CLIENT_ID_VARIABLE: &str = "CHORDRIFT_SPOTIFY_CLIENT_ID";
 const REDIRECT_URI_VARIABLE: &str = "CHORDRIFT_SPOTIFY_REDIRECT_URI";
 const DEFAULT_REDIRECT_URI: &str = "http://127.0.0.1:8888/callback";
-const SCOPES: &str = "playlist-read-private playlist-read-collaborative user-library-read playlist-modify-private playlist-modify-public user-library-modify ugc-image-upload";
-pub(crate) const REQUIRED_SCOPES: [&str; 7] = [
+const SCOPES: &str = "playlist-read-private playlist-read-collaborative user-library-read user-read-recently-played user-top-read playlist-modify-private playlist-modify-public user-library-modify ugc-image-upload";
+pub(crate) const REQUIRED_SCOPES: [&str; 9] = [
     "playlist-read-private",
     "playlist-read-collaborative",
     "user-library-read",
+    "user-read-recently-played",
+    "user-top-read",
     "playlist-modify-private",
     "playlist-modify-public",
     "user-library-modify",
@@ -117,7 +119,7 @@ struct TokenResponse {
     refresh_token: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct StoredCredential {
     account_id: String,
     spotify_user_id: String,
@@ -214,6 +216,7 @@ pub fn logout(account_label: &str) -> Result<bool> {
 
 pub(crate) async fn session(account_label: &str) -> Result<SpotifySession> {
     let mut credential = load_credential(account_label)?;
+    let original = credential.clone();
     let credential_id = credential_id(account_label)?;
     let config = SpotifyOAuthConfig::from_environment()?;
     let http = oauth_http_client()?;
@@ -234,7 +237,9 @@ pub(crate) async fn session(account_label: &str) -> Result<SpotifySession> {
         ));
     }
     credential.spotify_user_id = profile.id.clone();
-    SystemCredentialStore.save(&credential_id, &serde_json::to_vec(&credential)?)?;
+    if credential != original {
+        SystemCredentialStore.save(&credential_id, &serde_json::to_vec(&credential)?)?;
+    }
     Ok(SpotifySession {
         client,
         profile,

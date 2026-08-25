@@ -134,12 +134,14 @@ pub async fn generate(
                 EXISTS (
                     SELECT 1
                     FROM provider_playlist_tracks membership
+                    JOIN provider_library_snapshots library
+                      ON library.id = membership.snapshot_id
                     JOIN provider_tracks provider_track
                       ON provider_track.id = membership.provider_track_id
                     JOIN provider_account_playlists account_playlist
                       ON account_playlist.provider_playlist_id = membership.provider_playlist_id
                      AND account_playlist.provider_account_id = $2
-                    WHERE membership.snapshot_id = $3
+                    WHERE library.provider_account_id = $2
                       AND provider_track.track_id = embedding.track_id
                       AND account_playlist.signal_class = 'semantic_legacy'
                       AND account_playlist.semantic_weight > 0
@@ -155,7 +157,6 @@ pub async fn generate(
     )
     .bind(embedding.generation_id)
     .bind(account_id)
-    .bind(embedding.snapshot_id)
     .fetch_all(database.pool())
     .await?;
     let items = rows

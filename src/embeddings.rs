@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result};
 
 const MODEL: &str = "semantic-feature-hash";
-const MODEL_VERSION: &str = "3";
+const MODEL_VERSION: &str = "4";
 // This library exposes enough distinct playlist, artist, and album features
 // that 128 slots create visible signed-hash collisions during neighbor review.
 const DEFAULT_DIMENSIONS: usize = 1024;
@@ -23,6 +23,7 @@ const ALBUM_WEIGHT: f64 = 0.35;
 const NAME_TOKEN_WEIGHT: f64 = 0.20;
 const SEMANTIC_FACT_WEIGHT: f64 = 0.45;
 const ACOUSTIC_MODEL_WEIGHT: f64 = 1.0;
+const LISTENING_SESSION_WEIGHT: f64 = 0.20;
 
 /// Readiness summary for one account's embedding inputs.
 #[derive(Clone, Debug, PartialEq)]
@@ -39,6 +40,8 @@ pub struct AuditReport {
     pub album_related_tracks: usize,
     /// Eligible tracks with matched listening statistics.
     pub history_tracks: usize,
+    /// Eligible tracks sharing at least one meaningful listening session.
+    pub session_related_tracks: usize,
     /// Eligible tracks with external semantic or model-produced facts.
     pub semantic_fact_tracks: usize,
     /// Eligible tracks with an imported pretrained acoustic embedding.
@@ -184,6 +187,7 @@ struct Inputs {
     artists: BTreeMap<Uuid, Vec<Uuid>>,
     semantic_features: BTreeMap<Uuid, Vec<SemanticFeature>>,
     model_vectors: BTreeMap<Uuid, Vec<ModelVector>>,
+    listening_sessions: Vec<Vec<Uuid>>,
     semantic_sources: Vec<String>,
     acoustic_models: Vec<String>,
 }
@@ -224,6 +228,12 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<AuditRepo
             semantic_weight: playlist.weight,
         })
         .collect();
+    let session_related_tracks: HashSet<_> = inputs
+        .listening_sessions
+        .iter()
+        .filter(|session| session.len() > 1)
+        .flat_map(|session| session.iter().copied())
+        .collect();
     Ok(AuditReport {
         snapshot_id: inputs.snapshot_id,
         eligible_tracks: inputs.tracks.len(),
@@ -235,6 +245,7 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<AuditRepo
             .iter()
             .filter(|track| track.has_history)
             .count(),
+        session_related_tracks: session_related_tracks.len(),
         semantic_fact_tracks: inputs.semantic_features.len(),
         acoustic_embedding_tracks: inputs.model_vectors.len(),
         playlists,
@@ -527,15 +538,7 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
              FROM account_listening_track_statistics stats
              WHERE stats.provider_account_id = $1 AND stats.track_id = track.id
          ) listening ON TRUE
-         WHERE EXISTS (
-             SELECT 1 FROM provider_playlist_tracks membership
-             JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
-             WHERE membership.snapshot_id = $2 AND member_track.track_id = track.id
-         ) OR EXISTS (
-             SELECT 1 FROM provider_saved_tracks saved
-             JOIN provider_tracks saved_track ON saved_track.id = saved.provider_track_id
-             WHERE saved.snapshot_id = $2 AND saved_track.track_id = track.id
-         ) OR listening.event_count IS NOT NULL
+         WHERE account_track_is_library_candidate($1, track.id)
          GROUP BY track.id, track.title, track.album_id, listening.event_count
          ORDER BY track.id",
     )
@@ -571,25 +574,34 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
     }
 
     let playlist_rows = sqlx::query(
-        "SELECT provider.id AS playlist_id, provider.provider_playlist_id,
-                snapshot.name, account_playlist.signal_class,
+        "SELECT DISTINCT provider.id AS playlist_id, provider.provider_playlist_id,
+                latest_name.name, account_playlist.signal_class,
                 account_playlist.semantic_weight,
                 member_track.track_id
          FROM provider_account_playlists account_playlist
          JOIN provider_playlists provider
            ON provider.id = account_playlist.provider_playlist_id
-         JOIN provider_playlist_snapshots snapshot
-           ON snapshot.provider_playlist_id = provider.id AND snapshot.snapshot_id = $2
+         JOIN LATERAL (
+             SELECT historical_name.name
+             FROM provider_playlist_snapshots historical_name
+             JOIN provider_library_snapshots historical_library
+               ON historical_library.id = historical_name.snapshot_id
+             WHERE historical_name.provider_playlist_id = provider.id
+               AND historical_library.provider_account_id = $1
+             ORDER BY historical_library.captured_at DESC, historical_library.id DESC
+             LIMIT 1
+         ) latest_name ON TRUE
+         JOIN provider_library_snapshots historical_library
+           ON historical_library.provider_account_id = $1
          JOIN provider_playlist_tracks membership
-           ON membership.provider_playlist_id = provider.id AND membership.snapshot_id = $2
+           ON membership.provider_playlist_id = provider.id
+          AND membership.snapshot_id = historical_library.id
          JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
          WHERE account_playlist.provider_account_id = $1
-           AND account_playlist.present_in_latest_snapshot
            AND account_playlist.signal_class = 'semantic_legacy'
          ORDER BY provider.id, member_track.track_id",
     )
     .bind(account_id)
-    .bind(snapshot_id)
     .fetch_all(database.pool())
     .await?;
     let mut playlist_map: BTreeMap<Uuid, PlaylistInput> = BTreeMap::new();
@@ -704,6 +716,43 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
                 });
         }
     }
+    let session_rows = sqlx::query(
+        "WITH ordered AS (
+             SELECT event.track_id, event.played_at,
+                    lag(event.played_at) OVER (
+                        ORDER BY event.played_at, event.id
+                    ) AS previous_played_at
+             FROM listening_events event
+             WHERE event.provider_account_id = $1 AND event.track_id IS NOT NULL
+               AND event.superseded_at IS NULL
+               AND COALESCE(event.ms_played, 0) >= 30000
+         ), boundaries AS (
+             SELECT track_id, played_at,
+                    CASE WHEN previous_played_at IS NULL
+                              OR played_at - previous_played_at > interval '45 minutes'
+                         THEN 1 ELSE 0 END AS new_session
+             FROM ordered
+         ), sessionized AS (
+             SELECT track_id,
+                    sum(new_session) OVER (ORDER BY played_at, track_id) AS session_id
+             FROM boundaries
+         )
+         SELECT DISTINCT session_id, track_id
+         FROM sessionized ORDER BY session_id, track_id",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut session_map: BTreeMap<i64, Vec<Uuid>> = BTreeMap::new();
+    for row in session_rows {
+        let track_id: Uuid = row.try_get("track_id")?;
+        if eligible_ids.contains(&track_id) {
+            session_map
+                .entry(row.try_get("session_id")?)
+                .or_default()
+                .push(track_id);
+        }
+    }
     Ok(Inputs {
         account_id,
         snapshot_id,
@@ -712,6 +761,7 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
         artists,
         semantic_features,
         model_vectors,
+        listening_sessions: session_map.into_values().collect(),
         semantic_sources: {
             let mut values: Vec<_> = semantic_sources.into_iter().collect();
             values.sort();
@@ -795,6 +845,35 @@ fn build_vectors(inputs: &Inputs, dimensions: usize, seed: i64) -> BTreeMap<Uuid
                 hashed_dimensions,
                 seed,
             );
+        }
+    }
+
+    let mut track_session_counts: HashMap<Uuid, usize> = HashMap::new();
+    for session in inputs
+        .listening_sessions
+        .iter()
+        .filter(|session| session.len() > 1)
+    {
+        for track_id in session {
+            *track_session_counts.entry(*track_id).or_default() += 1;
+        }
+    }
+    for (session_index, session) in inputs.listening_sessions.iter().enumerate() {
+        if session.len() < 2 {
+            continue;
+        }
+        let (feature_index, sign) = feature_slot(
+            &format!("listening-session:{session_index}"),
+            hashed_dimensions,
+            seed,
+        );
+        for track_id in session {
+            if let Some(vector) = vectors.get_mut(track_id) {
+                let appearances = track_session_counts[track_id] as f64;
+                vector[feature_index] += sign
+                    * (LISTENING_SESSION_WEIGHT / (session.len() as f64 - 1.0) / appearances)
+                        .sqrt();
+            }
         }
     }
 
@@ -959,6 +1038,7 @@ mod tests {
             artists: BTreeMap::new(),
             semantic_features: BTreeMap::new(),
             model_vectors: BTreeMap::new(),
+            listening_sessions: Vec::new(),
             semantic_sources: Vec::new(),
             acoustic_models: Vec::new(),
         };
@@ -988,6 +1068,7 @@ mod tests {
                 }],
             )]),
             model_vectors: BTreeMap::new(),
+            listening_sessions: Vec::new(),
             semantic_sources: vec!["musicbrainz@v1".to_owned()],
             acoustic_models: Vec::new(),
         };

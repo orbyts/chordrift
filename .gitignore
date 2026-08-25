@@ -5,3 +5,7 @@
 *.pem
 *.key
 /data/
+
+# Superseded local artwork render batches; the approved v3 repair batch is tracked.
+/artwork/canonical/drift-atlas-v2/
+/artwork/canonical/drift-atlas-v3/

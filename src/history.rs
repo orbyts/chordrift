@@ -332,6 +332,21 @@ pub async fn import(database: &Database, account_label: &str, path: &Path) -> Re
         .bind(to_i64(events_inserted, "inserted event count")?)
         .execute(&mut *transaction)
         .await?;
+    if loaded.inspection.kind == ArchiveKind::ExtendedStreamingHistory
+        && let Some(covered_through) = loaded.inspection.last_event_at
+    {
+        sqlx::query(
+            "UPDATE listening_events
+             SET superseded_at = now()
+             WHERE provider_account_id = $1 AND provider = 'spotify'
+               AND source_kind = 'recent_api' AND superseded_at IS NULL
+               AND played_at <= $2",
+        )
+        .bind(account_id)
+        .bind(covered_through)
+        .execute(&mut *transaction)
+        .await?;
+    }
     transaction.commit().await?;
     let report = ImportReport {
         events_already_present: loaded.events.len().saturating_sub(events_inserted),
@@ -468,7 +483,8 @@ pub async fn summary(database: &Database, account_label: &str) -> Result<History
            min(played_at) AS first_event_at,
            max(played_at) AS last_event_at
          FROM listening_events
-         WHERE provider_account_id = $1 AND provider = 'spotify' AND media_type = 'track'",
+         WHERE provider_account_id = $1 AND provider = 'spotify' AND media_type = 'track'
+           AND superseded_at IS NULL",
     )
     .bind(account_id)
     .fetch_one(database.pool())
@@ -519,6 +535,7 @@ pub async fn refresh(database: &Database, account_label: &str) -> Result<History
              FROM listening_events
              WHERE provider_account_id = $1
                AND provider = 'spotify' AND media_type = 'track'
+               AND superseded_at IS NULL
              ORDER BY provider_track_id, played_at DESC, id DESC
          )
          INSERT INTO account_listening_track_statistics
@@ -539,6 +556,7 @@ pub async fn refresh(database: &Database, account_label: &str) -> Result<History
          JOIN latest_metadata metadata USING (provider_track_id)
          WHERE event.provider_account_id = $1
            AND event.provider = 'spotify' AND event.media_type = 'track'
+           AND event.superseded_at IS NULL
          GROUP BY event.provider_track_id, metadata.track_name,
                   metadata.artist_name, metadata.album_name",
     )

@@ -220,10 +220,11 @@ user-action adapter.
 
 Playlist policy has three distinct classes: provider-curated signal sources
 (`On Repeat`, Daily Mix, prompted playlists), user-owned intake surfaces
-(exact names: `Inbox`, `From Friends`, and `Liked from Radio`), and
+(exact names: `Inbox`, `From Friends`, `Liked from Radio`, and `From Prompts`), and
 Chordrift-managed canonical playlists. `Inbox` means a direct strong personal
 discovery; `From Friends` means an explicit recommendation; `Liked from Radio`
-means radio/autoplay discovery. Canonical outputs use approved generated vibe
+means radio/autoplay discovery; `From Prompts` means a track intentionally
+carried forward from a Spotify prompt-generated playlist. Canonical outputs use approved generated vibe
 names and are never intake. The temporary Atmos companion is `Chordrift Spatial
 Audio`.
 Never clear provider-curated sources. Clear intake entries only after Neon
@@ -231,7 +232,7 @@ retains provenance and a published canonical Spotify destination is verified.
 Do not feed Chordrift-managed output back into semantic training; use previous
 assignments only as stability constraints.
 
-The intended final Spotify surface contains the three intake playlists,
+The intended final Spotify surface contains the four intake playlists,
 Spotify-managed sources, multiple Chordrift-managed canonical playlists with
 approved generated names, and the temporary `Chordrift Spatial Audio`
 companion. All other user-created legacy vibe and utility playlists are to be
@@ -621,3 +622,177 @@ same package name/version, a plain `cargo run` reused an older final executable
 that lacked `proposals`. For unreleased development commands, use a repository-
 specific target such as `cargo run --target-dir target -- ...`; do not modify
 shell initialization files.
+
+## v0.1.1 task state
+
+Work is on `codex/v0.1.1-track-inspection-artwork`. The task adds
+`chordrift tracks inspect --name TITLE [--artist ARTIST]` and
+`--spotify-id ID` as a single explainability report spanning current Spotify
+placement, approved canonical destination and provenance, all retained source
+playlist observations, listening/lifecycle signals, embedding generation and
+dimensions, cluster similarity/rank, independent semantic model facts, manual
+assignment reasons, and active exclusions.
+
+Migration 0027 allows approved artwork artifacts to target canonical or intake
+surfaces, including an intake that has not been created yet. Planner v7 adds
+`From Prompts` with prompted-interest semantics and suppresses an artwork upload
+when the exact content-addressed operation already succeeded against the same
+stable Spotify playlist ID. Apply target resolution can bind a newly created
+intake cover by its unique planned name.
+
+Drift Atlas v3 lives at `artwork/canonical/drift-atlas-v3`: 14 previously
+approved backgrounds remain visually unchanged and four intake backgrounds
+cover `Inbox`, `From Friends`, `Liked from Radio`, and `From Prompts`. All 18
+pristine label-free masters remain in the `backgrounds/` child directory for a
+future Apple Music typography pass. `scripts/render_artwork_label.swift`
+performs the exact 1254×1254 CoreText overlay; AI-generated text is never used.
+At user review, Helvetica Neue Bold increased to Spotify-like 116/132-point
+labels measured and anchored 42 pixels from the lower edge. The schema-2 v3
+manifest contains exact hashes and provenance summaries.
+
+The v0.1.0 preservation gate was discovered to be too narrow: it counted only
+699 current semantic-legacy/intake tracks, while the durable account inventory
+contains 1,711 distinct tracks. Migration 0028 is live in Neon (28/28 healthy)
+and defines the account-scoped preservation universe as latest saved tracks plus
+all historical semantic-legacy, transport, intake, and canonical membership,
+with active reversible exclusions as the only alternate disposition. Raw
+listening history and provider-curated playlists remain enrichment signals and
+do not enlarge the library. Readiness v4 dynamically requires exactly one
+disposition per inventory track, so an older stored coverage flag cannot bypass
+the corrected invariant for this or any future account.
+
+The current editable proposal is `fcfaccc7-e17d-4dee-a54c-65a73000fcc2`.
+It preserves all 14 approved concepts, names, descriptions, tags, artwork
+identities, and the original 884 placements, then adds the missing inventory
+through direct centroid fit, analytical-cluster group consensus, listening-
+session context, and explicit account-scoped manual decisions. Exact live Neon
+audit: 1,711 inventory, 1,711 placed, 0 excluded, 0 unresolved, 0 conflicting.
+Source-class audits are also complete: 927/927 saved, 674/674 semantic legacy,
+143/143 transport, 65/65 intake, and 884/884 prior canonical tracks. The
+proposal is fully named and `coverage_complete=true`. The user approved and
+published this exact generation; its 1,711-track managed baseline is verified
+against Spotify.
+
+Embedding generation `baf6d7af-0333-461b-a72d-7392e315357f` is model
+`semantic-feature-hash@4`, 1,024 dimensions, and embeds 1,688/1,711 inventory
+tracks. v4 adds normalized 45-minute meaningful-listening-session
+co-occurrence; 1,159 tracks share session context and the unembedded tail fell
+from 173 to 23. Analytical cluster generation
+`180b4b87-fbff-4c42-90ce-76b853550f2a` has 18 groups and zero cluster-level
+unassigned embedded tracks. Group consensus required at least 10 known members
+and 55% destination dominance; every automated membership records its exact
+embedding/cluster generation, score, counts, and threshold.
+
+`tracks inspect` now reads the newest proposal as well as approved/published
+state. `Do Your Best` by John Maus is explicitly assigned to `Neon Affection`
+with the reason that its lo-fi synth-pop/nocturnal post-punk character is a
+better fit than its borderline 0.0504 Open-Sky centroid result. The report also
+shows 64 meaningful plays, 72 events, 12 skips, 2.79 hours, the v4 embedding,
+analytical cluster, retired `Two Way Sync` provenance, and the manual override.
+
+New inventory/repair commands are documented and enforced by the CLI-doc test:
+`proposals inventory`, `unresolved`, `placement-audit`, `extend`,
+`group-tracks`, `consensus-assign`, and `centroid-assign`. The pending Drift
+Atlas v2 batch `f1430424-8c71-4210-86cb-07adf4eb17ff` targets the old proposal
+`ca81d1b2-e56b-41e6-8846-cdb379cb039b`; do not approve it. The local manifest
+is rebound to approved complete proposal
+`fcfaccc7-e17d-4dee-a54c-65a73000fcc2` without changing any of the 18 image
+bytes or hashes. Its replacement immutable artwork batch is
+`6587f24a-999d-4b88-a97b-2a1bfe49c425`, is `approved`, contains 18 artifacts,
+and has input hash
+`f9151ca22c887456abfdc4fe02720f1ca6db2ba88dd388b2cbd63017c033a1c9`.
+The user approved it at `2026-08-25T02:46:01.285564+00:00`; none of its image
+bytes changed after approval. It was published as the initial v2 surface
+and was later superseded by the approved v3 typography pass described below.
+
+Historical complete-library v7 dry-run plan
+`67e0b557-126e-4a60-ba11-676caffe85ff` targets approved proposal
+`fcfaccc7-e17d-4dee-a54c-65a73000fcc2` and current source snapshot
+`cf361d5b-1f9c-4ca8-8ec3-d716d8351283`. It contains 846 wholly
+non-destructive publish operations: one intake create, 827 additions, and 18
+artwork uploads, with zero removals, retirements, exclusions, external cleanup,
+or deferred operations. Offline preflight passed: 13 populated playlists, 18
+batched item writes, all 18 covers valid, largest converted cover 224,456
+bytes, estimated 14 Spotify reads and 37 writes, and zero Spotify requests
+made. Plan input hash is
+`6d089c22cec40a674c249e0a9c48c9c53217457c369188dac4af431292a101d9`.
+
+The user reauthorized the unreleased binary for account `5DPKF9q1Xm`
+(`suhails`) with all seven required scopes. Membership apply run
+`af9e3265-a0ce-486f-94df-4a0cc3256414` executed 846/846 operations with zero
+failures and is verified `succeeded`: one `From Prompts` intake create, 827
+membership additions, and 18 v2 cover uploads. Import snapshot
+`9a9a4fb6-097a-4315-9938-385605a46dc8` established 20 owned playlists, 1,778
+entries, 1,727 unique playlist tracks, zero duplicate entries, and the exact
+1,711-track canonical baseline.
+
+Two post-publication verifier defects were fixed in `src/apply.rs`: approved
+empty canonical playlists must participate in desired-state comparison, and
+sparse proposal ordering keys must be compared as ordered track-ID sequences
+rather than raw positions because Spotify densifies positions from zero. The
+first complete verification exposed both safely; no membership was lost or
+rewritten while diagnosing them.
+
+Drift Atlas v3 batch `776ae100-f16b-477d-838d-8b90cfda9e6e` is approved with
+input hash `06de03171089f7c3dba0116709a275090850a082af01d29d31e9722420862ae0`.
+Cover-only plan `d4b78b32-9f82-4717-9891-0d93b4855879` passed preflight and
+11/11 readiness gates. Apply run `7031e284-a9e9-4b01-963c-84a735d36d46`
+uploaded 18/18 larger lower-anchored covers with zero failures and is verified
+`succeeded` against snapshot `3cc2d1c0-6f1b-42dc-8cff-2b6e9b952567`.
+Planner artwork selection now uses only the newest approved batch, preventing
+stale approved revisions from entering a later plan.
+
+`chordrift artwork update --account personal --playlist NAME_OR_STABLE_KEY`
+now builds a focused immutable one-cover plan from the newest approved batch.
+It refuses missing, ambiguous, unresolved, or already-uploaded artifacts; the
+existing preflight/readiness/apply flow remains the provider-write boundary.
+Spotify playlist folders and folder covers are unavailable through the Web API
+and remain manual, provider-controlled presentation state.
+
+The earlier repair verification was clean and the live Spotify membership and
+v3 artwork publications described above completed successfully. The final
+v0.1.1 release verification is recorded below.
+
+## v0.1.1 final working model
+
+Normal `sync pull` now incrementally retains Spotify Recently Played events
+after a durable Neon cursor. These API observations are provisional because
+Spotify does not supply playback duration, completion, or skip facts; a later
+cumulative Extended Streaming History import supersedes overlapping API rows
+before rebuilding listening statistics. Migrations `0029` through `0031` add
+the incremental-history cursor/source model, protected `user_managed` playlist
+defaults, and exact playlist-order replacement support.
+
+Spotify OAuth uses one consolidated PKCE consent. Chordrift no longer rewrites
+an unchanged Keychain credential on every command; the earlier repeated prompts
+were caused by an unconditional credential write compounded by changing unsigned
+debug binaries. A stable signed build remains the correct friend-test delivery.
+
+User-owned playlists now default to protected and retirement defaults to none.
+`chordrift playlists retirement` can include exact names, select all with
+explicit exceptions, or reset to none. This changes Neon intent only; complete
+coverage, immutable-plan inspection, exact approval, readiness, and
+`--allow-destructive` remain mandatory before a provider write.
+
+Live v0.1.1 convergence completed on 2026-08-24. Publish apply
+`2496d685-eb6f-485f-a6ec-0b7d19705290` repaired the exact order of three
+canonical playlists. Retirement plan `558a6cc7-2be8-4519-9208-f048a759430b`
+and assessment `72f7ed23-88d2-4afa-ba55-bd276baac506` passed 11/11 checks and
+retired only the explicitly approved user-owned duplicate `On Repeat`
+(`0z02mUNjp2VHfZIjt7Iuhm`). The post-retirement snapshot
+`08469f65-6095-430c-84b7-281d8725aa02` contains 19 playlists, 1,752 entries,
+1,727 unique playlist tracks, 927 saved tracks, and zero duplicate entries.
+The unique-track count stayed at 1,727 while 30 duplicate playlist entries
+disappeared, proving no song was lost.
+
+Listening history is current through `2026-08-25T04:46:07.125Z`: 149,249
+retained events, 15,563 unique historical tracks, and 6,602.55 listening hours.
+The complete-library readiness gate covers all 1,715 preserved inventory tracks
+with zero unresolved or conflicting dispositions.
+
+Final local release verification: 77 ordinary library tests pass, one
+PostgreSQL-only library test is expectedly ignored locally, the user-doc
+coverage test passes, formatting is clean, clippy is warning-free across all
+targets and features with `-D warnings`, and `cargo package --allow-dirty`
+successfully verifies 80 packaged files. The live disposable-PostgreSQL suites
+remain hosted-CI responsibilities.

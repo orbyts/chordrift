@@ -4,6 +4,51 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-24
+
+- Add cursor-based Recently Played ingestion to normal Spotify pulls while
+  retaining the lifetime extended-history archive as the authoritative source
+  for durations, completions, and skips. Later archives supersede overlapping
+  provisional API observations before statistics are rebuilt.
+- Consolidate Spotify consent around one scope set and stop rewriting unchanged
+  Keychain credentials during every command.
+- Protect newly encountered user-owned playlists as `user_managed` by default.
+  Add non-destructive retirement selection for named playlists, all playlists
+  with explicit exceptions, or none; actual retirement keeps every existing
+  coverage, approval, readiness, and destructive-apply gate.
+
+- Add `tracks inspect` for one-command current placement, canonical assignment,
+  source-playlist provenance, listening signals, embedding/cluster rationale,
+  model facts, manual overrides, and exclusions.
+- Add the `From Prompts` intake with prompted-interest semantics alongside
+  `Inbox`, `From Friends`, and `Liked from Radio`.
+- Add Drift Atlas v3 artwork for all canonical and intake surfaces,
+  deterministic Spotify-scale lower-left Helvetica Neue labels, and preserved
+  label-free masters for future Apple Music typography.
+- Suppress already-succeeded identical artwork uploads for the same stable
+  Spotify playlist, select only the newest approved artwork batch, and add
+  `artwork update --playlist` for immutable one-cover update plans.
+- Verify approved empty playlists and compare sparse proposal ordering keys as
+  ordered track sequences after Spotify densifies provider positions.
+- Document Spotify playlist folders as manual client-only presentation state;
+  the Web API exposes neither folder structure nor custom folder covers.
+- Define an account-scoped complete-library inventory from saved tracks and
+  durable semantic, transport, intake, and canonical playlist history. Add
+  `proposals inventory` and `proposals unresolved`, and block complete coverage
+  unless every preserved track is placed or explicitly excluded.
+- Keep listening history and provider-curated playlists as enrichment signals
+  without silently importing every casually played track into the library.
+- Add listening-session co-occurrence to personal embedding model v4, reducing
+  complete-inventory tracks without useful vectors from 173 to 23 while
+  retaining exact model/generation provenance.
+- Preserve approved playlist identities through extension proposals, then add
+  auditable direct-centroid, analytical-group-consensus, and explicit manual
+  assignment paths. The personal proposal now represents all 1,711 preserved
+  tracks exactly once with zero exclusions, unresolved tracks, or conflicts.
+- Make manual assignment and `tracks inspect` understand transport-only and
+  proposed-library tracks instead of limiting them to the current provider
+  snapshot or last approved proposal.
+
 ## [0.1.0] - 2026-08-24
 
 - Add a gated, resumable Spotify apply engine with exact assessment
@@ -167,7 +212,8 @@ All notable changes to Chordrift are documented here.
 
 - Reserve the Chordrift crate and repository namespaces.
 
-[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/orbyts/chordrift/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/orbyts/chordrift/compare/v0.0.9...v0.1.0
 [0.0.9]: https://github.com/orbyts/chordrift/compare/v0.0.5...v0.0.9
 [0.0.5]: https://github.com/orbyts/chordrift/compare/v0.0.4...v0.0.5

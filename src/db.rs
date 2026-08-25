@@ -5,7 +5,7 @@ use storexa::{Database, DatabaseConfig, Migrator};
 
 use crate::Result;
 
-/// Chordrift's application-owned, compile-time embedded migrations.
+/// Chordrift's strictly ordered, application-owned, embedded migrations.
 pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 /// Read-only diagnostics for the canonical database.

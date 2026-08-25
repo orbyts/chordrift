@@ -44,6 +44,8 @@ pub mod providers;
 pub mod signals;
 /// Immutable provider synchronization plans that never mutate remote services.
 pub mod sync_plan;
+/// One-stop canonical track lookup and explainability reports.
+pub mod tracks;
 
 mod error;
 

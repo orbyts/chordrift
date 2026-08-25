@@ -12,6 +12,13 @@ pub(crate) struct Page<T> {
     pub total: usize,
 }
 
+/// One page returned by Spotify's cursor-based player APIs.
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct CursorPage<T> {
+    pub items: Vec<T>,
+    pub next: Option<String>,
+}
+
 /// Current Spotify account identity.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct CurrentUser {
@@ -152,6 +159,22 @@ pub(crate) struct SavedTrack {
     pub track: Option<SpotifyTrack>,
 }
 
+/// One playback observation returned by Spotify's incremental player history.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct RecentlyPlayedItem {
+    pub track: SpotifyTrack,
+    pub played_at: DateTime<Utc>,
+    pub context: Option<PlaybackContext>,
+}
+
+/// Provider context from which a recently played track was started.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct PlaybackContext {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub uri: String,
+}
+
 /// One playlist and its complete ordered item inventory.
 #[derive(Clone, Debug)]
 pub(crate) struct PlaylistInventory {
@@ -243,6 +266,8 @@ pub(crate) struct ReusePlan {
     pub playlists: HashMap<String, PlaylistReuse>,
     pub bookmark_playlists: HashMap<String, PlaylistReuse>,
     pub saved_tracks: Option<SavedTrackReuse>,
+    /// Most recent active listening observation already retained in Neon.
+    pub recent_after: Option<DateTime<Utc>>,
 }
 
 /// Complete read-only Spotify inventory fetched before persistence begins.
@@ -256,6 +281,10 @@ pub(crate) struct SpotifyInventory {
     pub external_playlists: Vec<ExternalPlaylistInventory>,
     /// Ordered saved-track library.
     pub saved_tracks: SavedTracksInventory,
+    /// New player-history observations fetched after the durable Neon cursor.
+    pub recently_played: Vec<RecentlyPlayedItem>,
+    /// Cursor supplied to Spotify for this incremental request.
+    pub recent_requested_after: Option<DateTime<Utc>>,
     /// All owned, followed, and collaborative playlists Spotify reported.
     pub playlists_seen: usize,
     /// Followed playlists intentionally excluded under 2026 Development Mode.
