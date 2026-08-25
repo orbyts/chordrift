@@ -580,6 +580,20 @@ reports 65 active playlists, 2,309 entries, zero followed/external playlists,
 and `verified_apply_runs: 1`. All 13 external bookmark records remain in Neon as
 not-present history. No legacy retirement has occurred.
 
+The user then explicitly approved exact retirement plan
+`f7c926c3-26f7-4adc-ad69-4e40d62fbf0f`. Apply run
+`f767f050-ddff-4758-9a1c-6085eb9cff27` removed all 42 legacy relationships with
+zero failures; snapshot `e38b7c81-9513-4d98-9d9d-9ecc73575d69` proves the live
+playlist count fell from 65 to 23 and reports `verified_apply_runs: 1`. The
+post-retirement audit found four documented obsolete utilities still present
+because ignored/transport classes were unintentionally omitted from planner
+retirement. Planner cleanup now includes `ignored` and `transport` sources in
+the separately approved retirement phase while intake remains protected. Exact
+plan `fa8289fc-d636-448c-8203-a8bd1ca67ae6` contains only four retirements:
+`All my saved songs`, `Collaboration Jessica`, `My top tracks playlist`, and
+`Two Way Sync` (plus 14 non-destructive artwork operations in publish). These
+four have not been approved or removed yet.
+
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the
 same package name/version, a plain `cargo run` reused an older final executable

@@ -607,7 +607,8 @@ async fn cleanup_operations(
           AND exclusion.restored_at IS NULL
          WHERE account_playlist.provider_account_id = $1
            AND account_playlist.present_in_latest_snapshot
-           AND account_playlist.signal_class IN ('semantic_legacy', 'intake')
+           AND account_playlist.signal_class IN
+               ('semantic_legacy', 'intake', 'ignored', 'transport')
          ORDER BY lower(snapshot.name), provider.provider_playlist_id, membership.position",
     )
     .bind(account_id)
@@ -658,7 +659,7 @@ async fn cleanup_operations(
         let all_resolved = tracks.iter().all(|track| track.3 || track.4);
         let assigned_tracks = tracks.iter().filter(|track| track.3).count();
         let excluded_tracks = tracks.iter().filter(|track| track.4).count();
-        if class == "semantic_legacy" {
+        if class != "intake" {
             operations.push(PlanOperationInput {
                 phase: "retirement".to_owned(),
                 operation_type: "archive_playlist".to_owned(),
@@ -669,7 +670,7 @@ async fn cleanup_operations(
                 spotify_playlist_id: Some(spotify_id),
                 spotify_track_id: None,
                 payload: json!({"track_count": tracks.len(), "assigned_tracks": assigned_tracks,
-                    "excluded_tracks": excluded_tracks,
+                    "excluded_tracks": excluded_tracks, "source_class": class,
                     "expected_snapshot_id": signature, "container_only": true}),
                 safety: json!({"destructive": true, "deferred": true,
                     "requires_separate_approval": true,
