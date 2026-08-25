@@ -60,7 +60,11 @@ canonical destination. This explicitly includes `Melodi(es)` and
 `Ambient Music Therapy – Indian Lounge - Relaxing Music for your Six Senses`.
 Retirement removes the old playlist container, not its tracks from the library.
 Spotify Liked Songs is a provider library surface rather than a playlist and is
-not part of this retirement plan.
+not part of legacy-playlist retirement. It is also the primary low-friction
+intake action: Like means “keep and classify.” The safe account default keeps
+Liked Songs intact. An explicit account policy may instead consume each saved
+track only after its canonical playlist placement or durable exclusion is
+published and verified; Neon retains the original saved timestamp and history.
 
 ## v0.0.0 — Namespace reservation
 
@@ -412,6 +416,14 @@ Chordrift playlists. Every decision retains the prior assignment, model score,
 reason, actor, timestamp, and affected provider state; no correction erases the
 track, its provenance, or listening history.
 
+Inventory Spotify saved albums as a distinct immutable provider surface before
+personal cleanup. Preserve ordered album tracks and account-scoped policy in
+Neon, but do not force album-only tracks into normal playlist readiness. Album
+cleanup is opt-in and review-gated: each track must already be preserved in
+Liked Songs/current playlists or explicitly excluded before the album may be
+proposed for unsaving. Product default is preserve; Suhail's personal target is
+review-then-unsave and ultimately a playlist-only active library.
+
 Ongoing listening must not require a dedicated review session. Split the
 workflow into **capture now** and **reconcile later**. While listening, one
 low-friction action records intent and playback continues; naming, cohort
@@ -523,6 +535,13 @@ proofs.
 Status: in progress; durable routing capture and publication implemented as the
 first subslice, with incremental persistence and terminal presentation now in
 progress.
+
+Saved-album inventory, opt-in Liked Songs consumption, exclusion-aware
+readiness/execution/verification, batched changed-surface persistence, and live
+zero-plan convergence are implemented. Album unsave planning remains disabled
+until the account's album-only tracks have explicit preserve/exclude
+dispositions; the default policies for both albums and Liked Songs remain
+preserve.
 
 ## Post-v0.1 product direction — Review UI
 

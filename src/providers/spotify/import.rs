@@ -11,8 +11,8 @@ use crate::{ChordriftError, Result, terminal::TerminalProgress};
 use super::{
     auth,
     models::{
-        ExternalPlaylistInventory, PlaylistReuse, ReusePlan, SavedTrackReuse, SpotifyAlbum,
-        SpotifyArtist, SpotifyInventory, SpotifyTrack,
+        ExternalPlaylistInventory, PlaylistReuse, ReusePlan, SavedAlbumReuse, SavedTrackReuse,
+        SpotifyAlbum, SpotifyArtist, SpotifyInventory, SpotifyTrack,
     },
 };
 
@@ -63,6 +63,12 @@ pub struct ImportReport {
     pub saved_tracks: usize,
     /// Whether saved tracks were copied from Neon after a one-page probe.
     pub saved_tracks_reused: bool,
+    /// Saved album entries persisted as a distinct, read-only library surface.
+    pub saved_albums: usize,
+    /// Ordered tracks inventoried inside saved albums.
+    pub saved_album_tracks: usize,
+    /// Whether saved albums and their tracks were copied from the prior snapshot.
+    pub saved_albums_reused: bool,
     /// Playlist or saved-library items unavailable from Spotify.
     pub unavailable_items: usize,
     /// Local, non-track, or identifier-less items not persisted.
@@ -211,10 +217,48 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
     } else {
         None
     };
+    let saved_albums = if let Some(total) = metadata
+        .get("saved_albums_seen")
+        .and_then(Value::as_u64)
+        .and_then(|total| usize::try_from(total).ok())
+    {
+        let rows = sqlx::query(
+            "SELECT saved.position, album.provider_album_id, saved.saved_at
+             FROM provider_saved_albums saved
+             JOIN provider_albums album ON album.id = saved.provider_album_id
+             WHERE saved.snapshot_id = $1 AND saved.position < 50
+             ORDER BY saved.position",
+        )
+        .bind(source_snapshot_id)
+        .fetch_all(database.pool())
+        .await?;
+        Some(SavedAlbumReuse {
+            source_snapshot_id,
+            total,
+            leading_items: rows
+                .into_iter()
+                .map(|row| {
+                    let position: i32 = row.try_get("position")?;
+                    Ok((
+                        usize::try_from(position).map_err(|_| {
+                            ChordriftError::Configuration(
+                                "stored saved-album position was negative".to_owned(),
+                            )
+                        })?,
+                        row.try_get("provider_album_id")?,
+                        row.try_get("saved_at")?,
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?,
+        })
+    } else {
+        None
+    };
     Ok(ReusePlan {
         playlists,
         bookmark_playlists,
         saved_tracks,
+        saved_albums,
         recent_after,
     })
 }
@@ -258,6 +302,7 @@ async fn persist(
         "inaccessible_collaborative_playlists": inventory.inaccessible_collaborative_playlists,
         "external_bookmarks_seen": inventory.external_playlists.len(),
         "saved_items_seen": inventory.saved_tracks.total,
+        "saved_albums_seen": inventory.saved_albums.total,
     }))
     .execute(&mut *transaction)
     .await?;
@@ -265,6 +310,8 @@ async fn persist(
     let mut playlist_entries = 0;
     let mut playlists_reused = 0;
     let mut saved_tracks = 0;
+    let mut saved_albums = 0;
+    let mut saved_album_tracks = 0;
     let mut unavailable_items = 0;
     let mut unsupported_items = 0;
     let mut external_bookmark_entries = 0;
@@ -411,6 +458,7 @@ async fn persist(
             continue;
         }
 
+        let mut memberships = Vec::with_capacity(playlist_inventory.items.len());
         for (position, item) in playlist_inventory.items.iter().enumerate() {
             let Some(track) = item.track() else {
                 unavailable_items += 1;
@@ -421,24 +469,35 @@ async fn persist(
             else {
                 continue;
             };
-            sqlx::query(
-                "INSERT INTO provider_playlist_tracks
-                 (snapshot_id, provider_playlist_id, provider_track_id,
-                  position, added_at, metadata)
-                 VALUES ($1, $2, $3, $4, $5, $6)",
-            )
-            .bind(snapshot_id)
-            .bind(provider_playlist_id)
-            .bind(provider_track_id)
-            .bind(to_i32(position, "playlist position")?)
-            .bind(item.added_at)
-            .bind(json!({
+            memberships.push((
+                provider_track_id,
+                to_i32(position, "playlist position")?,
+                item.added_at,
+                json!({
                 "added_by": item.added_by,
                 "is_local": item.is_local,
-            }))
-            .execute(&mut *transaction)
-            .await?;
-            playlist_entries += 1;
+                }),
+            ));
+        }
+        for chunk in memberships.chunks(MEMBERSHIP_INSERT_BATCH_SIZE) {
+            let mut insert = QueryBuilder::<Postgres>::new(
+                "INSERT INTO provider_playlist_tracks \
+                 (snapshot_id, provider_playlist_id, provider_track_id, \
+                  position, added_at, metadata) ",
+            );
+            insert.push_values(
+                chunk,
+                |mut row, (provider_track_id, position, added_at, metadata)| {
+                    row.push_bind(snapshot_id)
+                        .push_bind(provider_playlist_id)
+                        .push_bind(*provider_track_id)
+                        .push_bind(*position)
+                        .push_bind(*added_at)
+                        .push_bind(metadata);
+                },
+            );
+            insert.build().execute(&mut *transaction).await?;
+            playlist_entries += chunk.len();
         }
     }
 
@@ -645,6 +704,123 @@ async fn persist(
         );
     }
 
+    let saved_albums_reused = inventory.saved_albums.reused_from_snapshot.is_some();
+    if let Some(source_snapshot_id) = inventory.saved_albums.reused_from_snapshot {
+        saved_albums = usize::try_from(
+            sqlx::query(
+                "INSERT INTO provider_saved_albums
+                 (snapshot_id, provider_album_id, position, saved_at, metadata)
+                 SELECT $1, provider_album_id, position, saved_at, metadata
+                 FROM provider_saved_albums WHERE snapshot_id = $2",
+            )
+            .bind(snapshot_id)
+            .bind(source_snapshot_id)
+            .execute(&mut *transaction)
+            .await?
+            .rows_affected(),
+        )
+        .map_err(|_| {
+            ChordriftError::Configuration(
+                "copied saved-album count exceeds platform limits".to_owned(),
+            )
+        })?;
+        saved_album_tracks = usize::try_from(
+            sqlx::query(
+                "INSERT INTO provider_saved_album_tracks
+                 (snapshot_id, provider_album_id, provider_track_id, position, metadata)
+                 SELECT $1, provider_album_id, provider_track_id, position, metadata
+                 FROM provider_saved_album_tracks WHERE snapshot_id = $2",
+            )
+            .bind(snapshot_id)
+            .bind(source_snapshot_id)
+            .execute(&mut *transaction)
+            .await?
+            .rows_affected(),
+        )
+        .map_err(|_| {
+            ChordriftError::Configuration(
+                "copied saved-album track count exceeds platform limits".to_owned(),
+            )
+        })?;
+    } else {
+        let album_track_total: usize = inventory
+            .saved_albums
+            .items
+            .iter()
+            .map(|album| album.tracks.len())
+            .sum();
+        let mut album_progress =
+            TerminalProgress::new("Neon · inventory album tracks", album_track_total);
+        let mut album_tracks_seen = 0_usize;
+        let mut album_memberships = Vec::with_capacity(album_track_total);
+        for (album_position, saved) in inventory.saved_albums.items.iter().enumerate() {
+            let Some(_) = persist_album(&saved.album, &mut transaction).await? else {
+                unsupported_items += 1;
+                continue;
+            };
+            let provider_album_id: Uuid = sqlx::query_scalar(
+                "SELECT id FROM provider_albums
+                 WHERE provider = $1 AND provider_album_id = $2",
+            )
+            .bind(PROVIDER)
+            .bind(saved.album.id.as_deref().unwrap_or_default())
+            .fetch_one(&mut *transaction)
+            .await?;
+            sqlx::query(
+                "INSERT INTO provider_saved_albums
+                 (snapshot_id, provider_album_id, position, saved_at, metadata)
+                 VALUES ($1, $2, $3, $4, $5)",
+            )
+            .bind(snapshot_id)
+            .bind(provider_album_id)
+            .bind(to_i32(album_position, "saved-album position")?)
+            .bind(saved.saved_at)
+            .bind(serde_json::to_value(&saved.album)?)
+            .execute(&mut *transaction)
+            .await?;
+            saved_albums += 1;
+            for (track_position, track) in saved.tracks.iter().enumerate() {
+                album_tracks_seen += 1;
+                album_progress.set_position(album_tracks_seen);
+                let Some(provider_track_id) = persist_album_track(
+                    track,
+                    &saved.album,
+                    &mut tracks,
+                    &mut transaction,
+                    &mut unsupported_items,
+                )
+                .await?
+                else {
+                    continue;
+                };
+                album_memberships.push((
+                    provider_album_id,
+                    provider_track_id,
+                    to_i32(track_position, "saved-album track position")?,
+                ));
+            }
+        }
+        album_progress.finish();
+        for chunk in album_memberships.chunks(MEMBERSHIP_INSERT_BATCH_SIZE) {
+            let mut insert = QueryBuilder::<Postgres>::new(
+                "INSERT INTO provider_saved_album_tracks \
+                 (snapshot_id, provider_album_id, provider_track_id, position, metadata) ",
+            );
+            insert.push_values(
+                chunk,
+                |mut row, (provider_album_id, provider_track_id, position)| {
+                    row.push_bind(snapshot_id)
+                        .push_bind(*provider_album_id)
+                        .push_bind(*provider_track_id)
+                        .push_bind(*position)
+                        .push("'{}'::jsonb");
+                },
+            );
+            insert.build().execute(&mut *transaction).await?;
+            saved_album_tracks += chunk.len();
+        }
+    }
+
     let mut recent_plays_inserted = 0_usize;
     for item in &inventory.recently_played {
         let Some(provider_track_row_id) = persist_track(
@@ -760,7 +936,9 @@ async fn persist(
         "external_bookmarks": inventory.external_playlists.len(),
         "external_bookmark_entries": external_bookmark_entries,
         "recent_plays_seen": recent_plays_seen,
-        "recent_plays_inserted": recent_plays_inserted,
+            "recent_plays_inserted": recent_plays_inserted,
+            "saved_albums": saved_albums,
+            "saved_album_tracks": saved_album_tracks,
     }))
     .execute(&mut *transaction)
     .await?;
@@ -785,6 +963,9 @@ async fn persist(
         playlist_entries,
         saved_tracks,
         saved_tracks_reused,
+        saved_albums,
+        saved_album_tracks,
+        saved_albums_reused,
         unavailable_items,
         unsupported_items,
         followed_playlists_skipped: inventory.followed_playlists_skipped,
@@ -995,7 +1176,7 @@ async fn persist_track(
         let provider_track_id = known.resolved.provider_track_id;
         let canonical_track_id = known.resolved.canonical_track_id;
         sqlx::query(
-            "UPDATE tracks SET album_id = $2, title = $3, normalized_title = $4,
+            "UPDATE tracks SET album_id = COALESCE($2, album_id), title = $3, normalized_title = $4,
               duration_ms = $5, isrc = $6, explicit = $7, updated_at = now()
              WHERE id = $1",
         )
@@ -1103,6 +1284,33 @@ async fn load_track_cache(transaction: &mut Transaction<'_, Postgres>) -> Result
         resolved: HashMap::new(),
         known,
     })
+}
+
+async fn persist_album_track(
+    track: &SpotifyTrack,
+    album: &SpotifyAlbum,
+    cache: &mut TrackCache,
+    transaction: &mut Transaction<'_, Postgres>,
+    unsupported_items: &mut usize,
+) -> Result<Option<Uuid>> {
+    let Some(provider_id) = track.id.as_ref() else {
+        *unsupported_items += 1;
+        return Ok(None);
+    };
+    if let Some(resolved) = cache.resolved.get(provider_id) {
+        return Ok(Some(resolved.provider_track_id));
+    }
+    // Saved-album responses contain simplified tracks. Reuse existing full
+    // metadata instead of downgrading it and issuing artist/album writes.
+    if let Some(known) = cache.known.remove(provider_id) {
+        cache.resolved.insert(provider_id.clone(), known.resolved);
+        return Ok(Some(known.resolved.provider_track_id));
+    }
+    let mut full_context = track.clone();
+    let mut album = album.clone();
+    album.tracks = None;
+    full_context.album = Some(album);
+    persist_track(&full_context, cache, transaction, unsupported_items).await
 }
 
 async fn persist_artist(
@@ -1348,6 +1556,11 @@ mod tests {
             saved_tracks: super::super::models::SavedTracksInventory {
                 total: saved_tracks.total,
                 items: saved_tracks.items,
+                reused_from_snapshot: None,
+            },
+            saved_albums: super::super::models::SavedAlbumsInventory {
+                total: 0,
+                items: Vec::new(),
                 reused_from_snapshot: None,
             },
             recently_played: Vec::new(),

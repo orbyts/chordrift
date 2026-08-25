@@ -11,8 +11,9 @@ use crate::{ChordriftError, Result, terminal::TerminalProgress};
 
 use super::models::{
     BookmarkContentStatus, CurrentUser, CursorPage, ExternalPlaylistInventory,
-    ExternalPlaylistRelationship, Page, PlaylistInventory, PlaylistItem, ReusePlan, SavedTrack,
-    SavedTrackReuse, SavedTracksInventory, SpotifyInventory, SpotifyPlaylist,
+    ExternalPlaylistRelationship, Page, PlaylistInventory, PlaylistItem, ReusePlan, SavedAlbum,
+    SavedAlbumInventory, SavedAlbumReuse, SavedAlbumsInventory, SavedTrack, SavedTrackReuse,
+    SavedTracksInventory, SpotifyInventory, SpotifyPlaylist, SpotifyTrack,
 };
 
 const API_ROOT: &str = "https://api.spotify.com/v1/";
@@ -187,6 +188,22 @@ impl SpotifyClient {
         self.request_empty(Method::DELETE, url, None).await
     }
 
+    pub(crate) async fn remove_library_tracks(&self, track_ids: &[String]) -> Result<()> {
+        if track_ids.is_empty() || track_ids.len() > 40 {
+            return Err(ChordriftError::Configuration(
+                "Spotify saved-track removals must contain between 1 and 40 track IDs".to_owned(),
+            ));
+        }
+        let mut url = api_url("me/library")?;
+        let uris = track_ids
+            .iter()
+            .map(|id| format!("spotify:track:{id}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        url.query_pairs_mut().append_pair("uris", &uris);
+        self.request_empty(Method::DELETE, url, None).await
+    }
+
     pub(crate) async fn upload_playlist_cover(
         &self,
         playlist_id: &str,
@@ -346,6 +363,15 @@ impl SpotifyClient {
             .saved_tracks(saved_url, reuse.saved_tracks.as_ref())
             .await?;
 
+        eprintln!("spotify fetch: saved albums");
+        let mut albums_url = api_url("me/albums")?;
+        albums_url
+            .query_pairs_mut()
+            .append_pair("limit", PAGE_LIMIT);
+        let saved_albums = self
+            .saved_albums(albums_url, reuse.saved_albums.as_ref())
+            .await?;
+
         eprintln!("spotify fetch: recently played");
         let mut recent_url = api_url("me/player/recently-played")?;
         recent_url
@@ -367,11 +393,78 @@ impl SpotifyClient {
             playlists,
             external_playlists,
             saved_tracks,
+            saved_albums,
             recently_played,
             recent_requested_after: reuse.recent_after,
             playlists_seen,
             followed_playlists_skipped,
             inaccessible_collaborative_playlists,
+        })
+    }
+
+    async fn saved_albums(
+        &self,
+        url: Url,
+        reuse: Option<&SavedAlbumReuse>,
+    ) -> Result<SavedAlbumsInventory> {
+        let first: Page<SavedAlbum> = self.get_json(url).await?;
+        if let Some(previous) = reuse
+            && saved_album_page_matches(&first, previous)
+        {
+            eprintln!("spotify fetch: saved albums unchanged; reusing Neon snapshot");
+            return Ok(SavedAlbumsInventory {
+                items: Vec::new(),
+                total: first.total,
+                reused_from_snapshot: Some(previous.source_snapshot_id),
+            });
+        }
+        let total = first.total;
+        let mut saved = first.items;
+        let mut next = first.next;
+        let mut visited = HashSet::new();
+        while let Some(next_url) = next {
+            let url = Url::parse(&next_url).map_err(|_| {
+                ChordriftError::Configuration(
+                    "Spotify saved-album pagination returned an invalid URL".to_owned(),
+                )
+            })?;
+            validate_api_url(&url)?;
+            if !visited.insert(url.as_str().to_owned()) {
+                return Err(ChordriftError::Configuration(
+                    "Spotify saved-album pagination returned a repeated page".to_owned(),
+                ));
+            }
+            let page: Page<SavedAlbum> = self.get_json(url).await?;
+            saved.extend(page.items);
+            next = page.next;
+        }
+        let mut items = Vec::with_capacity(saved.len());
+        for mut saved_album in saved {
+            let embedded = saved_album.album.tracks.take();
+            let (mut tracks, mut next) = embedded
+                .map(|page| (page.items, page.next))
+                .unwrap_or_default();
+            while let Some(next_url) = next {
+                let url = Url::parse(&next_url).map_err(|_| {
+                    ChordriftError::Configuration(
+                        "Spotify album-track pagination returned an invalid URL".to_owned(),
+                    )
+                })?;
+                validate_api_url(&url)?;
+                let page: Page<SpotifyTrack> = self.get_json(url).await?;
+                tracks.extend(page.items);
+                next = page.next;
+            }
+            items.push(SavedAlbumInventory {
+                saved_at: saved_album.added_at,
+                album: saved_album.album,
+                tracks,
+            });
+        }
+        Ok(SavedAlbumsInventory {
+            items,
+            total,
+            reused_from_snapshot: None,
         })
     }
 
@@ -638,6 +731,31 @@ fn saved_page_matches(page: &Page<SavedTrack>, previous: &SavedTrackReuse) -> bo
                     );
                 }
                 matches
+            },
+        )
+}
+
+fn saved_album_page_matches(page: &Page<SavedAlbum>, previous: &SavedAlbumReuse) -> bool {
+    if page.total != previous.total {
+        eprintln!(
+            "spotify reuse: saved-album total changed (current={}, previous={})",
+            page.total, previous.total
+        );
+        return false;
+    }
+    let current: Vec<_> = page
+        .items
+        .iter()
+        .enumerate()
+        .filter_map(|(position, item)| {
+            let id = item.album.id.as_deref()?;
+            (!id.trim().is_empty()).then_some((position, id, item.added_at))
+        })
+        .collect();
+    current.len() == previous.leading_items.len()
+        && current.iter().zip(&previous.leading_items).all(
+            |((position, id, saved_at), (old_position, old_id, old_saved_at))| {
+                position == old_position && *id == old_id && *saved_at == *old_saved_at
             },
         )
 }

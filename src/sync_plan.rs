@@ -1091,6 +1091,66 @@ async fn cleanup_operations(
             }
         }
     }
+    let saved_track_policy: String = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT saved_track_clear_policy
+                          FROM provider_account_library_policies
+                          WHERE provider_account_id = $1), 'preserve')",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    if saved_track_policy == "after_verified_assignment" {
+        let saved = sqlx::query(
+            "WITH proposed AS (
+                 SELECT DISTINCT membership.track_id
+                 FROM playlists playlist
+                 JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+                 WHERE playlist.generation_id = $3
+             )
+             SELECT saved.position, provider.provider_track_id,
+                    proposed.track_id IS NOT NULL AS assigned,
+                    exclusion.id IS NOT NULL AS excluded
+             FROM provider_saved_tracks saved
+             JOIN provider_tracks provider ON provider.id = saved.provider_track_id
+             LEFT JOIN proposed ON proposed.track_id = provider.track_id
+             LEFT JOIN excluded_tracks exclusion
+               ON exclusion.provider_account_id = $1
+              AND exclusion.track_id = provider.track_id
+              AND exclusion.restored_at IS NULL
+             WHERE saved.snapshot_id = $2
+             ORDER BY saved.position",
+        )
+        .bind(account_id)
+        .bind(snapshot_id)
+        .bind(proposal_id)
+        .fetch_all(database.pool())
+        .await?;
+        for row in saved {
+            let assigned: bool = row.try_get("assigned")?;
+            let excluded: bool = row.try_get("excluded")?;
+            if !assigned && !excluded {
+                continue;
+            }
+            let spotify_track_id: String = row.try_get("provider_track_id")?;
+            let position: i32 = row.try_get("position")?;
+            operations.push(PlanOperationInput {
+                phase: "cleanup".to_owned(),
+                operation_type: "remove_saved_track".to_owned(),
+                operation_key: format!("consume-liked:{spotify_track_id}"),
+                playlist_id: None,
+                provider_playlist_id: None,
+                playlist_name: "Liked Songs".to_owned(),
+                spotify_playlist_id: None,
+                spotify_track_id: Some(spotify_track_id),
+                payload: json!({"position": position, "reason": "consumed_saved_track",
+                    "source_snapshot_id": snapshot_id}),
+                safety: json!({"destructive": true, "deferred": true,
+                    "creates_exclusion": false, "resolved_by_exclusion": excluded,
+                    "requires_published_and_verified_destination": assigned,
+                    "requires_durable_exclusion": excluded}),
+            });
+        }
+    }
     Ok(operations)
 }
 
@@ -1454,7 +1514,8 @@ fn summarize(operations: &[PlanOperationInput]) -> Summary {
         restorations: count_kind(operations, "restore_track"),
         artwork_uploads: count_kind(operations, "upload_artwork"),
         exclusions: count_kind(operations, "exclude_track"),
-        removals: count_kind(operations, "remove_track"),
+        removals: count_kind(operations, "remove_track")
+            + count_kind(operations, "remove_saved_track"),
         retirements: count_kind(operations, "archive_playlist"),
         external_cleanups: count_kind(operations, "remove_external_playlist"),
         deferred: operations
@@ -1522,7 +1583,7 @@ fn operation_rank(operation_type: &str) -> u8 {
         "reorder_playlist" => 3,
         "upload_artwork" => 4,
         "exclude_track" => 5,
-        "remove_track" => 6,
+        "remove_track" | "remove_saved_track" => 6,
         "remove_external_playlist" => 7,
         "archive_playlist" => 8,
         _ => 8,

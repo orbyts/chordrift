@@ -228,9 +228,9 @@ pub async fn assess(
          )
          SELECT count(*)::bigint AS inventory,
                 count(*) FILTER (WHERE destinations = 1 AND NOT excluded)::bigint AS placed,
-                count(*) FILTER (WHERE destinations = 0 AND excluded)::bigint AS excluded,
+                count(*) FILTER (WHERE excluded)::bigint AS excluded,
                 count(*) FILTER (WHERE destinations = 0 AND NOT excluded)::bigint AS unresolved,
-                count(*) FILTER (WHERE destinations > 1 OR (destinations > 0 AND excluded))::bigint
+                count(*) FILTER (WHERE destinations > 1 AND NOT excluded)::bigint
                     AS conflicting
          FROM disposition",
     )

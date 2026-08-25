@@ -938,3 +938,56 @@ Spotify route entry and its durable Neon desired-route membership so it cannot
 be restored; and test mixed deletion/routing/discovery cycles end to end. A
 route is not necessarily one future playlist: the regional route is a review
 facet and may feed several sound-coherent poetic destinations.
+
+## v0.1.2 saved-library reliability subslice
+
+The user paused cleanup until Neon, Spotify, and code convergence are proven.
+Two defects were identified and repaired: active exclusions now supersede stale
+approved-proposal memberships in readiness accounting, and awaiting reconcile
+runs verify both the durable exclusion ledger and provider absence against the
+latest pull before succeeding.
+
+Migration `0034_saved_album_inventory.sql` adds immutable saved-album and
+ordered album-track snapshots plus account-scoped policies. Normal Spotify
+inventory now probes `/me/albums`, copies an unchanged snapshot from Neon, and
+otherwise persists complete album track membership. Album-only tracks remain a
+separate review surface and do not block playlist readiness. New read-only
+commands are `albums list`, `albums audit`, and `albums tracks`; `albums policy`
+defaults to preserve and can opt the personal account into review-then-unsave.
+
+Spotify Liked Songs (`/me/tracks`) is now defined as the primary easy intake:
+Like means keep and classify. `spotify library-policy --liked-songs
+clear-after-verified-assignment` opts an account into gated cleanup only after
+verified canonical placement or durable exclusion. The planner emits explicit
+deferred `remove_saved_track` cleanup operations; execution requires readiness,
+exact confirmation, and `--allow-destructive`, and post-pull verification
+requires absence from the newest saved-track snapshot. The default remains
+preserve for every account.
+
+Live validation on 2026-08-25 exposed and repaired two additional shared-state
+bugs. Post-publish verification had incorrectly recognized only internal
+playlist kind `canonical`; approved Chordrift outputs are `generated` or
+`manual`. It now recognizes proposal-backed playlists and compares effective
+membership after active exclusions. The publish executor also previously read
+raw proposal membership during an exact reorder, temporarily restoring 48
+excluded Monsoon Cinema tracks. It now uses the same account exclusion filter
+as planning/readiness/verification. The 48 entries were removed through exact
+plan `a13897d0-4d2b-4247-8323-7ea1c145fe8e`, readiness assessment
+`da486e32-b670-4e8c-a7e9-c03d59ddf9ba` (11/11), and verified reconcile run
+`5a6e03a8-e45e-4b76-a32e-4902ba940996`.
+
+Changed playlist and saved-album memberships are now batched into Neon. Album
+track persistence reuses known full provider identities instead of overwriting
+them with simplified album-track payloads, and album-only response fields are
+excluded from embedded track metadata serialization to keep comparisons
+stable. A second pull proved all 69 albums and 657 album tracks copy forward
+from Neon after a one-page signature probe.
+
+The live converged snapshot is `3fac64c9-6b08-47fe-b9a1-0a02ebfe43b4`: 22
+playlists, 1,685 entries, 1,622 unique playlist tracks, 923 supported saved
+tracks, 69 saved albums, 657 album tracks, and zero duplicate playlist entries.
+Fresh plan `9d74e245-180c-4834-8965-720b484d9ac9` contains zero operations. The
+album audit reports 485 distinct tracks already preserved in Liked Songs or a
+current playlist, 69 explicitly excluded, and 103 awaiting review across six
+albums. Both personal policies remain `preserve`; do not enable cleanup until
+the user reviews those 103 tracks.

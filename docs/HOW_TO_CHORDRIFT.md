@@ -12,7 +12,8 @@ is staged for inspection rather than silently guessed.
 
 | I want to… | Guide | Spotify action |
 | --- | --- | --- |
-| Add or discover a song | [Add songs and preserve discovery context](how-to/ADDING_AND_DISCOVERY.md) | Save it or add it to the appropriate intake playlist. |
+| Add or discover a song | [Add songs and preserve discovery context](how-to/ADDING_AND_DISCOVERY.md) | Like/Save it; use a named intake only for a richer signal. |
+| Review saved albums | [Saved albums and album cleanup](how-to/SAVED_ALBUMS.md) | Inventory first; never bulk-unsave before coverage review. |
 | Stop hearing a song | [Delete or exclude a track safely](how-to/DELETING_AND_EXCLUDING.md) | Remove it from its verified Chordrift playlist, then reconcile. |
 | Keep a song but reject its current vibe | [Route and reclassify a track](how-to/ROUTING_AND_RECLASSIFYING.md) | Add it to a `Route — …` corrective inbox. |
 | Bring Neon up to date | [Synchronize and prove convergence](how-to/SYNC_AND_CONVERGENCE.md) | Run a pull after provider changes. |
@@ -59,6 +60,11 @@ Use these playlists to tell Chordrift why a newly encountered track matters:
 Use `Route — …` playlists differently: they mean “keep this track, but its
 current Chordrift destination needs correction.” Routes are temporary inboxes
 whose steady state is empty after verified reassignment.
+
+Spotify's Like button is the primary lightweight intake action. It means
+“keep and classify.” `Inbox` is the stronger high-interest variant; the other
+named intakes carry source provenance. For Suhail's opt-in policy, Liked Songs
+is cleared only after verified Chordrift placement, just like an intake queue.
 
 ## Important distinctions
 

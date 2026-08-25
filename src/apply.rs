@@ -437,6 +437,65 @@ pub async fn verify_pending_publications(
             verified += 1;
         }
     }
+    let reconcile_runs: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM sync_apply_runs
+         WHERE provider_account_id = $1 AND phase = 'reconcile'
+           AND status = 'awaiting_pull'
+         ORDER BY started_at, id",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    for run_id in reconcile_runs {
+        let unverified: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint
+             FROM sync_apply_operations execution
+             JOIN sync_operations planned ON planned.id = execution.planned_operation_id
+             LEFT JOIN provider_tracks planned_track
+               ON planned_track.provider = 'spotify'
+              AND planned_track.provider_track_id = planned.payload->>'spotify_track_id'
+             WHERE execution.apply_run_id = $1 AND (
+                 (planned.operation_type = 'exclude_track' AND NOT EXISTS (
+                     SELECT 1 FROM excluded_tracks exclusion
+                     WHERE exclusion.provider_account_id = $2
+                       AND exclusion.track_id = planned_track.track_id
+                       AND exclusion.restored_at IS NULL
+                 )) OR
+                 (planned.operation_type = 'remove_track' AND EXISTS (
+                     SELECT 1
+                     FROM provider_account_playlists account_playlist
+                     JOIN provider_playlists playlist
+                       ON playlist.id = account_playlist.provider_playlist_id
+                     JOIN provider_playlist_tracks membership
+                       ON membership.provider_playlist_id = playlist.id
+                      AND membership.snapshot_id = $3
+                     JOIN provider_tracks track ON track.id = membership.provider_track_id
+                     WHERE account_playlist.provider_account_id = $2
+                       AND account_playlist.present_in_latest_snapshot
+                       AND playlist.provider_playlist_id = planned.payload->>'spotify_playlist_id'
+                       AND track.provider = 'spotify'
+                       AND track.provider_track_id = planned.payload->>'spotify_track_id'
+                 ))
+             )",
+        )
+        .bind(run_id)
+        .bind(account_id)
+        .bind(snapshot_id)
+        .fetch_one(database.pool())
+        .await?;
+        if unverified == 0 {
+            sqlx::query(
+                "UPDATE sync_apply_runs SET status = 'succeeded', finished_at = now(),
+                 summary = summary || jsonb_build_object('verified_snapshot_id', $2::text)
+                 WHERE id = $1",
+            )
+            .bind(run_id)
+            .bind(snapshot_id)
+            .execute(database.pool())
+            .await?;
+            verified += 1;
+        }
+    }
     let current_proposal: Option<Uuid> = sqlx::query_scalar(
         "SELECT plan.proposal_generation_id
          FROM sync_apply_runs apply
@@ -477,6 +536,14 @@ pub async fn verify_pending_publications(
                      JOIN provider_tracks track ON track.id = membership.provider_track_id
                      WHERE account_playlist.provider_account_id = $2
                        AND playlist.provider_playlist_id = planned.payload->>'spotify_playlist_id'
+                       AND track.provider = 'spotify'
+                       AND track.provider_track_id = planned.payload->>'spotify_track_id'
+                 )) OR
+                 (planned.operation_type = 'remove_saved_track' AND EXISTS (
+                     SELECT 1
+                     FROM provider_saved_tracks saved
+                     JOIN provider_tracks track ON track.id = saved.provider_track_id
+                     WHERE saved.snapshot_id = $3
                        AND track.provider = 'spotify'
                        AND track.provider_track_id = planned.payload->>'spotify_track_id'
                  )) OR
@@ -522,7 +589,7 @@ async fn publication_touches_canonical(database: &Database, apply_run_id: Uuid) 
              JOIN playlists playlist ON playlist.id = planned.playlist_id
              WHERE execution.apply_run_id = $1
                AND planned.phase = 'publish'
-               AND playlist.kind = 'canonical'
+               AND playlist.generation_id IS NOT NULL
          )",
     )
     .bind(apply_run_id)
@@ -605,10 +672,15 @@ async fn verify_publication(
         "SELECT playlist.concept_id, membership.position, membership.track_id
          FROM playlists playlist
          LEFT JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
-         WHERE playlist.generation_id = $1
+         LEFT JOIN excluded_tracks exclusion
+           ON exclusion.provider_account_id = $2
+          AND exclusion.track_id = membership.track_id
+          AND exclusion.restored_at IS NULL
+         WHERE playlist.generation_id = $1 AND exclusion.id IS NULL
          ORDER BY playlist.concept_id, membership.position",
     )
     .bind(proposal_id)
+    .bind(account_id)
     .fetch_all(database.pool())
     .await?;
     let mut desired: BTreeMap<Uuid, Desired> = BTreeMap::new();
@@ -1004,10 +1076,16 @@ async fn execute_publish(
              FROM playlist_tracks membership
              JOIN provider_tracks provider ON provider.track_id = membership.track_id
               AND provider.provider = 'spotify'
-             WHERE membership.playlist_id = $1
+             JOIN sync_apply_runs run ON run.id = $2
+             LEFT JOIN excluded_tracks exclusion
+               ON exclusion.provider_account_id = run.provider_account_id
+              AND exclusion.track_id = membership.track_id
+              AND exclusion.restored_at IS NULL
+             WHERE membership.playlist_id = $1 AND exclusion.id IS NULL
              ORDER BY membership.position",
         )
         .bind(playlist_id)
+        .bind(run_id)
         .fetch_all(database.pool())
         .await?;
         if live_items == desired {
@@ -1167,6 +1245,36 @@ async fn execute_destructive(
         .cloned()
         .collect();
     execute_reconcile(database, session, run_id, track_removals).await?;
+    let saved_track_removals = operations
+        .iter()
+        .filter(|operation| {
+            operation.status != "succeeded" && operation.kind == "remove_saved_track"
+        })
+        .collect::<Vec<_>>();
+    for chunk in saved_track_removals.chunks(40) {
+        let targets = chunk
+            .iter()
+            .map(|operation| {
+                operation.spotify_track_id.clone().ok_or_else(|| {
+                    configuration("planned saved-track removal has no Spotify track ID")
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        for operation in chunk {
+            mark_running(database, run_id, operation).await?;
+        }
+        session.remove_library_tracks(&targets).await?;
+        for (operation, target) in chunk.iter().zip(&targets) {
+            mark_succeeded(
+                database,
+                run_id,
+                operation,
+                target,
+                json!({"library_surface": "saved_tracks"}),
+            )
+            .await?;
+        }
+    }
     let relationships = operations
         .iter()
         .filter(|operation| {

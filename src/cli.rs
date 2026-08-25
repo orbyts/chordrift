@@ -6,9 +6,9 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
-    ChordriftError, Result, analysis, apply, apply_readiness, artwork, bookmarks, clusters, config,
-    db, embeddings, enrichment, history, model_inference, playlists, proposals, providers::spotify,
-    routes, signals, sync_plan, terminal, tracks,
+    ChordriftError, Result, albums, analysis, apply, apply_readiness, artwork, bookmarks, clusters,
+    config, db, embeddings, enrichment, history, model_inference, playlists, proposals,
+    providers::spotify, routes, signals, sync_plan, terminal, tracks,
 };
 
 /// Chordrift command-line interface.
@@ -52,6 +52,12 @@ pub enum Command {
         /// Playlist operation to perform.
         #[command(subcommand)]
         command: PlaylistCommand,
+    },
+    /// Inventory saved albums separately from playlists and saved songs.
+    Albums {
+        /// Saved-album operation to perform.
+        #[command(subcommand)]
+        command: AlbumCommand,
     },
     /// Create and inspect durable zero-signal routing playlists.
     Routes {
@@ -145,12 +151,39 @@ pub enum SpotifyCommand {
         #[arg(long, default_value = "personal")]
         account: String,
     },
+    /// Configure native Spotify library surfaces without changing them immediately.
+    LibraryPolicy {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Handling for tracks captured through Liked Songs.
+        #[arg(long, value_enum)]
+        liked_songs: LikedSongsPolicyArg,
+    },
     /// Remove the local refresh token without revoking Spotify access.
     Logout {
         /// Local label for this Spotify account.
         #[arg(long, default_value = "personal")]
         account: String,
     },
+}
+
+/// Handling for tracks captured through Spotify Liked Songs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum LikedSongsPolicyArg {
+    /// Keep tracks in Liked Songs after Chordrift placement.
+    Preserve,
+    /// Clear only after canonical placement or exclusion is durably verified.
+    ClearAfterVerifiedAssignment,
+}
+
+impl LikedSongsPolicyArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Preserve => "preserve",
+            Self::ClearAfterVerifiedAssignment => "after_verified_assignment",
+        }
+    }
 }
 
 /// Provider-to-Neon synchronization commands.
@@ -406,6 +439,69 @@ pub enum PlaylistCommand {
         #[arg(long)]
         none: bool,
     },
+}
+
+/// Saved-album inventory and cleanup-policy commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum AlbumCommand {
+    /// List current saved albums and preservation coverage.
+    List {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Summarize whether every album track is preserved, excluded, or awaiting review.
+    Audit {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List ordered tracks and disposition for one saved album.
+    Tracks {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Case-insensitive exact album title; must be unambiguous.
+        #[arg(
+            long,
+            required_unless_present = "spotify_id",
+            conflicts_with = "spotify_id"
+        )]
+        name: Option<String>,
+        /// Stable Spotify album ID.
+        #[arg(long, required_unless_present = "name", conflicts_with = "name")]
+        spotify_id: Option<String>,
+    },
+    /// Set an account-specific policy; this never changes Spotify by itself.
+    Policy {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Saved-album handling mode.
+        #[arg(long, value_enum)]
+        mode: SavedAlbumPolicyArg,
+    },
+}
+
+/// Account-specific saved-album behavior.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum SavedAlbumPolicyArg {
+    /// Preserve saved albums and only inventory them.
+    Preserve,
+    /// Inventory changes without proposing album cleanup.
+    InventoryOnly,
+    /// Require every album track to be reviewed before a future unsave operation.
+    ReviewThenUnsave,
+}
+
+impl SavedAlbumPolicyArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Preserve => "preserve",
+            Self::InventoryOnly => "inventory_only",
+            Self::ReviewThenUnsave => "review_then_unsave",
+        }
+    }
 }
 
 /// Durable routing-playlist commands.
@@ -1116,6 +1212,23 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                 database.close().await;
                 result?;
             }
+            SpotifyCommand::LibraryPolicy {
+                account,
+                liked_songs,
+            } => {
+                let database = connect_current_database().await?;
+                let result: Result<()> = async {
+                    albums::set_saved_track_policy(&database, &account, liked_songs.as_str())
+                        .await?;
+                    writeln!(output, "liked songs policy: {}", liked_songs.as_str())?;
+                    writeln!(output, "account: {account}")?;
+                    writeln!(output, "spotify_writes: disabled")?;
+                    Ok(())
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
             SpotifyCommand::Logout { account } => {
                 let removed = spotify::logout(&account)?;
                 writeln!(
@@ -1339,6 +1452,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
         Command::Playlists { command } => {
             let database = connect_current_database().await?;
             let result = run_playlist_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
+        Command::Albums { command } => {
+            let database = connect_current_database().await?;
+            let result = run_album_command(command, output, &database).await;
             database.close().await;
             result?;
         }
@@ -1858,6 +1977,113 @@ async fn run_analyze_command(
                     clean_cell(&row.track_title)
                 )?;
             }
+            Ok(())
+        }
+    }
+}
+
+async fn run_album_command(
+    command: AlbumCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        AlbumCommand::List { account } => {
+            let rows = albums::list(database, &account).await?;
+            if terminal::stdout_is_terminal() {
+                let rendered = terminal::pretty_table(
+                    &["Review", "Tracks", "Album", "Spotify ID"],
+                    rows.into_iter()
+                        .map(|row| {
+                            vec![
+                                if row.pending == 0 {
+                                    "complete".to_owned()
+                                } else {
+                                    format!("{} pending", row.pending)
+                                },
+                                format!(
+                                    "{} total\n{} preserved · {} excluded",
+                                    row.tracks, row.preserved, row.excluded
+                                ),
+                                format!(
+                                    "{}\n{}",
+                                    row.title,
+                                    row.artist.unwrap_or_else(|| "—".to_owned())
+                                ),
+                                row.spotify_id,
+                            ]
+                        })
+                        .collect(),
+                );
+                writeln!(output, "\x1b[1;36mSaved albums · {account}\x1b[0m")?;
+                writeln!(output, "{rendered}")?;
+                return Ok(());
+            }
+            writeln!(
+                output,
+                "tracks\tpreserved\texcluded\tpending\tsaved_at\tartist\talbum\tspotify_id"
+            )?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    row.tracks,
+                    row.preserved,
+                    row.excluded,
+                    row.pending,
+                    row.saved_at
+                        .map_or_else(|| "-".to_owned(), |v| v.to_rfc3339()),
+                    clean_cell(row.artist.as_deref().unwrap_or("-")),
+                    clean_cell(&row.title),
+                    row.spotify_id
+                )?;
+            }
+            Ok(())
+        }
+        AlbumCommand::Audit { account } => {
+            let audit = albums::audit(database, &account).await?;
+            writeln!(output, "saved album audit: current")?;
+            writeln!(output, "snapshot_id: {}", audit.snapshot_id)?;
+            writeln!(output, "policy: {}", audit.policy)?;
+            writeln!(output, "albums: {}", audit.albums)?;
+            writeln!(output, "unique_tracks: {}", audit.unique_tracks)?;
+            writeln!(output, "preserved: {}", audit.preserved)?;
+            writeln!(output, "excluded: {}", audit.excluded)?;
+            writeln!(output, "pending_review: {}", audit.pending)?;
+            writeln!(
+                output,
+                "review_complete_albums: {}",
+                audit.review_complete_albums
+            )?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        AlbumCommand::Tracks {
+            account,
+            name,
+            spotify_id,
+        } => {
+            let rows =
+                albums::tracks(database, &account, name.as_deref(), spotify_id.as_deref()).await?;
+            writeln!(output, "position\tdisposition\ttrack\tartists\tspotify_id")?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}",
+                    row.position + 1,
+                    row.disposition,
+                    clean_cell(&row.title),
+                    clean_cell(&row.artists),
+                    row.spotify_id
+                )?;
+            }
+            Ok(())
+        }
+        AlbumCommand::Policy { account, mode } => {
+            albums::set_policy(database, &account, mode.as_str()).await?;
+            writeln!(output, "saved album policy: {}", mode.as_str())?;
+            writeln!(output, "account: {account}")?;
+            writeln!(output, "spotify_writes: disabled")?;
             Ok(())
         }
     }
@@ -3445,6 +3671,13 @@ fn write_import_report(output: &mut impl Write, report: &spotify::ImportReport) 
         "saved_tracks_reused: {}",
         report.saved_tracks_reused
     )?;
+    writeln!(output, "saved_albums: {}", report.saved_albums)?;
+    writeln!(output, "saved_album_tracks: {}", report.saved_album_tracks)?;
+    writeln!(
+        output,
+        "saved_albums_reused: {}",
+        report.saved_albums_reused
+    )?;
     writeln!(output, "unavailable_items: {}", report.unavailable_items)?;
     writeln!(output, "unsupported_items: {}", report.unsupported_items)?;
     writeln!(
@@ -3580,10 +3813,11 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand, Cli, ClusterCommand,
-        Command, DbCommand, EmbeddingCommand, EnrichmentCommand, HistoryCommand, PlaylistCommand,
-        PlaylistRoleArg, PlaylistSignalClassArg, RouteCommand, SignalCommand, SpotifyCommand,
-        SyncCommand, TrackCommand, write_status,
+        AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand, Cli,
+        ClusterCommand, Command, DbCommand, EmbeddingCommand, EnrichmentCommand, HistoryCommand,
+        LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg, PlaylistSignalClassArg,
+        RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand, SyncCommand, TrackCommand,
+        write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -3605,6 +3839,48 @@ mod tests {
             cli.command,
             Command::Spotify {
                 command: SpotifyCommand::Import { account }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_temporary_liked_songs_policy() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "spotify",
+            "library-policy",
+            "--liked-songs",
+            "clear-after-verified-assignment",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Spotify {
+                command: SpotifyCommand::LibraryPolicy {
+                    account,
+                    liked_songs: LikedSongsPolicyArg::ClearAfterVerifiedAssignment,
+                }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_saved_album_review_policy() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "albums",
+            "policy",
+            "--mode",
+            "review-then-unsave",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Albums {
+                command: AlbumCommand::Policy {
+                    account,
+                    mode: SavedAlbumPolicyArg::ReviewThenUnsave,
+                }
             } if account == "personal"
         ));
     }

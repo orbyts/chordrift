@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// One page returned by Spotify's offset-based APIs.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct Page<T> {
     pub items: Vec<T>,
     pub next: Option<String>,
@@ -106,6 +106,8 @@ pub(crate) struct SpotifyAlbum {
     pub artists: Vec<SpotifyArtist>,
     #[serde(default)]
     pub external_urls: ExternalUrls,
+    #[serde(default, skip_serializing)]
+    pub tracks: Option<Page<SpotifyTrack>>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -157,6 +159,26 @@ impl PlaylistItem {
 pub(crate) struct SavedTrack {
     pub added_at: Option<DateTime<Utc>>,
     pub track: Option<SpotifyTrack>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct SavedAlbum {
+    pub added_at: Option<DateTime<Utc>>,
+    pub album: SpotifyAlbum,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SavedAlbumInventory {
+    pub saved_at: Option<DateTime<Utc>>,
+    pub album: SpotifyAlbum,
+    pub tracks: Vec<SpotifyTrack>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SavedAlbumsInventory {
+    pub items: Vec<SavedAlbumInventory>,
+    pub total: usize,
+    pub reused_from_snapshot: Option<Uuid>,
 }
 
 /// One playback observation returned by Spotify's incremental player history.
@@ -261,11 +283,19 @@ pub(crate) struct SavedTrackReuse {
     pub leading_items: Vec<(usize, String, Option<DateTime<Utc>>)>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct SavedAlbumReuse {
+    pub source_snapshot_id: Uuid,
+    pub total: usize,
+    pub leading_items: Vec<(usize, String, Option<DateTime<Utc>>)>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ReusePlan {
     pub playlists: HashMap<String, PlaylistReuse>,
     pub bookmark_playlists: HashMap<String, PlaylistReuse>,
     pub saved_tracks: Option<SavedTrackReuse>,
+    pub saved_albums: Option<SavedAlbumReuse>,
     /// Most recent active listening observation already retained in Neon.
     pub recent_after: Option<DateTime<Utc>>,
 }
@@ -281,6 +311,8 @@ pub(crate) struct SpotifyInventory {
     pub external_playlists: Vec<ExternalPlaylistInventory>,
     /// Ordered saved-track library.
     pub saved_tracks: SavedTracksInventory,
+    /// Saved album library, including complete ordered album track inventories.
+    pub saved_albums: SavedAlbumsInventory,
     /// New player-history observations fetched after the durable Neon cursor.
     pub recently_played: Vec<RecentlyPlayedItem>,
     /// Cursor supplied to Spotify for this incremental request.

@@ -6,6 +6,8 @@
 //! Chordrift owns its music domain and PostgreSQL schema. Storexa supplies the
 //! lower-level Neon/PostgreSQL connection, pooling, and migration primitives.
 
+/// Read-only saved-album inventory and account-scoped cleanup policy.
+pub mod albums;
 /// Account-scoped canonical library analysis.
 pub mod analysis;
 /// Gated, resumable execution of approved Spotify synchronization plans.

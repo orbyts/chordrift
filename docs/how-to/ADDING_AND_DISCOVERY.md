@@ -5,15 +5,20 @@ eventually place into the right listening playlist.
 
 ## Choose the smallest truthful signal
 
-In Spotify, add the track to one intake playlist:
+The default and easiest intake action is Spotify's Like/Save button. It means:
+“keep this track and let Chordrift classify it.” A normal pull records the
+track and its saved timestamp in Neon.
+
+Use a named intake playlist only when you want to provide a stronger or more
+specific signal:
 
 - `Inbox` for a strong personal discovery;
 - `From Friends` for an explicit recommendation;
 - `Liked from Radio` for radio or autoplay discovery;
 - `From Prompts` for a Spotify prompt-generated discovery.
 
-You may also save the track to Liked Songs. Saving preserves explicit library
-interest, but the intake playlist carries the richer “how I found this” signal.
+`Inbox` also means higher current personal interest than a plain Like. The
+other intake playlists retain discovery provenance that Like alone cannot.
 Do not add the same track to several intake playlists unless several origins are
 genuinely meaningful.
 
@@ -39,6 +44,19 @@ Current personal workflow:
 5. Publish through readiness and explicit apply.
 6. Pull again and prove the destination exists.
 7. Clear the intake only after verified placement.
+
+For an account configured with the opt-in Liked Songs cleanup policy, step 7
+also removes the track from Liked Songs. Neon retains the original save event,
+and the removal is planned as a destructive cleanup operation only after the
+canonical destination is verified:
+
+```console
+$ chordrift spotify library-policy --account personal \
+    --liked-songs clear-after-verified-assignment
+```
+
+The safe product default is `preserve`; changing policy does not immediately
+write to Spotify.
 
 The consumer product should perform steps 2–7 in the background and surface
 only an understandable proposal when confidence or intent is ambiguous.

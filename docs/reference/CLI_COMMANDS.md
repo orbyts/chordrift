@@ -221,6 +221,40 @@ Spotify itself:
 $ chordrift spotify logout --account personal
 ```
 
+Configure Liked Songs as a temporary intake only after verified assignment:
+
+```console
+$ chordrift spotify library-policy --account personal \
+    --liked-songs clear-after-verified-assignment
+```
+
+The default is `preserve`. Policy changes are Neon-only; removals appear later
+as explicit cleanup-plan operations.
+
+## Saved albums
+
+List the current saved-album surface and its preservation coverage:
+
+```console
+$ chordrift albums list --account personal
+$ chordrift albums audit --account personal
+```
+
+Inspect an album's ordered tracks:
+
+```console
+$ chordrift albums tracks --account personal --name "ALBUM TITLE"
+$ chordrift albums tracks --account personal --spotify-id SPOTIFY_ALBUM_ID
+```
+
+Set the account-specific album policy without changing Spotify:
+
+```console
+$ chordrift albums policy --account personal --mode preserve
+$ chordrift albums policy --account personal --mode inventory-only
+$ chordrift albums policy --account personal --mode review-then-unsave
+```
+
 The account label is local convenience. Neon also retains Spotify's stable user
 identity, and all playlist roles are scoped to that account.
 
