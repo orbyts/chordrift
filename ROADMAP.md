@@ -430,6 +430,16 @@ listening playlists. Their user-authored descriptions are semantic policy
 inputs, never executable instructions. Chordrift consumes a queue only after
 its tracks have verified destinations, then clears it for reuse.
 
+The first routing subslice provides durable Neon route identities, generic
+create/add/list/inspect commands, per-route label-free and Spotify-labeled
+artwork, provider-addition capture during pull, zero signal weight, immutable
+publish planning, and post-pull exact-membership verification. Artwork follows
+the route meaning rather than a universal template: the first South and North
+Indian routes use minimal veena and sarod studies, while Decide Later uses a
+minimal junction motif. Full route consumption into existing or newly promoted
+canonical destinations remains part of the listening-review reconciliation
+slice; cleanup must remain gated on verified destination coverage.
+
 A later review session starts from the currently approved library without
 rebuilding or renaming unaffected playlists. The CLI and future UI should
 support:
@@ -489,7 +499,8 @@ Reuse the existing stable playlist concepts, assignment-revision ledger,
 complete-inventory invariant, artwork approval, sync planning, readiness, and
 apply machinery rather than creating a second source of truth.
 
-Status: planned.
+Status: in progress; durable routing capture and publication implemented as the
+first subslice.
 
 ## Post-v0.1 product direction — Review UI
 

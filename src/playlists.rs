@@ -63,6 +63,8 @@ pub enum PlaylistSignalClass {
     ProviderCurated,
     /// A user-owned temporary intake that is cleared only after verified placement.
     Intake,
+    /// A zero-signal corrective inbox cleared only after verified reassignment.
+    Routing,
     /// A Chordrift-managed output; previous assignments are stability evidence only.
     Canonical,
     /// Temporary provider-transfer infrastructure with no library meaning.
@@ -79,6 +81,7 @@ impl PlaylistSignalClass {
             Self::SemanticLegacy => "semantic_legacy",
             Self::ProviderCurated => "provider_curated",
             Self::Intake => "intake",
+            Self::Routing => "routing",
             Self::Canonical => "canonical",
             Self::Transport => "transport",
             Self::Ignored => "ignored",
@@ -278,14 +281,19 @@ pub async fn configure_signals(
         ));
     }
     let clear_policy = clear_policy.unwrap_or(match signal_class {
-        PlaylistSignalClass::Intake => ClearPolicy::AfterVerifiedAssignment,
+        PlaylistSignalClass::Intake | PlaylistSignalClass::Routing => {
+            ClearPolicy::AfterVerifiedAssignment
+        }
         _ => ClearPolicy::Never,
     });
     if clear_policy == ClearPolicy::AfterVerifiedAssignment
-        && signal_class != PlaylistSignalClass::Intake
+        && !matches!(
+            signal_class,
+            PlaylistSignalClass::Intake | PlaylistSignalClass::Routing
+        )
     {
         return Err(ChordriftError::Configuration(
-            "only intake playlists may clear after verified assignment".to_owned(),
+            "only intake or routing playlists may clear after verified assignment".to_owned(),
         ));
     }
     let account_id = account_id(database, account_label).await?;

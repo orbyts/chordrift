@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use crate::{
     ChordriftError, Result, analysis, apply, apply_readiness, artwork, bookmarks, clusters, config,
     db, embeddings, enrichment, history, model_inference, playlists, proposals, providers::spotify,
-    signals, sync_plan, tracks,
+    routes, signals, sync_plan, tracks,
 };
 
 /// Chordrift command-line interface.
@@ -52,6 +52,12 @@ pub enum Command {
         /// Playlist operation to perform.
         #[command(subcommand)]
         command: PlaylistCommand,
+    },
+    /// Create and inspect durable zero-signal routing playlists.
+    Routes {
+        /// Routing operation to perform.
+        #[command(subcommand)]
+        command: RouteCommand,
     },
     /// Find one song and explain its placement, provenance, signals, and clustering.
     Tracks {
@@ -399,6 +405,59 @@ pub enum PlaylistCommand {
         /// Protect every eligible user playlist and retire none.
         #[arg(long)]
         none: bool,
+    },
+}
+
+/// Durable routing-playlist commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum RouteCommand {
+    /// Create or update a Neon-backed route and its approved artwork.
+    Create {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Route label; Chordrift adds `Route —` when omitted.
+        #[arg(long)]
+        name: String,
+        /// Instructions explaining when this route should be used.
+        #[arg(long)]
+        description: String,
+        /// Label-free PNG master retained for future providers.
+        #[arg(long)]
+        background: PathBuf,
+        /// Deterministically labeled PNG approved for Spotify.
+        #[arg(long)]
+        artwork: PathBuf,
+    },
+    /// Add known Spotify tracks to one route without contacting Spotify.
+    Add {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Route name, with or without the `Route —` prefix.
+        #[arg(long)]
+        route: String,
+        /// Stable Spotify track ID; repeat for multiple tracks.
+        #[arg(long = "spotify-id", required = true)]
+        spotify_ids: Vec<String>,
+        /// Optional durable note explaining the routing decision.
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// List every configured route and its publication state.
+    List {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// List desired Neon membership for one route.
+    Tracks {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Route name, with or without the `Route —` prefix.
+        #[arg(long)]
+        route: String,
     },
 }
 
@@ -982,6 +1041,8 @@ pub enum PlaylistSignalClassArg {
     ProviderCurated,
     /// User-owned temporary intake.
     Intake,
+    /// Zero-signal corrective routing inbox.
+    Routing,
     /// Chordrift-managed canonical output.
     Canonical,
     /// Temporary transfer infrastructure.
@@ -1281,6 +1342,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
             database.close().await;
             result?;
         }
+        Command::Routes { command } => {
+            let database = connect_current_database().await?;
+            let result = run_route_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
         Command::Tracks { command } => {
             let database = connect_current_database().await?;
             let result = run_track_command(command, output, &database).await;
@@ -1408,6 +1475,22 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
             let result = run_proposal_command(command, output, &database).await;
             database.close().await;
             result?;
+        }
+        Command::Artwork {
+            command:
+                ArtworkCommand::Render {
+                    background,
+                    title,
+                    output: path,
+                },
+        } => {
+            let report = artwork::render_label(&background, &path, &title)?;
+            writeln!(output, "artwork: rendered")?;
+            writeln!(output, "path: {}", report.path.display())?;
+            writeln!(output, "dimensions: {}x{}", report.width, report.height)?;
+            writeln!(output, "bytes: {}", report.byte_size)?;
+            writeln!(output, "sha256: {}", report.sha256)?;
+            writeln!(output, "spotify_writes: disabled")?;
         }
         Command::Artwork { command } => {
             let database = connect_current_database().await?;
@@ -2093,6 +2176,100 @@ async fn run_track_command(
                     .map(clean_cell)
                     .unwrap_or_else(|| "false".to_owned())
             )?;
+            Ok(())
+        }
+    }
+}
+
+async fn run_route_command(
+    command: RouteCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        RouteCommand::Create {
+            account,
+            name,
+            description,
+            background,
+            artwork,
+        } => {
+            let route = routes::create(
+                database,
+                &account,
+                &name,
+                &description,
+                &background,
+                &artwork,
+            )
+            .await?;
+            writeln!(output, "route: {}", route.name)?;
+            writeln!(output, "stable_key: {}", route.stable_key)?;
+            writeln!(output, "playlist_id: {}", route.playlist_id)?;
+            writeln!(output, "artwork_sha256: {}", route.artwork_sha256)?;
+            writeln!(
+                output,
+                "spotify_playlist_id: {}",
+                route.spotify_playlist_id.as_deref().unwrap_or("-")
+            )?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        RouteCommand::Add {
+            account,
+            route,
+            spotify_ids,
+            reason,
+        } => {
+            let report =
+                routes::add(database, &account, &route, &spotify_ids, reason.as_deref()).await?;
+            writeln!(output, "route: {}", report.route.name)?;
+            writeln!(output, "added: {}", report.added)?;
+            writeln!(output, "reused: {}", report.reused)?;
+            writeln!(output, "desired_tracks: {}", report.route.track_count)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        RouteCommand::List { account } => {
+            let rows = routes::list(database, &account).await?;
+            writeln!(
+                output,
+                "active\ttracks\tspotify_id\tstable_key\tname\tdescription"
+            )?;
+            for route in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}\t{}",
+                    route.active,
+                    route.track_count,
+                    route.spotify_playlist_id.as_deref().unwrap_or("-"),
+                    route.stable_key,
+                    clean_cell(&route.name),
+                    clean_cell(&route.description)
+                )?;
+            }
+            Ok(())
+        }
+        RouteCommand::Tracks { account, route } => {
+            let (route, tracks) = routes::tracks(database, &account, &route).await?;
+            writeln!(output, "route: {}", route.name)?;
+            writeln!(
+                output,
+                "spotify_id: {}",
+                route.spotify_playlist_id.as_deref().unwrap_or("-")
+            )?;
+            writeln!(output, "tracks: {}", tracks.len())?;
+            writeln!(output, "position\ttrack\tartists\tspotify_track_id")?;
+            for track in tracks {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}",
+                    track.position,
+                    clean_cell(&track.title),
+                    clean_cell(&track.artists),
+                    track.spotify_track_id
+                )?;
+            }
             Ok(())
         }
     }
@@ -3106,6 +3283,7 @@ fn playlist_signal_class(value: PlaylistSignalClassArg) -> playlists::PlaylistSi
         PlaylistSignalClassArg::SemanticLegacy => playlists::PlaylistSignalClass::SemanticLegacy,
         PlaylistSignalClassArg::ProviderCurated => playlists::PlaylistSignalClass::ProviderCurated,
         PlaylistSignalClassArg::Intake => playlists::PlaylistSignalClass::Intake,
+        PlaylistSignalClassArg::Routing => playlists::PlaylistSignalClass::Routing,
         PlaylistSignalClassArg::Canonical => playlists::PlaylistSignalClass::Canonical,
         PlaylistSignalClassArg::Transport => playlists::PlaylistSignalClass::Transport,
         PlaylistSignalClassArg::Ignored => playlists::PlaylistSignalClass::Ignored,
@@ -3332,8 +3510,8 @@ mod tests {
     use super::{
         ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand, Cli, ClusterCommand,
         Command, DbCommand, EmbeddingCommand, EnrichmentCommand, HistoryCommand, PlaylistCommand,
-        PlaylistRoleArg, PlaylistSignalClassArg, SignalCommand, SpotifyCommand, SyncCommand,
-        TrackCommand, write_status,
+        PlaylistRoleArg, PlaylistSignalClassArg, RouteCommand, SignalCommand, SpotifyCommand,
+        SyncCommand, TrackCommand, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -3367,6 +3545,52 @@ mod tests {
             Command::Sync {
                 command: SyncCommand::Pull { account }
             } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_neon_only_route_creation() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "routes",
+            "create",
+            "--name",
+            "South Indian",
+            "--description",
+            "Corrective regional inbox",
+            "--background",
+            "background.png",
+            "--artwork",
+            "artwork.png",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Routes {
+                command: RouteCommand::Create { account, name, .. }
+            } if account == "personal" && name == "South Indian"
+        ));
+    }
+
+    #[test]
+    fn parses_batch_route_addition() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "routes",
+            "add",
+            "--route",
+            "Decide Later",
+            "--spotify-id",
+            "track-a",
+            "--spotify-id",
+            "track-b",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Routes {
+                command: RouteCommand::Add { spotify_ids, .. }
+            } if spotify_ids == ["track-a", "track-b"]
         ));
     }
 

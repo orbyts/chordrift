@@ -78,6 +78,7 @@ $ chordrift --version
 $ chordrift --help
 $ chordrift playlists --help
 $ chordrift playlists tracks --help
+$ chordrift routes --help
 ```
 
 Chordrift reads its Neon URL from `CHORDRIFT_DATABASE_URL` and its public
@@ -249,6 +250,75 @@ Spotify folders themselves have no Web API cover endpoint; assign this output
 manually in a client surface that supports it. For a playlist, register or use
 an approved artwork artifact and run `artwork update --playlist NAME` to create
 an auditable one-cover plan.
+
+### Routing playlists: capture a correction while listening
+
+Routes are temporary corrective inboxes, not final listening playlists. A
+non-empty route means Chordrift has pending recategorization work. Route
+membership carries zero clustering, embedding, rotation, or preference weight.
+The steady state is empty: Chordrift first retains every routed track in Neon,
+then assigns it to an existing canonical playlist or proposes a genuinely new
+poetic playlist with its own name and artwork, publishes and verifies that
+destination, and only then clears the route.
+
+Create or update a route in Neon with its own meaning-specific artwork. The
+name is normalized to the `Route —` prefix. Keep the label-free master as well
+as the deterministically labeled Spotify cover:
+
+```console
+$ chordrift routes create \
+    --account personal \
+    --name "South Indian" \
+    --description "Corrective inbox for South Indian recordings that need verified reassignment; not a final listening playlist." \
+    --background artwork/routing/route-signals-v1/backgrounds/route-south-indian.png \
+    --artwork artwork/routing/route-signals-v1/route-south-indian.png
+```
+
+Future routes are not required to reuse the regional instrument treatment.
+Generate artwork appropriate to each route's meaning, render its Spotify label
+with `chordrift artwork render`, and pass both paths to `routes create`.
+
+Add one or several known tracks from the CLI without contacting Spotify:
+
+```console
+$ chordrift routes add \
+    --account personal \
+    --route "South Indian" \
+    --spotify-id 42lDp1YYCiy50UtXUO9FNp \
+    --spotify-id 1VdBV90HgsUkjdKo95qnLf \
+    --reason "Regional context does not belong in Tidal Hush"
+```
+
+While listening on the go, the lowest-friction equivalent is to add the
+playing track directly to the appropriate `Route — …` playlist in Spotify.
+The next `chordrift sync pull` captures that addition into Neon before any
+cleanup. Do not also remove the track from its current canonical playlist; the
+later verified recategorization performs the safe move.
+
+Inspect all routes or the durable desired membership of one route:
+
+```console
+$ chordrift routes list --account personal
+$ chordrift routes tracks --account personal --route "Route — South Indian"
+```
+
+Creating or adding through `routes` changes Neon only. Publish route creation,
+membership, and artwork through the normal inspected workflow:
+
+```console
+$ chordrift sync plan --account personal
+$ chordrift sync plan-show --account personal --details
+$ chordrift sync apply-preflight --account personal
+$ chordrift sync readiness --account personal --probe
+$ chordrift sync apply --account personal --assessment ASSESSMENT_ID \
+    --phase publish --confirm ASSESSMENT_ID
+$ chordrift sync pull --account personal
+```
+
+The initial review routes are `Route — South Indian`, `Route — North Indian`,
+and `Route — Decide Later`. Spotify folders are visual organization only and
+are unavailable through the Web API; move the three published routes into a
+folder manually if desired.
 
 ### User-created playlists and retirement
 

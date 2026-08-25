@@ -16,9 +16,9 @@ use crate::{
     providers::spotify::{self, MutationSession},
 };
 
-const APPLY_VERSION: &str = "spotify-apply-v2";
-const READINESS_VERSION: &str = "spotify-apply-readiness-v4";
-const PLANNER_VERSION: &str = "spotify-dry-run-v8";
+const APPLY_VERSION: &str = "spotify-apply-v3";
+const READINESS_VERSION: &str = "spotify-apply-readiness-v5";
+const PLANNER_VERSION: &str = "spotify-dry-run-v9";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Independently gated execution phases in a synchronization plan.
@@ -124,7 +124,7 @@ pub async fn preflight_publish(
         || plan.try_get::<Uuid, _>("source_snapshot_id")?
             != plan.try_get::<Uuid, _>("latest_snapshot_id")?
     {
-        return Err(configuration("preflight requires a current v8 plan"));
+        return Err(configuration("preflight requires a current v9 plan"));
     }
 
     let playlist_creates: i64 = sqlx::query_scalar(
@@ -241,7 +241,7 @@ pub async fn approve_retirement(
             != row.try_get::<Uuid, _>("latest_snapshot_id")?
     {
         return Err(configuration(
-            "retirement approval requires a current v8 plan",
+            "retirement approval requires a current v9 plan",
         ));
     }
     let count: i64 = row.try_get("operations")?;
@@ -420,7 +420,11 @@ pub async fn verify_pending_publications(
     for run in runs {
         let run_id: Uuid = run.try_get("id")?;
         let proposal_id: Uuid = run.try_get("proposal_generation_id")?;
-        if verify_publication(database, account_id, snapshot_id, proposal_id).await? {
+        let canonical_required = publication_touches_canonical(database, run_id).await?;
+        if (!canonical_required
+            || verify_publication(database, account_id, snapshot_id, proposal_id).await?)
+            && verify_routing_publication(database, account_id, snapshot_id, run_id).await?
+        {
             sqlx::query(
                 "UPDATE sync_apply_runs SET status = 'succeeded', finished_at = now(),
                  summary = summary || jsonb_build_object('verified_snapshot_id', $2::text)
@@ -507,6 +511,87 @@ pub async fn verify_pending_publications(
         }
     }
     Ok(verified)
+}
+
+async fn publication_touches_canonical(database: &Database, apply_run_id: Uuid) -> Result<bool> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1
+             FROM sync_apply_operations execution
+             JOIN sync_operations planned ON planned.id = execution.planned_operation_id
+             JOIN playlists playlist ON playlist.id = planned.playlist_id
+             WHERE execution.apply_run_id = $1
+               AND planned.phase = 'publish'
+               AND playlist.kind = 'canonical'
+         )",
+    )
+    .bind(apply_run_id)
+    .fetch_one(database.pool())
+    .await
+    .map_err(Into::into)
+}
+
+async fn verify_routing_publication(
+    database: &Database,
+    account_id: Uuid,
+    snapshot_id: Uuid,
+    apply_run_id: Uuid,
+) -> Result<bool> {
+    let route_ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT DISTINCT planned.playlist_id
+         FROM sync_apply_operations execution
+         JOIN sync_operations planned ON planned.id = execution.planned_operation_id
+         JOIN routing_surfaces route ON route.playlist_id = planned.playlist_id
+         WHERE execution.apply_run_id = $1 AND planned.phase = 'publish'",
+    )
+    .bind(apply_run_id)
+    .fetch_all(database.pool())
+    .await?;
+    for playlist_id in route_ids {
+        let desired: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT track_id FROM playlist_tracks
+             WHERE playlist_id = $1 ORDER BY position",
+        )
+        .bind(playlist_id)
+        .fetch_all(database.pool())
+        .await?;
+        let current: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT track.track_id
+             FROM provider_account_playlists policy
+             JOIN provider_playlists provider
+               ON provider.id = policy.provider_playlist_id
+              AND provider.playlist_id = $2
+             JOIN provider_playlist_tracks membership
+               ON membership.provider_playlist_id = provider.id
+              AND membership.snapshot_id = $3
+             JOIN provider_tracks track ON track.id = membership.provider_track_id
+             WHERE policy.provider_account_id = $1
+               AND policy.present_in_latest_snapshot
+             ORDER BY membership.position",
+        )
+        .bind(account_id)
+        .bind(playlist_id)
+        .bind(snapshot_id)
+        .fetch_all(database.pool())
+        .await?;
+        let present: bool = sqlx::query_scalar(
+            "SELECT EXISTS (
+                 SELECT 1 FROM provider_account_playlists policy
+                 JOIN provider_playlists provider ON provider.id = policy.provider_playlist_id
+                 WHERE policy.provider_account_id = $1
+                   AND provider.playlist_id = $2
+                   AND policy.present_in_latest_snapshot
+             )",
+        )
+        .bind(account_id)
+        .bind(playlist_id)
+        .fetch_one(database.pool())
+        .await?;
+        if !present || current != desired {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 async fn verify_publication(
@@ -653,7 +738,7 @@ async fn load_gate(
         || row.try_get::<String, _>("planner_version")? != PLANNER_VERSION
     {
         return Err(configuration(
-            "apply requires a ready v0.1.1 assessment of a v8 plan",
+            "apply requires a ready v0.1.2 assessment of a v9 plan",
         ));
     }
     if row.try_get::<Uuid, _>("source_snapshot_id")?

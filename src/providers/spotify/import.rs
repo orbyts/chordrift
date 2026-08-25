@@ -273,6 +273,23 @@ async fn persist(
         .await?;
         sqlx::query(
             "UPDATE provider_account_playlists account_playlist
+             SET role = 'inbox', drift_policy = 'provider_wins',
+                 signal_class = 'routing', semantic_weight = 0.0,
+                 behavioral_signal = NULL,
+                 clear_policy = 'after_verified_assignment', updated_at = now()
+             FROM provider_playlists provider
+             JOIN playlists playlist ON playlist.id = provider.playlist_id
+             WHERE account_playlist.provider_account_id = $1
+               AND account_playlist.provider_playlist_id = $2
+               AND provider.id = account_playlist.provider_playlist_id
+               AND playlist.kind = 'routing'",
+        )
+        .bind(account_id)
+        .bind(provider_playlist_id)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "UPDATE provider_account_playlists account_playlist
              SET role = 'managed', drift_policy = 'neon_wins',
                  signal_class = 'canonical', semantic_weight = 0.0,
                  clear_policy = 'never', updated_at = now()
@@ -402,6 +419,68 @@ async fn persist(
             playlist_entries += 1;
         }
     }
+
+    // Provider additions to a route are corrective intent. Capture them into
+    // durable desired membership before any later verified reassignment clears
+    // the provider inbox. Existing rows are retained if the user removes an
+    // item before that reassignment is complete.
+    sqlx::query(
+        "WITH candidates AS (
+             SELECT provider.playlist_id,
+                    provider_track.track_id,
+                    membership.position,
+                    provider_track.provider_track_id,
+                    row_number() OVER (
+                        PARTITION BY provider.playlist_id, provider_track.track_id
+                        ORDER BY membership.position
+                    ) AS duplicate_rank
+             FROM routing_surfaces route
+             JOIN provider_playlists provider
+               ON provider.playlist_id = route.playlist_id
+              AND provider.provider = 'spotify'
+             JOIN provider_playlist_tracks membership
+               ON membership.provider_playlist_id = provider.id
+              AND membership.snapshot_id = $1
+             JOIN provider_tracks provider_track
+               ON provider_track.id = membership.provider_track_id
+             WHERE route.provider_account_id = $2 AND route.active
+               AND NOT EXISTS (
+                   SELECT 1 FROM playlist_tracks desired
+                   WHERE desired.playlist_id = provider.playlist_id
+                     AND desired.track_id = provider_track.track_id
+               )
+         ), route_tracks AS (
+             SELECT playlist_id, track_id, position, provider_track_id,
+                    row_number() OVER (
+                        PARTITION BY playlist_id
+                        ORDER BY position
+                    ) - 1 AS offset
+             FROM candidates WHERE duplicate_rank = 1
+         ), next_positions AS (
+             SELECT route.playlist_id,
+                    COALESCE(max(existing.position) + 1, 0) AS next_position
+             FROM (SELECT DISTINCT playlist_id FROM route_tracks) route
+             LEFT JOIN playlist_tracks existing ON existing.playlist_id = route.playlist_id
+             GROUP BY route.playlist_id
+         )
+         INSERT INTO playlist_tracks
+             (playlist_id, track_id, position, source, provenance)
+         SELECT route.playlist_id, route.track_id,
+                next.next_position + route.offset::integer,
+                'manual',
+                jsonb_build_object(
+                    'captured_via', 'spotify_route_pull',
+                    'source_snapshot_id', $1::text,
+                    'source_position', route.position,
+                    'spotify_track_id', route.provider_track_id
+                )
+         FROM route_tracks route
+         JOIN next_positions next ON next.playlist_id = route.playlist_id",
+    )
+    .bind(snapshot_id)
+    .bind(account_id)
+    .execute(&mut *transaction)
+    .await?;
 
     for external in &inventory.external_playlists {
         let bookmark_id = upsert_external_bookmark(account_id, external, &mut transaction).await?;

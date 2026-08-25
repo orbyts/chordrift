@@ -839,3 +839,49 @@ Indian/Hindi cohort is `Chhodo More Baiyyan`, `Ni Main Samajh Gayee`, and
 `Kahin Aag Lage`; the working South Indian cohort is Tamil tracks `Kandukondain
 Kandukondain` and `Senkathay`, plus Telugu `Thongi Choose`. These are routing
 labels; user-approved poetic playlist names and artwork can follow later.
+
+## v0.1.2 routing-playlist subslice
+
+Branch `codex/v0.1.2-listening-review` now contains migrations `0032`–`0033`, a generic
+`chordrift routes` CLI, zero-signal route capture during Spotify import, v9
+publish planning, route artwork operations, and exact route verification after
+pull. A route is a transient corrective inbox: non-empty means pending work;
+it must be cleared only after an existing or newly created canonical destination
+has been published and verified. Route descriptions are retained semantic
+policy data, not executable instructions.
+
+Approved initial routes are `Route — South Indian`, `Route — North Indian`,
+and `Route — Decide Later`. Their label-free masters and deterministic Spotify
+overlays live under `artwork/routing/route-signals-v1/`. The two regional covers
+are intentionally minimal representational instrument studies (veena and
+sarod); Decide Later is a minimal junction. This is not a fixed visual template:
+future routes need artwork designed for their own meaning and should retain
+both the pristine master and provider-specific label render.
+
+Initial desired memberships from `Tidal Hush` are North/Hindi Spotify IDs
+`4izSWLwW0wQohWBuEUKL5J`, `7wJphnipgpptcsRk6Aur3w`, and
+`3AemMBXKJWFd87svnFyrHy`; South Indian IDs are
+`42lDp1YYCiy50UtXUO9FNp`, `1VdBV90HgsUkjdKo95qnLf`, and
+`2m7cVrIHAfJmZhCCOZ91qT`. They remain in their current canonical playlist until
+the later review/reconciliation step establishes verified poetic destinations.
+
+The first post-publication pull exposed and atomically rolled back an older
+clear-policy constraint; migration `0033` now permits verified clearing for
+`routing` as well as `intake`. The route snapshots then imported exactly. A
+second verification refinement scopes each apply run to the surfaces it
+actually touched, so a route-only publication proves route convergence without
+being coupled to unrelated canonical-baseline verification.
+
+Live routing publication completed on 2026-08-24 through plan
+`3c0268b2-02a5-4148-b1ae-c74f82f6fa0e`, readiness assessment
+`a3441c60-bfc5-4b45-8ab8-4c99b371087c` (11/11 checks), and apply run
+`e50996f4-a25c-4b42-b12b-b96a73c91447` (12/12 operations succeeded and
+post-pull verified). Spotify IDs are `0PrQn0SnXQ7azykCR0Y6PW` for Decide Later,
+`11qUBVVOuiKeR4uD6RdO46` for North Indian, and
+`04DgVypEVHs0fkmoMBLkgB` for South Indian. Snapshot
+`75c91908-b155-49ec-87e4-76a677fe9ca3` reuses all 22 playlist bodies and proves
+1,758 entries, 1,727 unique tracks, and zero duplicate entries. The unique
+universe is unchanged; the six route entries are preserved review duplicates.
+The subsequent v9 plan `88b31b13-f1c8-4a24-960b-6e68ca64a350` contains zero
+operations, proving route creation, exact order, and artwork publication are
+idempotently converged.

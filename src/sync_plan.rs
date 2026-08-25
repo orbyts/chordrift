@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result};
 
 const PROVIDER: &str = "spotify";
-const PLANNER_VERSION: &str = "spotify-dry-run-v8";
+const PLANNER_VERSION: &str = "spotify-dry-run-v9";
 const INTAKE_SURFACES: [(&str, &str, Option<&str>); 4] = [
     (
         "Inbox",
@@ -184,6 +184,7 @@ pub async fn create(
     let mut operations = playlist_diff(&desired, &current);
     operations.extend(artwork_operations(database, account_id, proposal_id, &current).await?);
     operations.extend(intake_surface_operations(database, account_id, snapshot_id).await?);
+    operations.extend(routing_surface_operations(database, account_id, snapshot_id).await?);
     operations.extend(cleanup_operations(database, account_id, snapshot_id, proposal_id).await?);
     operations.extend(external_cleanup_operations(database, account_id).await?);
     operations.sort_by(|left, right| {
@@ -525,6 +526,205 @@ async fn intake_surface_operations(
             },
         )
         .collect())
+}
+
+async fn routing_surface_operations(
+    database: &Database,
+    account_id: Uuid,
+    snapshot_id: Uuid,
+) -> Result<Vec<PlanOperationInput>> {
+    let routes = sqlx::query(
+        "SELECT route.playlist_id, route.stable_key, playlist.name,
+                COALESCE(playlist.description, '') AS description,
+                route.artwork_path, route.artwork_sha256,
+                provider.id AS provider_playlist_row_id,
+                provider.provider_playlist_id AS spotify_playlist_id,
+                snapshot.name AS current_name,
+                snapshot.provider_snapshot_id
+         FROM routing_surfaces route
+         JOIN playlists playlist ON playlist.id = route.playlist_id
+         LEFT JOIN provider_playlists provider
+           ON provider.playlist_id = route.playlist_id AND provider.provider = 'spotify'
+         LEFT JOIN provider_playlist_snapshots snapshot
+           ON snapshot.provider_playlist_id = provider.id AND snapshot.snapshot_id = $2
+         WHERE route.provider_account_id = $1 AND route.active
+         ORDER BY lower(playlist.name), route.playlist_id",
+    )
+    .bind(account_id)
+    .bind(snapshot_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut operations = Vec::new();
+    for route in routes {
+        let playlist_id: Uuid = route.try_get("playlist_id")?;
+        let stable_key: String = route.try_get("stable_key")?;
+        let name: String = route.try_get("name")?;
+        let description: String = route.try_get("description")?;
+        let provider_playlist_id: Option<Uuid> = route.try_get("provider_playlist_row_id")?;
+        let spotify_playlist_id: Option<String> = route.try_get("spotify_playlist_id")?;
+        let present = route
+            .try_get::<Option<String>, _>("current_name")?
+            .is_some();
+
+        if !present {
+            operations.push(PlanOperationInput {
+                phase: "publish".to_owned(),
+                operation_type: "create_playlist".to_owned(),
+                operation_key: format!("create:{stable_key}"),
+                playlist_id: Some(playlist_id),
+                provider_playlist_id: None,
+                playlist_name: name.clone(),
+                spotify_playlist_id: None,
+                spotify_track_id: None,
+                payload: json!({
+                    "description": description,
+                    "public": false,
+                    "stable_key": stable_key,
+                    "surface": "routing",
+                    "role": "inbox",
+                    "drift_policy": "provider_wins",
+                    "signal_class": "routing",
+                    "clear_policy": "after_verified_assignment"
+                }),
+                safety: json!({"destructive": false}),
+            });
+        } else if route
+            .try_get::<Option<String>, _>("current_name")?
+            .as_deref()
+            != Some(&name)
+        {
+            operations.push(PlanOperationInput {
+                phase: "publish".to_owned(),
+                operation_type: "rename_playlist".to_owned(),
+                operation_key: format!("rename:{stable_key}:{name}"),
+                playlist_id: Some(playlist_id),
+                provider_playlist_id,
+                playlist_name: name.clone(),
+                spotify_playlist_id: spotify_playlist_id.clone(),
+                spotify_track_id: None,
+                payload: json!({
+                    "from": route.try_get::<Option<String>, _>("current_name")?,
+                    "to": name,
+                    "description": description,
+                    "expected_snapshot_id": route.try_get::<Option<String>, _>("provider_snapshot_id")?
+                }),
+                safety: json!({"destructive": false, "requires_snapshot_match": true}),
+            });
+        }
+
+        let desired_rows = sqlx::query(
+            "SELECT membership.track_id, membership.position, provider.provider_track_id
+             FROM playlist_tracks membership
+             JOIN provider_tracks provider ON provider.track_id = membership.track_id
+                  AND provider.provider = 'spotify'
+             WHERE membership.playlist_id = $1
+             ORDER BY membership.position",
+        )
+        .bind(playlist_id)
+        .fetch_all(database.pool())
+        .await?;
+        let desired = desired_rows
+            .into_iter()
+            .map(|row| {
+                Ok((
+                    row.try_get::<Uuid, _>("track_id")?,
+                    row.try_get::<i32, _>("position")?,
+                    row.try_get::<String, _>("provider_track_id")?,
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let current: Vec<Uuid> = if let Some(provider_row_id) = provider_playlist_id {
+            sqlx::query_scalar(
+                "SELECT track.track_id
+                 FROM provider_playlist_tracks membership
+                 JOIN provider_tracks track ON track.id = membership.provider_track_id
+                 WHERE membership.snapshot_id = $1
+                   AND membership.provider_playlist_id = $2
+                 ORDER BY membership.position",
+            )
+            .bind(snapshot_id)
+            .bind(provider_row_id)
+            .fetch_all(database.pool())
+            .await?
+        } else {
+            Vec::new()
+        };
+        let current_set = current.iter().copied().collect::<BTreeSet<_>>();
+        let desired_ids = desired.iter().map(|row| row.0).collect::<Vec<_>>();
+        let desired_set = desired_ids.iter().copied().collect::<BTreeSet<_>>();
+        if present && current_set == desired_set && current != desired_ids {
+            operations.push(PlanOperationInput {
+                phase: "publish".to_owned(),
+                operation_type: "reorder_playlist".to_owned(),
+                operation_key: format!("reorder:{stable_key}"),
+                playlist_id: Some(playlist_id),
+                provider_playlist_id,
+                playlist_name: name.clone(),
+                spotify_playlist_id: spotify_playlist_id.clone(),
+                spotify_track_id: None,
+                payload: json!({
+                    "track_count": desired.len(),
+                    "surface": "routing",
+                    "expected_snapshot_id": route.try_get::<Option<String>, _>("provider_snapshot_id")?
+                }),
+                safety: json!({
+                    "destructive": false,
+                    "membership_unchanged": true,
+                    "exact_order_replacement": true
+                }),
+            });
+        }
+        for (track_id, position, spotify_track_id) in &desired {
+            if !current_set.contains(track_id) {
+                operations.push(PlanOperationInput {
+                    phase: "publish".to_owned(),
+                    operation_type: "add_track".to_owned(),
+                    operation_key: format!("add:{stable_key}:{spotify_track_id}"),
+                    playlist_id: Some(playlist_id),
+                    provider_playlist_id,
+                    playlist_name: name.clone(),
+                    spotify_playlist_id: spotify_playlist_id.clone(),
+                    spotify_track_id: Some(spotify_track_id.clone()),
+                    payload: json!({
+                        "position": position,
+                        "surface": "routing",
+                        "canonical_track_id": track_id,
+                        "spotify_track_id": spotify_track_id
+                    }),
+                    safety: json!({"destructive": false, "preserves_track": true}),
+                });
+            }
+        }
+
+        let artwork_sha256: String = route.try_get("artwork_sha256")?;
+        let artwork_key = format!("artwork:{stable_key}:{artwork_sha256}");
+        let already_uploaded = match &spotify_playlist_id {
+            Some(spotify_id) => {
+                artwork_already_uploaded(database, account_id, &artwork_key, spotify_id).await?
+            }
+            None => false,
+        };
+        if !already_uploaded {
+            operations.push(PlanOperationInput {
+                phase: "publish".to_owned(),
+                operation_type: "upload_artwork".to_owned(),
+                operation_key: artwork_key,
+                playlist_id: Some(playlist_id),
+                provider_playlist_id,
+                playlist_name: name,
+                spotify_playlist_id,
+                spotify_track_id: None,
+                payload: json!({
+                    "artifact_path": route.try_get::<String, _>("artwork_path")?,
+                    "content_sha256": artwork_sha256,
+                    "stable_key": stable_key,
+                    "target_kind": "routing"
+                }),
+                safety: json!({"destructive": false, "requires_approved_artwork": true}),
+            });
+        }
+    }
+    Ok(operations)
 }
 
 /// Returns a persisted plan and all of its exact operations.

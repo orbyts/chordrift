@@ -6,6 +6,8 @@ use storexa::{Database, DatabaseConfig, Migrator};
 use crate::Result;
 
 /// Chordrift's strictly ordered, application-owned, embedded migrations.
+///
+/// The catalog includes routing-inbox policy and its verified-clear constraint.
 pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 /// Read-only diagnostics for the canonical database.

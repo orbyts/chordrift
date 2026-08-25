@@ -40,6 +40,8 @@ pub mod playlists;
 pub mod proposals;
 /// Streaming-provider adapters.
 pub mod providers;
+/// Durable zero-signal routing playlists for ongoing listening review.
+pub mod routes;
 /// Versioned account-specific preference and lifecycle signals.
 pub mod signals;
 /// Immutable provider synchronization plans that never mutate remote services.
