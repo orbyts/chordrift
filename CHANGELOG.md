@@ -4,6 +4,8 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-24
+
 - Add a gated, resumable Spotify apply engine with exact assessment
   confirmation, separately acknowledged destructive phases, durable
   per-operation execution history, and post-pull convergence verification.
@@ -165,7 +167,8 @@ All notable changes to Chordrift are documented here.
 
 - Reserve the Chordrift crate and repository namespaces.
 
-[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.0.9...HEAD
+[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/orbyts/chordrift/compare/v0.0.9...v0.1.0
 [0.0.9]: https://github.com/orbyts/chordrift/compare/v0.0.5...v0.0.9
 [0.0.5]: https://github.com/orbyts/chordrift/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/orbyts/chordrift/compare/v0.0.3...v0.0.4

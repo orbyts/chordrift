@@ -594,6 +594,19 @@ plan `fa8289fc-d636-448c-8203-a8bd1ca67ae6` contains only four retirements:
 `Two Way Sync` (plus 14 non-destructive artwork operations in publish). These
 four have not been approved or removed yet.
 
+The user explicitly approved the four utility retirements. Apply run
+`ffe42fb9-7fe9-40c9-bd97-ef9e468bb9ca` completed 4/4 with zero failures, and
+snapshot `5280abe1-7220-4cbb-8e9c-9acf7ef72121` verified the final live surface:
+19 playlists, 951 entries, 902 unique playlist tracks, zero duplicate entries,
+zero followed/external playlists, and `verified_apply_runs: 1`. The 19 are
+exactly 14 canonical Chordrift playlists, `Inbox`, `From Friends`, `Liked from
+Radio`, `Daily Mix`, and `On Repeat`. Current plan
+`c64d615a-1fd8-4c80-afc9-08d82a42b58d` has zero creates, additions, removals,
+retirements, external cleanups, or deferred destructive operations; its only 14
+operations are idempotent approved artwork uploads. v0.1.0 release metadata is
+being prepared; do not claim the crate/tag/release exists until publication is
+verified.
+
 Apogee configures a machine-wide shared Cargo target. Because the released
 `$CRATES/chordrift` clone and this development workspace currently share the
 same package name/version, a plain `cargo run` reused an older final executable
