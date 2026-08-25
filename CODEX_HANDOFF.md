@@ -823,3 +823,19 @@ ordering-policy question. Never silently learn or reverse ambiguous edits.
 This allows Spotify to remain the familiar consumer editing surface while
 Chordrift acts as the preservation-first assistant and Neon remains the durable
 ledger. The complete design is in the v0.1.2 section of `ROADMAP.md`.
+
+The user clarified that correction capture happens during ordinary listening,
+not in a dedicated review session. v0.1.2 therefore separates capture from
+reconciliation. The stable action intents are Refile (keep, wrong destination),
+Review (keep, undecided), and Exclude (proposed reversible removal). Optional
+Spotify routing queues such as `Route — South Indian`, `Route — North Indian`,
+and `Route — Decide Later` provide the lowest-friction mobile action. Adding a
+track is sufficient; Chordrift records it on pull, publishes a verified
+destination before removing the rejected membership, and clears the queue only
+after convergence. Queue descriptions are semantic data, not commands.
+
+Concrete motivating example: `Tidal Hush` positions 28–33. The working North
+Indian/Hindi cohort is `Chhodo More Baiyyan`, `Ni Main Samajh Gayee`, and
+`Kahin Aag Lage`; the working South Indian cohort is Tamil tracks `Kandukondain
+Kandukondain` and `Senkathay`, plus Telugu `Thongi Choose`. These are routing
+labels; user-approved poetic playlist names and artwork can follow later.

@@ -412,9 +412,27 @@ Chordrift playlists. Every decision retains the prior assignment, model score,
 reason, actor, timestamp, and affected provider state; no correction erases the
 track, its provenance, or listening history.
 
-Add a first-class review session that starts from the currently approved
-library without rebuilding or renaming unaffected playlists. The CLI and future
-UI should support:
+Ongoing listening must not require a dedicated review session. Split the
+workflow into **capture now** and **reconcile later**. While listening, one
+low-friction action records intent and playback continues; naming, cohort
+review, artwork, and publication can happen asynchronously. Add three stable
+action intents:
+
+- **Refile** — keep the track, but reject its current destination;
+- **Review** — keep the track and defer both rejection and destination;
+- **Exclude** — propose removing the track from active Chordrift playlists,
+  still subject to explicit confirmation and reversible history.
+
+Support optional destination routing queues once the user recognizes a
+recurring category, such as `Route — South Indian`, `Route — North Indian`, and
+`Route — Decide Later`. These are short-lived action inboxes, not final
+listening playlists. Their user-authored descriptions are semantic policy
+inputs, never executable instructions. Chordrift consumes a queue only after
+its tracks have verified destinations, then clears it for reuse.
+
+A later review session starts from the currently approved library without
+rebuilding or renaming unaffected playlists. The CLI and future UI should
+support:
 
 1. Identify a track by provider ID or unambiguous title and artist.
 2. Reject its current playlist and record why it feels wrong to the listener.
@@ -455,12 +473,21 @@ lets a consumer use Spotify as the familiar editing surface while Chordrift
 acts as a preservation-first assistant on top; the dedicated Chordrift review
 surface remains the faster, more explainable path for batch corrections.
 
+For immediate provider-native capture, adding the playing track to a routing
+queue must be enough; the user need not also remove it from the current
+canonical playlist. A normal pull records the queue event in Neon. Publication
+later adds the verified destination before removing the rejected membership,
+so interruption cannot lose the track. A lightweight command or future mobile
+shortcut may offer the equivalent `mark current` action, but it must use the
+same durable queue model and avoid requiring unsafe interaction while driving
+or cycling.
+
 For the personal CLI workflow, add concise `review` commands that clone the
-approved generation into a draft, show suggestions, record single or batch
-corrections, display an exact diff, and approve the draft. Reuse the existing
-stable playlist concepts, assignment-revision ledger, complete-inventory
-invariant, artwork approval, sync planning, readiness, and apply machinery
-rather than creating a second source of truth.
+approved generation into a draft, show captured routes and suggestions, record
+single or batch corrections, display an exact diff, and approve the draft.
+Reuse the existing stable playlist concepts, assignment-revision ledger,
+complete-inventory invariant, artwork approval, sync planning, readiness, and
+apply machinery rather than creating a second source of truth.
 
 Status: planned.
 
