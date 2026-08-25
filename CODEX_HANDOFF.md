@@ -918,3 +918,23 @@ colored interactive tables for `playlists list` and `playlists tracks`; the
 existing complete TSV remains unchanged when stdout is redirected. An actual
 80-column Neon-backed rendering check led to a four-column stacked playlist
 layout instead of an unreadable ten-column grid.
+
+The optimized branch was labeled and locally installed on 2026-08-25 as
+`chordrift 0.1.2-dev.1`. This is an intentionally truthful prerelease: deletion
+to staged exclusion, intake capture, routing capture, progress bars, and compact
+playlist/song tables work, but route reconciliation is not release-complete.
+Until it is, a wrong-destination track must be added to a route without also
+being removed from its canonical playlist; canonical removal currently means
+exclusion. Different tracks may carry deletion, discovery, and routing intent
+in the same pull, but one track must not express conflicting intents.
+
+Remaining v0.1.2 gates are: clone the approved library into a focused review
+draft without rebuilding unaffected playlists; turn route captures into durable
+negative/current-destination constraints; assign route or intake tracks to an
+existing canonical concept or promote a coherent cohort into a new poetic
+concept; integrate name and artwork approval for that new concept; publish and
+verify the destination before removing the old membership; consume both the
+Spotify route entry and its durable Neon desired-route membership so it cannot
+be restored; and test mixed deletion/routing/discovery cycles end to end. A
+route is not necessarily one future playlist: the regional route is a review
+facet and may feed several sound-coherent poetic destinations.
