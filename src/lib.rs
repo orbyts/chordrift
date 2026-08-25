@@ -46,6 +46,7 @@ pub mod routes;
 pub mod signals;
 /// Immutable provider synchronization plans that never mutate remote services.
 pub mod sync_plan;
+mod terminal;
 /// One-stop canonical track lookup and explainability reports.
 pub mod tracks;
 

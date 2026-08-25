@@ -7,7 +7,7 @@ use serde_json::Value;
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{ChordriftError, Result};
+use crate::{ChordriftError, Result, terminal::TerminalProgress};
 
 use super::models::{
     BookmarkContentStatus, CurrentUser, CursorPage, ExternalPlaylistInventory,
@@ -381,18 +381,16 @@ impl SpotifyClient {
         reuse: Option<&SavedTrackReuse>,
     ) -> Result<SavedTracksInventory> {
         let first: Page<SavedTrack> = self.get_json(url).await?;
-        eprintln!(
-            "spotify fetch: saved tracks {}/{}",
-            first.items.len(),
-            first.total
-        );
+        let mut progress = TerminalProgress::new("Spotify · saved tracks", first.total);
+        progress.set_position(first.items.len());
         if reuse.is_none() {
-            eprintln!("spotify reuse: no saved-track baseline available");
+            progress.note("spotify reuse: no saved-track baseline available");
         }
         if let Some(previous) = reuse
             && saved_page_matches(&first, previous)
         {
-            eprintln!("spotify fetch: saved tracks unchanged; reusing Neon snapshot");
+            progress.note("spotify fetch: saved tracks unchanged; reusing Neon snapshot");
+            progress.finish();
             return Ok(SavedTracksInventory {
                 items: Vec::new(),
                 total: first.total,
@@ -418,9 +416,10 @@ impl SpotifyClient {
             }
             let page: Page<SavedTrack> = self.get_json(url).await?;
             values.extend(page.items);
-            eprintln!("spotify fetch: saved tracks {}/{total}", values.len());
+            progress.set_position(values.len());
             next = page.next;
         }
+        progress.finish();
         Ok(SavedTracksInventory {
             items: values,
             total,
@@ -435,6 +434,7 @@ impl SpotifyClient {
     ) -> Result<Vec<T>> {
         let mut values = Vec::new();
         let mut visited = HashSet::new();
+        let mut progress = None;
 
         loop {
             validate_api_url(&url)?;
@@ -448,7 +448,10 @@ impl SpotifyClient {
             values.reserve(page.total.saturating_sub(values.len()));
             values.extend(page.items);
             if let Some(label) = progress_label {
-                eprintln!("spotify fetch: {label} {}/{total}", values.len());
+                let progress = progress.get_or_insert_with(|| {
+                    TerminalProgress::new(format!("Spotify · {label}"), total)
+                });
+                progress.set_position(values.len());
             }
             let Some(next) = page.next else {
                 break;
@@ -458,6 +461,9 @@ impl SpotifyClient {
                     "Spotify pagination returned an invalid URL".to_owned(),
                 )
             })?;
+        }
+        if let Some(progress) = progress {
+            progress.finish();
         }
         Ok(values)
     }

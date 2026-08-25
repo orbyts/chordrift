@@ -896,3 +896,25 @@ routing/reclassification, and sync/convergence. The product-facing inference
 rules live in `docs/design/PLATFORM_INTENT_MODEL.md`: high-confidence provider
 actions may be captured automatically, ambiguous actions must be staged, and
 destructive interpretations are never silently inferred.
+
+## v0.1.2 incremental-sync and terminal subslice
+
+A live pull after one saved-track deletion changed Spotify's reported total
+from 928 to 927. Spotify retrieval completed, but persistence remained silent
+for roughly six minutes because the importer sequentially rewrote existing
+track, album, and artist metadata and inserted each saved membership through a
+remote Neon round trip. The pull eventually succeeded as snapshot
+`c3c4cbba-7c33-4c52-9573-cbfa9b5cbfac`: 22 playlists, 1,766 playlist entries,
+927 provider saved items, 926 supported saved tracks, one unsupported item, and
+two new Recently Played observations.
+
+The branch now preloads known Spotify track rows once, compares the retained
+JSON payload, skips metadata writes for identical records, batches saved-track
+snapshot membership in groups of 1,000, and updates `last_seen_at` for observed
+provider rows with one set-based statement. The full persistence transaction
+and unsupported-item accounting remain intact. `indicatif` provides TTY-only
+progress bars with plain redirected fallbacks. `comfy-table` provides compact
+colored interactive tables for `playlists list` and `playlists tracks`; the
+existing complete TSV remains unchanged when stdout is redirected. An actual
+80-column Neon-backed rendering check led to a four-column stacked playlist
+layout instead of an unreadable ten-column grid.

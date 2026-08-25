@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use crate::{
     ChordriftError, Result, analysis, apply, apply_readiness, artwork, bookmarks, clusters, config,
     db, embeddings, enrichment, history, model_inference, playlists, proposals, providers::spotify,
-    routes, signals, sync_plan, tracks,
+    routes, signals, sync_plan, terminal, tracks,
 };
 
 /// Chordrift command-line interface.
@@ -1871,6 +1871,48 @@ async fn run_playlist_command(
     match command {
         PlaylistCommand::List { account } => {
             let rows = playlists::list(database, &account).await?;
+            if terminal::stdout_is_terminal() {
+                let rendered = terminal::pretty_table(
+                    &["State", "Semantics", "Tracks", "Playlist"],
+                    rows.into_iter()
+                        .map(|row| {
+                            let authority = match row.drift_policy.as_str() {
+                                "neon_wins" => "Neon owns",
+                                "provider_wins" => "Spotify owns",
+                                "manual" => "manual review",
+                                other => other,
+                            };
+                            let mut semantics = format!(
+                                "{} · {}",
+                                row.signal_class,
+                                row.behavioral_signal.unwrap_or_else(|| "—".to_owned())
+                            );
+                            if row.clear_policy == "after_verified_assignment" {
+                                semantics.push_str("\nclears after assignment");
+                            }
+                            if row.semantic_weight != 0.0 {
+                                semantics
+                                    .push_str(&format!("\nweight: {:.2}", row.semantic_weight));
+                            }
+                            vec![
+                                format!(
+                                    "{} · {}\n{}",
+                                    row.role,
+                                    if row.present { "live" } else { "absent" },
+                                    authority
+                                ),
+                                semantics,
+                                row.total_items
+                                    .map_or_else(|| "—".to_owned(), |value| value.to_string()),
+                                format!("{}\n{}", row.name, row.provider_playlist_id),
+                            ]
+                        })
+                        .collect(),
+                );
+                writeln!(output, "\x1b[1;36mPlaylists · {account}\x1b[0m")?;
+                writeln!(output, "{rendered}")?;
+                return Ok(());
+            }
             writeln!(
                 output,
                 "role\tdrift\tsignal_class\tbehavior\tsemantic_weight\tclear_policy\tpresent\titems\tname\tspotify_id"
@@ -1901,6 +1943,36 @@ async fn run_playlist_command(
         } => {
             let selector = playlist_selector(name, spotify_id);
             let report = playlists::tracks(database, &account, &selector).await?;
+            if terminal::stdout_is_terminal() {
+                writeln!(
+                    output,
+                    "\x1b[1;36m{}\x1b[0m  \x1b[2m{} tracks · {}\x1b[0m",
+                    report.playlist.name,
+                    report.tracks.len(),
+                    report.playlist.provider_playlist_id
+                )?;
+                let rendered = terminal::pretty_table(
+                    &["#", "Track", "Spotify ID"],
+                    report
+                        .tracks
+                        .into_iter()
+                        .map(|row| {
+                            vec![
+                                (row.position + 1).to_string(),
+                                format!(
+                                    "{}\n{}\n{}",
+                                    row.title,
+                                    row.artists,
+                                    row.album.unwrap_or_else(|| "—".to_owned())
+                                ),
+                                row.provider_track_id,
+                            ]
+                        })
+                        .collect(),
+                );
+                writeln!(output, "{rendered}")?;
+                return Ok(());
+            }
             writeln!(output, "playlist: {}", report.playlist.name)?;
             writeln!(
                 output,

@@ -14,6 +14,13 @@ tracks from Neon, collects incremental Recently Played observations, refreshes
 analysis/history links, and verifies awaiting apply runs. Pull itself does not
 silently approve ambiguous intent.
 
+When the saved-track count or leading membership changes, Spotify must be read
+far enough to prove the current complete membership. Chordrift then resolves
+already-known provider records from Neon as a set, writes only new or changed
+metadata, and batches the immutable snapshot membership. Interactive terminals
+show progress bars for these phases. A redirected command keeps plain progress
+and tab-separated tables so logs and scripts do not receive ANSI control codes.
+
 ## Plan without provider writes
 
 ```console

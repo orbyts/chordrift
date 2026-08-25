@@ -2,11 +2,11 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::{Value, json};
-use sqlx::{Postgres, Row, Transaction};
+use sqlx::{Postgres, QueryBuilder, Row, Transaction};
 use storexa::Database;
 use uuid::Uuid;
 
-use crate::{ChordriftError, Result};
+use crate::{ChordriftError, Result, terminal::TerminalProgress};
 
 use super::{
     auth,
@@ -17,6 +17,28 @@ use super::{
 };
 
 const PROVIDER: &str = "spotify";
+const MEMBERSHIP_INSERT_BATCH_SIZE: usize = 1_000;
+
+#[derive(Clone, Copy, Debug)]
+struct ResolvedTrack {
+    provider_track_id: Uuid,
+    canonical_track_id: Uuid,
+}
+
+#[derive(Debug)]
+struct KnownTrack {
+    resolved: ResolvedTrack,
+    metadata: Value,
+}
+
+#[derive(Debug, Default)]
+struct TrackCache {
+    /// Tracks actually encountered in this import.
+    resolved: HashMap<String, ResolvedTrack>,
+    /// Existing provider rows loaded in one database request. Entries leave this
+    /// map on first use so metadata is compared at most once per import.
+    known: HashMap<String, KnownTrack>,
+}
 
 /// Summary of one immutable Spotify inventory snapshot.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -203,6 +225,7 @@ async fn persist(
     database: &Database,
 ) -> Result<ImportReport> {
     let mut transaction = database.pool().begin().await?;
+    let mut tracks = load_track_cache(&mut transaction).await?;
     let account_id = upsert_account(account_label, &inventory, &mut transaction).await?;
     sqlx::query(
         "UPDATE provider_account_playlists
@@ -239,7 +262,6 @@ async fn persist(
     .execute(&mut *transaction)
     .await?;
 
-    let mut tracks = HashMap::new();
     let mut playlist_entries = 0;
     let mut playlists_reused = 0;
     let mut saved_tracks = 0;
@@ -580,7 +602,13 @@ async fn persist(
             )
         })?;
     }
+    let mut saved_memberships = Vec::with_capacity(inventory.saved_tracks.items.len());
+    let mut saved_progress = TerminalProgress::new(
+        "Neon · resolve saved tracks",
+        inventory.saved_tracks.items.len(),
+    );
     for (position, saved) in inventory.saved_tracks.items.iter().enumerate() {
+        saved_progress.set_position(position + 1);
         let Some(track) = saved.track.as_ref() else {
             unavailable_items += 1;
             continue;
@@ -590,18 +618,31 @@ async fn persist(
         else {
             continue;
         };
-        sqlx::query(
-            "INSERT INTO provider_saved_tracks
-             (snapshot_id, provider_track_id, position, saved_at, metadata)
-             VALUES ($1, $2, $3, $4, '{}'::jsonb)",
-        )
-        .bind(snapshot_id)
-        .bind(provider_track_id)
-        .bind(to_i32(position, "saved-track position")?)
-        .bind(saved.added_at)
-        .execute(&mut *transaction)
-        .await?;
-        saved_tracks += 1;
+        saved_memberships.push((
+            provider_track_id,
+            to_i32(position, "saved-track position")?,
+            saved.added_at,
+        ));
+    }
+    saved_progress.finish();
+    for chunk in saved_memberships.chunks(MEMBERSHIP_INSERT_BATCH_SIZE) {
+        let mut insert = QueryBuilder::<Postgres>::new(
+            "INSERT INTO provider_saved_tracks \
+             (snapshot_id, provider_track_id, position, saved_at, metadata) ",
+        );
+        insert.push_values(chunk, |mut row, (provider_track_id, position, saved_at)| {
+            row.push_bind(snapshot_id)
+                .push_bind(*provider_track_id)
+                .push_bind(*position)
+                .push_bind(*saved_at)
+                .push("'{}'::jsonb");
+        });
+        insert.build().execute(&mut *transaction).await?;
+        saved_tracks += chunk.len();
+        eprintln!(
+            "spotify persist: saved-track memberships {saved_tracks}/{}",
+            saved_memberships.len()
+        );
     }
 
     let mut recent_plays_inserted = 0_usize;
@@ -679,6 +720,23 @@ async fn persist(
     .execute(&mut *transaction)
     .await?;
 
+    // One set-based observation update replaces one write per already-known
+    // track while preserving the meaning of provider_tracks.last_seen_at.
+    let observed_track_ids = tracks
+        .resolved
+        .values()
+        .map(|track| track.provider_track_id)
+        .collect::<Vec<_>>();
+    if !observed_track_ids.is_empty() {
+        sqlx::query(
+            "UPDATE provider_tracks SET last_seen_at = now()
+             WHERE id = ANY($1)",
+        )
+        .bind(&observed_track_ids)
+        .execute(&mut *transaction)
+        .await?;
+    }
+
     let playlists_imported = inventory.playlists.len();
     sqlx::query(
         "INSERT INTO provider_import_runs
@@ -698,7 +756,7 @@ async fn persist(
     .bind(json!({
         "followed_playlists_skipped": inventory.followed_playlists_skipped,
         "inaccessible_collaborative_playlists": inventory.inaccessible_collaborative_playlists,
-        "unique_tracks": tracks.len(),
+        "unique_tracks": tracks.resolved.len(),
         "external_bookmarks": inventory.external_playlists.len(),
         "external_bookmark_entries": external_bookmark_entries,
         "recent_plays_seen": recent_plays_seen,
@@ -899,7 +957,7 @@ async fn upsert_playlist(
 
 async fn persist_track(
     track: &SpotifyTrack,
-    cache: &mut HashMap<String, Uuid>,
+    cache: &mut TrackCache,
     transaction: &mut Transaction<'_, Postgres>,
     unsupported_items: &mut usize,
 ) -> Result<Option<Uuid>> {
@@ -916,25 +974,26 @@ async fn persist_track(
         *unsupported_items += 1;
         return Ok(None);
     }
-    if let Some(id) = cache.get(provider_id) {
-        return Ok(Some(*id));
+    if let Some(track) = cache.resolved.get(provider_id) {
+        return Ok(Some(track.provider_track_id));
+    }
+
+    let metadata = serde_json::to_value(track)?;
+    let known = cache.known.remove(provider_id);
+    if let Some(known) = known.as_ref()
+        && known.metadata == metadata
+    {
+        cache.resolved.insert(provider_id.clone(), known.resolved);
+        return Ok(Some(known.resolved.provider_track_id));
     }
 
     let album_id = match track.album.as_ref() {
         Some(album) => persist_album(album, transaction).await?,
         None => None,
     };
-    let existing = sqlx::query(
-        "SELECT id, track_id FROM provider_tracks
-         WHERE provider = $1 AND provider_track_id = $2",
-    )
-    .bind(PROVIDER)
-    .bind(provider_id)
-    .fetch_optional(&mut **transaction)
-    .await?;
-    let (provider_track_id, canonical_track_id) = if let Some(row) = existing {
-        let provider_track_id: Uuid = row.try_get("id")?;
-        let canonical_track_id: Uuid = row.try_get("track_id")?;
+    let resolved = if let Some(known) = known {
+        let provider_track_id = known.resolved.provider_track_id;
+        let canonical_track_id = known.resolved.canonical_track_id;
         sqlx::query(
             "UPDATE tracks SET album_id = $2, title = $3, normalized_title = $4,
               duration_ms = $5, isrc = $6, explicit = $7, updated_at = now()
@@ -956,10 +1015,10 @@ async fn persist_track(
         .bind(provider_track_id)
         .bind(&track.uri)
         .bind(track.external_urls.spotify())
-        .bind(serde_json::to_value(track)?)
+        .bind(&metadata)
         .execute(&mut **transaction)
         .await?;
-        (provider_track_id, canonical_track_id)
+        known.resolved
     } else {
         let canonical_track_id: Uuid = sqlx::query_scalar(
             "INSERT INTO tracks
@@ -984,14 +1043,17 @@ async fn persist_track(
         .bind(provider_id)
         .bind(&track.uri)
         .bind(track.external_urls.spotify())
-        .bind(serde_json::to_value(track)?)
+        .bind(&metadata)
         .fetch_one(&mut **transaction)
         .await?;
-        (provider_track_id, canonical_track_id)
+        ResolvedTrack {
+            provider_track_id,
+            canonical_track_id,
+        }
     };
 
     sqlx::query("DELETE FROM track_artists WHERE track_id = $1")
-        .bind(canonical_track_id)
+        .bind(resolved.canonical_track_id)
         .execute(&mut **transaction)
         .await?;
     let mut seen_artists = HashSet::new();
@@ -1004,15 +1066,43 @@ async fn persist_track(
                 "INSERT INTO track_artists (track_id, artist_id, position)
                  VALUES ($1, $2, $3)",
             )
-            .bind(canonical_track_id)
+            .bind(resolved.canonical_track_id)
             .bind(artist_id)
             .bind(to_i32(position, "artist position")?)
             .execute(&mut **transaction)
             .await?;
         }
     }
-    cache.insert(provider_id.clone(), provider_track_id);
-    Ok(Some(provider_track_id))
+    cache.resolved.insert(provider_id.clone(), resolved);
+    Ok(Some(resolved.provider_track_id))
+}
+
+async fn load_track_cache(transaction: &mut Transaction<'_, Postgres>) -> Result<TrackCache> {
+    let rows = sqlx::query(
+        "SELECT id, track_id, provider_track_id, metadata
+         FROM provider_tracks WHERE provider = $1",
+    )
+    .bind(PROVIDER)
+    .fetch_all(&mut **transaction)
+    .await?;
+    let mut known = HashMap::with_capacity(rows.len());
+    for row in rows {
+        let provider_id: String = row.try_get("provider_track_id")?;
+        known.insert(
+            provider_id,
+            KnownTrack {
+                resolved: ResolvedTrack {
+                    provider_track_id: row.try_get("id")?,
+                    canonical_track_id: row.try_get("track_id")?,
+                },
+                metadata: row.try_get("metadata")?,
+            },
+        );
+    }
+    Ok(TrackCache {
+        resolved: HashMap::new(),
+        known,
+    })
 }
 
 async fn persist_artist(
@@ -1267,6 +1357,7 @@ mod tests {
             inaccessible_collaborative_playlists: 0,
         };
 
+        let repeated_inventory = inventory.clone();
         let report = persist("fixture", inventory, &database).await?;
         assert_eq!(report.playlists_seen, 2);
         assert_eq!(report.playlists_imported, 1);
@@ -1287,6 +1378,17 @@ mod tests {
                 .await?;
         assert_eq!(playlist_rows, 1);
         assert_eq!(saved_rows, 1);
+
+        // A changed-snapshot import may contain the same provider metadata.
+        // Repeating it exercises the known-track fast path and batched saved
+        // membership insert without creating duplicate canonical rows.
+        let repeated = persist("fixture", repeated_inventory, &database).await?;
+        assert_eq!(repeated.saved_tracks, 1);
+        let provider_tracks: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM provider_tracks WHERE provider = 'spotify'")
+                .fetch_one(database.pool())
+                .await?;
+        assert_eq!(provider_tracks, 1);
 
         let summary = analysis::refresh(&database, "fixture").await?;
         assert_eq!(summary.playlists, 1);

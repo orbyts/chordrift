@@ -507,8 +507,22 @@ Reuse the existing stable playlist concepts, assignment-revision ledger,
 complete-inventory invariant, artwork approval, sync planning, readiness, and
 apply machinery rather than creating a second source of truth.
 
+Keep provider and database traffic proportional to observed change. Neon is a
+durable cache and change ledger, not a target for wholesale rewrites: unchanged
+playlist bodies copy forward by provider snapshot ID; unchanged saved-library
+state copies forward after a bounded probe; a changed saved-library snapshot
+resolves known provider records in one lookup, rewrites metadata only when its
+payload changed, batches snapshot membership, and updates observation times as
+one set. Long phases expose progress. Interactive list commands use compact,
+colored, width-aware tables; redirected output remains stable plain text for
+scripts. Future saved-library pagination should safely reuse an aligned stored
+tail when a prefix diff proves that the remaining ordered membership is
+unchanged, reducing Spotify requests without weakening complete-inventory
+proofs.
+
 Status: in progress; durable routing capture and publication implemented as the
-first subslice.
+first subslice, with incremental persistence and terminal presentation now in
+progress.
 
 ## Post-v0.1 product direction — Review UI
 
