@@ -577,11 +577,11 @@ references, 43/43 migrations, cutover hash
 `32f1e7f3e9899c72a822a5faf588c29dc905d62ead3b3b17313d165d6e4640b8`,
 and 358,686,720 database bytes. No Spotify request or write occurred.
 
-The former project remains intact and was not modified or deleted. It is the
-bounded connection-level rollback target during observation. This project
-switch does not itself change application queries from legacy tables to v2
-tables; that code refactor follows only after observation. Legacy cleanup,
-rollback, and deletion of the former project each require separate approval.
+At this historical gate the former project remained intact as the bounded
+connection-level rollback target during observation. The project switch did not
+itself change application queries from legacy tables to v2 tables; that code
+refactor, legacy cleanup, rollback, and project deletion still required their
+own later approvals.
 
 After the verified connection cutover, project `damp-hall-40280714` was renamed
 from its temporary candidate label to `chordrift`. To free that lowercase name,
@@ -660,17 +660,19 @@ ordinary-table total is 156,459,008 bytes.
 
 A fresh child process using the owner-only persistent connection configuration
 also passed database health, cleanup verification, and a runtime playlist read.
-The former project remains untouched. Its deletion is a separate irreversible
-operation requiring explicit approval of immutable project ID
-`mute-recipe-86719846`; the pre-compaction backup remains the durable recovery
-artifact after that retirement.
+After this gate passed, deletion of former project `mute-recipe-86719846` was
+separately approved by immutable ID. Neon deleted it, a subsequent listing
+proved it absent, and the live project passed health and cleanup verification
+again. The preserved dump was rehashed afterward and still matches SHA-256
+`8c5796cba5729931678f825021fe03268b81129352349266d7a68b487b3711ae`;
+it is now the durable recovery artifact.
 
 During the 0044 gate, the desktop process was found to carry a stale inherited
 database URL for the former project even though the owner-only persistent secret
 targets `chordrift`. The first migration invocation therefore installed the
 same additive 0044 schema on the former project. It did not delete or rewrite
-rows; the former project remains at zero normalized events/checkpoints and is
-still the rollback copy, now at 44/44 migrations. The intended project was then
+rows; before its later approved retirement the former project reported zero
+normalized events/checkpoints and 44/44 migrations. The intended project was then
 addressed by explicit ID and verified at 44/44. Operational commands must use an
 explicit project target or a fresh correctly loaded secret, never the stale
 desktop environment.

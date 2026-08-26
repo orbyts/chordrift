@@ -8,7 +8,7 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: release closeout and rollback-project retirement
+## Start the next task here: v0.1.3 release closeout
 
 Work is on `main` (the implementation is also retained on
 `codex/v0.1.3-database-v2-runtime`). The v0.1.3 code refactor is
@@ -47,20 +47,23 @@ cleanup verification, and a runtime playlist read without exposing the value.
 Database size fell from 358,850,560 bytes to 167,788,544 bytes; ordinary-table
 total is 156,459,008 bytes.
 
-The former project `mute-recipe-86719846`, named
-`chordrift-legacy-rollback`, remains intact and was not contacted by cleanup.
-The post-clean observation gate has passed, but deleting an entire Neon project
-is a separate irreversible operation and still requires explicit approval that
-names this immutable project ID. The verified pre-compaction backup remains the
-long-term recovery artifact. No Spotify request or write occurred.
+After the post-clean observation gate passed, deletion of former project
+`mute-recipe-86719846`, named `chordrift-legacy-rollback`, was separately and
+explicitly approved. Neon deleted that exact project and a subsequent project
+listing proved it absent while `damp-hall-40280714` remained present. The live
+project then passed database health and cleanup verification again. The
+pre-compaction dump was rehashed after deletion and still matches SHA-256
+`8c5796cba5729931678f825021fe03268b81129352349266d7a68b487b3711ae`;
+it is now the durable rollback artifact. No Spotify request or write occurred.
 
 Operational warning: this Codex desktop task inherited a stale
 `CHORDRIFT_DATABASE_URL` targeting the former project even though the persistent
 `/Users/suhail/.config/apogee/secrets.env` value targets `chordrift` and remains
 mode `0600`. The first approved 0044 invocation therefore added the same
 additive migration to former project `mute-recipe-86719846`. No row was deleted,
-normalized, compacted, or rewritten there; it now reports 44/44 but still has
-zero normalized events and zero checkpoints. After discovery, every operation
+normalized, compacted, or rewritten there; before its later approved retirement
+it reported 44/44 but zero normalized events and zero checkpoints. After
+discovery, every operation
 used explicit project ID `damp-hall-40280714`; 0044 was then applied and verified
 on the intended live project. Future production commands in this still-running
 desktop process must not trust the inherited variable: obtain a short-lived
@@ -77,8 +80,8 @@ The no-cost replacement candidate is complete and verified. Neon project
 PostgreSQL 18 project in `aws-us-west-2`. It is now Chordrift's configured
 database through the private Apogee `CHORDRIFT_DATABASE_URL` value. Do not print
 or persist its connection URL elsewhere. The former production project
-`mute-recipe-86719846`, now named `chordrift-legacy-rollback`, remains intact
-and unchanged as rollback protection.
+`mute-recipe-86719846` was later renamed `chordrift-legacy-rollback` and, after
+cleanup and observation passed, deleted under separate exact-ID approval.
 
 The pre-compaction dump hash was reverified as
 `8c5796cba5729931678f825021fe03268b81129352349266d7a68b487b3711ae`.
@@ -115,10 +118,10 @@ and reported 43/43 migrations, byte-identical invariants, verified normalized
 evidence, 24 checkpoints, `ready_for_cutover: true`, cutover hash
 `32f1e7f3e9899c72a822a5faf588c29dc905d62ead3b3b17313d165d6e4640b8`,
 and 358,686,720 database bytes. This switches the database project, not the
-application's individual legacy-table read paths; those remain a later code
-refactor. No cleanup, old-project deletion, or Spotify operation occurred.
-Retain the former project throughout observation. Any rollback connection
-switch, legacy cleanup, or old-project deletion requires separate approval.
+application's individual legacy-table read paths; those were then a later code
+refactor. At this historical gate no cleanup, old-project deletion, or Spotify
+operation had occurred, and the former project was retained throughout
+observation pending separate approvals.
 
 The first exact-confirmed production data-migration attempt using plan
 `a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`
@@ -132,13 +135,14 @@ The aborted inserts nevertheless allocated dead physical pages. Production now
 reports 514,457,600 database bytes and 503,087,104 ordinary-table bytes;
 `normalized_listening_events` has zero visible rows but 98,500,608 total bytes,
 and `historical_provider_track_identities` has zero visible rows but 4,128,768
-total bytes. Production remains healthy at 43/43 migrations. No vacuum,
+total bytes. That former production project remained healthy at 43/43
+migrations. No vacuum,
 compaction, quota change, retry, read cutover, deletion, connection change, or
 Spotify operation was performed.
 
 This failed in-place path is superseded by the verified replacement-project
-cutover. Do not retry or maintain the former project merely because this record
-exists; it is retained only for rollback until separately retired.
+cutover. The former project was retained only for rollback and has now been
+retired under the separate exact-ID approval recorded above.
 
 The prior cutover task ended on the pushed
 `codex/database-v2-migration-rehearsal` branch. Do not resume the completed South Asian,
@@ -149,12 +153,10 @@ v0.2.0-and-later sections of `ROADMAP.md`, this section, and
 The safe cleanup foundation, additive database-v2 schema, local migration
 rehearsal, replacement candidate migration, and database-project connection
 cutover are complete through `codex/database-v2-migration-rehearsal`. The live
-configured candidate is 43/43 with exact legacy/current/evidence parity and is
-inside the free storage allowance. Observe it and keep the former project
-intact. Application read-path refactoring, legacy cleanup, rollback, and
-old-project deletion remain later gates. Until separately approved, do not
-delete any legacy row, write to Spotify, begin recipes, or implement the native
-UI.
+configured candidate was then 43/43 with exact legacy/current/evidence parity
+and inside the free storage allowance. At that historical point, application
+read-path refactoring, legacy cleanup, rollback, and old-project deletion were
+still later gates requiring separate approvals.
 
 The current v0.1.2 database is healthy but its production physical footprint
 was about 391 MB because raw metadata is repeated across 149,314 listening

@@ -691,10 +691,9 @@ private Apogee `CHORDRIFT_DATABASE_URL` value now targets the verified candidate
 and retains owner-only file permissions. A fresh Apogee-loaded process proved
 43/43 migrations, exact invariant and normalized-evidence parity, 24 resolved
 checkpoints, `ready_for_cutover: true`, unchanged cutover hash, and 358,686,720
-database bytes. The former project remains intact as rollback protection. This
-changes the database project but does not yet refactor individual application
-queries from legacy to v2 tables. Observation, read-path refactoring, cleanup,
-rollback, and old-project deletion remain separately controlled gates.
+database bytes. At that gate the former project remained intact as rollback
+protection; individual application-query refactoring, observation, cleanup,
+rollback, and old-project deletion were still separately controlled gates.
 
 Database-v2 v0.1.3 runtime status: implemented and locally verified. Migration
 0044 adds stable v2 runtime read surfaces, transient provider-import surfaces,
@@ -717,12 +716,13 @@ preserving the rehearsal invariant hash. Immediate verification and all major
 runtime reads passed; legacy tables are absent, transient import staging is
 empty, and the database now occupies 167,788,544 bytes.
 
-The verified live Neon project keeps stable ID `damp-hall-40280714` and now has
+The verified live Neon project keeps stable ID `damp-hall-40280714` and has
 the final display name `chordrift`; renaming changed neither its connection nor
-database contents. The former project is named `chordrift-legacy-rollback` and
-remains untouched. Cleanup, verification, persistent-connection validation, and
-the bounded observation gate have passed; deleting the former project remains
-a separate irreversible action requiring its own exact-ID approval.
+database contents. Cleanup, verification, persistent-connection validation, and
+the bounded observation gate passed. Former project `mute-recipe-86719846`,
+named `chordrift-legacy-rollback`, was then deleted under separate exact-ID
+approval. The live project remained healthy and the preserved dump checksum was
+reverified afterward.
 
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
