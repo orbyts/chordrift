@@ -74,6 +74,8 @@ shows the receipt, and creates the convergence plan. It refuses stale,
 multi-phase, cleanup, and retirement plans. Use `--skip-initial-pull` only when
 you have just completed and inspected a pull. `CHORDRIFT_BIN` may point to an
 alternate installed executable; the wrapper never invokes `cargo run`.
+The complete operator/developer reference is in
+[`scripts/README.md`](../scripts/README.md).
 
 ## Semantic playlists used for capture
 

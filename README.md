@@ -104,11 +104,11 @@ and synchronization will not wait for it; when available, the export will add
 signals such as play counts, listening duration, first play, and last play.
 
 > [!WARNING]
-> Chordrift is in early development. v0.1.3 permits remote Spotify
+> Chordrift is in early development. v0.1.4 permits remote Spotify
 > mutation only through exact, audited, resumable phase confirmations. Never
 > run an apply command without inspecting its immutable plan and readiness ID.
 
-## Current foundation (v0.1.3)
+## Current foundation (v0.1.4)
 
 - Storexa-backed Neon PostgreSQL connection management
 - an application-owned canonical music-library schema
@@ -116,11 +116,16 @@ signals such as play counts, listening duration, first play, and last play.
 - secret-safe database health and migration status
 - Spotify Authorization Code with PKCE for account authorization
 - refresh-token storage in the operating system credential store
-- atomic snapshots of owned and accessible collaborative playlists
-- ordered playlist membership that preserves duplicate entries
-- saved-track snapshots kept separate from playlists
+- one materialized current provider inventory per account with
+  content-addressed playlist and saved-library revisions
+- ordered playlist membership that preserves duplicate entries without copying
+  complete unchanged membership on every pull
+- normalized permanent listening evidence with display metadata stored once per
+  historical provider identity
 - provider metadata and stable Spotify identities for later canonical matching
 - a one-command incremental pull that leaves Neon current with Spotify edits
+- concurrent Spotify probes, batched Neon persistence, incremental statistics,
+  API request counts, and per-phase timings for routine pulls
 - account-scoped observed, inbox, and managed playlist roles
 - explicit provider-wins, Neon-wins, and manual drift policies
 - current overlap, duplicate-membership, and aggregate library reports
@@ -141,13 +146,16 @@ signals such as play counts, listening duration, first play, and last play.
 - approved labeled canonical and intake cover uploads, reusable label-free
   masters, convergent upload receipts, and provider-free payload preflight
 - preserved external-playlist bookmarks separated from the active library
+- one shared formatted interactive presentation with stable redirected output
+- an operator-only installed-binary wrapper for the complete safe
+  pull/plan/readiness/confirm/apply/pull/convergence loop
 
 Set the canonical Neon connection URL through the application-specific
 `CHORDRIFT_DATABASE_URL` environment variable. Chordrift never prints it.
 
 ```console
 $ chordrift --version
-chordrift 0.1.3
+chordrift 0.1.4
 
 $ chordrift db status
 database: chordrift-primary
@@ -208,12 +216,12 @@ playlists it can access; followed playlists that Spotify will not expose
 through the playlist-items endpoint are reported as skipped.
 
 After the first complete baseline, imports use Neon to minimize Spotify API
-traffic. Unchanged playlists are detected by Spotify `snapshot_id` and copied
-forward inside Neon without requesting their items again. Saved tracks use a
-single newest-page probe; when its total and leading signature match, the prior
-saved-library snapshot is copied forward without downloading the remaining
-pages. A detected change triggers a complete reconciliation so removals are not
-silently missed.
+traffic. Unchanged playlists are detected by Spotify `snapshot_id` and retain
+their existing content-addressed Neon revisions without requesting their items
+again or copying their memberships. Saved tracks use a single newest-page
+probe; when its total and leading signature match, the existing saved-library
+revision is reused without downloading the remaining pages. A detected change
+triggers a complete reconciliation so removals are not silently missed.
 
 Beginning with v0.1.4, the independent saved-track, saved-album, and recent-play
 probes run concurrently. Unchanged playlist bookkeeping and memberships are
@@ -264,6 +272,8 @@ retained only for recovery and future reprocessing.
 
 See [docs/HOW_TO_CHORDRIFT.md](docs/HOW_TO_CHORDRIFT.md) for the task-oriented
 guide and table of contents, the linked CLI reference for every command,
+[scripts/README.md](scripts/README.md) for operator and development helper
+scripts,
 [ROADMAP.md](ROADMAP.md) for planned milestones, and
 [CHANGELOG.md](CHANGELOG.md) for release history. New focused development tasks
 should begin with [CODEX_HANDOFF.md](CODEX_HANDOFF.md) for current decisions and
