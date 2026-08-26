@@ -8,7 +8,16 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: v0.1.3 release closeout
+## Start the next task here: begin the next post-v0.1.3 milestone
+
+Chordrift v0.1.3 is released. Release commit
+`2355aec3512006ec65a95fb623e5b073b005cdfd` passed GitHub CI run
+`33008595427`, including formatting, strict Clippy, all ordinary tests,
+PostgreSQL 18 integration tests, clean-schema provider/history round trips, and
+`cargo package`. The annotated `v0.1.3` tag resolves to that exact commit.
+crates.io published `chordrift 0.1.3`, and a registry-only lookup from outside
+the workspace downloaded and identified that version successfully. The public
+GitHub release is `Chordrift v0.1.3`; it is neither a draft nor a prerelease.
 
 Work is on `main` (the implementation is also retained on
 `codex/v0.1.3-database-v2-runtime`). The v0.1.3 code refactor is
