@@ -38,6 +38,20 @@ inspected a pull:
 $ scripts/chordrift-workflow.sh --account personal --skip-initial-pull
 ```
 
+Spotify can briefly return the previous playlist snapshot immediately after a
+manual edit. When an interactive run finds a zero-operation plan, the wrapper
+now explains that possibility and lets you type `retry` after waiting a moment.
+For bounded unattended polling, supply the maximum wait in seconds; the wrapper
+retries every 10 seconds and never waits longer than 10 minutes:
+
+```console
+$ scripts/chordrift-workflow.sh --account personal --wait-for-change 90
+```
+
+This polling mode is intended for a workflow started immediately after a known
+Spotify edit. Omit it for an ordinary observation where zero operations is an
+expected successful result.
+
 The wrapper stops without applying when a plan is stale, readiness fails, the
 confirmation does not match, the plan spans multiple phases, or the phase is
 `cleanup` or `retirement`. Those destructive phases retain their separate

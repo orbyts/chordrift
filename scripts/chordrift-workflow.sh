@@ -10,10 +10,13 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 ACCOUNT=personal
 SKIP_INITIAL_PULL=false
+WAIT_FOR_CHANGE_SECONDS=0
+RETRY_INTERVAL_SECONDS=10
 
 usage() {
     printf '%s\n' \
         "Usage: scripts/chordrift-workflow.sh [--account LABEL] [--skip-initial-pull]" \
+        "       scripts/chordrift-workflow.sh [--account LABEL] --wait-for-change SECONDS" \
         "" \
         "Environment:" \
         "  CHORDRIFT_BIN  Optional executable name or exact path." \
@@ -34,6 +37,11 @@ while [ "$#" -gt 0 ]; do
             SKIP_INITIAL_PULL=true
             shift
             ;;
+        --wait-for-change)
+            [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+            WAIT_FOR_CHANGE_SECONDS=$2
+            shift 2
+            ;;
         -h|--help)
             usage
             exit 0
@@ -52,6 +60,17 @@ case "$ACCOUNT" in
         exit 2
         ;;
 esac
+
+case "$WAIT_FOR_CHANGE_SECONDS" in
+    ''|*[!0-9]*)
+        printf '%s\n' '--wait-for-change must be a whole number of seconds.' >&2
+        exit 2
+        ;;
+esac
+if [ "$WAIT_FOR_CHANGE_SECONDS" -gt 600 ]; then
+    printf '%s\n' '--wait-for-change cannot exceed 600 seconds.' >&2
+    exit 2
+fi
 
 cd "$REPO_ROOT"
 
@@ -80,6 +99,18 @@ field() {
     sed -n "s/^${key}: //p" "$file" | tail -n 1
 }
 
+create_and_show_plan() {
+    stage "Plan" "create an immutable provider-free plan"
+    run_chordrift sync plan --account "$ACCOUNT" >"$PLAN_FILE"
+    PLAN_ID=$(field plan_id "$PLAN_FILE")
+    OPERATIONS=$(field operations "$PLAN_FILE")
+    [ -n "$PLAN_ID" ] && [ -n "$OPERATIONS" ] || {
+        printf 'Could not parse the generated plan. No apply was attempted.\n' >&2
+        exit 1
+    }
+    run_chordrift sync plan-show --account "$ACCOUNT" --plan "$PLAN_ID" --details
+}
+
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chordrift-workflow.XXXXXX")
 PLAN_FILE=$WORK_DIR/plan.txt
 DETAIL_FILE=$WORK_DIR/details.txt
@@ -98,19 +129,37 @@ if [ "$SKIP_INITIAL_PULL" = false ]; then
     run_chordrift sync pull --account "$ACCOUNT"
 fi
 
-stage "Plan" "create an immutable provider-free plan"
-run_chordrift sync plan --account "$ACCOUNT" >"$PLAN_FILE"
-PLAN_ID=$(field plan_id "$PLAN_FILE")
-OPERATIONS=$(field operations "$PLAN_FILE")
-[ -n "$PLAN_ID" ] && [ -n "$OPERATIONS" ] || {
-    printf 'Could not parse the generated plan. No apply was attempted.\n' >&2
-    exit 1
-}
+create_and_show_plan
 
-run_chordrift sync plan-show --account "$ACCOUNT" --plan "$PLAN_ID" --details
+WAIT_REMAINING=$WAIT_FOR_CHANGE_SECONDS
+while [ "$OPERATIONS" = 0 ]; do
+    if [ "$WAIT_REMAINING" -gt 0 ]; then
+        RETRY_DELAY=$RETRY_INTERVAL_SECONDS
+        if [ "$WAIT_REMAINING" -lt "$RETRY_DELAY" ]; then
+            RETRY_DELAY=$WAIT_REMAINING
+        fi
+        stage "Wait" "Spotify reported no delta; retrying in $RETRY_DELAY seconds"
+        sleep "$RETRY_DELAY"
+        WAIT_REMAINING=$((WAIT_REMAINING - RETRY_DELAY))
+    elif [ -t 0 ]; then
+        printf '\nSpotify reported no planned change. Recent edits can take time to appear.\n' >/dev/tty
+        printf 'Type retry after waiting a moment, or press Enter to accept convergence: ' >/dev/tty
+        IFS= read -r ZERO_PLAN_ACTION </dev/tty
+        case "$ZERO_PLAN_ACTION" in
+            r|retry) ;;
+            *) break ;;
+        esac
+    else
+        break
+    fi
+
+    stage "Observe" "retry Spotify after a zero-operation plan"
+    run_chordrift sync pull --account "$ACCOUNT"
+    create_and_show_plan
+done
 
 if [ "$OPERATIONS" = 0 ]; then
-    stage "Converged" "the current plan contains zero operations"
+    stage "Converged" "Spotify currently exposes no operation to apply"
     exit 0
 fi
 

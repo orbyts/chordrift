@@ -4,6 +4,9 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Let the operator wrapper retry a zero-operation plan when Spotify has not yet
+  exposed a just-edited playlist snapshot, with optional bounded polling.
+
 ## [0.1.4] - 2026-08-26
 
 - Run independent saved-track, saved-album, and recent-play Spotify probes

@@ -74,6 +74,10 @@ shows the receipt, and creates the convergence plan. It refuses stale,
 multi-phase, cleanup, and retirement plans. Use `--skip-initial-pull` only when
 you have just completed and inspected a pull. `CHORDRIFT_BIN` may point to an
 alternate installed executable; the wrapper never invokes `cargo run`.
+If you start it immediately after a known Spotify edit, use
+`--wait-for-change 90` to retry a briefly stale provider snapshot every ten
+seconds for at most 90 seconds. Interactive zero-operation runs also offer a
+manual retry before accepting convergence.
 The complete operator/developer reference is in
 [`scripts/README.md`](../scripts/README.md).
 

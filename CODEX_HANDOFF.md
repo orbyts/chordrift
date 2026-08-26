@@ -87,6 +87,17 @@ final convergence plan. It refuses cleanup, retirement, stale plans, and plans
 spanning multiple phases. `--skip-initial-pull` is available for a just-pulled
 state. Shell syntax, ShellCheck when available, and help output pass.
 
+A post-release manual deletion exposed Spotify snapshot propagation delay, not
+a binary mismatch: the wrapper's first pull reused all 22 playlists and planned
+zero operations at 1,789 entries; roughly one minute later the same installed
+v0.1.4 binary observed one changed playlist and 1,788 entries. The wrapper now
+offers an interactive retry for a zero-operation plan and supports bounded
+`--wait-for-change SECONDS` polling at ten-second intervals. Apply run
+`a19d260a-0c11-432c-8597-222e6b361778` succeeded its one reconcile operation
+and is awaiting the required verification pull. The next safe operator action
+is a normal `chordrift sync pull --account personal`, followed by receipt and
+convergence inspection; do not repeat the apply.
+
 The prior v0.1.3 release state follows.
 
 Chordrift v0.1.3 is released. Release commit
