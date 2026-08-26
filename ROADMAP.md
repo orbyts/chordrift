@@ -671,6 +671,21 @@ bytes, including 98,500,608 bytes in the empty normalized-event relation and
 or cut over until additional Neon headroom or a separately approved bounded
 maintenance strategy is available.
 
+Database-v2 no-cost candidate status: complete and verified. A new isolated
+free Neon PostgreSQL 18 project in the same region restored the trusted dump at
+249,331,712 bytes, reached 43/43 migrations, and successfully applied exact
+data plan
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`.
+All current-state, event, duration, timestamp, identity, archive, and durable
+checkpoint invariants pass; `ready_for_cutover` is true. The dual-storage
+candidate is 358,686,720 bytes, below the free 0.5 GB allowance. Its role
+password was rotated immediately after a candidate-only URI appeared in a
+failed checker diagnostic; no production credential was exposed. Managed Neon
+cannot install the superuser-only `amcheck` extension, while the equivalent
+local rehearsal already passed it. Production remains configured and logically
+unchanged. Connection cutover, observation, cleanup, and old-project deletion
+remain separate approval gates.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated

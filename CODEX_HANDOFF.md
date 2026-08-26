@@ -8,7 +8,49 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: approve or defer production database-v2 data migration
+## Start the next task here: approve or defer the database-v2 connection cutover
+
+The no-cost replacement candidate is complete and verified. Neon project
+`damp-hall-40280714`, named `chordrift-v2-candidate-20260826`, is an isolated
+PostgreSQL 18 project in `aws-us-west-2`. Do not print or persist its connection
+URL. The existing production project `mute-recipe-86719846` remains configured
+and untouched by the candidate workflow.
+
+The pre-compaction dump hash was reverified as
+`8c5796cba5729931678f825021fe03268b81129352349266d7a68b487b3711ae`.
+It restored into the candidate with 39/43 migrations, byte-identical invariants,
+and a compact 249,331,712-byte database. Migrations 0040-0043 then reached
+43/43, and exact plan
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`
+completed successfully on the candidate.
+
+Independent verification is exact: 149,314 legacy and normalized events;
+23,769,184,794 ms; identical first/last timestamps; 100,926 matched events;
+1,720 matched and 13,855 unmatched identities; both archive manifests; 24
+checkpoints; and zero plan, verification, cleanup, or Re-evaluate references
+awaiting checkpoints. Current provider state matches all 22 playlists / 1,790
+ordered memberships and both saved surfaces. `db v2 status` reports
+`ready_for_cutover: true`. The candidate is 358,686,720 database bytes and
+347,504,640 ordinary-table bytes, within the free project's 0.5 GB allowance.
+Its read-only cutover-plan hash is
+`32f1e7f3e9899c72a822a5faf588c29dc905d62ead3b3b17313d165d6e4640b8`.
+
+One candidate-only connection URI was echoed by `pg_amcheck` when the tool
+rejected URI syntax. Treating that credential as compromised, its role password
+was immediately reset through the Neon API and the replacement credential was
+verified. No production credential was involved; never copy the old value into
+docs or logs. Managed Neon does not allow the project owner to install the
+superuser-only `amcheck` extension, so remote `pg_amcheck` cannot run. The
+structurally equivalent local PostgreSQL 18 rehearsal already passed
+`pg_amcheck`; all candidate application/migration checks pass independently.
+
+The original production connection was rechecked after candidate completion:
+it remains healthy at 43/43 with zero normalized events, identities, evidence
+imports, or checkpoints and `ready_for_cutover: false`. No connection change,
+old-project deletion, cleanup, or Spotify operation occurred. The next gate is
+a separately approved connection-secret switch to the candidate, followed
+immediately by status/invariant/v2 verification and an observation window.
+Legacy cleanup and deletion of the old project remain later approvals.
 
 The first exact-confirmed production data-migration attempt using plan
 `a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`

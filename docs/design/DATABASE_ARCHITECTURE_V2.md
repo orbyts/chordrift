@@ -520,3 +520,44 @@ No vacuum, compaction, quota change, read cutover, deletion, connection change,
 or Spotify operation followed the failure. The next safe gate requires added
 Neon storage headroom or a separately reviewed maintenance/reuse plan, followed
 by fresh read-only checks and explicit retry authority.
+
+### No-cost replacement candidate
+
+Rather than buying storage or destructively compacting the current project, an
+isolated free Neon PostgreSQL 18 candidate was created in the same region. The
+existing production project and application connection were not changed. The
+trusted custom-format dump hash was reverified, then restored with
+`--no-owner --no-acl --exit-on-error`.
+
+At the restored boundary the candidate was healthy with 39/43 migrations,
+byte-identical invariants, and 249,331,712 database bytes. Additive migrations
+0040-0043 completed in 2.450 seconds. The candidate independently emitted and
+successfully applied exact data plan
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`.
+
+Post-apply verification proves exact parity for 149,314 events,
+23,769,184,794 total milliseconds, first/last timestamps, 100,926 matched
+events, 1,720 matched identities, 13,855 unmatched identities, and both archive
+manifests. Forty-one protected source snapshots deduplicate into 24 checkpoints;
+all 43 plan, 420 verification, and one cleanup references are resolved. Current
+provider parity remains exact for 22 playlists and 1,790 ordered memberships.
+`ready_for_cutover` is true and cutover-plan hash is
+`32f1e7f3e9899c72a822a5faf588c29dc905d62ead3b3b17313d165d6e4640b8`.
+
+The verified candidate occupies 358,686,720 database bytes and 347,504,640
+ordinary-table bytes, comfortably below the free project's 0.5 GB allowance.
+The original production project still has zero committed normalized evidence
+and remains `ready_for_cutover: false`.
+
+A candidate-only connection URI appeared in a failed `pg_amcheck` diagnostic.
+The candidate role password was immediately reset through the Neon API and the
+new credential verified; no production credential was involved. Managed Neon
+does not permit the project owner to install the superuser-only `amcheck`
+extension, so remote `pg_amcheck` is unavailable. The equivalent local
+PostgreSQL 18 rehearsal passed `pg_amcheck`, and the candidate passed all
+application-level, migration, invariant, and storage checks.
+
+No connection change, deletion, cleanup, or Spotify operation is authorized by
+the candidate rehearsal. Connection cutover requires a separate approval and
+must be followed immediately by read-only verification and an observation
+window. Old-project deletion remains a later destructive gate.
