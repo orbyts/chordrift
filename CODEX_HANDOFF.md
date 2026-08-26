@@ -8,7 +8,7 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: v0.2.0 product foundation
+## Start the next task here: database-v2 schema and migrations
 
 The next conversation begins from `main` after release `v0.1.2` and the
 follow-up product-direction documentation commit. Do not resume the completed
@@ -16,21 +16,58 @@ South Asian, legacy-route, Inbox, or Liked Songs cleanup. First read
 `README.md`, the v0.2.0-and-later sections of `ROADMAP.md`, this section, and
 `docs/HOW_TO_CHORDRIFT.md`.
 
-The immediate next task is the safe database-v2 cleanup foundation, not recipe
-or UI implementation. Read `docs/design/DATABASE_ARCHITECTURE_V2.md` first.
-The current v0.1.2 database is healthy but consumes about 391 MB because raw
-metadata is repeated across 149,314 listening events and complete playlist
-membership is copied across routine snapshots. The 13,855 unmatched tracks are
-lightweight historical identities from the Spotify archive, not current
-library members; preserve and resolve them lazily.
+The safe database-v2 cleanup foundation is complete on
+`codex/db-v2-safe-cleanup-foundation`. The next task is workstream 2 from
+`docs/design/DATABASE_ARCHITECTURE_V2.md`: implement the v2 schema, retention
+model, migrations, and compact current-state persistence in disposable and
+rehearsal databases. Do not begin production migration/cutover, provider writes,
+recipe work, or native UI implementation.
 
-A pre-compaction backup exists at
+The current v0.1.2 database is healthy but its production physical footprint
+was about 391 MB because raw metadata is repeated across 149,314 listening
+events and complete playlist membership is copied across routine snapshots. A
+fresh logical restore occupies 249,657,023 bytes, proving that some production
+storage is churn/bloat while substantial logical duplication remains. The
+13,855 unmatched tracks are lightweight historical identities from the Spotify
+archive, not current library members; preserve and resolve them lazily.
+
+A verified pre-compaction backup exists at
 `$DROPBOX/Music/Chordrift/Backups/2026-08-26-pre-compaction/`. It contains a
-25 MB custom-format dump, schema SQL, a successfully parsed `pg_restore`
-catalog, and SHA-256 checksum. Do not delete or compact production data yet.
-First restore the dump into an isolated database, run invariant reports, and
-produce a provider-free compaction plan. Production cutover and deletion each
-require later explicit approval.
+25 MB custom-format dump, schema SQL, parsed `pg_restore` catalog, and SHA-256
+checksum. The dump hash
+`8c5796cba5729931678f825021fe03268b81129352349266d7a68b487b3711ae`
+was verified, then restored with exit-on-error into isolated local PostgreSQL
+18.6. The restore has all 39 successful migrations and zero failed migrations;
+`pg_amcheck` passed all 676 relations / 30,156 pages. Production was not
+mutated, its connection was not changed, and Spotify was not contacted.
+
+Reusable read-only commands are now:
+
+```console
+chordrift db invariant-report --account personal
+chordrift db storage-report
+chordrift db compact plan --account personal
+```
+
+The compaction planner starts a read-only transaction and rolls it back. The
+rehearsal contains 58 provider snapshots: keep one current, 41 older snapshots
+are protected by durable plan/verification/generation/bookmark/intent history,
+and 16 older routine snapshots have no such durable reference. Those 16 contain
+26,490 repeated playlist membership rows plus repeated saved-surface rows.
+This is measured planning evidence, not authorization to delete anything.
+
+The invariant baseline is 22 playlists / 1,790 exact ordered memberships /
+1,765 unique playlist tracks; 16 canonical playlists / 1,754 unique canonical
+assignments; 107 active exclusions; one empty active Re-evaluate surface; zero
+saved tracks or albums; 149,314 active listening events across 15,575
+historical identities (1,720 matched / 13,855 unmatched); 23,769,184,794 ms
+from 2014-11-05 through 2026-08-26; two archive import hashes; and 19 verified
+apply runs. Exact order/hash values and full physical sizes are recorded in the
+database-v2 design. The earlier final zero-operation sync plan remains
+`56a0d535-f83e-42ae-898e-8ed627e6f4e9`; the newest stored plan
+`fac3d2ba-6b6e-47e6-9575-24e10fa4458b` contains one reconcile
+`exclude_track`, which must remain visible as a pending intent delta during v2
+comparison.
 
 The approved direction is broader than static playlist organization. Chordrift
 becomes a personal listening-system designer with three distinct layers:

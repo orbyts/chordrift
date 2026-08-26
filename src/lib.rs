@@ -30,6 +30,8 @@ pub mod config;
 pub mod credentials;
 /// Storexa-backed database lifecycle and migration inspection.
 pub mod db;
+/// Read-only database invariants, storage measurement, and compaction planning.
+pub mod db_reports;
 /// Deterministic, versioned semantic track embeddings.
 pub mod embeddings;
 /// Cache-first, provenance-aware semantic metadata enrichment.

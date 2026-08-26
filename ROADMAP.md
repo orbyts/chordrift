@@ -612,6 +612,14 @@ Database cleanup, schema restructuring, migration/cutover, and code refactoring
 are sequential gates; native UI implementation must target the stable v2
 bridge rather than legacy tables.
 
+Safe cleanup foundation status: complete. The backup checksum and PostgreSQL
+18 restore were verified; logical invariants, physical storage, and protected
+versus redundant snapshot classes are repeatable through read-only `db`
+reports; and compaction planning cannot mutate a database or contact a
+provider. The next sequential gate is implementing and rehearsing the v2 schema
+and migrations. Production cutover and deletion remain separately approval-
+gated.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated

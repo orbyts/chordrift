@@ -7,8 +7,9 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
     ChordriftError, Result, albums, analysis, apply, apply_readiness, artwork, bookmarks,
-    classifications, clusters, config, db, embeddings, enrichment, history, model_inference,
-    playlists, proposals, providers::spotify, routes, signals, sync_plan, terminal, tracks,
+    classifications, clusters, config, db, db_reports, embeddings, enrichment, history,
+    model_inference, playlists, proposals, providers::spotify, routes, signals, sync_plan,
+    terminal, tracks,
 };
 
 /// Chordrift command-line interface.
@@ -188,6 +189,31 @@ pub enum DbCommand {
     Status,
     /// Apply pending Chordrift schema migrations.
     Migrate,
+    /// Report logical invariants needed before and after database-v2 migration.
+    InvariantReport {
+        /// Local label for the provider account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Report heap, table, index, and total bytes for every database table.
+    StorageReport,
+    /// Describe database cleanup effects without changing any rows.
+    Compact {
+        /// Compaction operation to perform.
+        #[command(subcommand)]
+        command: DbCompactCommand,
+    },
+}
+
+/// Provider-free database compaction commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum DbCompactCommand {
+    /// Plan retention and normalization inside a read-only transaction.
+    Plan {
+        /// Local label for the provider account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
 }
 
 /// Read-only Spotify account commands.
@@ -4637,18 +4663,331 @@ async fn run_db_command(
     output: &mut impl Write,
     database: &storexa::Database,
 ) -> Result<()> {
-    if matches!(command, DbCommand::Migrate) {
-        let report = db::migrate(database).await?;
+    match command {
+        DbCommand::Migrate => {
+            let report = db::migrate(database).await?;
+            writeln!(
+                output,
+                "migrations: {} available migration(s) current in {} ms",
+                report.available,
+                report.elapsed.as_millis()
+            )?;
+            let status = db::status(database).await?;
+            write_status(output, &status)
+        }
+        DbCommand::Status => {
+            let status = db::status(database).await?;
+            write_status(output, &status)
+        }
+        DbCommand::InvariantReport { account } => {
+            let report = db_reports::invariant_report(database, &account).await?;
+            write_invariant_report(output, &report)
+        }
+        DbCommand::StorageReport => {
+            let report = db_reports::storage_report(database).await?;
+            write_storage_report(output, &report)
+        }
+        DbCommand::Compact {
+            command: DbCompactCommand::Plan { account },
+        } => {
+            let report = db_reports::compaction_plan(database, &account).await?;
+            write_compaction_plan(output, &report)
+        }
+    }
+}
+
+fn write_invariant_report(
+    output: &mut impl Write,
+    report: &db_reports::InvariantReport,
+) -> Result<()> {
+    writeln!(output, "invariant_report: database-v2-v1")?;
+    writeln!(output, "account: {}", report.account_label)?;
+    writeln!(output, "provider: {}", report.provider)?;
+    writeln!(output, "provider_accounts: {}", report.provider_accounts)?;
+    writeln!(output, "snapshot_id: {}", report.snapshot_id)?;
+    writeln!(
+        output,
+        "snapshot_captured_at: {}",
+        report.snapshot_captured_at.to_rfc3339()
+    )?;
+    writeln!(output, "playlists: {}", report.playlist_count)?;
+    writeln!(
+        output,
+        "playlist_memberships: {}",
+        report.playlist_memberships
+    )?;
+    writeln!(
+        output,
+        "playlist_order_fingerprint: {}",
+        report.playlist_order_fingerprint
+    )?;
+    writeln!(
+        output,
+        "unique_playlist_tracks: {}",
+        report.unique_playlist_tracks
+    )?;
+    writeln!(output, "saved_tracks: {}", report.saved_tracks)?;
+    writeln!(output, "saved_albums: {}", report.saved_albums)?;
+    writeln!(output, "saved_album_tracks: {}", report.saved_album_tracks)?;
+    writeln!(
+        output,
+        "canonical_generation_id: {}",
+        report.canonical_generation_id
+    )?;
+    writeln!(
+        output,
+        "canonical_playlists: {}",
+        report.canonical_playlists
+    )?;
+    writeln!(
+        output,
+        "canonical_assignments: {}",
+        report.canonical_assignments
+    )?;
+    writeln!(
+        output,
+        "unique_canonical_tracks: {}",
+        report.unique_canonical_tracks
+    )?;
+    writeln!(
+        output,
+        "canonical_fingerprint: {}",
+        report.canonical_fingerprint
+    )?;
+    writeln!(output, "active_exclusions: {}", report.active_exclusions)?;
+    writeln!(
+        output,
+        "reevaluate_surfaces: {}",
+        report.reevaluate_surfaces
+    )?;
+    writeln!(output, "reevaluate_tracks: {}", report.reevaluate_tracks)?;
+    writeln!(
+        output,
+        "reevaluate_fingerprint: {}",
+        report.reevaluate_fingerprint
+    )?;
+    writeln!(output, "listening_events: {}", report.history.events)?;
+    writeln!(
+        output,
+        "historical_identities: {}",
+        report.history.unique_tracks
+    )?;
+    writeln!(
+        output,
+        "matched_historical_identities: {}",
+        report.history.matched_unique_tracks
+    )?;
+    writeln!(
+        output,
+        "unmatched_historical_identities: {}",
+        report.history.unmatched_unique_tracks
+    )?;
+    writeln!(
+        output,
+        "matched_listening_events: {}",
+        report.history.matched_events
+    )?;
+    writeln!(
+        output,
+        "unmatched_listening_events: {}",
+        report.history.unmatched_events
+    )?;
+    writeln!(
+        output,
+        "total_listening_ms: {}",
+        report.history.total_ms_played
+    )?;
+    writeln!(
+        output,
+        "first_listening_at: {}",
+        report
+            .history
+            .first_event_at
+            .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+    )?;
+    writeln!(
+        output,
+        "last_listening_at: {}",
+        report
+            .history
+            .last_event_at
+            .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+    )?;
+    writeln!(output, "spotify_archive_imports: {}", report.archives.len())?;
+    for (index, archive) in report.archives.iter().enumerate() {
+        writeln!(output, "archive_{}_sha256: {}", index + 1, archive.sha256)?;
+        writeln!(output, "archive_{}_kind: {}", index + 1, archive.kind)?;
         writeln!(
             output,
-            "migrations: {} available migration(s) current in {} ms",
-            report.available,
-            report.elapsed.as_millis()
+            "archive_{}_events_imported: {}",
+            index + 1,
+            archive.events_imported
+        )?;
+        writeln!(
+            output,
+            "archive_{}_events_matched: {}",
+            index + 1,
+            archive.events_matched
+        )?;
+        writeln!(
+            output,
+            "archive_{}_imported_at: {}",
+            index + 1,
+            archive.imported_at.to_rfc3339()
         )?;
     }
+    writeln!(
+        output,
+        "verified_apply_runs: {}",
+        report.verified_apply_runs
+    )?;
+    writeln!(output, "latest_plan_id: {}", report.latest_plan_id)?;
+    writeln!(
+        output,
+        "latest_planner_version: {}",
+        report.latest_planner_version
+    )?;
+    writeln!(
+        output,
+        "latest_plan_operations: {}",
+        report.latest_plan_operations
+    )?;
+    writeln!(
+        output,
+        "latest_plan_input_hash: {}",
+        report.latest_plan_input_hash
+    )?;
+    writeln!(output, "database_writes: disabled")?;
+    writeln!(output, "provider_requests: disabled")?;
+    Ok(())
+}
 
-    let status = db::status(database).await?;
-    write_status(output, &status)
+fn write_storage_report(output: &mut impl Write, report: &db_reports::StorageReport) -> Result<()> {
+    writeln!(output, "storage_report: database-v2-v1")?;
+    writeln!(output, "database_bytes: {}", report.database_bytes)?;
+    writeln!(
+        output,
+        "table\theap_bytes\ttable_bytes\tindex_bytes\ttotal_bytes"
+    )?;
+    for table in &report.tables {
+        writeln!(
+            output,
+            "{}\t{}\t{}\t{}\t{}",
+            table.table, table.heap_bytes, table.table_bytes, table.index_bytes, table.total_bytes
+        )?;
+    }
+    writeln!(
+        output,
+        "TOTAL\t{}\t{}\t{}\t{}",
+        report.heap_bytes, report.table_bytes, report.index_bytes, report.total_bytes
+    )?;
+    writeln!(output, "database_writes: disabled")?;
+    Ok(())
+}
+
+fn write_compaction_plan(
+    output: &mut impl Write,
+    report: &db_reports::CompactionPlan,
+) -> Result<()> {
+    writeln!(output, "compaction_plan: database-v2-v1")?;
+    writeln!(output, "account: {}", report.account_label)?;
+    writeln!(output, "mode: read-only")?;
+    writeln!(output, "snapshots_total: {}", report.snapshots_total)?;
+    writeln!(
+        output,
+        "current_snapshots_keep: {}",
+        report.current_snapshots
+    )?;
+    writeln!(
+        output,
+        "protected_historical_snapshots_keep: {}",
+        report.protected_historical_snapshots
+    )?;
+    writeln!(
+        output,
+        "redundant_routine_snapshots_normalize: {}",
+        report.redundant_routine_snapshots
+    )?;
+    writeln!(
+        output,
+        "redundant_playlist_headers_normalize: {}",
+        report.redundant_playlist_headers
+    )?;
+    writeln!(
+        output,
+        "redundant_playlist_memberships_normalize: {}",
+        report.redundant_playlist_memberships
+    )?;
+    writeln!(
+        output,
+        "redundant_saved_tracks_normalize: {}",
+        report.redundant_saved_tracks
+    )?;
+    writeln!(
+        output,
+        "redundant_saved_albums_normalize: {}",
+        report.redundant_saved_albums
+    )?;
+    writeln!(
+        output,
+        "redundant_saved_album_tracks_normalize: {}",
+        report.redundant_saved_album_tracks
+    )?;
+    writeln!(
+        output,
+        "plan_protected_snapshots: {}",
+        report.plan_protected_snapshots
+    )?;
+    writeln!(
+        output,
+        "verification_protected_snapshots: {}",
+        report.verification_protected_snapshots
+    )?;
+    writeln!(
+        output,
+        "generation_protected_snapshots: {}",
+        report.generation_protected_snapshots
+    )?;
+    writeln!(
+        output,
+        "bookmark_protected_snapshots: {}",
+        report.bookmark_protected_snapshots
+    )?;
+    writeln!(
+        output,
+        "intent_audit_protected_snapshots: {}",
+        report.intent_audit_protected_snapshots
+    )?;
+    writeln!(
+        output,
+        "listening_events_keep_normalized: {}",
+        report.listening_events
+    )?;
+    writeln!(
+        output,
+        "historical_identities_keep_normalized: {}",
+        report.historical_identities
+    )?;
+    writeln!(
+        output,
+        "raw_event_json_bytes_recoverable_after_archive_rehearsal: {}",
+        report.raw_event_json_bytes
+    )?;
+    writeln!(
+        output,
+        "event_fields_keep: provider_account,provider_identity,played_at,ms_played,skipped,completion_evidence,context,source_import,source_kind,superseded_at"
+    )?;
+    writeln!(
+        output,
+        "identity_fields_store_once: track_name,artist_name,album_name"
+    )?;
+    writeln!(
+        output,
+        "archive_recoverable_fields: platform,country,reason_start,reason_end,shuffle,offline,offline_timestamp,incognito_mode,raw_source_file"
+    )?;
+    writeln!(output, "database_writes: disabled")?;
+    writeln!(output, "provider_requests: disabled")?;
+    Ok(())
 }
 
 fn write_status(output: &mut impl Write, status: &db::DatabaseStatus) -> Result<()> {
@@ -4729,10 +5068,11 @@ mod tests {
 
     use super::{
         AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand,
-        ClassificationCommand, Cli, ClusterCommand, Command, DbCommand, EmbeddingCommand,
-        EnrichmentCommand, HistoryCommand, LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg,
-        PlaylistSignalClassArg, ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg,
-        SignalCommand, SpotifyCommand, SyncCommand, TrackCommand, write_status,
+        ClassificationCommand, Cli, ClusterCommand, Command, DbCommand, DbCompactCommand,
+        EmbeddingCommand, EnrichmentCommand, HistoryCommand, LikedSongsPolicyArg, PlaylistCommand,
+        PlaylistRoleArg, PlaylistSignalClassArg, ReevaluateCommand, RouteCommand,
+        SavedAlbumPolicyArg, SignalCommand, SpotifyCommand, SyncCommand, TrackCommand,
+        write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -4744,6 +5084,38 @@ mod tests {
             Command::Db {
                 command: DbCommand::Status
             }
+        ));
+    }
+
+    #[test]
+    fn parses_database_v2_reports_and_compaction_plan() {
+        let invariant = Cli::try_parse_from(["chordrift", "db", "invariant-report"])
+            .expect("valid invariant command");
+        assert!(matches!(
+            invariant.command,
+            Command::Db {
+                command: DbCommand::InvariantReport { account }
+            } if account == "personal"
+        ));
+
+        let storage = Cli::try_parse_from(["chordrift", "db", "storage-report"])
+            .expect("valid storage command");
+        assert!(matches!(
+            storage.command,
+            Command::Db {
+                command: DbCommand::StorageReport
+            }
+        ));
+
+        let compact = Cli::try_parse_from(["chordrift", "db", "compact", "plan"])
+            .expect("valid compaction command");
+        assert!(matches!(
+            compact.command,
+            Command::Db {
+                command: DbCommand::Compact {
+                    command: DbCompactCommand::Plan { account }
+                }
+            } if account == "personal"
         ));
     }
 

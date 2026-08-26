@@ -1,0 +1,552 @@
+//! Read-only database-v2 invariants, physical storage, and compaction planning.
+
+use chrono::{DateTime, Utc};
+use sha2::{Digest, Sha256};
+use sqlx::Row;
+use storexa::Database;
+use uuid::Uuid;
+
+use crate::{ChordriftError, Result, history};
+
+/// One immutable Spotify archive import included in the invariant report.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArchiveInvariant {
+    /// Content-addressed archive hash.
+    pub sha256: String,
+    /// Archive family.
+    pub kind: String,
+    /// Events retained from this import.
+    pub events_imported: i64,
+    /// Events linked to canonical identities when imported.
+    pub events_matched: i64,
+    /// Import timestamp.
+    pub imported_at: DateTime<Utc>,
+}
+
+/// Reusable logical invariant report for one provider account.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InvariantReport {
+    /// Total configured provider accounts.
+    pub provider_accounts: i64,
+    /// Selected provider.
+    pub provider: String,
+    /// Selected local account label.
+    pub account_label: String,
+    /// Latest successful provider snapshot.
+    pub snapshot_id: Uuid,
+    /// Capture time of the latest successful provider snapshot.
+    pub snapshot_captured_at: DateTime<Utc>,
+    /// Current provider playlists.
+    pub playlist_count: i64,
+    /// Current ordered provider playlist memberships.
+    pub playlist_memberships: i64,
+    /// Deterministic fingerprint of playlist identity, position, and track identity.
+    pub playlist_order_fingerprint: String,
+    /// Distinct tracks in current provider playlists.
+    pub unique_playlist_tracks: i64,
+    /// Current saved tracks.
+    pub saved_tracks: i64,
+    /// Current saved albums.
+    pub saved_albums: i64,
+    /// Current saved-album track memberships.
+    pub saved_album_tracks: i64,
+    /// Latest approved canonical proposal.
+    pub canonical_generation_id: Uuid,
+    /// Canonical playlists in the approved proposal.
+    pub canonical_playlists: i64,
+    /// Ordered canonical membership rows.
+    pub canonical_assignments: i64,
+    /// Distinct canonically assigned tracks.
+    pub unique_canonical_tracks: i64,
+    /// Deterministic fingerprint of canonical concept, position, and track identity.
+    pub canonical_fingerprint: String,
+    /// Active reversible exclusions.
+    pub active_exclusions: i64,
+    /// Active Re-evaluate surfaces.
+    pub reevaluate_surfaces: i64,
+    /// Tracks currently present in the provider Re-evaluate queue.
+    pub reevaluate_tracks: i64,
+    /// Deterministic fingerprint of current Re-evaluate membership and order.
+    pub reevaluate_fingerprint: String,
+    /// Permanent listening-history invariants.
+    pub history: history::HistorySummary,
+    /// Exact content-addressed Spotify archive import records.
+    pub archives: Vec<ArchiveInvariant>,
+    /// Provider-verified apply runs.
+    pub verified_apply_runs: i64,
+    /// Latest provider-free synchronization plan.
+    pub latest_plan_id: Uuid,
+    /// Planner version for the latest plan.
+    pub latest_planner_version: String,
+    /// Operations in the latest convergence plan.
+    pub latest_plan_operations: i64,
+    /// Input hash of the latest convergence plan.
+    pub latest_plan_input_hash: String,
+}
+
+/// Physical storage consumed by one ordinary table.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TableStorage {
+    /// Schema-qualified table name.
+    pub table: String,
+    /// Main relation fork bytes.
+    pub heap_bytes: i64,
+    /// Table bytes including auxiliary forks and TOAST.
+    pub table_bytes: i64,
+    /// All index bytes.
+    pub index_bytes: i64,
+    /// Table, TOAST, and index bytes.
+    pub total_bytes: i64,
+}
+
+/// Complete table-level physical storage report.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorageReport {
+    /// Entire current database size reported by PostgreSQL.
+    pub database_bytes: i64,
+    /// Sum of main relation fork bytes.
+    pub heap_bytes: i64,
+    /// Sum of table bytes including auxiliary forks and TOAST.
+    pub table_bytes: i64,
+    /// Sum of index bytes.
+    pub index_bytes: i64,
+    /// Sum of total relation bytes.
+    pub total_bytes: i64,
+    /// Per-table detail, largest total relation first.
+    pub tables: Vec<TableStorage>,
+}
+
+/// Non-mutating description of legacy retention and normalization effects.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompactionPlan {
+    /// Selected local account label.
+    pub account_label: String,
+    /// Provider snapshots currently retained.
+    pub snapshots_total: i64,
+    /// One latest materialized current-state snapshot.
+    pub current_snapshots: i64,
+    /// Older snapshots referenced by durable plans, verifications, or audit history.
+    pub protected_historical_snapshots: i64,
+    /// Older routine snapshots with no durable-history reference.
+    pub redundant_routine_snapshots: i64,
+    /// Playlist snapshot headers eligible for normalization with redundant snapshots.
+    pub redundant_playlist_headers: i64,
+    /// Complete ordered playlist bodies eligible for normalization.
+    pub redundant_playlist_memberships: i64,
+    /// Saved-track snapshot rows eligible for normalization.
+    pub redundant_saved_tracks: i64,
+    /// Saved-album snapshot rows eligible for normalization.
+    pub redundant_saved_albums: i64,
+    /// Saved-album membership rows eligible for normalization.
+    pub redundant_saved_album_tracks: i64,
+    /// Active normalized listening events that must remain permanent.
+    pub listening_events: i64,
+    /// Historical provider identities represented by those events.
+    pub historical_identities: i64,
+    /// Raw per-event JSON bytes recoverable from verified immutable archives.
+    pub raw_event_json_bytes: i64,
+    /// Snapshots referenced by immutable synchronization plans.
+    pub plan_protected_snapshots: i64,
+    /// Snapshots referenced by managed-playlist verification history.
+    pub verification_protected_snapshots: i64,
+    /// Snapshots referenced by embedding or signal generations.
+    pub generation_protected_snapshots: i64,
+    /// Snapshots referenced by external-bookmark audit history.
+    pub bookmark_protected_snapshots: i64,
+    /// Snapshots referenced by cleanup approval or Re-evaluate history.
+    pub intent_audit_protected_snapshots: i64,
+}
+
+fn sha256_lines(lines: impl IntoIterator<Item = String>) -> String {
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update([0]);
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+/// Builds a logical invariant report without changing database state.
+pub async fn invariant_report(database: &Database, account_label: &str) -> Result<InvariantReport> {
+    let account = sqlx::query(
+        "SELECT id, provider FROM provider_accounts WHERE account_label = $1 ORDER BY provider LIMIT 1",
+    )
+    .bind(account_label)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| ChordriftError::Configuration(format!("unknown account label `{account_label}`")))?;
+    let account_id: Uuid = account.try_get("id")?;
+    let provider: String = account.try_get("provider")?;
+    let provider_accounts: i64 = sqlx::query_scalar("SELECT count(*) FROM provider_accounts")
+        .fetch_one(database.pool())
+        .await?;
+
+    let snapshot = sqlx::query(
+        "SELECT snapshot.id, snapshot.captured_at
+         FROM provider_import_runs run
+         JOIN provider_library_snapshots snapshot ON snapshot.id = run.snapshot_id
+         WHERE run.provider_account_id = $1 AND run.status = 'succeeded'
+         ORDER BY run.finished_at DESC NULLS LAST, run.id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration("account has no successful provider snapshot".to_owned())
+    })?;
+    let snapshot_id: Uuid = snapshot.try_get("id")?;
+    let snapshot_captured_at: DateTime<Utc> = snapshot.try_get("captured_at")?;
+
+    let provider_state = sqlx::query(
+        "SELECT
+           (SELECT count(*) FROM provider_playlist_snapshots WHERE snapshot_id = $1) AS playlists,
+           count(*) AS memberships,
+           count(DISTINCT track.provider_track_id) AS unique_tracks,
+           (SELECT count(*) FROM provider_saved_tracks WHERE snapshot_id = $1) AS saved_tracks,
+           (SELECT count(*) FROM provider_saved_albums WHERE snapshot_id = $1) AS saved_albums,
+           (SELECT count(*) FROM provider_saved_album_tracks WHERE snapshot_id = $1) AS saved_album_tracks
+         FROM provider_playlist_tracks member
+         JOIN provider_tracks track ON track.id = member.provider_track_id
+         WHERE member.snapshot_id = $1",
+    )
+    .bind(snapshot_id)
+    .fetch_one(database.pool())
+    .await?;
+    let provider_order_rows = sqlx::query(
+        "SELECT playlist.provider_playlist_id, member.position, track.provider_track_id
+         FROM provider_playlist_tracks member
+         JOIN provider_playlists playlist ON playlist.id = member.provider_playlist_id
+         JOIN provider_tracks track ON track.id = member.provider_track_id
+         WHERE member.snapshot_id = $1
+         ORDER BY playlist.provider_playlist_id, member.position, track.provider_track_id",
+    )
+    .bind(snapshot_id)
+    .fetch_all(database.pool())
+    .await?;
+    let playlist_order_fingerprint = sha256_lines(provider_order_rows.into_iter().map(|row| {
+        format!(
+            "{}:{}:{}",
+            row.get::<String, _>("provider_playlist_id"),
+            row.get::<i32, _>("position"),
+            row.get::<String, _>("provider_track_id")
+        )
+    }));
+
+    let canonical = sqlx::query(
+        "WITH generation AS (
+           SELECT id FROM playlist_generations
+           WHERE provider_account_id = $1 AND status = 'approved'
+           ORDER BY approved_at DESC NULLS LAST, created_at DESC, id DESC LIMIT 1
+         )
+         SELECT generation.id AS generation_id,
+           count(DISTINCT playlist.id) AS playlists,
+           count(member.id) AS assignments,
+           count(DISTINCT member.track_id) AS unique_tracks
+         FROM generation
+         JOIN playlists playlist ON playlist.generation_id = generation.id
+         LEFT JOIN playlist_tracks member ON member.playlist_id = playlist.id
+         GROUP BY generation.id",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration("account has no approved canonical generation".to_owned())
+    })?;
+    let canonical_generation_id: Uuid = canonical.try_get("generation_id")?;
+    let canonical_order_rows = sqlx::query(
+        "SELECT playlist.concept_id, member.position, member.track_id
+         FROM playlists playlist
+         JOIN playlist_tracks member ON member.playlist_id = playlist.id
+         WHERE playlist.generation_id = $1
+         ORDER BY playlist.concept_id, member.position, member.track_id",
+    )
+    .bind(canonical_generation_id)
+    .fetch_all(database.pool())
+    .await?;
+    let canonical_fingerprint = sha256_lines(canonical_order_rows.into_iter().map(|row| {
+        format!(
+            "{}:{}:{}",
+            row.get::<Uuid, _>("concept_id"),
+            row.get::<i32, _>("position"),
+            row.get::<Uuid, _>("track_id")
+        )
+    }));
+
+    let intent = sqlx::query(
+        "WITH reevaluate AS (
+           SELECT surface.playlist_id, provider_playlist.id AS provider_playlist_id
+           FROM routing_surfaces surface
+           LEFT JOIN provider_playlists provider_playlist ON provider_playlist.playlist_id = surface.playlist_id
+           WHERE surface.provider_account_id = $1 AND surface.active AND surface.purpose = 'reevaluate'
+         )
+         SELECT
+           (SELECT count(*) FROM excluded_tracks WHERE provider_account_id = $1 AND restored_at IS NULL) AS exclusions,
+           (SELECT count(*) FROM reevaluate) AS surfaces,
+           count(member.provider_track_id) AS queue_tracks
+         FROM reevaluate
+         LEFT JOIN provider_playlist_tracks member
+           ON member.snapshot_id = $2 AND member.provider_playlist_id = reevaluate.provider_playlist_id",
+    )
+    .bind(account_id)
+    .bind(snapshot_id)
+    .fetch_one(database.pool())
+    .await?;
+    let reevaluate_order_rows = sqlx::query(
+        "SELECT member.position, track.provider_track_id
+         FROM routing_surfaces surface
+         JOIN provider_playlists playlist ON playlist.playlist_id = surface.playlist_id
+         JOIN provider_playlist_tracks member
+           ON member.snapshot_id = $2 AND member.provider_playlist_id = playlist.id
+         JOIN provider_tracks track ON track.id = member.provider_track_id
+         WHERE surface.provider_account_id = $1 AND surface.active
+           AND surface.purpose = 'reevaluate'
+         ORDER BY member.position, track.provider_track_id",
+    )
+    .bind(account_id)
+    .bind(snapshot_id)
+    .fetch_all(database.pool())
+    .await?;
+    let reevaluate_fingerprint = sha256_lines(reevaluate_order_rows.into_iter().map(|row| {
+        format!(
+            "{}:{}",
+            row.get::<i32, _>("position"),
+            row.get::<String, _>("provider_track_id")
+        )
+    }));
+
+    let history = history::summary(database, account_label).await?;
+    let archive_rows = sqlx::query(
+        "SELECT archive_sha256, archive_kind, events_imported, events_matched, imported_at
+         FROM spotify_archive_imports WHERE provider_account_id = $1
+         ORDER BY imported_at, archive_sha256",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    let archives = archive_rows
+        .into_iter()
+        .map(|row| {
+            Ok(ArchiveInvariant {
+                sha256: row.try_get("archive_sha256")?,
+                kind: row.try_get("archive_kind")?,
+                events_imported: row.try_get("events_imported")?,
+                events_matched: row.try_get("events_matched")?,
+                imported_at: row.try_get("imported_at")?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let convergence = sqlx::query(
+        "WITH latest AS (
+           SELECT id, planner_version, input_hash
+           FROM sync_runs
+           WHERE provider_account_id = $1 AND mode = 'dry_run' AND status = 'planned'
+           ORDER BY started_at DESC, id DESC LIMIT 1
+         )
+         SELECT latest.id, latest.planner_version, latest.input_hash,
+                (SELECT count(*) FROM sync_operations WHERE sync_run_id = latest.id) AS operations,
+                (SELECT count(*) FROM sync_apply_runs
+                  WHERE provider_account_id = $1 AND status = 'succeeded') AS verified_apply_runs
+         FROM latest",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| ChordriftError::Configuration("account has no convergence plan".to_owned()))?;
+
+    Ok(InvariantReport {
+        provider_accounts,
+        provider,
+        account_label: account_label.to_owned(),
+        snapshot_id,
+        snapshot_captured_at,
+        playlist_count: provider_state.try_get("playlists")?,
+        playlist_memberships: provider_state.try_get("memberships")?,
+        playlist_order_fingerprint,
+        unique_playlist_tracks: provider_state.try_get("unique_tracks")?,
+        saved_tracks: provider_state.try_get("saved_tracks")?,
+        saved_albums: provider_state.try_get("saved_albums")?,
+        saved_album_tracks: provider_state.try_get("saved_album_tracks")?,
+        canonical_generation_id,
+        canonical_playlists: canonical.try_get("playlists")?,
+        canonical_assignments: canonical.try_get("assignments")?,
+        unique_canonical_tracks: canonical.try_get("unique_tracks")?,
+        canonical_fingerprint,
+        active_exclusions: intent.try_get("exclusions")?,
+        reevaluate_surfaces: intent.try_get("surfaces")?,
+        reevaluate_tracks: intent.try_get("queue_tracks")?,
+        reevaluate_fingerprint,
+        history,
+        archives,
+        verified_apply_runs: convergence.try_get("verified_apply_runs")?,
+        latest_plan_id: convergence.try_get("id")?,
+        latest_planner_version: convergence.try_get("planner_version")?,
+        latest_plan_operations: convergence.try_get("operations")?,
+        latest_plan_input_hash: convergence.try_get("input_hash")?,
+    })
+}
+
+/// Reports physical storage for every user table without changing database state.
+pub async fn storage_report(database: &Database) -> Result<StorageReport> {
+    let database_bytes: i64 = sqlx::query_scalar("SELECT pg_database_size(current_database())")
+        .fetch_one(database.pool())
+        .await?;
+    let rows = sqlx::query(
+        "SELECT schemaname || '.' || relname AS table_name,
+                pg_relation_size(relid)::bigint AS heap_bytes,
+                pg_table_size(relid)::bigint AS table_bytes,
+                pg_indexes_size(relid)::bigint AS index_bytes,
+                pg_total_relation_size(relid)::bigint AS total_bytes
+         FROM pg_stat_user_tables
+         ORDER BY pg_total_relation_size(relid) DESC, schemaname, relname",
+    )
+    .fetch_all(database.pool())
+    .await?;
+    let tables = rows
+        .into_iter()
+        .map(|row| {
+            Ok(TableStorage {
+                table: row.try_get("table_name")?,
+                heap_bytes: row.try_get("heap_bytes")?,
+                table_bytes: row.try_get("table_bytes")?,
+                index_bytes: row.try_get("index_bytes")?,
+                total_bytes: row.try_get("total_bytes")?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(StorageReport {
+        database_bytes,
+        heap_bytes: tables.iter().map(|row| row.heap_bytes).sum(),
+        table_bytes: tables.iter().map(|row| row.table_bytes).sum(),
+        index_bytes: tables.iter().map(|row| row.index_bytes).sum(),
+        total_bytes: tables.iter().map(|row| row.total_bytes).sum(),
+        tables,
+    })
+}
+
+/// Plans retention and normalization effects inside a read-only transaction.
+pub async fn compaction_plan(database: &Database, account_label: &str) -> Result<CompactionPlan> {
+    let mut transaction = database.pool().begin().await?;
+    sqlx::query("SET TRANSACTION READ ONLY")
+        .execute(&mut *transaction)
+        .await?;
+    let account_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM provider_accounts WHERE account_label = $1 ORDER BY provider LIMIT 1",
+    )
+    .bind(account_label)
+    .fetch_optional(&mut *transaction)
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(format!("unknown account label `{account_label}`"))
+    })?;
+
+    let row = sqlx::query(
+        "WITH current_snapshot AS (
+           SELECT snapshot_id AS id FROM provider_import_runs
+           WHERE provider_account_id = $1 AND status = 'succeeded'
+           ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT 1
+         ), durable_snapshot AS (
+           SELECT source_snapshot_id AS id FROM embedding_generations WHERE provider_account_id = $1
+           UNION SELECT source_snapshot_id FROM signal_generations WHERE provider_account_id = $1
+           UNION SELECT source_snapshot_id FROM sync_runs WHERE provider_account_id = $1
+           UNION SELECT source_snapshot_id FROM external_playlist_cleanup_batches WHERE provider_account_id = $1
+           UNION SELECT verified_snapshot_id FROM managed_playlist_verifications WHERE provider_account_id = $1
+           UNION SELECT provider_snapshot_id FROM reevaluation_events WHERE provider_account_id = $1
+           UNION SELECT bookmark.snapshot_id
+             FROM external_playlist_bookmark_snapshots bookmark
+             JOIN provider_library_snapshots snapshot ON snapshot.id = bookmark.snapshot_id
+            WHERE snapshot.provider_account_id = $1
+         ), redundant AS (
+           SELECT snapshot.id FROM provider_library_snapshots snapshot
+           WHERE snapshot.provider_account_id = $1
+             AND snapshot.id NOT IN (SELECT id FROM current_snapshot)
+             AND snapshot.id NOT IN (SELECT id FROM durable_snapshot)
+         )
+         SELECT
+           (SELECT count(*) FROM provider_library_snapshots WHERE provider_account_id = $1) AS snapshots_total,
+           (SELECT count(*) FROM current_snapshot) AS current_snapshots,
+           (SELECT count(*) FROM durable_snapshot WHERE id NOT IN (SELECT id FROM current_snapshot)) AS protected_snapshots,
+           (SELECT count(*) FROM redundant) AS redundant_snapshots,
+           (SELECT count(*) FROM provider_playlist_snapshots WHERE snapshot_id IN (SELECT id FROM redundant)) AS redundant_playlist_headers,
+           (SELECT count(*) FROM provider_playlist_tracks WHERE snapshot_id IN (SELECT id FROM redundant)) AS redundant_playlist_memberships,
+           (SELECT count(*) FROM provider_saved_tracks WHERE snapshot_id IN (SELECT id FROM redundant)) AS redundant_saved_tracks,
+           (SELECT count(*) FROM provider_saved_albums WHERE snapshot_id IN (SELECT id FROM redundant)) AS redundant_saved_albums,
+           (SELECT count(*) FROM provider_saved_album_tracks WHERE snapshot_id IN (SELECT id FROM redundant)) AS redundant_saved_album_tracks,
+           (SELECT count(*) FROM listening_events WHERE provider_account_id = $1 AND media_type = 'track' AND superseded_at IS NULL) AS listening_events,
+           (SELECT count(DISTINCT provider_track_id) FROM listening_events WHERE provider_account_id = $1 AND media_type = 'track' AND superseded_at IS NULL) AS historical_identities,
+           (SELECT COALESCE(sum(pg_column_size(raw_metadata)), 0)::bigint FROM listening_events WHERE provider_account_id = $1 AND media_type = 'track' AND superseded_at IS NULL) AS raw_event_json_bytes,
+           (SELECT count(DISTINCT source_snapshot_id) FROM sync_runs WHERE provider_account_id = $1) AS plan_protected,
+           (SELECT count(DISTINCT verified_snapshot_id) FROM managed_playlist_verifications WHERE provider_account_id = $1) AS verification_protected,
+           (SELECT count(DISTINCT source_snapshot_id) FROM (
+              SELECT source_snapshot_id FROM embedding_generations WHERE provider_account_id = $1
+              UNION ALL SELECT source_snapshot_id FROM signal_generations WHERE provider_account_id = $1
+            ) generation) AS generation_protected,
+           (SELECT count(DISTINCT bookmark.snapshot_id)
+              FROM external_playlist_bookmark_snapshots bookmark
+              JOIN provider_library_snapshots snapshot ON snapshot.id = bookmark.snapshot_id
+             WHERE snapshot.provider_account_id = $1) AS bookmark_protected,
+           (SELECT count(DISTINCT id) FROM (
+              SELECT source_snapshot_id AS id FROM external_playlist_cleanup_batches WHERE provider_account_id = $1
+              UNION ALL SELECT provider_snapshot_id FROM reevaluation_events WHERE provider_account_id = $1
+            ) intent_audit) AS intent_audit_protected",
+    )
+    .bind(account_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    transaction.rollback().await?;
+
+    Ok(CompactionPlan {
+        account_label: account_label.to_owned(),
+        snapshots_total: row.try_get("snapshots_total")?,
+        current_snapshots: row.try_get("current_snapshots")?,
+        protected_historical_snapshots: row.try_get("protected_snapshots")?,
+        redundant_routine_snapshots: row.try_get("redundant_snapshots")?,
+        redundant_playlist_headers: row.try_get("redundant_playlist_headers")?,
+        redundant_playlist_memberships: row.try_get("redundant_playlist_memberships")?,
+        redundant_saved_tracks: row.try_get("redundant_saved_tracks")?,
+        redundant_saved_albums: row.try_get("redundant_saved_albums")?,
+        redundant_saved_album_tracks: row.try_get("redundant_saved_album_tracks")?,
+        listening_events: row.try_get("listening_events")?,
+        historical_identities: row.try_get("historical_identities")?,
+        raw_event_json_bytes: row.try_get("raw_event_json_bytes")?,
+        plan_protected_snapshots: row.try_get("plan_protected")?,
+        verification_protected_snapshots: row.try_get("verification_protected")?,
+        generation_protected_snapshots: row.try_get("generation_protected")?,
+        bookmark_protected_snapshots: row.try_get("bookmark_protected")?,
+        intent_audit_protected_snapshots: row.try_get("intent_audit_protected")?,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sha256_lines;
+
+    #[test]
+    fn invariant_fingerprints_are_stable_and_order_sensitive() {
+        assert_eq!(
+            sha256_lines(Vec::new()),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            sha256_lines([
+                "playlist:0:track-a".to_owned(),
+                "playlist:1:track-b".to_owned()
+            ]),
+            sha256_lines([
+                "playlist:0:track-a".to_owned(),
+                "playlist:1:track-b".to_owned()
+            ])
+        );
+        assert_ne!(
+            sha256_lines([
+                "playlist:0:track-a".to_owned(),
+                "playlist:1:track-b".to_owned()
+            ]),
+            sha256_lines([
+                "playlist:1:track-b".to_owned(),
+                "playlist:0:track-a".to_owned()
+            ])
+        );
+    }
+}

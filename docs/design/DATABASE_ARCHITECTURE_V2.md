@@ -148,3 +148,118 @@ The pre-compaction backup is stored at:
 It contains the custom-format dump, schema-only SQL, `pg_restore` catalog, and
 SHA-256 checksum. The catalog has been parsed successfully. A complete restore
 rehearsal remains the first task.
+
+## Safe cleanup foundation measurements
+
+Measured on 2026-08-26 from commit `65b4c98`, without changing production:
+
+- The dump SHA-256 is
+  `8c5796cba5729931678f825021fe03268b81129352349266d7a68b487b3711ae` and
+  matches `SHA256.txt`. The checksum file uses BSD syntax, so verification must
+  compare its recorded digest with `shasum -a 256` rather than use macOS
+  `shasum -c` directly.
+- The custom-format dump restored with `--no-owner --no-acl --exit-on-error`
+  into an isolated local PostgreSQL 18.6 database. `_sqlx_migrations` contains
+  39 successful migrations, versions 1 through 39, and no failures.
+- `pg_amcheck` completed successfully across all 676 relations and 30,156
+  pages. The rehearsal database reports 249,657,023 bytes. The sum of ordinary
+  table totals is 238,862,336 bytes: 158,220,288 heap bytes, 160,030,720 table
+  bytes including auxiliary forks/TOAST, and 78,831,616 index bytes.
+- The largest restored relations are `listening_events` at 152,256,512 total
+  bytes, `provider_playlist_tracks` at 29,360,128, `sync_operations` at
+  7,872,512, `managed_playlist_verified_tracks` at 6,864,896, and
+  `account_track_embeddings` at 6,496,256. A fresh logical restore is therefore
+  materially smaller than the approximately 391 MB production measurement;
+  part of the difference was physical churn/bloat, not live logical content.
+
+The repeatable `chordrift db invariant-report --account personal` rehearsal
+baseline is:
+
+- one provider account; latest successful provider snapshot
+  `66915ea3-11e8-4e0a-b9f4-930ceab27c5d` captured at
+  `2026-08-26T14:53:38.887405Z`;
+- 22 current playlists, 1,790 ordered memberships, and 1,765 unique playlist
+  tracks; exact SHA-256 order fingerprint
+  `9c0ca2a48ed65c5941bc0e53756cc7dc78613332f64c979363b30f283acc0793`;
+- zero current saved tracks, saved albums, or saved-album track rows;
+- approved generation `f521e707-8e5f-4283-a0bd-d123df3329f1` with 16
+  canonical playlists and 1,754 unique ordered assignments; assignment
+  SHA-256 fingerprint
+  `d32d747874c61b330686f89a050fde15a6ae49c23c467b7ec7036436b4c789df`;
+- 107 active exclusions; one active Re-evaluate surface with zero current
+  tracks;
+- 149,314 active normalized listening events across 15,575 historical Spotify
+  identities: 1,720 matched and 13,855 unmatched identities, with 100,926
+  matched and 48,388 unmatched events;
+- 23,769,184,794 total listening milliseconds (6,602.55 hours), from
+  `2014-11-05T05:56:18Z` through `2026-08-26T06:30:27.850Z`;
+- two immutable Spotify archive import records, with hashes
+  `9a9bd3174ec070d83107a280ed4df6d8a5bf556a6f9a73708845845f9aa5b01f`
+  and `840130a929cdbb9858a80009a791953973f9422a4f2031c7a322d9b7873b2202`;
+- 19 provider-verified apply runs; the earlier final zero-operation plan is
+  `56a0d535-f83e-42ae-898e-8ed627e6f4e9`, while the newest stored plan
+  `fac3d2ba-6b6e-47e6-9575-24e10fa4458b` contains one reconcile-phase
+  `exclude_track`. This is a pending intent delta, not database corruption, and
+  both states must remain visible during v2 comparison.
+
+`chordrift db storage-report` emits exact heap, table, index, and total bytes
+for every ordinary table. Both reports are read-only and make no provider
+requests.
+
+## Provider snapshot protection and compaction plan
+
+`chordrift db compact plan --account personal` starts a read-only transaction,
+classifies effects, and rolls it back. It has no provider adapter path and no
+apply surface. On the rehearsal it reports 58 provider snapshots:
+
+- one latest snapshot is the materialized current provider state;
+- 41 older snapshots are protected by durable references;
+- 16 older snapshots are redundant routine observations with no durable
+  reference. Normalizing those 16 would replace 506 playlist headers, 26,490
+  ordered playlist membership rows, 14,814 saved-track rows, 138 saved-album
+  rows, and 1,314 saved-album membership rows.
+
+The protected set is the union of snapshots referenced by immutable sync plans
+(33 distinct snapshots), managed playlist verifications (29), embedding or
+signal generations (4), external-bookmark history (5), and cleanup approval or
+Re-evaluate audit history (1). The overlap is intentional. PostgreSQL
+`RESTRICT` foreign keys directly protect sync plans, managed verifications,
+embedding/signal generations, cleanup approvals, and Re-evaluate events.
+Bookmark observations use cascading ownership but are durable audit history
+and must be migrated before their source snapshots can be normalized.
+`provider_import_runs.snapshot_id` is nullable with `ON DELETE SET NULL`; its
+58 references do not by themselves require retaining 58 complete inventories.
+Current analysis/statistics references are rebuildable caches, and snapshot
+child tables cascade with their parent.
+
+The 16 redundant snapshots are planning candidates only. This workstream does
+not authorize deleting them. Database-v2 must first detach durable receipts
+from complete inventories, preserve compact named checkpoints where required,
+and rerun the invariant report before and after any later apply.
+
+## Listening-event recipe contract
+
+Recipes need these normalized typed facts per retained event:
+
+- provider account and historical provider identity;
+- playback timestamp and milliseconds played;
+- skip evidence and normalized completion evidence (derived today from the
+  provider `reason_end = trackdone` value);
+- provider context URI/type when present;
+- source import, source kind (`archive` or provisional `recent_api`), stable
+  source event identity, duplicate occurrence, and supersession time.
+
+Those fields support recency, lifetime play/duration counts, meaningful-play
+thresholds, 45-minute listening sessions, skips/completions, context-aware
+signals, and honest provisional-versus-archive capability reporting. Track,
+artist, and album display names belong once on the historical provider identity,
+not on every event.
+
+The verified immutable Spotify archives can recover the original source file
+and raw fields that recipes do not query: platform, connection country,
+`reason_start`, the original `reason_end`, shuffle, offline state/timestamp,
+incognito mode, and the repeated display metadata. The rehearsal contains
+45,906,222 bytes of per-event `raw_metadata` JSON. Removing that JSON is allowed
+only in a later apply after v2 stores normalized completion/context evidence,
+identity metadata is materialized once, archive hashes/import manifests remain
+intact, and an archive-to-normalized rebuild comparison passes.

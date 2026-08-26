@@ -105,6 +105,20 @@ Chordrift reads its Neon URL from `CHORDRIFT_DATABASE_URL` and its public
 Spotify application ID from `CHORDRIFT_SPOTIFY_CLIENT_ID`. With Apogee, expose
 those variables through Apogee rather than editing shell initialization files.
 
+Database-v2 foundation diagnostics are provider-free and read-only:
+
+```console
+$ chordrift db invariant-report --account personal
+$ chordrift db storage-report
+$ chordrift db compact plan --account personal
+```
+
+The invariant report fingerprints exact provider playlist order and canonical
+assignment order, preserves archive/apply/convergence checkpoints, and reports
+listening totals. The storage report emits table, heap, index, and total bytes.
+The compaction plan runs in a read-only transaction and only describes current,
+durably protected, and redundant routine snapshots; it cannot apply cleanup.
+
 ## Spotify data archives
 
 Neon remains Chordrift's operational and authoritative database. Chordrift

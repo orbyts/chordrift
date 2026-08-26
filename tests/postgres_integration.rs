@@ -1,4 +1,4 @@
-use chordrift::{config, db};
+use chordrift::{config, db, db_reports};
 use storexa::{DatabaseConfig, PostgresProvider};
 use uuid::Uuid;
 
@@ -143,6 +143,29 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     .execute(database.pool())
     .await?;
     assert_eq!(duplicate.rows_affected(), 0);
+
+    let rows_before: i64 = sqlx::query_scalar("SELECT count(*) FROM listening_events")
+        .fetch_one(database.pool())
+        .await?;
+    let compaction = db_reports::compaction_plan(&database, "fixture").await?;
+    assert_eq!(compaction.snapshots_total, 0);
+    assert_eq!(compaction.listening_events, 1);
+    let rows_after: i64 = sqlx::query_scalar("SELECT count(*) FROM listening_events")
+        .fetch_one(database.pool())
+        .await?;
+    assert_eq!(
+        rows_after, rows_before,
+        "planning must not mutate the database"
+    );
+
+    let storage = db_reports::storage_report(&database).await?;
+    assert!(storage.database_bytes > 0);
+    assert!(
+        storage
+            .tables
+            .iter()
+            .any(|table| table.table == "public.listening_events")
+    );
 
     database.close().await;
     Ok(())

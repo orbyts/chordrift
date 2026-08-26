@@ -98,3 +98,9 @@ command, see the [CLI command reference](reference/CLI_COMMANDS.md).
 
 The roadmap and current implementation state are recorded in
 [ROADMAP.md](../ROADMAP.md) and [CODEX_HANDOFF.md](../CODEX_HANDOFF.md).
+
+Database-v2 migration operators can capture repeatable, provider-free baselines
+with `chordrift db invariant-report`, `chordrift db storage-report`, and the
+strictly non-mutating `chordrift db compact plan`. See the CLI reference and
+[database-v2 design](design/DATABASE_ARCHITECTURE_V2.md) for the measured
+restore rehearsal and retention boundaries.
