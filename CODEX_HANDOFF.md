@@ -10,6 +10,18 @@ Last updated: 2026-08-26.
 
 ## Start the next task here: observe the released v0.1.4 workflow
 
+Chordrift v0.1.4 is released from commit
+`657c85a995bdff92559bbd819f2244c9ee54ca71`. GitHub CI run
+`33018011273` passed formatting, strict Clippy, all ordinary and documentation
+tests, both PostgreSQL 18 integration surfaces, and `cargo package`. The
+annotated `v0.1.4` tag resolves to that exact commit, crates.io published
+`chordrift 0.1.4`, and the public GitHub release is `Chordrift v0.1.4`; it is
+neither a draft nor a prerelease. The first post-merge CI run exposed that the
+0045 relation-rename regression left its deliberately partial cleanup
+simulation in the shared test database. Commit `657c85a` now runs that
+simulation transactionally and rolls it back; a fresh local PostgreSQL 18
+reproduction and the complete replacement CI both pass.
+
 The v0.1.4 implementation makes a routine pull proportional to change: saved
 tracks, saved albums, and recent plays are fetched concurrently; unchanged
 playlist persistence is set-based; historical identities and recent events are
