@@ -8,13 +8,14 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: approve or defer the database-v2 connection cutover
+## Start the next task here: observe the database-v2 project cutover
 
 The no-cost replacement candidate is complete and verified. Neon project
 `damp-hall-40280714`, named `chordrift-v2-candidate-20260826`, is an isolated
-PostgreSQL 18 project in `aws-us-west-2`. Do not print or persist its connection
-URL. The existing production project `mute-recipe-86719846` remains configured
-and untouched by the candidate workflow.
+PostgreSQL 18 project in `aws-us-west-2`. It is now Chordrift's configured
+database through the private Apogee `CHORDRIFT_DATABASE_URL` value. Do not print
+or persist its connection URL elsewhere. The former production project
+`mute-recipe-86719846` remains intact and unchanged as rollback protection.
 
 The pre-compaction dump hash was reverified as
 `8c5796cba5729931678f825021fe03268b81129352349266d7a68b487b3711ae`.
@@ -38,19 +39,23 @@ Its read-only cutover-plan hash is
 One candidate-only connection URI was echoed by `pg_amcheck` when the tool
 rejected URI syntax. Treating that credential as compromised, its role password
 was immediately reset through the Neon API and the replacement credential was
-verified. No production credential was involved; never copy the old value into
-docs or logs. Managed Neon does not allow the project owner to install the
+verified before cutover. No then-active production credential was involved;
+never copy the old value into docs or logs. Managed Neon does not allow the
+project owner to install the
 superuser-only `amcheck` extension, so remote `pg_amcheck` cannot run. The
 structurally equivalent local PostgreSQL 18 rehearsal already passed
 `pg_amcheck`; all candidate application/migration checks pass independently.
 
-The original production connection was rechecked after candidate completion:
-it remains healthy at 43/43 with zero normalized events, identities, evidence
-imports, or checkpoints and `ready_for_cutover: false`. No connection change,
-old-project deletion, cleanup, or Spotify operation occurred. The next gate is
-a separately approved connection-secret switch to the candidate, followed
-immediately by status/invariant/v2 verification and an observation window.
-Legacy cleanup and deletion of the old project remain later approvals.
+The approved connection cutover is complete. Apogee's private secret file
+remains mode `0600`; a fresh process loaded through Apogee reached the candidate
+and reported 43/43 migrations, byte-identical invariants, verified normalized
+evidence, 24 checkpoints, `ready_for_cutover: true`, cutover hash
+`32f1e7f3e9899c72a822a5faf588c29dc905d62ead3b3b17313d165d6e4640b8`,
+and 358,686,720 database bytes. This switches the database project, not the
+application's individual legacy-table read paths; those remain a later code
+refactor. No cleanup, old-project deletion, or Spotify operation occurred.
+Retain the former project throughout observation. Any rollback connection
+switch, legacy cleanup, or old-project deletion requires separate approval.
 
 The first exact-confirmed production data-migration attempt using plan
 `a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`
@@ -68,11 +73,9 @@ total bytes. Production remains healthy at 43/43 migrations. No vacuum,
 compaction, quota change, retry, read cutover, deletion, connection change, or
 Spotify operation was performed.
 
-The safest next step is to add sufficient Neon storage headroom before another
-exact-plan attempt. A targeted vacuum/reuse strategy is a separate production
-maintenance decision and must not be inferred from the existing data-migration
-approval. Re-run the read-only status, invariant, storage, and exact plan after
-the storage decision, then request a fresh bounded retry approval.
+This failed in-place path is superseded by the verified replacement-project
+cutover. Do not retry or maintain the former project merely because this record
+exists; it is retained only for rollback until separately retired.
 
 The next conversation begins from the pushed
 `codex/database-v2-migration-rehearsal` branch. Do not resume the completed South Asian,
@@ -80,15 +83,15 @@ legacy-route, Inbox, or Liked Songs cleanup. First read `README.md`, the
 v0.2.0-and-later sections of `ROADMAP.md`, this section, and
 `docs/HOW_TO_CHORDRIFT.md`.
 
-The safe cleanup foundation, additive database-v2 schema, complete local
-migration rehearsal, read-only production preflight, and additive production
-schema gate are complete through `codex/database-v2-migration-rehearsal`.
-Production is now 43/43 migrations with exact legacy/current-state parity. The
-next decision is whether to authorize the exact-confirmed normalized-evidence
-and checkpoint apply using the production-emitted plan hash recorded below.
-Read cutover, observation-window start, cleanup, and connection changes remain
-later gates. Until separately approved, do not run them, delete any legacy row,
-write to Spotify, begin recipes, or implement the native UI.
+The safe cleanup foundation, additive database-v2 schema, local migration
+rehearsal, replacement candidate migration, and database-project connection
+cutover are complete through `codex/database-v2-migration-rehearsal`. The live
+configured candidate is 43/43 with exact legacy/current/evidence parity and is
+inside the free storage allowance. Observe it and keep the former project
+intact. Application read-path refactoring, legacy cleanup, rollback, and
+old-project deletion remain later gates. Until separately approved, do not
+delete any legacy row, write to Spotify, begin recipes, or implement the native
+UI.
 
 The current v0.1.2 database is healthy but its production physical footprint
 was about 391 MB because raw metadata is repeated across 149,314 listening

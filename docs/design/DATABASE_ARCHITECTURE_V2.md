@@ -561,3 +561,24 @@ No connection change, deletion, cleanup, or Spotify operation is authorized by
 the candidate rehearsal. Connection cutover requires a separate approval and
 must be followed immediately by read-only verification and an observation
 window. Old-project deletion remains a later destructive gate.
+
+### Replacement-project connection cutover
+
+With separate explicit approval, Chordrift's private Apogee
+`CHORDRIFT_DATABASE_URL` value was switched to the verified candidate. The
+secret file retained owner-only `0600` permissions, and neither old nor new URL
+was printed. A fresh process explicitly discarded its inherited environment,
+loaded Apogee again, and proved that the durable configuration reached the
+candidate by reporting `ready_for_cutover: true`.
+
+Immediate read-only verification reproduced the complete invariant report,
+exact normalized-evidence parity, 24 checkpoints, zero unresolved durable
+references, 43/43 migrations, cutover hash
+`32f1e7f3e9899c72a822a5faf588c29dc905d62ead3b3b17313d165d6e4640b8`,
+and 358,686,720 database bytes. No Spotify request or write occurred.
+
+The former project remains intact and was not modified or deleted. It is the
+bounded connection-level rollback target during observation. This project
+switch does not itself change application queries from legacy tables to v2
+tables; that code refactor follows only after observation. Legacy cleanup,
+rollback, and deletion of the former project each require separate approval.

@@ -686,6 +686,16 @@ local rehearsal already passed it. Production remains configured and logically
 unchanged. Connection cutover, observation, cleanup, and old-project deletion
 remain separate approval gates.
 
+Database-v2 project connection cutover status: complete and verified. The
+private Apogee `CHORDRIFT_DATABASE_URL` value now targets the verified candidate
+and retains owner-only file permissions. A fresh Apogee-loaded process proved
+43/43 migrations, exact invariant and normalized-evidence parity, 24 resolved
+checkpoints, `ready_for_cutover: true`, unchanged cutover hash, and 358,686,720
+database bytes. The former project remains intact as rollback protection. This
+changes the database project but does not yet refactor individual application
+queries from legacy to v2 tables. Observation, read-path refactoring, cleanup,
+rollback, and old-project deletion remain separately controlled gates.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated
