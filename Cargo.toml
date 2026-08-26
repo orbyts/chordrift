@@ -12,7 +12,7 @@ categories = ["multimedia::audio", "command-line-utilities"]
 exclude = ["artwork/"]
 
 [dependencies]
-base64 = "0.22.1"
+base64 = "0.23.1"
 chrono = { version = "0.4.42", features = ["serde"] }
 clap = { version = "4.5.50", features = ["derive"] }
 comfy-table = "7"
