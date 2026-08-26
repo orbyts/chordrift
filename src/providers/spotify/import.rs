@@ -6,7 +6,10 @@ use sqlx::{Postgres, QueryBuilder, Row, Transaction};
 use storexa::Database;
 use uuid::Uuid;
 
-use crate::{ChordriftError, Result, terminal::TerminalProgress};
+use crate::{
+    ChordriftError, Result,
+    terminal::{self, TerminalProgress},
+};
 
 use super::{
     auth,
@@ -767,9 +770,12 @@ async fn persist(
         });
         insert.build().execute(&mut *transaction).await?;
         saved_tracks += chunk.len();
-        eprintln!(
-            "spotify persist: saved-track memberships {saved_tracks}/{}",
-            saved_memberships.len()
+        terminal::event(
+            "Neon",
+            format!(
+                "saved-track memberships {saved_tracks}/{}",
+                saved_memberships.len()
+            ),
         );
     }
 

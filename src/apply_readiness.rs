@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sqlx::Row;
+use sqlx::{Postgres, QueryBuilder, Row};
 use storexa::Database;
 use uuid::Uuid;
 
@@ -136,6 +136,11 @@ pub async fn assess(
     .bind(account_id)
     .fetch_optional(database.pool())
     .await?;
+    if latest_snapshot != Some(source_snapshot_id) {
+        return Err(configuration(format!(
+            "the selected sync plan is stale; run `chordrift sync plan --account {account_label}` and inspect the new plan"
+        )));
+    }
     let proposal_state: Option<String> = sqlx::query_scalar(
         "SELECT status FROM playlist_generations
          WHERE id = $1 AND provider_account_id = $2",
@@ -366,24 +371,25 @@ pub async fn assess(
     .await?;
     let assessment_id: Uuid = row.try_get("id")?;
     let created_at: DateTime<Utc> = row.try_get("created_at")?;
-    for (sequence, readiness_check) in checks.iter().enumerate() {
-        sqlx::query(
-            "INSERT INTO sync_readiness_checks
-             (assessment_id, sequence, check_name, status, evidence)
-             VALUES ($1, $2, $3, $4, $5)",
-        )
-        .bind(assessment_id)
-        .bind(sequence as i32)
-        .bind(&readiness_check.name)
-        .bind(if readiness_check.passed {
-            "passed"
-        } else {
-            "blocked"
-        })
-        .bind(&readiness_check.evidence)
-        .execute(&mut *transaction)
-        .await?;
-    }
+    let mut check_insert = QueryBuilder::<Postgres>::new(
+        "INSERT INTO sync_readiness_checks
+         (assessment_id, sequence, check_name, status, evidence) ",
+    );
+    check_insert.push_values(
+        checks.iter().enumerate(),
+        |mut row, (sequence, readiness_check)| {
+            row.push_bind(assessment_id)
+                .push_bind(i32::try_from(sequence).unwrap_or(i32::MAX))
+                .push_bind(&readiness_check.name)
+                .push_bind(if readiness_check.passed {
+                    "passed"
+                } else {
+                    "blocked"
+                })
+                .push_bind(&readiness_check.evidence);
+        },
+    );
+    check_insert.build().execute(&mut *transaction).await?;
     transaction.commit().await?;
     Ok(ReadinessReport {
         assessment_id,

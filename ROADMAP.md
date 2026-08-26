@@ -749,6 +749,14 @@ history tests pass on PostgreSQL 18. A real read-only personal pull remains the
 measurement gate before merge/release. It must report Spotify request count and
 per-phase elapsed time; no Spotify write is part of this milestone.
 
+Interactive presentation is centralized for every command: existing stable
+key/value and tabular reports remain unchanged when redirected, while terminal
+sessions receive compact titled tables, flattened JSON evidence, consistent
+colors, and one workflow progress bar that safely hosts provider/database
+events. Migration 0045 replaces the final stored SQL function that still named
+cleanup-removed database-v1 tables; its post-clean relation-rename regression
+passes locally and production application remains separately approval-gated.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated

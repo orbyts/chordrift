@@ -41,6 +41,26 @@ and batches headers plus ordered tracks when a real verification is required.
 Rerun the same pull to measure this fix; the publication phase should fall from
 57.5 seconds to roughly normal Neon round-trip latency.
 
+The rerun completed in 4.6 seconds (provider 3.7 s, analysis 473 ms, history
+313 ms, publication checks 98 ms), proving the latency fix. A subsequent track
+removal completed in 10.0 seconds and produced the expected one-operation stale
+plan display. Readiness then failed with SQLSTATE 42P01 because the stored
+`account_track_is_library_candidate` function—missed by the v0.1.3 runtime
+refactor—still named cleanup-removed v1 tables. Additive migration 0045 replaces
+that body with v2 current revisions, latest managed verification baselines, and
+active exclusions. A PostgreSQL 18 regression physically renames the legacy
+relations as cleanup does and proves the function still executes. Do not apply
+0045 to Neon without explicit approval.
+
+All interactive command output now passes through `src/presentation.rs`.
+Key/value and TSV reports become compact titled tables, JSON evidence is
+flattened, existing bespoke reports pass through, and redirected output remains
+byte-stable for scripts. `src/terminal.rs` owns the shared table language,
+workflow progress bar, and provider/database event rendering. Readiness check
+receipts are batched into one Neon insert. The user must create a fresh plan
+after the latest pull because plan `fac3d2ba-6b6e-47e6-9575-24e10fa4458b`
+explicitly reports `snapshot_current: false`.
+
 The prior v0.1.3 release state follows.
 
 Chordrift v0.1.3 is released. Release commit

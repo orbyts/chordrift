@@ -14,7 +14,10 @@ use serde_json::Value;
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{ChordriftError, Result, terminal::TerminalProgress};
+use crate::{
+    ChordriftError, Result,
+    terminal::{self, TerminalProgress},
+};
 
 use super::models::{
     BookmarkContentStatus, CurrentUser, CursorPage, ExternalPlaylistInventory,
@@ -332,7 +335,10 @@ impl SpotifyClient {
                 }
 
                 playlist_item_fetches += 1;
-                eprintln!("Spotify · changed external playlists {playlist_item_fetches}");
+                terminal::event(
+                    "Spotify",
+                    format!("reading changed external playlist {playlist_item_fetches}"),
+                );
                 let mut items_url = playlist_items_url(&playlist.id)?;
                 items_url.query_pairs_mut().append_pair("limit", PAGE_LIMIT);
                 let (items, content_status) =
@@ -370,7 +376,10 @@ impl SpotifyClient {
             }
 
             playlist_item_fetches += 1;
-            eprintln!("Spotify · changed playlists {playlist_item_fetches}");
+            terminal::event(
+                "Spotify",
+                format!("reading changed playlist {playlist_item_fetches}"),
+            );
             let mut items_url = playlist_items_url(&playlist.id)?;
             items_url.query_pairs_mut().append_pair("limit", PAGE_LIMIT);
             match self.all_pages::<PlaylistItem>(items_url, None).await {
@@ -389,9 +398,12 @@ impl SpotifyClient {
                 Err(error) => return Err(error),
             }
         }
-        eprintln!("Spotify · playlists reused from Neon {playlists_reused}");
+        terminal::event(
+            "Spotify",
+            format!("{playlists_reused} playlists reused from Neon"),
+        );
 
-        eprintln!("Spotify · checking saved tracks, saved albums, and recent plays");
+        terminal::event("Spotify", "checking saved tracks, albums, and recent plays");
         let mut saved_url = api_url("me/tracks")?;
         saved_url.query_pairs_mut().append_pair("limit", PAGE_LIMIT);
         let mut albums_url = api_url("me/albums")?;
@@ -412,9 +424,9 @@ impl SpotifyClient {
             self.saved_albums(albums_url, reuse.saved_albums.as_ref()),
             self.all_cursor_pages(recent_url),
         )?;
-        eprintln!(
-            "Spotify · recent plays {} new observations",
-            recently_played.len()
+        terminal::event(
+            "Spotify",
+            format!("{} new recent-play observations", recently_played.len()),
         );
 
         let active_playlists_unchanged =
@@ -443,7 +455,7 @@ impl SpotifyClient {
         if let Some(previous) = reuse
             && saved_album_page_matches(&first, previous)
         {
-            eprintln!("Spotify · saved albums unchanged; reusing Neon state");
+            terminal::event("Spotify", "saved albums unchanged · reused from Neon");
             return Ok(SavedAlbumsInventory {
                 items: Vec::new(),
                 total: first.total,
@@ -719,9 +731,12 @@ fn is_private_spotify_personalized(owner_id: &str, public: Option<bool>) -> bool
 
 fn saved_page_matches(page: &Page<SavedTrack>, previous: &SavedTrackReuse) -> bool {
     if page.total != previous.total {
-        eprintln!(
-            "spotify reuse: saved-track total changed (current={}, previous={})",
-            page.total, previous.total
+        terminal::event(
+            "Spotify",
+            format!(
+                "saved-track total changed · current {} · previous {}",
+                page.total, previous.total
+            ),
         );
         return false;
     }
@@ -740,40 +755,45 @@ fn saved_page_matches(page: &Page<SavedTrack>, previous: &SavedTrackReuse) -> bo
         })
         .collect();
     if current.len() != previous.leading_items.len() {
-        eprintln!(
-            "spotify reuse: leading valid-item count changed (current={}, previous={})",
-            current.len(),
-            previous.leading_items.len()
+        terminal::event(
+            "Spotify",
+            format!(
+                "saved-track signature changed · current {} items · previous {}",
+                current.len(),
+                previous.leading_items.len()
+            ),
         );
         return false;
     }
     current.iter().zip(&previous.leading_items).all(
-            |(
-                (position, current_id, current_added_at),
-                (previous_position, previous_id, previous_added_at),
-            )| {
-                let matches = position == previous_position
-                    && *current_id == previous_id
-                    && *current_added_at == *previous_added_at;
-                if !matches {
-                    eprintln!(
-                        "spotify reuse: leading signature changed (current_position={}, previous_position={}, id_matches={}, timestamp_matches={})",
-                        position,
-                        previous_position,
-                        *current_id == previous_id,
-                        *current_added_at == *previous_added_at
-                    );
-                }
-                matches
-            },
-        )
+        |(
+            (position, current_id, current_added_at),
+            (previous_position, previous_id, previous_added_at),
+        )| {
+            let matches = position == previous_position
+                && *current_id == previous_id
+                && *current_added_at == *previous_added_at;
+            if !matches {
+                terminal::event(
+                    "Spotify",
+                    format!(
+                        "saved-track signature changed at positions {position}/{previous_position}"
+                    ),
+                );
+            }
+            matches
+        },
+    )
 }
 
 fn saved_album_page_matches(page: &Page<SavedAlbum>, previous: &SavedAlbumReuse) -> bool {
     if page.total != previous.total {
-        eprintln!(
-            "spotify reuse: saved-album total changed (current={}, previous={})",
-            page.total, previous.total
+        terminal::event(
+            "Spotify",
+            format!(
+                "saved-album total changed · current {} · previous {}",
+                page.total, previous.total
+            ),
         );
         return false;
     }

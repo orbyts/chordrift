@@ -19,6 +19,11 @@ All notable changes to Chordrift are documented here.
   ordered tracks when a real verification is required.
 - Render `sync pull` as compact library/evidence tables with per-phase elapsed
   times so real-world latency remains visible and actionable.
+- Route every interactive command through one shared presentation layer while
+  preserving stable plain redirected output; use compact tables, readable JSON
+  evidence, and a consistent multi-phase progress bar and event style.
+- Replace the last database-v1 library-candidate function body with v2 current
+  revisions and verified baselines, and batch readiness-check receipts.
 
 ## [0.1.3] - 2026-08-26
 

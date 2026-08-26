@@ -9,8 +9,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use crate::{
     ChordriftError, Result, albums, analysis, apply, apply_readiness, artwork, bookmarks,
     classifications, clusters, config, db, db_cleanup, db_reports, db_v2_migration, embeddings,
-    enrichment, history, model_inference, playlists, proposals, providers::spotify, routes,
-    signals, sync_plan, terminal, tracks,
+    enrichment, history, model_inference, playlists, presentation, proposals, providers::spotify,
+    routes, signals, sync_plan, terminal, tracks,
 };
 
 /// Chordrift command-line interface.
@@ -1490,7 +1490,17 @@ pub enum ClearPolicyArg {
 pub async fn run(cli: Cli) -> Result<()> {
     let stdout = io::stdout();
     let mut output = stdout.lock();
-    run_with_writer(cli, &mut output).await
+    if terminal::stdout_is_terminal() {
+        let mut command_output = Vec::new();
+        run_with_writer(cli, &mut command_output).await?;
+        let command_output = String::from_utf8(command_output).map_err(|_| {
+            ChordriftError::Configuration("command output was not valid UTF-8".to_owned())
+        })?;
+        output.write_all(presentation::render_interactive(&command_output).as_bytes())?;
+        Ok(())
+    } else {
+        run_with_writer(cli, &mut output).await
+    }
 }
 
 async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
@@ -1561,15 +1571,14 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                 let database = connect_current_database().await?;
                 let result: Result<()> = async {
                     let total_started = Instant::now();
-                    eprintln!("sync pull: reading Spotify and persisting current state");
+                    let progress = terminal::WorkflowProgress::new("Provider state", 4);
+                    terminal::event("Sync", "reading Spotify and updating Neon");
                     let phase_started = Instant::now();
                     let import = spotify::import(&account, &database).await?;
                     let import_elapsed = phase_started.elapsed();
-                    eprintln!(
-                        "sync pull: provider import current in {}",
-                        format_elapsed(import_elapsed)
-                    );
+                    progress.complete("Provider state", &format_elapsed(import_elapsed));
 
+                    progress.phase("Library analysis");
                     let phase_started = Instant::now();
                     let summary = if import.library_unchanged {
                         match analysis::reuse_current(&database, &account).await? {
@@ -1580,19 +1589,15 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                         analysis::refresh(&database, &account).await?
                     };
                     let analysis_elapsed = phase_started.elapsed();
-                    eprintln!(
-                        "sync pull: library analysis current in {}",
-                        format_elapsed(analysis_elapsed)
-                    );
+                    progress.complete("Library analysis", &format_elapsed(analysis_elapsed));
 
+                    progress.phase("Listening history");
                     let phase_started = Instant::now();
                     let history = history::refresh_after_recent_import(&database, &account).await?;
                     let history_elapsed = phase_started.elapsed();
-                    eprintln!(
-                        "sync pull: listening history current in {}",
-                        format_elapsed(history_elapsed)
-                    );
+                    progress.complete("Listening history", &format_elapsed(history_elapsed));
 
+                    progress.phase("Publication checks");
                     let phase_started = Instant::now();
                     let verified = apply::verify_pending_publications(
                         &database,
@@ -1601,6 +1606,8 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                     )
                     .await?;
                     let verification_elapsed = phase_started.elapsed();
+                    progress.complete("Publication checks", &format_elapsed(verification_elapsed));
+                    progress.finish();
                     let timings = SyncPullTimings {
                         import: import_elapsed,
                         analysis: analysis_elapsed,
@@ -1645,6 +1652,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                         sync_plan::show(&database, &account, plan).await?;
                     write_sync_plan_report(output, &report)?;
                     writeln!(output, "snapshot_current: {snapshot_current}")?;
+                    if !snapshot_current {
+                        writeln!(
+                            output,
+                            "next: run `chordrift sync plan --account {account}` before readiness"
+                        )?;
+                    }
                     if details {
                         writeln!(
                             output,

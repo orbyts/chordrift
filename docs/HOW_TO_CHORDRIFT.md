@@ -36,6 +36,12 @@ library is reused in Neon; only new Recently Played observations update
 listening evidence and the affected per-track statistics. These timings are the
 first diagnostic to share when a routine pull feels slow.
 
+All interactive v0.1.4 commands use the same compact table, color, spacing, and
+workflow-progress language. Redirecting stdout preserves the stable plain
+key/value and tabular form for scripts. Progress and diagnostic events remain on
+stderr, coordinated with one active progress bar so concurrent provider checks
+do not overwrite each other.
+
 Then inspect one track when you want to understand its current state:
 
 ```console

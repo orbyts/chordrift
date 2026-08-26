@@ -238,6 +238,31 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
             .any(|table| table.table == "public.listening_events")
     );
 
+    // Simulate the cleanup relation renames and prove migration 0045's
+    // candidate function contains no late-bound database-v1 table names.
+    for statement in [
+        "DROP VIEW provider_inventory_import_playlist_tracks",
+        "DROP VIEW provider_inventory_import_playlists",
+        "DROP VIEW provider_inventory_import_saved_album_tracks",
+        "DROP VIEW provider_inventory_import_saved_albums",
+        "DROP VIEW provider_inventory_import_saved_tracks",
+        "DROP VIEW provider_inventory_observations",
+        "ALTER TABLE provider_library_snapshots RENAME TO provider_inventory_observations",
+        "ALTER TABLE provider_playlist_snapshots RENAME TO provider_inventory_import_playlists",
+        "ALTER TABLE provider_playlist_tracks RENAME TO provider_inventory_import_playlist_tracks",
+        "ALTER TABLE provider_saved_tracks RENAME TO provider_inventory_import_saved_tracks",
+        "ALTER TABLE provider_saved_albums RENAME TO provider_inventory_import_saved_albums",
+        "ALTER TABLE provider_saved_album_tracks RENAME TO provider_inventory_import_saved_album_tracks",
+    ] {
+        sqlx::query(statement).execute(database.pool()).await?;
+    }
+    let candidate_after_cleanup: bool =
+        sqlx::query_scalar("SELECT account_track_is_library_candidate($1, gen_random_uuid())")
+            .bind(account_id)
+            .fetch_one(database.pool())
+            .await?;
+    assert!(!candidate_after_cleanup);
+
     database.close().await;
     Ok(())
 }
