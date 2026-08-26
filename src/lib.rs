@@ -32,6 +32,8 @@ pub mod credentials;
 pub mod db;
 /// Read-only database invariants, storage measurement, and compaction planning.
 pub mod db_reports;
+/// Exact-confirmed database-v2 evidence and checkpoint migration.
+pub mod db_v2_migration;
 /// Deterministic, versioned semantic track embeddings.
 pub mod embeddings;
 /// Cache-first, provenance-aware semantic metadata enrichment.

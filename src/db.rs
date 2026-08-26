@@ -5,7 +5,8 @@ use storexa::{Database, DatabaseConfig, Migrator};
 
 use crate::Result;
 
-/// Chordrift's strictly ordered, application-owned, embedded migrations.
+/// Chordrift's strictly ordered, application-owned, embedded schema and
+/// rehearsal-migration support migrations.
 ///
 /// The catalog includes the provider-native Re-evaluate queue and its event ledger.
 pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");

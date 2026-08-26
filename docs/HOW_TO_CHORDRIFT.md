@@ -106,3 +106,18 @@ additive schema, `chordrift db v2 status` compares current-state parity and
 lists every still-blocked cutover gate. See the CLI reference and
 [database-v2 design](design/DATABASE_ARCHITECTURE_V2.md) for the measured
 restore rehearsal and retention boundaries.
+
+The rehearsal migration itself has explicit provider-free phases:
+
+```console
+chordrift db v2 migration plan --account personal
+chordrift db v2 migration apply --account personal --confirm <PLAN_SHA256>
+chordrift db v2 migration verify --account personal
+chordrift db v2 cutover-plan --account personal
+```
+
+Only `migration apply` moves database rows, and only after an exact hash match.
+The other commands are read-only. A rehearsal cutover plan is evidence, not
+production approval: do not reuse its hash after production state changes, do
+not change the production connection, and do not delete legacy rows without a
+new explicit plan/apply/verify approval.

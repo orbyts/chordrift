@@ -196,6 +196,10 @@ pub struct DatabaseV2Status {
     pub plans_awaiting_checkpoints: i64,
     /// Managed verifications still depending on complete legacy snapshots.
     pub verifications_awaiting_checkpoints: i64,
+    /// Durable cleanup approvals still depending on complete legacy snapshots.
+    pub cleanups_awaiting_checkpoints: i64,
+    /// Re-evaluate audit events still depending on complete legacy snapshots.
+    pub reevaluations_awaiting_checkpoints: i64,
     /// Whether every required cutover prerequisite is satisfied.
     pub ready_for_cutover: bool,
 }
@@ -792,7 +796,13 @@ pub async fn database_v2_status(
                AND provider_checkpoint_id IS NULL) AS plans_awaiting,
            (SELECT count(*) FROM managed_playlist_verifications
              WHERE provider_account_id = $1 AND verified_snapshot_id IS NOT NULL
-               AND provider_checkpoint_id IS NULL) AS verifications_awaiting",
+               AND provider_checkpoint_id IS NULL) AS verifications_awaiting,
+           (SELECT count(*) FROM external_playlist_cleanup_batches
+             WHERE provider_account_id = $1 AND source_snapshot_id IS NOT NULL
+               AND provider_checkpoint_id IS NULL) AS cleanups_awaiting,
+           (SELECT count(*) FROM reevaluation_events
+             WHERE provider_account_id = $1 AND provider_snapshot_id IS NOT NULL
+               AND provider_checkpoint_id IS NULL) AS reevaluations_awaiting",
     )
     .bind(account_id)
     .fetch_one(database.pool())
@@ -819,6 +829,8 @@ pub async fn database_v2_status(
     let evidence_imports: i64 = gates.try_get("evidence_imports")?;
     let plans_awaiting_checkpoints: i64 = gates.try_get("plans_awaiting")?;
     let verifications_awaiting_checkpoints: i64 = gates.try_get("verifications_awaiting")?;
+    let cleanups_awaiting_checkpoints: i64 = gates.try_get("cleanups_awaiting")?;
+    let reevaluations_awaiting_checkpoints: i64 = gates.try_get("reevaluations_awaiting")?;
     let ready_for_cutover = current_source_snapshot_id == Some(legacy_snapshot_id)
         && current_playlist_order_matches
         && current_playlist_headers_match
@@ -827,7 +839,9 @@ pub async fn database_v2_status(
         && normalized_listening_events == legacy_listening_events
         && evidence_imports == legacy_archive_imports
         && plans_awaiting_checkpoints == 0
-        && verifications_awaiting_checkpoints == 0;
+        && verifications_awaiting_checkpoints == 0
+        && cleanups_awaiting_checkpoints == 0
+        && reevaluations_awaiting_checkpoints == 0;
 
     Ok(DatabaseV2Status {
         account_label: account_label.to_owned(),
@@ -848,6 +862,8 @@ pub async fn database_v2_status(
         checkpoints: gates.try_get("checkpoints")?,
         plans_awaiting_checkpoints,
         verifications_awaiting_checkpoints,
+        cleanups_awaiting_checkpoints,
+        reevaluations_awaiting_checkpoints,
         ready_for_cutover,
     })
 }

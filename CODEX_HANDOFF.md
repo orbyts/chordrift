@@ -8,22 +8,21 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: database-v2 migration rehearsal
+## Start the next task here: approve or defer production database-v2 cutover
 
-The next conversation begins from `main` after release `v0.1.2` and the
-follow-up product-direction documentation commit. Do not resume the completed
-South Asian, legacy-route, Inbox, or Liked Songs cleanup. First read
-`README.md`, the v0.2.0-and-later sections of `ROADMAP.md`, this section, and
+The next conversation begins from the pushed
+`codex/database-v2-migration-rehearsal` branch. Do not resume the completed South Asian,
+legacy-route, Inbox, or Liked Songs cleanup. First read `README.md`, the
+v0.2.0-and-later sections of `ROADMAP.md`, this section, and
 `docs/HOW_TO_CHORDRIFT.md`.
 
-The safe cleanup foundation and additive database-v2 schema are complete on
-`codex/database-v2-schema`. The next task is the rehearsal portion of
-workstream 3 from `docs/design/DATABASE_ARCHITECTURE_V2.md`: migrate normalized
-listening evidence and compact durable checkpoint references on another local
-copy, compare every invariant, and produce an exact cutover plan. Do not change
-the production connection, apply the migration to production, delete legacy
-rows, write to Spotify, begin recipes, or implement the native UI without the
-later explicit approval.
+The safe cleanup foundation, additive database-v2 schema, and complete local
+migration rehearsal are complete through
+`codex/database-v2-migration-rehearsal`. The next decision is whether to grant
+separate explicit authority for production schema/data migration and a later
+read cutover. Until then, do not change the production connection, run the
+production apply, delete any legacy row, write to Spotify, begin recipes, or
+implement the native UI.
 
 The current v0.1.2 database is healthy but its production physical footprint
 was about 391 MB because raw metadata is repeated across 149,314 listening
@@ -50,6 +49,9 @@ chordrift db invariant-report --account personal
 chordrift db storage-report
 chordrift db compact plan --account personal
 chordrift db v2 status --account personal
+chordrift db v2 migration plan --account personal
+chordrift db v2 migration verify --account personal
+chordrift db v2 cutover-plan --account personal
 ```
 
 The compaction planner starts a read-only transaction and rolls it back. The
@@ -89,12 +91,35 @@ has one inventory, 22 current playlist pointers, 22 immutable revisions, and
 match exactly. Database size increased only from 249,657,023 to 251,205,311
 bytes for the additive schema/backfill.
 
-`db v2 status` correctly remains blocked: 149,314 events and 15,575 historical
-identities are not yet normalized; two archive manifests are not yet in the
-provider-neutral evidence ledger; 43 plans and 420 managed verifications still
-reference complete legacy snapshots; and compact checkpoints are empty. The
-next task must migrate and compare those facts on a rehearsal copy before any
-production request is made.
+Migrations 0041 and 0042 add the exact-confirmed migration/receipt surface and
+local listening-evidence dual-write compatibility. The new local rehearsal
+clone reached 42/42 migrations. Exact plan
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`
+migrated all 149,314 events and 15,575 identities, both archive manifests, 43
+plans, 420 managed verifications, and one cleanup approval. Forty-one referenced
+snapshots deduplicated to 24 compact checkpoints. A second apply with the same
+hash was idempotent.
+
+Independent verification matches 23,769,184,794 ms, first/last timestamps,
+100,926 matched events, 1,720 matched identities, and 13,855 unmatched
+identities exactly. The original invariant report is byte-identical before and
+after. `db v2 status` now reports `ready_for_cutover: true` on this rehearsal,
+and `pg_amcheck --parent-check --heapallindexed` passes. The dual-storage
+rehearsal is 362,624,703 bytes; normalized events plus identity metadata are
+smaller than the legacy event relation, but no legacy deletion is approved.
+
+Individual archive-member hashes were not stored by v1. The migration records
+17 known event-bearing paths as `archive_manifest_only` with null member hashes
+instead of fabricating digests; the verified containing ZIP hashes remain
+authoritative. Migration 0042 dual-writes future local archive/recent-event
+changes into normalized evidence during the rollback observation window.
+
+The read-only rehearsal cutover plan hash is
+`fcc5fbba840a10a26104d7fd258785ed701dbc5bf0e46727744e0bf2beea2e6d`.
+Never apply that hash blindly to production: first rerun the production backup,
+invariant, migration-plan, and storage checks under explicit approval, then use
+only the fresh production plan hash. Production schema migration, data apply,
+read cutover, observation window, and legacy cleanup are distinct gates.
 
 The approved direction is broader than static playlist organization. Chordrift
 becomes a personal listening-system designer with three distinct layers:

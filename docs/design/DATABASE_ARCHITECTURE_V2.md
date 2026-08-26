@@ -322,3 +322,103 @@ manifests, compact checkpoints for 43 plans, and checkpoint references for 420
 managed verifications have not yet been migrated. This is the required safe
 boundary between schema workstream 2 and migration/cutover workstream 3.
 Production migration, connection cutover, and cleanup remain unapproved.
+
+## Normalized evidence and checkpoint migration rehearsal
+
+Migrations `0041_database_v2_rehearsal_migration.sql` and
+`0042_database_v2_listening_dual_write.sql` complete the rehearsal portion of
+workstream 3 without deleting legacy data. Migration 0041 adds exact-confirmed
+data-migration receipts, honest archive-member hash status, compact checkpoint
+references for durable cleanup/Re-evaluate audit rows, and a checkpoint
+materializer that reuses content-addressed revisions. Migration 0042 dual-writes
+new local archive-import and listening-event inserts/updates into v2 throughout
+the rollback observation window. Neither migration calls a provider.
+
+The provider-free command surface is:
+
+```console
+chordrift db v2 migration plan --account personal
+chordrift db v2 migration apply --account personal --confirm <PLAN_SHA256>
+chordrift db v2 migration verify --account personal
+chordrift db v2 cutover-plan --account personal
+```
+
+`plan`, `verify`, and `cutover-plan` use read-only transactions. `apply` is the
+only data-moving command and rejects anything except the SHA-256 of the current
+plan. It acquires an account-scoped transaction lock, is resumable/idempotent,
+restores the current inventory pointer before commit, retains every legacy row,
+and writes a verified migration receipt. The cutover command has no apply
+surface and explicitly excludes legacy deletion, production connection changes,
+and Spotify writes.
+
+### Evidence findings
+
+The legacy rehearsal contains 149,314 track events and no unsupported media
+events. All are active. Its 149,195 archive events have valid import IDs and 17
+distinct event-bearing archive paths; 119 recent-API events have stable source
+event IDs. No historical provider identity mixes matched and unmatched state.
+
+Individual archive-member hashes were never retained by v1. The migration does
+not fabricate them: each known member is recorded with
+`hash_status = archive_manifest_only` and a null member content hash, while the
+verified containing ZIP hash remains authoritative. The evidence-import ledger
+preserves both archive hashes, declared source-file counts, event counts,
+first/last timestamps, legacy counters, and parser provenance. Rebuilding and
+directly hashing archive members remains a separate archive-access rehearsal.
+
+Recipes require only the typed event facts already listed in the listening
+contract: account/identity, time, duration, skip/completion, context,
+source/import identity, duplicate occurrence, and supersession. The measured
+legacy JSON keys `platform`, `connection_country`, `reason_start`, `shuffle`,
+`offline`, `offline_timestamp`, and `incognito_mode` are not queried by current
+recipes and remain recoverable from immutable archives. Display title, artist,
+and album are stored once across 15,575 historical identities. The original
+`reason_end` becomes typed completion evidence and remains archive-recoverable.
+
+### Measured rehearsal result
+
+The complete migration was run only on a new PostgreSQL 18.6 clone of the
+verified 39-migration restore. Additive schema migrations reached 42/42. The
+read-only plan was applicable with exact hash
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`.
+Apply completed in 12.9 seconds; a second identical apply completed with the
+same hash and counts, proving idempotence.
+
+Post-apply verification measured exact parity:
+
+- 149,314 total/active events and 23,769,184,794 listening milliseconds;
+- first event `2014-11-05T05:56:18Z`, last event
+  `2026-08-26T06:30:27.850Z`;
+- 100,926 matched events, 1,720 matched identities, and 13,855 unmatched
+  identities;
+- both archive manifests/hashes and their imported event counts;
+- zero plan, verification, cleanup, or Re-evaluate rows awaiting checkpoints.
+
+Forty-one legacy snapshots protected 43 sync plans, 420 managed playlist
+verifications, one cleanup approval, and zero current Re-evaluate events. Their
+content deduplicated into 24 named checkpoints, 120 playlist revisions, 8,594
+revision tracks, and 638 checkpoint playlist pointers. Embedding/signal
+generations remain rebuildable cache references. Five bookmark-observation
+snapshots remain durable legacy audit history until that provider-external
+observation model is normalized; they are not silently mapped to owned-library
+checkpoints.
+
+The original invariant report is byte-identical before and after migration.
+`db v2 status` reports every current-state comparison true and
+`ready_for_cutover: true`. `pg_amcheck --parent-check --heapallindexed` passed;
+the application scope contains 571 relations / 42,769 pages.
+
+During the dual-storage observation state, the database is 362,624,703 bytes
+versus 249,657,023 bytes for the fresh legacy restore. This temporary increase
+is expected: legacy and v2 evidence coexist. Normalized events occupy
+98,451,456 total bytes and historical identities 8,069,120 bytes, compared
+with 152,256,512 bytes for legacy events. Content-addressed provider playlist
+revisions occupy about 2.82 MB versus 29.36 MB for legacy playlist memberships.
+No reclaim estimate is authorization to delete either representation.
+
+The rehearsal-only production cutover plan hash is
+`fcc5fbba840a10a26104d7fd258785ed701dbc5bf0e46727744e0bf2beea2e6d`.
+It requires a fresh production invariant/plan comparison because production
+may advance and therefore emit different hashes. Production migrations,
+data apply, read cutover, observation-window start, legacy cleanup, and any
+connection change remain unapproved and require separate explicit authority.

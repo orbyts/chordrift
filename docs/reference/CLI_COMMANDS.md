@@ -112,6 +112,10 @@ $ chordrift db invariant-report --account personal
 $ chordrift db storage-report
 $ chordrift db compact plan --account personal
 $ chordrift db v2 status --account personal
+$ chordrift db v2 migration plan --account personal
+$ chordrift db v2 migration apply --account personal --confirm <PLAN_SHA256>
+$ chordrift db v2 migration verify --account personal
+$ chordrift db v2 cutover-plan --account personal
 ```
 
 The invariant report fingerprints exact provider playlist order and canonical

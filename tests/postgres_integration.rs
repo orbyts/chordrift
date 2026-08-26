@@ -1,4 +1,5 @@
 use chordrift::{config, db, db_reports};
+use serde_json::json;
 use storexa::{DatabaseConfig, PostgresProvider};
 use uuid::Uuid;
 
@@ -39,6 +40,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "cluster_tracks",
         "clusters",
         "embedding_generations",
+        "database_v2_migration_runs",
         "enrichment_runs",
         "excluded_tracks",
         "external_playlist_bookmark_snapshots",
@@ -135,19 +137,25 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     sqlx::query(
         "INSERT INTO listening_events
          (provider_account_id, provider, provider_track_id, source_event_id,
-          played_at, ms_played, source_occurrence)
+          played_at, ms_played, source_occurrence, source_kind, raw_metadata)
          VALUES ($1, 'spotify', 'track-1', 'archive-a',
-                 '2026-08-20T04:33:23Z', 12345, 0)",
+                 '2026-08-20T04:33:23Z', 12345, 0, 'recent_api',
+                 $2)",
     )
     .bind(account_id)
+    .bind(json!({
+        "track_name": "Fixture Track",
+        "artist_name": "Fixture Artist",
+        "context_type": "playlist"
+    }))
     .execute(database.pool())
     .await?;
     let duplicate = sqlx::query(
         "INSERT INTO listening_events
          (provider_account_id, provider, provider_track_id, source_event_id,
-          played_at, ms_played, source_occurrence)
+          played_at, ms_played, source_occurrence, source_kind)
          VALUES ($1, 'spotify', 'track-1', 'archive-b',
-                 '2026-08-20T04:33:23Z', 12345, 0)
+                 '2026-08-20T04:33:23Z', 12345, 0, 'recent_api')
          ON CONFLICT (provider_account_id, provider, provider_track_id,
                       played_at, ms_played, source_occurrence)
          WHERE provider_account_id IS NOT NULL
@@ -159,6 +167,19 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     .execute(database.pool())
     .await?;
     assert_eq!(duplicate.rows_affected(), 0);
+
+    let normalized: (i64, i64, Option<String>) = sqlx::query_as(
+        "SELECT count(*), COALESCE(sum(event.ms_played), 0)::bigint,
+                max(identity.track_name)
+           FROM normalized_listening_events event
+           JOIN historical_provider_track_identities identity
+             ON identity.id = event.historical_identity_id
+          WHERE event.provider_account_id = $1",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(normalized, (1, 12_345, Some("Fixture Track".to_owned())));
 
     let rows_before: i64 = sqlx::query_scalar("SELECT count(*) FROM listening_events")
         .fetch_one(database.pool())
@@ -173,6 +194,22 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         rows_after, rows_before,
         "planning must not mutate the database"
     );
+
+    sqlx::query(
+        "UPDATE listening_events SET superseded_at = '2026-08-21T00:00:00Z'
+          WHERE provider_account_id = $1",
+    )
+    .bind(account_id)
+    .execute(database.pool())
+    .await?;
+    let normalized_active: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM normalized_listening_events
+          WHERE provider_account_id = $1 AND superseded_at IS NULL",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(normalized_active, 0);
 
     let storage = db_reports::storage_report(&database).await?;
     assert!(storage.database_bytes > 0);

@@ -630,6 +630,17 @@ The next gate migrates normalized evidence and durable snapshot references on a
 rehearsal copy, verifies parity, and only then requests separate production
 cutover authority.
 
+Database-v2 migration rehearsal status: complete. Migrations 0041 and 0042 add
+exact-confirmed normalized-evidence/checkpoint migration plus local dual-write
+compatibility. A fresh PostgreSQL 18 clone migrated all 149,314 events and 463
+durable audit references with exact invariant parity; 41 referenced snapshots
+deduplicated into 24 checkpoints. Independent verification, idempotent replay,
+PostgreSQL integration tests, and `pg_amcheck` pass. The read-only cutover plan
+is now available, but production apply/read cutover and every legacy deletion
+remain separate approval gates. After an approved production observation
+window, refactor recipes and provider queries onto v2 before beginning the
+native review UI.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated

@@ -7,8 +7,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
     ChordriftError, Result, albums, analysis, apply, apply_readiness, artwork, bookmarks,
-    classifications, clusters, config, db, db_reports, embeddings, enrichment, history,
-    model_inference, playlists, proposals, providers::spotify, routes, signals, sync_plan,
+    classifications, clusters, config, db, db_reports, db_v2_migration, embeddings, enrichment,
+    history, model_inference, playlists, proposals, providers::spotify, routes, signals, sync_plan,
     terminal, tracks,
 };
 
@@ -227,6 +227,44 @@ pub enum DbCompactCommand {
 pub enum DbV2Command {
     /// Compare v2 materialization with legacy state without changing either.
     Status {
+        /// Local label for the provider account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Plan, exact-confirm, or verify normalized evidence and checkpoints.
+    Migration {
+        /// Migration phase.
+        #[command(subcommand)]
+        command: DbV2MigrationCommand,
+    },
+    /// Print an exact production cutover plan without applying it.
+    CutoverPlan {
+        /// Local label for the provider account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+}
+
+/// Provider-free database-v2 migration phases.
+#[derive(Clone, Debug, Subcommand)]
+pub enum DbV2MigrationCommand {
+    /// Describe exact migration inputs and print the required confirmation hash.
+    Plan {
+        /// Local label for the provider account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Apply a plan to the configured database after exact confirmation.
+    Apply {
+        /// Local label for the provider account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact SHA-256 emitted by `migration plan`.
+        #[arg(long)]
+        confirm: String,
+    },
+    /// Verify migrated evidence and checkpoint parity without changing rows.
+    Verify {
         /// Local label for the provider account.
         #[arg(long, default_value = "personal")]
         account: String,
@@ -4716,7 +4754,299 @@ async fn run_db_command(
             let report = db_reports::database_v2_status(database, &account).await?;
             write_database_v2_status(output, &report)
         }
+        DbCommand::V2 {
+            command:
+                DbV2Command::Migration {
+                    command: DbV2MigrationCommand::Plan { account },
+                },
+        } => {
+            let report = db_v2_migration::plan(database, &account).await?;
+            write_database_v2_migration_plan(output, &report)
+        }
+        DbCommand::V2 {
+            command:
+                DbV2Command::Migration {
+                    command: DbV2MigrationCommand::Apply { account, confirm },
+                },
+        } => {
+            let report = db_v2_migration::apply(database, &account, &confirm).await?;
+            writeln!(
+                output,
+                "migration_apply: normalized-evidence-checkpoints-v1"
+            )?;
+            writeln!(output, "plan_sha256: {}", report.plan_sha256)?;
+            write_database_v2_migration_verification(output, &report.verification)
+        }
+        DbCommand::V2 {
+            command:
+                DbV2Command::Migration {
+                    command: DbV2MigrationCommand::Verify { account },
+                },
+        } => {
+            let report = db_v2_migration::verify(database, &account).await?;
+            write_database_v2_migration_verification(output, &report)
+        }
+        DbCommand::V2 {
+            command: DbV2Command::CutoverPlan { account },
+        } => {
+            let (plan_sha256, verification, current_state_verified) =
+                db_v2_migration::cutover_plan(database, &account).await?;
+            write_database_v2_cutover_plan(
+                output,
+                &plan_sha256,
+                &verification,
+                current_state_verified,
+            )
+        }
     }
+}
+
+fn write_database_v2_migration_plan(
+    output: &mut impl Write,
+    report: &db_v2_migration::MigrationPlan,
+) -> Result<()> {
+    writeln!(output, "migration_plan: normalized-evidence-checkpoints-v1")?;
+    writeln!(output, "account: {}", report.account_label)?;
+    writeln!(output, "plan_sha256: {}", report.plan_sha256)?;
+    writeln!(
+        output,
+        "current_snapshot_id: {}",
+        report.current_snapshot_id
+    )?;
+    writeln!(output, "legacy_events: {}", report.legacy_events)?;
+    writeln!(
+        output,
+        "active_legacy_events: {}",
+        report.active_legacy_events
+    )?;
+    writeln!(
+        output,
+        "historical_identities: {}",
+        report.historical_identities
+    )?;
+    writeln!(output, "archive_imports: {}", report.archive_imports)?;
+    writeln!(
+        output,
+        "known_archive_source_files: {}",
+        report.known_archive_source_files
+    )?;
+    writeln!(
+        output,
+        "checkpoint_source_snapshots: {}",
+        report.checkpoint_source_snapshots
+    )?;
+    writeln!(
+        output,
+        "sync_plan_references: {}",
+        report.sync_plan_references
+    )?;
+    writeln!(
+        output,
+        "verification_references: {}",
+        report.verification_references
+    )?;
+    writeln!(output, "cleanup_references: {}", report.cleanup_references)?;
+    writeln!(
+        output,
+        "reevaluation_references: {}",
+        report.reevaluation_references
+    )?;
+    writeln!(
+        output,
+        "unsupported_media_events: {}",
+        report.unsupported_media_events
+    )?;
+    writeln!(
+        output,
+        "archive_events_missing_import: {}",
+        report.archive_events_missing_import
+    )?;
+    writeln!(
+        output,
+        "events_missing_provider_identity: {}",
+        report.events_missing_provider_identity
+    )?;
+    writeln!(output, "applicable: {}", report.applicable)?;
+    writeln!(output, "database_writes: disabled")?;
+    writeln!(output, "provider_requests: disabled")?;
+    Ok(())
+}
+
+fn write_database_v2_migration_verification(
+    output: &mut impl Write,
+    report: &db_v2_migration::MigrationVerification,
+) -> Result<()> {
+    writeln!(
+        output,
+        "migration_verify: normalized-evidence-checkpoints-v1"
+    )?;
+    writeln!(output, "account: {}", report.account_label)?;
+    writeln!(output, "legacy_events: {}", report.legacy_events)?;
+    writeln!(output, "normalized_events: {}", report.normalized_events)?;
+    writeln!(
+        output,
+        "active_legacy_events: {}",
+        report.active_legacy_events
+    )?;
+    writeln!(
+        output,
+        "active_normalized_events: {}",
+        report.active_normalized_events
+    )?;
+    writeln!(output, "legacy_duration_ms: {}", report.legacy_duration_ms)?;
+    writeln!(
+        output,
+        "normalized_duration_ms: {}",
+        report.normalized_duration_ms
+    )?;
+    writeln!(
+        output,
+        "legacy_first_event_at: {}",
+        report
+            .legacy_first_event_at
+            .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+    )?;
+    writeln!(
+        output,
+        "normalized_first_event_at: {}",
+        report
+            .normalized_first_event_at
+            .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+    )?;
+    writeln!(
+        output,
+        "legacy_last_event_at: {}",
+        report
+            .legacy_last_event_at
+            .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+    )?;
+    writeln!(
+        output,
+        "normalized_last_event_at: {}",
+        report
+            .normalized_last_event_at
+            .map_or_else(|| "-".to_owned(), |value| value.to_rfc3339())
+    )?;
+    writeln!(
+        output,
+        "legacy_matched_events: {}",
+        report.legacy_matched_events
+    )?;
+    writeln!(
+        output,
+        "normalized_matched_events: {}",
+        report.normalized_matched_events
+    )?;
+    writeln!(
+        output,
+        "legacy_matched_identities: {}",
+        report.legacy_matched_identities
+    )?;
+    writeln!(
+        output,
+        "normalized_matched_identities: {}",
+        report.normalized_matched_identities
+    )?;
+    writeln!(
+        output,
+        "legacy_unmatched_identities: {}",
+        report.legacy_unmatched_identities
+    )?;
+    writeln!(
+        output,
+        "normalized_unmatched_identities: {}",
+        report.normalized_unmatched_identities
+    )?;
+    writeln!(
+        output,
+        "archive_manifests_match: {}",
+        report.archive_manifests_match
+    )?;
+    writeln!(
+        output,
+        "plans_awaiting_checkpoints: {}",
+        report.plans_awaiting_checkpoints
+    )?;
+    writeln!(
+        output,
+        "verifications_awaiting_checkpoints: {}",
+        report.verifications_awaiting_checkpoints
+    )?;
+    writeln!(
+        output,
+        "cleanups_awaiting_checkpoints: {}",
+        report.cleanups_awaiting_checkpoints
+    )?;
+    writeln!(
+        output,
+        "reevaluations_awaiting_checkpoints: {}",
+        report.reevaluations_awaiting_checkpoints
+    )?;
+    writeln!(output, "checkpoints: {}", report.checkpoints)?;
+    writeln!(output, "verified: {}", report.verified)?;
+    writeln!(output, "database_writes: disabled")?;
+    writeln!(output, "provider_requests: disabled")?;
+    Ok(())
+}
+
+fn write_database_v2_cutover_plan(
+    output: &mut impl Write,
+    plan_sha256: &str,
+    verification: &db_v2_migration::MigrationVerification,
+    current_state_verified: bool,
+) -> Result<()> {
+    writeln!(output, "production_cutover_plan: database-v2-v1")?;
+    writeln!(output, "plan_sha256: {plan_sha256}")?;
+    writeln!(output, "account: {}", verification.account_label)?;
+    writeln!(output, "evidence_verified: {}", verification.verified)?;
+    writeln!(output, "current_state_verified: {current_state_verified}")?;
+    writeln!(
+        output,
+        "rehearsal_verified: {}",
+        verification.verified && current_state_verified
+    )?;
+    writeln!(
+        output,
+        "approval_state: separate_explicit_approval_required"
+    )?;
+    writeln!(
+        output,
+        "step_1: verify backup checksum and production invariant report"
+    )?;
+    writeln!(
+        output,
+        "step_2: apply additive migrations 0040 through 0042"
+    )?;
+    writeln!(
+        output,
+        "step_3: run db v2 migration plan and compare exact counts"
+    )?;
+    writeln!(
+        output,
+        "step_4: approve and apply only the emitted migration hash"
+    )?;
+    writeln!(
+        output,
+        "step_5: run db v2 migration verify and db v2 status"
+    )?;
+    writeln!(
+        output,
+        "step_6: switch reads only after every parity gate is true"
+    )?;
+    writeln!(
+        output,
+        "step_7: retain legacy tables through an observation window"
+    )?;
+    writeln!(
+        output,
+        "rollback: switch reads back to intact legacy tables"
+    )?;
+    writeln!(output, "legacy_deletion: excluded_from_this_plan")?;
+    writeln!(output, "production_connection_change: disabled")?;
+    writeln!(output, "database_writes: disabled")?;
+    writeln!(output, "provider_requests: disabled")?;
+    writeln!(output, "spotify_writes: disabled")?;
+    Ok(())
 }
 
 fn write_database_v2_status(
@@ -4791,6 +5121,16 @@ fn write_database_v2_status(
         output,
         "verifications_awaiting_checkpoints: {}",
         report.verifications_awaiting_checkpoints
+    )?;
+    writeln!(
+        output,
+        "cleanups_awaiting_checkpoints: {}",
+        report.cleanups_awaiting_checkpoints
+    )?;
+    writeln!(
+        output,
+        "reevaluations_awaiting_checkpoints: {}",
+        report.reevaluations_awaiting_checkpoints
     )?;
     writeln!(output, "ready_for_cutover: {}", report.ready_for_cutover)?;
     writeln!(output, "database_writes: disabled")?;
@@ -5171,10 +5511,10 @@ mod tests {
     use super::{
         AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand,
         ClassificationCommand, Cli, ClusterCommand, Command, DbCommand, DbCompactCommand,
-        DbV2Command, EmbeddingCommand, EnrichmentCommand, HistoryCommand, LikedSongsPolicyArg,
-        PlaylistCommand, PlaylistRoleArg, PlaylistSignalClassArg, ReevaluateCommand, RouteCommand,
-        SavedAlbumPolicyArg, SignalCommand, SpotifyCommand, SyncCommand, TrackCommand,
-        write_status,
+        DbV2Command, DbV2MigrationCommand, EmbeddingCommand, EnrichmentCommand, HistoryCommand,
+        LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg, PlaylistSignalClassArg,
+        ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand,
+        SyncCommand, TrackCommand, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -5227,6 +5567,38 @@ mod tests {
             Command::Db {
                 command: DbCommand::V2 {
                     command: DbV2Command::Status { account }
+                }
+            } if account == "personal"
+        ));
+
+        let migration = Cli::try_parse_from([
+            "chordrift",
+            "db",
+            "v2",
+            "migration",
+            "apply",
+            "--confirm",
+            "abc",
+        ])
+        .expect("valid v2 migration command");
+        assert!(matches!(
+            migration.command,
+            Command::Db {
+                command: DbCommand::V2 {
+                    command: DbV2Command::Migration {
+                        command: DbV2MigrationCommand::Apply { account, confirm }
+                    }
+                }
+            } if account == "personal" && confirm == "abc"
+        ));
+
+        let cutover = Cli::try_parse_from(["chordrift", "db", "v2", "cutover-plan"])
+            .expect("valid v2 cutover plan command");
+        assert!(matches!(
+            cutover.command,
+            Command::Db {
+                command: DbCommand::V2 {
+                    command: DbV2Command::CutoverPlan { account }
                 }
             } if account == "personal"
         ));
