@@ -4997,6 +4997,7 @@ fn write_database_v2_cutover_plan(
 ) -> Result<()> {
     writeln!(output, "production_cutover_plan: database-v2-v1")?;
     writeln!(output, "plan_sha256: {plan_sha256}")?;
+    writeln!(output, "schema_migrations: 0040-0043")?;
     writeln!(output, "account: {}", verification.account_label)?;
     writeln!(output, "evidence_verified: {}", verification.verified)?;
     writeln!(output, "current_state_verified: {current_state_verified}")?;
@@ -5015,7 +5016,7 @@ fn write_database_v2_cutover_plan(
     )?;
     writeln!(
         output,
-        "step_2: apply additive migrations 0040 through 0042"
+        "step_2: apply additive migrations 0040 through 0043"
     )?;
     writeln!(
         output,

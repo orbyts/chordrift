@@ -121,3 +121,8 @@ The other commands are read-only. A rehearsal cutover plan is evidence, not
 production approval: do not reuse its hash after production state changes, do
 not change the production connection, and do not delete legacy rows without a
 new explicit plan/apply/verify approval.
+
+Treat production as separate gates. First apply only additive schema/current-
+state migrations 0040-0043, rerun the read-only reports, and stop to review the
+production-emitted migration plan hash. Do not combine that schema gate with
+`migration apply`, read cutover, observation-window start, or legacy cleanup.

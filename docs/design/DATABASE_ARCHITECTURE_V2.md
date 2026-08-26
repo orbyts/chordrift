@@ -184,7 +184,7 @@ baseline is:
   `2026-08-26T14:53:38.887405Z`;
 - 22 current playlists, 1,790 ordered memberships, and 1,765 unique playlist
   tracks; exact SHA-256 order fingerprint
-  `9c0ca2a48ed65c5941bc0e53756cc7dc78613332f64c979363b30f283acc0793`;
+  `d3186b303fa7d7dabe4d45f605d8a0d97a132fe50cd2bc00368491570f83e90b`;
 - zero current saved tracks, saved albums, or saved-album track rows;
 - approved generation `f521e707-8e5f-4283-a0bd-d123df3329f1` with 16
   canonical playlists and 1,754 unique ordered assignments; assignment
@@ -329,14 +329,18 @@ Production migration, connection cutover, and cleanup remain unapproved.
 
 ## Normalized evidence and checkpoint migration rehearsal
 
-Migrations `0041_database_v2_rehearsal_migration.sql` and
-`0042_database_v2_listening_dual_write.sql` complete the rehearsal portion of
+Migrations `0041_database_v2_rehearsal_migration.sql`,
+`0042_database_v2_listening_dual_write.sql`, and
+`0043_collation_stable_v2_hashes.sql` complete the rehearsal portion of
 workstream 3 without deleting legacy data. Migration 0041 adds exact-confirmed
 data-migration receipts, honest archive-member hash status, compact checkpoint
 references for durable cleanup/Re-evaluate audit rows, and a checkpoint
 materializer that reuses content-addressed revisions. Migration 0042 dual-writes
 new local archive-import and listening-event inserts/updates into v2 throughout
-the rollback observation window. Neither migration calls a provider.
+the rollback observation window. Migration 0043 makes inventory hashes
+independent of the database's default text collation by ordering hash inputs
+with PostgreSQL's bytewise `C` collation. None of these migrations calls a
+provider.
 
 The provider-free command surface is:
 
@@ -382,10 +386,10 @@ and album are stored once across 15,575 historical identities. The original
 ### Measured rehearsal result
 
 The complete migration was run only on a new PostgreSQL 18.6 clone of the
-verified 39-migration restore. Additive schema migrations reached 42/42. The
+verified 39-migration restore. Additive schema migrations reached 43/43. The
 read-only plan was applicable with exact hash
 `a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`.
-Apply completed in 12.9 seconds; a second identical apply completed with the
+Apply completed in 12.3 seconds; a second identical apply completed with the
 same hash and counts, proving idempotence.
 
 Post-apply verification measured exact parity:
@@ -410,19 +414,56 @@ checkpoints.
 The original invariant report is byte-identical before and after migration.
 `db v2 status` reports every current-state comparison true and
 `ready_for_cutover: true`. `pg_amcheck --parent-check --heapallindexed` passed;
-the application scope contains 571 relations / 42,769 pages.
+the application scope contains 571 relations / 42,295 pages.
 
-During the dual-storage observation state, the database is 362,624,703 bytes
-versus 249,657,023 bytes for the fresh legacy restore. This temporary increase
-is expected: legacy and v2 evidence coexist. Normalized events occupy
+During the fresh dual-storage observation state, the database is 358,815,423
+bytes versus 249,657,023 bytes for the fresh legacy restore. This temporary
+increase is expected: legacy and v2 evidence coexist. Normalized events occupy
 98,451,456 total bytes and historical identities 8,069,120 bytes, compared
 with 152,256,512 bytes for legacy events. Content-addressed provider playlist
 revisions occupy about 2.82 MB versus 29.36 MB for legacy playlist memberships.
 No reclaim estimate is authorization to delete either representation.
 
 The rehearsal-only production cutover plan hash is
-`fcc5fbba840a10a26104d7fd258785ed701dbc5bf0e46727744e0bf2beea2e6d`.
+`32f1e7f3e9899c72a822a5faf588c29dc905d62ead3b3b17313d165d6e4640b8`.
 It requires a fresh production invariant/plan comparison because production
 may advance and therefore emit different hashes. Production migrations,
 data apply, read cutover, observation-window start, legacy cleanup, and any
 connection change remain unapproved and require separate explicit authority.
+
+### Read-only production preflight
+
+The production preflight on 2026-08-26 used only read-only reports. The backup
+checksum was reverified, Neon reported PostgreSQL 18.6 and 39/43 migrations,
+and no production migration, row movement, connection change, deletion, or
+Spotify operation occurred.
+
+Production and the pristine restore have byte-identical invariant reports
+after making report ordering explicitly `COLLATE "C"`. Before that correction,
+the combined playlist fingerprint differed solely because production uses
+`C.UTF-8` while the local restore uses `en_US.UTF-8`; every one of the 17
+non-empty playlists already had identical counts and per-playlist hashes. The
+stable combined fingerprint is the value recorded above. A read-only
+calculation over production's legacy rows also produced the same prospective
+v2 current-state hash as the 43-migration rehearsal:
+`f12ef35e6ac961c99819be5d667eb60273435c25f0dd5b6f9182b369ba8e0ff3`.
+
+Production measured 410,181,632 database bytes and 399,286,272 ordinary-table
+bytes. `listening_events` accounts for 288,555,008 total bytes and
+`provider_playlist_tracks` for 33,300,480. The compaction classification is
+unchanged: 58 snapshots, one current, 41 protected, and 16 redundant routine
+snapshots. These figures are planning evidence, not deletion authority.
+
+The fresh 43-migration rehearsal retained exact invariant parity, emitted data
+plan hash
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`,
+completed its exact-confirmed apply in 12.3 seconds, and passed `pg_amcheck`
+over 571 application relations / 42,295 pages. Its database size is
+358,815,423 bytes.
+
+The next production gate must remain deliberately narrow: apply additive
+schema/current-state migrations 0040 through 0043, run the read-only invariant,
+status, storage, and migration-plan checks, then stop and report the actual
+production data-plan hash. Normalized-evidence migration, read cutover,
+observation-window start, and legacy cleanup each remain separate approval
+gates.

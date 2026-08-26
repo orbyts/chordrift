@@ -8,7 +8,7 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: approve or defer production database-v2 cutover
+## Start the next task here: approve or defer the additive production schema gate
 
 The next conversation begins from the pushed
 `codex/database-v2-migration-rehearsal` branch. Do not resume the completed South Asian,
@@ -16,13 +16,16 @@ legacy-route, Inbox, or Liked Songs cleanup. First read `README.md`, the
 v0.2.0-and-later sections of `ROADMAP.md`, this section, and
 `docs/HOW_TO_CHORDRIFT.md`.
 
-The safe cleanup foundation, additive database-v2 schema, and complete local
-migration rehearsal are complete through
+The safe cleanup foundation, additive database-v2 schema, complete local
+migration rehearsal, and read-only production preflight are complete through
 `codex/database-v2-migration-rehearsal`. The next decision is whether to grant
-separate explicit authority for production schema/data migration and a later
-read cutover. Until then, do not change the production connection, run the
-production apply, delete any legacy row, write to Spotify, begin recipes, or
-implement the native UI.
+explicit authority for only additive production migrations 0040 through 0043.
+If approved, apply those migrations, run the read-only production reports and
+migration plan, then stop and report the actual production data-plan hash.
+Normalized-evidence apply, read cutover, observation-window start, cleanup, and
+connection changes remain later gates. Until separately approved, do not run
+them, delete any legacy row, write to Spotify, begin recipes, or implement the
+native UI.
 
 The current v0.1.2 database is healthy but its production physical footprint
 was about 391 MB because raw metadata is repeated across 149,314 listening
@@ -92,8 +95,10 @@ match exactly. Database size increased only from 249,657,023 to 251,205,311
 bytes for the additive schema/backfill.
 
 Migrations 0041 and 0042 add the exact-confirmed migration/receipt surface and
-local listening-evidence dual-write compatibility. The new local rehearsal
-clone reached 42/42 migrations. Exact plan
+local listening-evidence dual-write compatibility. Migration 0043 makes report
+and current-inventory hashes stable across Neon `C.UTF-8` and local
+`en_US.UTF-8` collations. The new local rehearsal clone reached 43/43
+migrations. Exact plan
 `a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`
 migrated all 149,314 events and 15,575 identities, both archive manifests, 43
 plans, 420 managed verifications, and one cleanup approval. Forty-one referenced
@@ -104,8 +109,8 @@ Independent verification matches 23,769,184,794 ms, first/last timestamps,
 100,926 matched events, 1,720 matched identities, and 13,855 unmatched
 identities exactly. The original invariant report is byte-identical before and
 after. `db v2 status` now reports `ready_for_cutover: true` on this rehearsal,
-and `pg_amcheck --parent-check --heapallindexed` passes. The dual-storage
-rehearsal is 362,624,703 bytes; normalized events plus identity metadata are
+and `pg_amcheck --parent-check --heapallindexed` passes. The fresh dual-storage
+rehearsal is 358,815,423 bytes; normalized events plus identity metadata are
 smaller than the legacy event relation, but no legacy deletion is approved.
 
 Individual archive-member hashes were not stored by v1. The migration records
@@ -115,11 +120,30 @@ authoritative. Migration 0042 dual-writes future local archive/recent-event
 changes into normalized evidence during the rollback observation window.
 
 The read-only rehearsal cutover plan hash is
-`fcc5fbba840a10a26104d7fd258785ed701dbc5bf0e46727744e0bf2beea2e6d`.
-Never apply that hash blindly to production: first rerun the production backup,
-invariant, migration-plan, and storage checks under explicit approval, then use
-only the fresh production plan hash. Production schema migration, data apply,
-read cutover, observation window, and legacy cleanup are distinct gates.
+`32f1e7f3e9899c72a822a5faf588c29dc905d62ead3b3b17313d165d6e4640b8`.
+Never apply that hash blindly to production.
+
+The read-only production preflight is complete. Backup hash
+`8c5796cba5729931678f825021fe03268b81129352349266d7a68b487b3711ae`
+still verifies; Neon is healthy on PostgreSQL 18.6 with 39/43 migrations; and
+production/base invariant reports are byte-identical with stable playlist
+fingerprint
+`d3186b303fa7d7dabe4d45f605d8a0d97a132fe50cd2bc00368491570f83e90b`.
+All 17 non-empty playlist hashes match individually. A read-only prospective
+production current-state calculation matches the rehearsal hash
+`f12ef35e6ac961c99819be5d667eb60273435c25f0dd5b6f9182b369ba8e0ff3`.
+Production measures 410,181,632 bytes; the compaction classification remains
+one current, 41 protected, and 16 redundant snapshots. No production write or
+Spotify request occurred.
+
+The expected migration data-plan hash remains
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`,
+but it is not a production approval token. Production cannot emit that plan
+until additive migrations 0040-0043 exist there. The next bounded gate is:
+apply only those additive migrations, immediately run read-only invariant,
+status, storage, and migration-plan checks, and stop for another approval.
+Data apply, read cutover, observation window, and legacy cleanup remain distinct
+gates.
 
 The approved direction is broader than static playlist organization. Chordrift
 becomes a personal listening-system designer with three distinct layers:

@@ -265,7 +265,8 @@ pub async fn invariant_report(database: &Database, account_label: &str) -> Resul
          JOIN provider_playlists playlist ON playlist.id = member.provider_playlist_id
          JOIN provider_tracks track ON track.id = member.provider_track_id
          WHERE member.snapshot_id = $1
-         ORDER BY playlist.provider_playlist_id, member.position, track.provider_track_id",
+         ORDER BY playlist.provider_playlist_id COLLATE \"C\", member.position,
+                  track.provider_track_id COLLATE \"C\"",
     )
     .bind(snapshot_id)
     .fetch_all(database.pool())
@@ -348,7 +349,7 @@ pub async fn invariant_report(database: &Database, account_label: &str) -> Resul
          JOIN provider_tracks track ON track.id = member.provider_track_id
          WHERE surface.provider_account_id = $1 AND surface.active
            AND surface.purpose = 'reevaluate'
-         ORDER BY member.position, track.provider_track_id",
+         ORDER BY member.position, track.provider_track_id COLLATE \"C\"",
     )
     .bind(account_id)
     .bind(snapshot_id)
@@ -366,7 +367,7 @@ pub async fn invariant_report(database: &Database, account_label: &str) -> Resul
     let archive_rows = sqlx::query(
         "SELECT archive_sha256, archive_kind, events_imported, events_matched, imported_at
          FROM spotify_archive_imports WHERE provider_account_id = $1
-         ORDER BY imported_at, archive_sha256",
+         ORDER BY imported_at, archive_sha256 COLLATE \"C\"",
     )
     .bind(account_id)
     .fetch_all(database.pool())
@@ -616,7 +617,8 @@ pub async fn database_v2_status(
          JOIN provider_playlists playlist ON playlist.id = member.provider_playlist_id
          JOIN provider_tracks track ON track.id = member.provider_track_id
          WHERE member.snapshot_id = $1
-         ORDER BY playlist.provider_playlist_id, member.position, track.provider_track_id",
+         ORDER BY playlist.provider_playlist_id COLLATE \"C\", member.position,
+                  track.provider_track_id COLLATE \"C\"",
     )
     .bind(legacy_snapshot_id)
     .fetch_all(database.pool())
@@ -629,7 +631,8 @@ pub async fn database_v2_status(
            ON member.revision_id = current_playlist.revision_id
          JOIN provider_tracks track ON track.id = member.provider_track_id
          WHERE current_playlist.provider_account_id = $1
-         ORDER BY playlist.provider_playlist_id, member.position, track.provider_track_id",
+         ORDER BY playlist.provider_playlist_id COLLATE \"C\", member.position,
+                  track.provider_track_id COLLATE \"C\"",
     )
     .bind(account_id)
     .fetch_all(database.pool())

@@ -641,6 +641,16 @@ remain separate approval gates. After an approved production observation
 window, refactor recipes and provider queries onto v2 before beginning the
 native review UI.
 
+Database-v2 production preflight status: complete and read-only. Migration 0043
+makes v2 hashes stable across production and rehearsal collations. Production
+is healthy on PostgreSQL 18.6 with 39/43 migrations; its invariant report is
+byte-identical to the pristine restore, all 17 non-empty playlist hashes match,
+and a prospective current-state hash matches the fresh 43-migration rehearsal.
+No production write occurred. The next separately approved gate is additive
+migrations 0040-0043 only, followed immediately by read-only reports and a stop
+to present the actual production data-plan hash. Normalized-evidence apply,
+read cutover, observation, and cleanup remain later approval gates.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated

@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result, db_reports};
 
 const MIGRATION_VERSION: &str = "normalized-evidence-checkpoints-v1";
+const CUTOVER_SCHEMA_MIGRATIONS: &str = "0040-0043";
 
 /// Deterministic description of the legacy rows eligible for v2 migration.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -583,6 +584,7 @@ pub async fn cutover_plan(
     let v2_status = db_reports::database_v2_status(database, account_label).await?;
     let cutover_sha256 = hash_lines(&[
         "database-v2-production-cutover-v1".to_owned(),
+        CUTOVER_SCHEMA_MIGRATIONS.to_owned(),
         migration_plan.plan_sha256,
         verification.verified.to_string(),
         v2_status.ready_for_cutover.to_string(),

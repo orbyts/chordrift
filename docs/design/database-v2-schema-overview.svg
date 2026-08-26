@@ -18,7 +18,7 @@
 
   <rect class="bg" width="2600" height="2000"/>
   <text class="heading" x="70" y="65">Chordrift database v2 — conceptual Neon table map</text>
-  <text class="sub" x="70" y="102">Implemented after migrations 0040–0042. Neon may list tables alphabetically; this diagram groups them by responsibility.</text>
+  <text class="sub" x="70" y="102">Implemented after migrations 0040–0043. Neon may list tables alphabetically; this diagram groups them by responsibility.</text>
 
   <!-- Main relationships, behind panels -->
   <path class="edge" d="M430 370H490"/><text class="label" x="438" y="350">identifies</text>
