@@ -467,3 +467,29 @@ status, storage, and migration-plan checks, then stop and report the actual
 production data-plan hash. Normalized-evidence migration, read cutover,
 observation-window start, and legacy cleanup each remain separate approval
 gates.
+
+### Additive production schema gate
+
+With explicit approval, migrations 0040 through 0043 were applied to production
+on 2026-08-26. They completed in 3.964 seconds; Neon is healthy at 43/43
+migrations with zero pending or failed migrations. No normalized-evidence apply,
+read cutover, deletion, connection change, or Spotify operation occurred.
+
+The post-migration invariant is unchanged. The v2 current inventory points to
+the same source snapshot and matches all 22 playlist headers, 1,790 ordered
+memberships, and both empty saved surfaces exactly. Production emitted the
+applicable normalized-evidence/checkpoint plan hash
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`.
+It covers 149,314 events, 15,575 historical identities, two archive manifests,
+41 checkpoint source snapshots, 43 plan references, 420 verification
+references, and one cleanup reference, with zero unsupported events or missing
+required identities/imports.
+
+The stopped boundary is independently visible: normalized events, historical
+identities, evidence imports, and checkpoints are all zero; 43 plans, 420
+verifications, and one cleanup remain awaiting checkpoints; and
+`ready_for_cutover` is false. Post-schema production storage is 411,852,800
+database bytes and 400,482,304 ordinary-table bytes. The next gate is the
+exact-confirmed data apply using the production-emitted hash above, followed by
+read-only verification and another stop. It does not authorize read cutover or
+legacy cleanup.

@@ -651,6 +651,16 @@ migrations 0040-0043 only, followed immediately by read-only reports and a stop
 to present the actual production data-plan hash. Normalized-evidence apply,
 read cutover, observation, and cleanup remain later approval gates.
 
+Database-v2 additive production schema gate status: complete. The explicitly
+approved migrations 0040-0043 reached 43/43 on Neon in 3.964 seconds with zero
+failures. Post-migration read-only reports preserved the complete legacy
+invariant, proved exact current provider parity, and emitted applicable data
+plan hash
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`.
+Normalized evidence and checkpoints remain empty; no data apply, read cutover,
+deletion, connection change, or Spotify operation occurred. Exact-confirmed
+production data migration is the next separately approved gate.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated

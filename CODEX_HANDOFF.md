@@ -8,7 +8,7 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: approve or defer the additive production schema gate
+## Start the next task here: approve or defer production database-v2 data migration
 
 The next conversation begins from the pushed
 `codex/database-v2-migration-rehearsal` branch. Do not resume the completed South Asian,
@@ -17,15 +17,14 @@ v0.2.0-and-later sections of `ROADMAP.md`, this section, and
 `docs/HOW_TO_CHORDRIFT.md`.
 
 The safe cleanup foundation, additive database-v2 schema, complete local
-migration rehearsal, and read-only production preflight are complete through
-`codex/database-v2-migration-rehearsal`. The next decision is whether to grant
-explicit authority for only additive production migrations 0040 through 0043.
-If approved, apply those migrations, run the read-only production reports and
-migration plan, then stop and report the actual production data-plan hash.
-Normalized-evidence apply, read cutover, observation-window start, cleanup, and
-connection changes remain later gates. Until separately approved, do not run
-them, delete any legacy row, write to Spotify, begin recipes, or implement the
-native UI.
+migration rehearsal, read-only production preflight, and additive production
+schema gate are complete through `codex/database-v2-migration-rehearsal`.
+Production is now 43/43 migrations with exact legacy/current-state parity. The
+next decision is whether to authorize the exact-confirmed normalized-evidence
+and checkpoint apply using the production-emitted plan hash recorded below.
+Read cutover, observation-window start, cleanup, and connection changes remain
+later gates. Until separately approved, do not run them, delete any legacy row,
+write to Spotify, begin recipes, or implement the native UI.
 
 The current v0.1.2 database is healthy but its production physical footprint
 was about 391 MB because raw metadata is repeated across 149,314 listening
@@ -123,27 +122,32 @@ The read-only rehearsal cutover plan hash is
 `32f1e7f3e9899c72a822a5faf588c29dc905d62ead3b3b17313d165d6e4640b8`.
 Never apply that hash blindly to production.
 
-The read-only production preflight is complete. Backup hash
+The read-only production preflight and additive schema gate are complete.
+Backup hash
 `8c5796cba5729931678f825021fe03268b81129352349266d7a68b487b3711ae`
-still verifies; Neon is healthy on PostgreSQL 18.6 with 39/43 migrations; and
+still verifies; Neon is healthy on PostgreSQL 18.6 with 43/43 migrations; and
 production/base invariant reports are byte-identical with stable playlist
 fingerprint
 `d3186b303fa7d7dabe4d45f605d8a0d97a132fe50cd2bc00368491570f83e90b`.
 All 17 non-empty playlist hashes match individually. A read-only prospective
 production current-state calculation matches the rehearsal hash
 `f12ef35e6ac961c99819be5d667eb60273435c25f0dd5b6f9182b369ba8e0ff3`.
-Production measures 410,181,632 bytes; the compaction classification remains
+After the additive schema gate, production measures 411,852,800 database bytes
+and 400,482,304 ordinary-table bytes. The compaction classification remains
 one current, 41 protected, and 16 redundant snapshots. No production write or
 Spotify request occurred.
 
-The expected migration data-plan hash remains
+Production emitted migration data-plan hash
 `a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`,
-but it is not a production approval token. Production cannot emit that plan
-until additive migrations 0040-0043 exist there. The next bounded gate is:
-apply only those additive migrations, immediately run read-only invariant,
-status, storage, and migration-plan checks, and stop for another approval.
-Data apply, read cutover, observation window, and legacy cleanup remain distinct
-gates.
+with `applicable: true`: 149,314 events, 15,575 identities, two archive
+manifests, 41 checkpoint source snapshots, 43 plan references, 420 verification
+references, and one cleanup reference. Current v2 state is exactly 22 playlists
+and 1,790 ordered memberships; normalized evidence and checkpoints remain
+empty, proving the data apply has not run. The next bounded gate is only
+`chordrift db v2 migration apply --account personal --confirm <exact hash>`,
+followed immediately by read-only invariant/status/verify/storage reports and a
+stop. Read cutover, observation window, and legacy cleanup remain distinct
+approval gates.
 
 The approved direction is broader than static playlist organization. Chordrift
 becomes a personal listening-system designer with three distinct layers:
