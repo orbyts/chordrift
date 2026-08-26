@@ -68,6 +68,16 @@ receipts are batched into one Neon insert. The user must create a fresh plan
 after the latest pull because plan `fac3d2ba-6b6e-47e6-9575-24e10fa4458b`
 explicitly reports `snapshot_current: false`.
 
+The repository now includes executable `scripts/chordrift-workflow.sh` for the
+operator convenience loop. It uses the installed `chordrift` command by
+default (or exact `CHORDRIFT_BIN` override), never `cargo run`. It performs an
+initial pull, creates/shows the plan, optionally preflights publish, runs probed
+readiness, requires the operator to type the exact assessment UUID, applies one
+publish or reconcile phase, pulls/verifies the receipt, and creates/shows the
+final convergence plan. It refuses cleanup, retirement, stale plans, and plans
+spanning multiple phases. `--skip-initial-pull` is available for a just-pulled
+state. Shell syntax, ShellCheck when available, and help output pass.
+
 The prior v0.1.3 release state follows.
 
 Chordrift v0.1.3 is released. Release commit

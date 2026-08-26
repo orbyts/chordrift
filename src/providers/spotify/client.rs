@@ -521,12 +521,12 @@ impl SpotifyClient {
         let mut progress = TerminalProgress::new("Spotify · saved tracks", first.total);
         progress.set_position(first.items.len());
         if reuse.is_none() {
-            progress.note("spotify reuse: no saved-track baseline available");
+            progress.note("no Neon baseline available");
         }
         if let Some(previous) = reuse
             && saved_page_matches(&first, previous)
         {
-            progress.note("Spotify · saved tracks unchanged; reusing Neon state");
+            progress.note("unchanged · reused from Neon");
             progress.finish();
             return Ok(SavedTracksInventory {
                 items: Vec::new(),

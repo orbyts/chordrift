@@ -24,6 +24,9 @@ All notable changes to Chordrift are documented here.
   evidence, and a consistent multi-phase progress bar and event style.
 - Replace the last database-v1 library-candidate function body with v2 current
   revisions and verified baselines, and batch readiness-check receipts.
+- Add an operator-only installed-binary wrapper for the complete safe
+  pull/plan/readiness/confirm/apply/pull/convergence loop; it refuses
+  destructive, stale, and ambiguous multi-phase plans.
 
 ## [0.1.3] - 2026-08-26
 

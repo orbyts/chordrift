@@ -154,7 +154,7 @@ impl TerminalProgress {
         if let Some(bar) = &self.bar {
             bar.set_position(position.min(self.total));
         } else if position == self.total || position.saturating_sub(self.last_plain) >= 50 {
-            event(&self.label, format!("{position}/{}", self.total));
+            progress_event(&self.label, format!("{position}/{}", self.total));
             self.last_plain = position;
         }
     }
@@ -163,7 +163,7 @@ impl TerminalProgress {
         if let Some(bar) = &self.bar {
             bar.println(message.as_ref());
         } else {
-            event(&self.label, message);
+            progress_event(&self.label, message.as_ref());
         }
     }
 
@@ -171,8 +171,16 @@ impl TerminalProgress {
         if let Some(bar) = self.bar {
             bar.finish_and_clear();
         } else if self.last_plain != self.total {
-            event(&self.label, format!("{}/{}", self.total, self.total));
+            progress_event(&self.label, format!("{}/{}", self.total, self.total));
         }
+    }
+}
+
+fn progress_event(label: &str, message: impl AsRef<str>) {
+    if let Some((scope, activity)) = label.split_once(" · ") {
+        event(scope, format!("{activity} · {}", message.as_ref()));
+    } else {
+        event(label, message);
     }
 }
 

@@ -61,6 +61,20 @@ Never apply a plan merely because it exists. Confirm that its operations match
 your intent, then follow the readiness and apply sequence in
 [Synchronize and prove convergence](how-to/SYNC_AND_CONVERGENCE.md).
 
+For the complete terminal workflow, the repository includes an operator-only
+wrapper that uses the installed `chordrift` binary:
+
+```console
+$ scripts/chordrift-workflow.sh --account personal
+```
+
+It pulls, creates and displays a plan, runs readiness, asks you to type the
+exact assessment UUID, applies one publish or reconcile phase, pulls again,
+shows the receipt, and creates the convergence plan. It refuses stale,
+multi-phase, cleanup, and retirement plans. Use `--skip-initial-pull` only when
+you have just completed and inspected a pull. `CHORDRIFT_BIN` may point to an
+alternate installed executable; the wrapper never invokes `cargo run`.
+
 ## Semantic playlists used for capture
 
 Use these playlists to tell Chordrift why a newly encountered track matters:
