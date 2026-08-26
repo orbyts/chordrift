@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2600" height="2000" viewBox="0 0 2600 2000" role="img" aria-labelledby="title description">
+  <title id="title">Chordrift database v2 schema overview</title>
+  <desc id="description">Conceptual organization of Chordrift database v2 tables and the lifecycle of a track manually removed from Spotify.</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#172033" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0 0L12 6L0 12Z" fill="#55708f"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0 0L12 6L0 12Z" fill="#2f70bd"/>
+    </marker>
+    <style>
+      .bg{fill:#f7f8fc}.heading{font:700 42px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#172033}.sub{font:400 20px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#536176}.panel{stroke-width:2;rx:24;filter:url(#shadow)}.panelTitle{font:700 25px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#172033}.panelNote{font:400 16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#5c687a}.card{fill:#fff;stroke-width:2;rx:12}.name{font:650 17px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#172033}.purpose{font:400 15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#5c687a}.edge{fill:none;stroke:#55708f;stroke-width:3;marker-end:url(#arrow)}.edgeBlue{fill:none;stroke:#2f70bd;stroke-width:4;marker-end:url(#arrowBlue)}.dash{fill:none;stroke:#7d899a;stroke-width:3;stroke-dasharray:10 8;marker-end:url(#arrow)}.label{font:600 15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#536176;paint-order:stroke;stroke:#f7f8fc;stroke-width:7}.flowBox{fill:#fff;stroke:#c9d3e0;stroke-width:2;rx:16;filter:url(#shadow)}.flowHead{font:700 18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#172033;text-anchor:middle}.flowText{font:400 15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#5c687a;text-anchor:middle}.num{fill:#2f70bd}.numText{font:700 18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#fff;text-anchor:middle;dominant-baseline:middle}.legend{font:500 15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#536176}
+    </style>
+  </defs>
+
+  <rect class="bg" width="2600" height="2000"/>
+  <text class="heading" x="70" y="65">Chordrift database v2 — conceptual Neon table map</text>
+  <text class="sub" x="70" y="102">Implemented after migrations 0040–0042. Neon may list tables alphabetically; this diagram groups them by responsibility.</text>
+
+  <!-- Main relationships, behind panels -->
+  <path class="edge" d="M430 370H490"/><text class="label" x="438" y="350">identifies</text>
+  <path class="edge" d="M1110 370H1170"/><text class="label" x="1112" y="350">compare</text>
+  <path class="edge" d="M1790 500H1850"/><text class="label" x="1795" y="480">cross-links by identity</text>
+  <path class="edgeBlue" d="M800 700V750"/><text class="label" x="815" y="735">baseline</text>
+  <path class="edge" d="M1480 700V750"/><text class="label" x="1495" y="735">receipts</text>
+  <path class="edge" d="M2170 700V750"/><text class="label" x="2185" y="735">rebuild</text>
+  <path class="dash" d="M800 1235V1135"/><text class="label" x="815" y="1195">compatibility source</text>
+  <path class="dash" d="M2050 1235L2170 1135"/><text class="label" x="2060" y="1195">dual-write source</text>
+
+  <!-- 1 Identity -->
+  <rect class="panel" x="70" y="145" width="360" height="990" fill="#f1ecff" stroke="#9678d0"/>
+  <text class="panelTitle" x="100" y="188">1 · Identity hub</text>
+  <text class="panelNote" x="100" y="217">Stable things, not observations</text>
+  <g transform="translate(100 250)"><rect class="card" width="300" height="86" stroke="#9678d0"/><text class="name" x="17" y="32">provider_accounts</text><text class="purpose" x="17" y="60">One account at a provider</text></g>
+  <g transform="translate(100 360)"><rect class="card" width="300" height="86" stroke="#9678d0"/><text class="name" x="17" y="32">provider_playlists</text><text class="purpose" x="17" y="60">Stable Spotify playlist IDs</text></g>
+  <g transform="translate(100 470)"><rect class="card" width="300" height="86" stroke="#9678d0"/><text class="name" x="17" y="32">provider_tracks</text><text class="purpose" x="17" y="60">Stable Spotify track IDs</text></g>
+  <g transform="translate(100 580)"><rect class="card" width="300" height="86" stroke="#9678d0"/><text class="name" x="17" y="32">provider_albums</text><text class="purpose" x="17" y="60">Stable Spotify album IDs</text></g>
+  <g transform="translate(100 710)"><rect class="card" width="300" height="112" stroke="#7657b0"/><text class="name" x="17" y="32">tracks · artists · albums</text><text class="purpose" x="17" y="64">Canonical music identity</text><text class="purpose" x="17" y="88">Provider-independent</text></g>
+  <g transform="translate(100 850)"><rect class="card" width="300" height="150" stroke="#7657b0"/><text class="name" x="17" y="32">track_matches</text><text class="name" x="17" y="58">track_artists</text><text class="name" x="17" y="84">provider_artists</text><text class="purpose" x="17" y="118">Provider ↔ canonical links</text></g>
+  <text class="panelNote" x="100" y="1050">Provider IDs survive metadata changes.</text>
+  <text class="panelNote" x="100" y="1077">Canonical IDs survive provider changes.</text>
+
+  <!-- 2 Current provider state -->
+  <rect class="panel" x="490" y="145" width="620" height="555" fill="#e8f4ff" stroke="#5895ce"/>
+  <text class="panelTitle" x="520" y="188">2 · Current provider state</text>
+  <text class="panelNote" x="520" y="217">One current inventory; unchanged bodies are reused</text>
+  <g transform="translate(520 250)"><rect class="card" width="270" height="100" stroke="#5895ce"/><text class="name" x="17" y="31">provider_current_</text><text class="name" x="17" y="56">inventories</text><text class="purpose" x="17" y="82">Account’s current pointer</text></g>
+  <g transform="translate(810 250)"><rect class="card" width="270" height="100" stroke="#5895ce"/><text class="name" x="17" y="31">provider_current_</text><text class="name" x="17" y="56">playlists</text><text class="purpose" x="17" y="82">Headers + revision pointer</text></g>
+  <g transform="translate(520 380)"><rect class="card" width="270" height="115" stroke="#5895ce"/><text class="name" x="17" y="31">provider_playlist_</text><text class="name" x="17" y="56">revisions</text><text class="purpose" x="17" y="83">Unique ordered body hash</text></g>
+  <g transform="translate(810 380)"><rect class="card" width="270" height="115" stroke="#5895ce"/><text class="name" x="17" y="31">provider_playlist_</text><text class="name" x="17" y="56">revision_tracks</text><text class="purpose" x="17" y="83">Membership + exact order</text></g>
+  <g transform="translate(520 525)"><rect class="card" width="560" height="120" stroke="#5895ce"/><text class="name" x="17" y="27">provider_saved_track_revisions · provider_saved_track_revision_tracks</text><text class="name" x="17" y="51">provider_saved_album_revisions</text><text class="name" x="17" y="75">provider_saved_album_revision_albums · …_tracks</text><text class="purpose" x="17" y="101">Content-addressed saved-library surfaces</text></g>
+
+  <!-- 3 Durable intent -->
+  <rect class="panel" x="1170" y="145" width="620" height="555" fill="#fff4df" stroke="#cf9031"/>
+  <text class="panelTitle" x="1200" y="188">3 · Durable Chordrift intent</text>
+  <text class="panelNote" x="1200" y="217">What should happen, independent of today’s Spotify state</text>
+  <g transform="translate(1200 250)"><rect class="card" width="270" height="105" stroke="#cf9031"/><text class="name" x="17" y="31">playlist_concepts</text><text class="name" x="17" y="57">playlists</text><text class="purpose" x="17" y="84">Stable collection identity</text></g>
+  <g transform="translate(1490 250)"><rect class="card" width="270" height="105" stroke="#cf9031"/><text class="name" x="17" y="31">playlist_generations</text><text class="name" x="17" y="57">playlist_tracks</text><text class="purpose" x="17" y="84">Approved membership</text></g>
+  <g transform="translate(1200 385)"><rect class="card" width="270" height="105" stroke="#cf9031"/><text class="name" x="17" y="31">track_playlist_</text><text class="name" x="17" y="57">assignment_revisions</text><text class="purpose" x="17" y="84">Explainable corrections</text></g>
+  <g transform="translate(1490 385)"><rect class="card" width="270" height="105" stroke="#cf9031"/><text class="name" x="17" y="31">excluded_tracks</text><text class="name" x="17" y="57">reevaluation_events</text><text class="purpose" x="17" y="84">Reversible decisions</text></g>
+  <g transform="translate(1200 520)"><rect class="card" width="560" height="125" stroke="#cf9031"/><text class="name" x="17" y="31">classifications · routing_surfaces</text><text class="name" x="17" y="58">provider_account_playlists</text><text class="purpose" x="17" y="89">Review evidence, Re-evaluate queue, account policy</text></g>
+
+  <!-- 4 Permanent evidence -->
+  <rect class="panel" x="1850" y="145" width="680" height="555" fill="#e9f8ef" stroke="#4fa473"/>
+  <text class="panelTitle" x="1880" y="188">4 · Permanent listening evidence</text>
+  <text class="panelNote" x="1880" y="217">Typed recipe facts; raw ZIPs remain outside PostgreSQL</text>
+  <g transform="translate(1880 250)"><rect class="card" width="300" height="105" stroke="#4fa473"/><text class="name" x="17" y="31">listening_evidence_</text><text class="name" x="17" y="57">imports</text><text class="purpose" x="17" y="84">Archive hash + manifest</text></g>
+  <g transform="translate(2200 250)"><rect class="card" width="300" height="105" stroke="#4fa473"/><text class="name" x="17" y="31">listening_evidence_</text><text class="name" x="17" y="57">source_files</text><text class="purpose" x="17" y="84">Path + hash status</text></g>
+  <g transform="translate(1880 385)"><rect class="card" width="620" height="105" stroke="#4fa473"/><text class="name" x="17" y="31">historical_provider_track_identities</text><text class="purpose" x="17" y="62">Display metadata stored once per historical provider track</text><text class="purpose" x="17" y="85">May resolve lazily to a canonical track</text></g>
+  <g transform="translate(1880 520)"><rect class="card" width="620" height="125" stroke="#4fa473"/><text class="name" x="17" y="31">normalized_listening_events</text><text class="purpose" x="17" y="62">Time · duration · skip/completion · context</text><text class="purpose" x="17" y="86">Source/import identity · supersession</text><text class="purpose" x="17" y="109">Permanent, compact, recipe-ready</text></g>
+
+  <!-- 5 Audit and checkpoints -->
+  <rect class="panel" x="490" y="750" width="1300" height="385" fill="#fcecf2" stroke="#c67594"/>
+  <text class="panelTitle" x="520" y="793">5 · Compact checkpoints and durable receipts</text>
+  <text class="panelNote" x="520" y="822">Plans, approvals, applies, and verification — without embedding whole inventories</text>
+  <g transform="translate(520 855)"><rect class="card" width="390" height="105" stroke="#c67594"/><text class="name" x="17" y="31">provider_inventory_checkpoints</text><text class="purpose" x="17" y="62">Named/pre-apply content baseline</text><text class="purpose" x="17" y="85">24 rehearsed from 41 snapshots</text></g>
+  <g transform="translate(930 855)"><rect class="card" width="390" height="105" stroke="#c67594"/><text class="name" x="17" y="31">provider_inventory_checkpoint_playlists</text><text class="name" x="17" y="57">…_checkpoint_saved_surfaces</text><text class="purpose" x="17" y="85">Pointers to immutable revisions</text></g>
+  <g transform="translate(1340 855)"><rect class="card" width="420" height="105" stroke="#c67594"/><text class="name" x="17" y="31">sync_runs · sync_operations</text><text class="name" x="17" y="57">sync_apply_runs · sync_apply_operations</text><text class="purpose" x="17" y="85">Plan and apply receipts</text></g>
+  <g transform="translate(520 985)"><rect class="card" width="600" height="100" stroke="#c67594"/><text class="name" x="17" y="31">managed_playlist_verifications · managed_playlist_verified_tracks</text><text class="purpose" x="17" y="63">Exact provider convergence evidence</text></g>
+  <g transform="translate(1140 985)"><rect class="card" width="620" height="100" stroke="#c67594"/><text class="name" x="17" y="28">database_v2_migration_runs</text><text class="name" x="17" y="53">external_playlist_cleanup_batches · …_items</text><text class="purpose" x="17" y="80">Exact-confirmed migration and cleanup audit</text></g>
+
+  <!-- 6 Derived -->
+  <rect class="panel" x="1850" y="750" width="680" height="385" fill="#eef1f5" stroke="#8592a4"/>
+  <text class="panelTitle" x="1880" y="793">6 · Rebuildable derived data</text>
+  <text class="panelNote" x="1880" y="822">Versioned caches; eligible for retention policies</text>
+  <g transform="translate(1880 855)"><rect class="card" width="300" height="100" stroke="#8592a4"/><text class="name" x="17" y="31">account_listening_</text><text class="name" x="17" y="57">track_statistics</text><text class="purpose" x="17" y="82">Aggregated signals</text></g>
+  <g transform="translate(2200 855)"><rect class="card" width="300" height="100" stroke="#8592a4"/><text class="name" x="17" y="31">embedding_generations</text><text class="name" x="17" y="57">account_track_embeddings</text><text class="purpose" x="17" y="82">Semantic cache</text></g>
+  <g transform="translate(1880 985)"><rect class="card" width="300" height="100" stroke="#8592a4"/><text class="name" x="17" y="31">signal_generations</text><text class="name" x="17" y="57">account_track_signals</text><text class="purpose" x="17" y="82">Preference features</text></g>
+  <g transform="translate(2200 985)"><rect class="card" width="300" height="100" stroke="#8592a4"/><text class="name" x="17" y="31">cluster_generations</text><text class="name" x="17" y="57">clusters · cluster_tracks</text><text class="purpose" x="17" y="82">Rebuildable grouping</text></g>
+
+  <!-- Legacy compatibility -->
+  <rect x="70" y="1235" width="2460" height="235" rx="24" fill="#f3f4f6" stroke="#808c9d" stroke-width="2" stroke-dasharray="12 9"/>
+  <text class="panelTitle" x="100" y="1278">7 · Legacy compatibility layer — still visible immediately after migration</text>
+  <text class="panelNote" x="100" y="1307">Retained for rollback and observation. Retirement later requires a separate plan → apply → verify approval.</text>
+  <g transform="translate(100 1340)"><rect class="card" width="760" height="90" stroke="#808c9d" stroke-dasharray="7 5"/><text class="name" x="17" y="22">provider_library_snapshots · provider_playlist_snapshots</text><text class="name" x="17" y="43">provider_playlist_tracks · provider_saved_tracks</text><text class="name" x="17" y="64">provider_saved_albums · provider_saved_album_tracks</text><text class="purpose" x="17" y="84">Complete historical inventory copies</text></g>
+  <g transform="translate(885 1340)"><rect class="card" width="640" height="90" stroke="#808c9d" stroke-dasharray="7 5"/><text class="name" x="17" y="30">listening_events · spotify_archive_imports</text><text class="purpose" x="17" y="57">Original event and archive rows during dual-write</text><text class="purpose" x="17" y="79">Rollback source until v2 reads are proven</text></g>
+  <g transform="translate(1550 1340)"><rect class="card" width="950" height="90" stroke="#808c9d" stroke-dasharray="7 5"/><text class="name" x="17" y="30">external_playlist_bookmark_snapshots · embedding/signal snapshot references</text><text class="purpose" x="17" y="57">Bookmark observations remain durable audit; generations are rebuildable</text><text class="purpose" x="17" y="79">This is why legacy retirement is a later workstream</text></g>
+
+  <!-- Manual deletion flow -->
+  <text class="panelTitle" x="70" y="1535">Example · you manually remove a song from a managed Spotify playlist</text>
+  <text class="panelNote" x="70" y="1564">Chordrift records observed state first. It does not erase history or silently invent intent.</text>
+  <path class="edgeBlue" d="M430 1745H470M830 1745H870M1230 1745H1270M1630 1745H1670M2030 1745H2070"/>
+  <g transform="translate(70 1600)"><rect class="flowBox" width="360" height="285"/><circle class="num" cx="40" cy="40" r="22"/><text class="numText" x="40" y="40">1</text><text class="flowHead" x="180" y="84">Manual Spotify edit</text><text class="flowText" x="180" y="127">Track disappears from one</text><text class="flowText" x="180" y="150">managed playlist.</text><text class="flowText" x="180" y="197">Spotify is observed state,</text><text class="flowText" x="180" y="220">not the intent ledger.</text></g>
+  <g transform="translate(470 1600)"><rect class="flowBox" width="360" height="285"/><circle class="num" cx="40" cy="40" r="22"/><text class="numText" x="40" y="40">2</text><text class="flowHead" x="180" y="84">Next read-only pull</text><text class="flowText" x="180" y="127">New playlist body becomes a</text><text class="flowText" x="180" y="150">content revision; the current</text><text class="flowText" x="180" y="173">pointer advances.</text><text class="flowText" x="180" y="220">No old row is deleted.</text></g>
+  <g transform="translate(870 1600)"><rect class="flowBox" width="360" height="285"/><circle class="num" cx="40" cy="40" r="22"/><text class="numText" x="40" y="40">3</text><text class="flowHead" x="180" y="84">Compare with intent</text><text class="flowText" x="180" y="127">Planner compares the current</text><text class="flowText" x="180" y="150">revision with approved</text><text class="flowText" x="180" y="173">membership + checkpoint.</text><text class="flowText" x="180" y="220">The difference is explainable.</text></g>
+  <g transform="translate(1270 1600)"><rect class="flowBox" width="360" height="285"/><circle class="num" cx="40" cy="40" r="22"/><text class="numText" x="40" y="40">4</text><text class="flowHead" x="180" y="84">Stage interpretation</text><text class="flowText" x="180" y="127">Propose exclusion, restore,</text><text class="flowText" x="180" y="150">or keep in Re-evaluate.</text><text class="flowText" x="180" y="197">Ambiguous intent waits for</text><text class="flowText" x="180" y="220">review / exact approval.</text></g>
+  <g transform="translate(1670 1600)"><rect class="flowBox" width="360" height="285"/><circle cx="40" cy="40" r="22" fill="#bd7416"/><text class="numText" x="40" y="40">5</text><text class="flowHead" x="180" y="84">Record durable decision</text><text class="flowText" x="180" y="127">After approval, write intent to</text><text class="flowText" x="180" y="150">excluded_tracks, assignment,</text><text class="flowText" x="180" y="173">or Re-evaluate history.</text><text class="flowText" x="180" y="220">Listening evidence is untouched.</text></g>
+  <g transform="translate(2070 1600)"><rect class="flowBox" width="460" height="285"/><circle class="num" cx="40" cy="40" r="22"/><text class="numText" x="40" y="40">6</text><text class="flowHead" x="230" y="84">Verify convergence</text><text class="flowText" x="230" y="127">Receipt references a compact checkpoint.</text><text class="flowText" x="230" y="153">A later pull proves the approved outcome.</text><text class="flowText" x="230" y="197">Excluded tracks are not silently restored.</text><text class="flowText" x="230" y="220">Refiled tracks reach destination first.</text></g>
+
+  <rect x="70" y="1920" width="22" height="22" rx="5" fill="#e8f4ff" stroke="#5895ce"/><text class="legend" x="102" y="1937">Current state</text>
+  <rect x="235" y="1920" width="22" height="22" rx="5" fill="#fff4df" stroke="#cf9031"/><text class="legend" x="267" y="1937">Durable intent</text>
+  <rect x="415" y="1920" width="22" height="22" rx="5" fill="#e9f8ef" stroke="#4fa473"/><text class="legend" x="447" y="1937">Permanent evidence</text>
+  <rect x="620" y="1920" width="22" height="22" rx="5" fill="#fcecf2" stroke="#c67594"/><text class="legend" x="652" y="1937">Audit/checkpoints</text>
+  <rect x="830" y="1920" width="22" height="22" rx="5" fill="#eef1f5" stroke="#8592a4"/><text class="legend" x="862" y="1937">Rebuildable</text>
+  <rect x="995" y="1920" width="22" height="22" rx="5" fill="#f3f4f6" stroke="#808c9d" stroke-dasharray="5 4"/><text class="legend" x="1027" y="1937">Legacy compatibility / later retirement</text>
+  <text class="panelNote" x="70" y="1975">Arrows show major ownership/dataflow links, not every foreign key. Immediately after migration, v2 and legacy tables coexist; raw Spotify ZIPs remain outside Neon.</text>
+</svg>
