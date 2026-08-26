@@ -643,8 +643,20 @@ The second fresh PostgreSQL 18 rehearsal measured:
 - successful ordinary read commands, provider-inventory persistence/reuse, and
   normalized archive import on the post-clean schema.
 
-The rehearsal hash is evidence, not production authority. Migration 0044 has
-not been installed on Neon and no Neon legacy row has been removed. Production
-must emit its own current plan, receive explicit approval for that exact hash,
-apply, verify immediately, and keep the former project untouched until a later
-rollback-retirement decision.
+Migration 0044 is installed on the live `Chordrift` project and immediate
+read-only verification reproduced every rehearsal invariant and runtime read.
+The production-emitted cleanup plan currently equals the rehearsal hash
+`0688bf0984ea6f6b26cf65ca7ab1c9fcb762601c6a512b204e7a79312830f964`,
+but equality does not itself authorize cleanup. No Neon legacy row has been
+removed. Applying that exact hash still requires separate explicit approval,
+immediate verification, and continued retention of the former project.
+
+During the 0044 gate, the desktop process was found to carry a stale inherited
+database URL for the former project even though the owner-only persistent secret
+targets `Chordrift`. The first migration invocation therefore installed the
+same additive 0044 schema on the former project. It did not delete or rewrite
+rows; the former project remains at zero normalized events/checkpoints and is
+still the rollback copy, now at 44/44 migrations. The intended project was then
+addressed by explicit ID and verified at 44/44. Operational commands must use an
+explicit project target or a fresh correctly loaded secret, never the stale
+desktop environment.

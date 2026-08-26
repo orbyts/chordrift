@@ -711,7 +711,11 @@ The clean database retains 58 lightweight observations, 22 current playlists,
 durable audit reference while shrinking locally to 167,974,591 bytes. Both a
 provider-inventory round trip and a normalized archive-import round trip pass
 against the post-clean schema. Migration 0044 and destructive cleanup have not
-been applied to Neon; each remains a separate exact production gate.
+been applied to Neon. Migration 0044 is now installed and verified on the live
+`Chordrift` project at 44/44. Its exact read-only production cleanup plan is
+`0688bf0984ea6f6b26cf65ca7ab1c9fcb762601c6a512b204e7a79312830f964`,
+with the same invariant hash as rehearsal; cleanup has not been applied and
+requires separate exact-hash approval.
 
 The verified live Neon project keeps stable ID `damp-hall-40280714` and now has
 the final display name `Chordrift`; renaming changed neither its connection nor

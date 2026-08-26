@@ -8,14 +8,14 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: approve the v0.1.3 production runtime migration
+## Start the next task here: approve the exact production cleanup hash
 
 Work is on `codex/v0.1.3-database-v2-runtime`. The v0.1.3 code refactor is
 implemented: ordinary provider reads use current/revision/checkpoint v2
 surfaces, archive and recent-play writes go directly to normalized evidence,
 and provider pulls use transient v2 import staging that is empty at commit.
-Migration 0044 supplies these runtime surfaces and cleanup receipts. It has not
-been applied to Neon.
+Migration 0044 supplies these runtime surfaces and cleanup receipts. It is now
+installed on the live `Chordrift` project, which is healthy at 44/44.
 
 The exact provider-free cleanup engine is implemented as `chordrift db compact
 cleanup plan/apply/verify`. A second fresh PostgreSQL 18 restore reached 44/44,
@@ -34,12 +34,37 @@ archive-history write round trips both pass against the post-clean schema.
 No production cleanup occurred. The configured live project remains
 `damp-hall-40280714` and its Neon display name is now `Chordrift`; the former
 project `mute-recipe-86719846` remains intact
-and must not be modified or deleted. The next production sequence requires
-separate approvals: first install additive migration 0044 and immediately run
-read-only/runtime checks; then emit a fresh production cleanup hash and stop;
-only an explicit approval naming that exact production hash may authorize
-cleanup apply. Never reuse the rehearsal cleanup hash as production authority.
-No Spotify write is part of this sequence.
+as the rollback project and must not be deleted. Immediate post-0044 checks on
+the explicit live project proved 44/44, 149,314 normalized events, 15,575
+identities, two evidence imports, 24 checkpoints, 22 playlists, 1,790 ordered
+memberships, all parity gates true, and `ready_for_cutover: true`. Runtime
+history, signals, embeddings, albums, and playlists all read successfully.
+Storage is 358,850,560 database bytes and 347,529,216 ordinary-table bytes.
+
+The live read-only cleanup plan is exact and currently matches the final
+rehearsal: plan
+`0688bf0984ea6f6b26cf65ca7ab1c9fcb762601c6a512b204e7a79312830f964`,
+invariant
+`24f5da45845bb48b3cfeb49cbd09fe371043c7f9544ea38993d3016beaf0d6a3`,
+58 observation headers retained, 157,193 duplicate provider rows eligible,
+149,314 legacy events replaced by 149,314 normalized events, and two legacy
+archive rows replaced by two evidence manifests. No cleanup apply occurred.
+Only a new explicit approval naming that exact production hash may authorize
+`db compact cleanup apply`.
+
+Operational warning: this Codex desktop task inherited a stale
+`CHORDRIFT_DATABASE_URL` targeting the former project even though the persistent
+`/Users/suhail/.config/apogee/secrets.env` value targets `Chordrift` and remains
+mode `0600`. The first approved 0044 invocation therefore added the same
+additive migration to former project `mute-recipe-86719846`. No row was deleted,
+normalized, compacted, or rewritten there; it now reports 44/44 but still has
+zero normalized events and zero checkpoints. After discovery, every operation
+used explicit project ID `damp-hall-40280714`; 0044 was then applied and verified
+on the intended live project. Future production commands must not trust the
+inherited desktop variable: obtain a short-lived connection for the explicit
+project ID or start a genuinely fresh process that loads the persistent secret.
+Do not shell-source `secrets.env`; URL query characters are not shell syntax.
+No Spotify request or write occurred.
 
 ## Historical: database-v2 project cutover
 
