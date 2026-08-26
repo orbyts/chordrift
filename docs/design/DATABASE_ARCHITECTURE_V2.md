@@ -493,3 +493,30 @@ database bytes and 400,482,304 ordinary-table bytes. The next gate is the
 exact-confirmed data apply using the production-emitted hash above, followed by
 read-only verification and another stop. It does not authorize read cutover or
 legacy cleanup.
+
+### First production data-migration attempt
+
+The exact-confirmed apply for production plan
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`
+was attempted under explicit approval on 2026-08-26. PostgreSQL rejected the
+transaction with SQLSTATE `53100`, indicating insufficient storage. The apply
+was not retried.
+
+Read-only verification proves a clean logical rollback: zero normalized events,
+zero historical identities, zero evidence imports, zero checkpoints, and no
+migration receipt are visible. All 43 plan, 420 verification, and one cleanup
+references still await checkpoints. The plan remains applicable with the same
+hash, `ready_for_cutover` remains false, and the complete legacy invariant is
+unchanged.
+
+PostgreSQL retained physical pages allocated by the aborted transaction.
+Database size increased from 411,852,800 to 514,457,600 bytes and the sum of
+ordinary-table totals from 400,482,304 to 503,087,104 bytes. Although it has no
+visible rows, `normalized_listening_events` occupies 98,500,608 total bytes;
+the empty `historical_provider_track_identities` relation occupies 4,128,768.
+These are dead physical tuples/pages, not partially committed evidence.
+
+No vacuum, compaction, quota change, read cutover, deletion, connection change,
+or Spotify operation followed the failure. The next safe gate requires added
+Neon storage headroom or a separately reviewed maintenance/reuse plan, followed
+by fresh read-only checks and explicit retry authority.

@@ -10,6 +10,28 @@ Last updated: 2026-08-26.
 
 ## Start the next task here: approve or defer production database-v2 data migration
 
+The first exact-confirmed production data-migration attempt using plan
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`
+was rejected by PostgreSQL with SQLSTATE `53100` (insufficient storage). Do not
+retry blindly. The transaction rolled back logically: normalized events,
+historical identities, evidence imports, checkpoints, and migration receipts
+all remain zero; all 464 durable references still await checkpoints; the plan
+hash is unchanged and applicable; and the full legacy invariant is unchanged.
+
+The aborted inserts nevertheless allocated dead physical pages. Production now
+reports 514,457,600 database bytes and 503,087,104 ordinary-table bytes;
+`normalized_listening_events` has zero visible rows but 98,500,608 total bytes,
+and `historical_provider_track_identities` has zero visible rows but 4,128,768
+total bytes. Production remains healthy at 43/43 migrations. No vacuum,
+compaction, quota change, retry, read cutover, deletion, connection change, or
+Spotify operation was performed.
+
+The safest next step is to add sufficient Neon storage headroom before another
+exact-plan attempt. A targeted vacuum/reuse strategy is a separate production
+maintenance decision and must not be inferred from the existing data-migration
+approval. Re-run the read-only status, invariant, storage, and exact plan after
+the storage decision, then request a fresh bounded retry approval.
+
 The next conversation begins from the pushed
 `codex/database-v2-migration-rehearsal` branch. Do not resume the completed South Asian,
 legacy-route, Inbox, or Liked Songs cleanup. First read `README.md`, the

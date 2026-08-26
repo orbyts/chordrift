@@ -661,6 +661,16 @@ Normalized evidence and checkpoints remain empty; no data apply, read cutover,
 deletion, connection change, or Spotify operation occurred. Exact-confirmed
 production data migration is the next separately approved gate.
 
+Database-v2 production data migration status: storage-blocked with a clean
+logical rollback. The exact-confirmed plan began under explicit approval but
+PostgreSQL returned SQLSTATE `53100`. No v2 evidence, identity, checkpoint, or
+receipt row is visible; the complete legacy invariant and plan hash remain
+unchanged. Aborted tuples increased physical storage to 514,457,600 database
+bytes, including 98,500,608 bytes in the empty normalized-event relation and
+4,128,768 bytes in the empty identity relation. Do not retry, vacuum, compact,
+or cut over until additional Neon headroom or a separately approved bounded
+maintenance strategy is available.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated
