@@ -755,7 +755,10 @@ sessions receive compact titled tables, flattened JSON evidence, consistent
 colors, and one workflow progress bar that safely hosts provider/database
 events. Migration 0045 replaces the final stored SQL function that still named
 cleanup-removed database-v1 tables; its post-clean relation-rename regression
-passes locally and production application remains separately approval-gated.
+passes locally. Production application was explicitly approved and completed
+in 722 ms; Chordrift is healthy at 45/45, the repaired candidate path passes a
+live read-only track inspection, and stale readiness emits an actionable
+plan-refresh message. No cleanup or Spotify write accompanied the migration.
 
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for

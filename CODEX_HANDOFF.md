@@ -49,8 +49,15 @@ plan display. Readiness then failed with SQLSTATE 42P01 because the stored
 refactor—still named cleanup-removed v1 tables. Additive migration 0045 replaces
 that body with v2 current revisions, latest managed verification baselines, and
 active exclusions. A PostgreSQL 18 regression physically renames the legacy
-relations as cleanup does and proves the function still executes. Do not apply
-0045 to Neon without explicit approval.
+relations as cleanup does and proves the function still executes. The user
+subsequently approved exactly additive production migration 0045. It applied in
+722 ms; production is healthy at 45/45 with zero pending or failed migrations.
+Read-only inspection of removed Spotify identity
+`3A2o7x7zA3MwgQlcPgVboZ` successfully exercised the repaired v2 candidate path,
+retaining canonical placement and exclusion context. A readiness attempt
+against stale plan `fac3d2ba-6b6e-47e6-9575-24e10fa4458b` now returns the
+intended actionable stale-plan error instead of SQLSTATE 42P01. No cleanup,
+Spotify probe, or Spotify write occurred.
 
 All interactive command output now passes through `src/presentation.rs`.
 Key/value and TSV reports become compact titled tables, JSON evidence is
