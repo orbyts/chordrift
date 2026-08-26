@@ -743,11 +743,12 @@ track library is unchanged, advance the analysis checkpoint without deleting
 and rebuilding the complete derived statistics table. Keep explicit history
 refresh and summary commands event-level and authoritative.
 
-Status: implementation complete on `codex/v0.1.4-sync-performance`; local unit,
-strict Clippy, schema migration, clean provider round-trip, and incremental
-history tests pass on PostgreSQL 18. A real read-only personal pull remains the
-measurement gate before merge/release. It must report Spotify request count and
-per-phase elapsed time; no Spotify write is part of this milestone.
+Status: complete. Local unit, strict Clippy, schema migration, clean provider
+round-trip, and incremental-history tests pass on PostgreSQL 18. Real personal
+pulls reduced the unchanged workflow from 70.3 seconds to 4.6 seconds after the
+publication-check fix; a later reconciliation workflow completed its follow-up
+pull in 5.4 seconds and verified the apply receipt. Production is healthy at
+45/45 migrations. No cleanup is part of this milestone.
 
 Interactive presentation is centralized for every command: existing stable
 key/value and tabular reports remain unchanged when redirected, while terminal

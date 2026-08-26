@@ -8,38 +8,34 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: measure and finish v0.1.4 sync performance
+## Start the next task here: observe the released v0.1.4 workflow
 
-Work is on `codex/v0.1.4-sync-performance`. The v0.1.4 implementation makes a
-routine pull proportional to change: saved tracks, saved albums, and recent
-plays are fetched concurrently; unchanged playlist persistence is set-based;
-historical identities and recent events are batched; unchanged analysis reuses
-its checkpoint; and listening statistics update only identities receiving new
-events. A fully unchanged provider inventory retains its existing
-content-addressed revisions, so it no longer copies and deletes all 1,790
-playlist memberships through transient staging. The routine history summary/relink path now scans the compact
-per-identity statistics cache rather than all normalized events. Explicit
-history refresh/summary operations remain event-level verification surfaces.
+The v0.1.4 implementation makes a routine pull proportional to change: saved
+tracks, saved albums, and recent plays are fetched concurrently; unchanged
+playlist persistence is set-based; historical identities and recent events are
+batched; unchanged analysis reuses its checkpoint; and listening statistics
+update only identities receiving new events. A fully unchanged provider
+inventory retains its existing content-addressed revisions, so it no longer
+copies and deletes all 1,790 playlist memberships through transient staging.
+The routine history summary/relink path now scans the compact per-identity
+statistics cache rather than all normalized events. Explicit history refresh
+and summary commands remain event-level verification surfaces.
 
 `sync pull` now emits compact tables, actual Spotify Web API request count, and
-provider/analysis/history/publication/total elapsed times. Local checks pass:
-formatting, all ordinary targets (93 library tests passed, two database tests
-ignored as designed), strict all-target/all-feature Clippy, PostgreSQL 18 schema
-migration, post-clean provider persistence, and the optimized recent-history
-round trip. No live Spotify request, Spotify write, or production Neon mutation
-was used to validate this branch. The next gate is a normal read-only
-`chordrift sync pull --account personal` with a locally built v0.1.4 binary,
-compare its phase timings/request count with the v0.1.3 observation, then fix
-any measured remaining bottleneck before merge and release.
+provider/analysis/history/publication/total elapsed times. Formatting, all
+ordinary targets, strict all-target/all-feature Clippy, PostgreSQL 18 schema
+migration, post-clean provider persistence, and optimized recent-history tests
+pass. Real personal pulls and one operator-approved reconciliation exercised the
+complete workflow. Continue normal use and record any newly observed issue as a
+later patch rather than reopening the completed database-v2 migration.
 
 The first instrumented personal pull completed in 70.3 seconds and isolated a
 57.5-second publication-check phase. The cause was unconditional recreation of
 16 managed-playlist verification headers and roughly 1,754 verification-track
-rows, issued one row per Neon round trip, despite no pending apply. The branch
-now returns after one pending-work probe when playlist membership is unchanged,
-and batches headers plus ordered tracks when a real verification is required.
-Rerun the same pull to measure this fix; the publication phase should fall from
-57.5 seconds to roughly normal Neon round-trip latency.
+rows, issued one row per Neon round trip, despite no pending apply. The
+implementation now returns after one pending-work probe when playlist
+membership is unchanged, and batches headers plus ordered tracks when a real
+verification is required.
 
 The rerun completed in 4.6 seconds (provider 3.7 s, analysis 473 ms, history
 313 ms, publication checks 98 ms), proving the latency fix. A subsequent track
@@ -56,17 +52,18 @@ Read-only inspection of removed Spotify identity
 `3A2o7x7zA3MwgQlcPgVboZ` successfully exercised the repaired v2 candidate path,
 retaining canonical placement and exclusion context. A readiness attempt
 against stale plan `fac3d2ba-6b6e-47e6-9575-24e10fa4458b` now returns the
-intended actionable stale-plan error instead of SQLSTATE 42P01. No cleanup,
-Spotify probe, or Spotify write occurred.
+intended actionable stale-plan error instead of SQLSTATE 42P01. A subsequent
+fresh plan/readiness/apply/pull workflow successfully recorded the requested
+exclusion, verified apply run `c4d0084c-d66b-478f-a1fe-877427f2bea7`, and
+completed its follow-up pull in 5.4 seconds (provider 3.9 s, publication checks
+686 ms). No cleanup occurred.
 
 All interactive command output now passes through `src/presentation.rs`.
 Key/value and TSV reports become compact titled tables, JSON evidence is
 flattened, existing bespoke reports pass through, and redirected output remains
 byte-stable for scripts. `src/terminal.rs` owns the shared table language,
 workflow progress bar, and provider/database event rendering. Readiness check
-receipts are batched into one Neon insert. The user must create a fresh plan
-after the latest pull because plan `fac3d2ba-6b6e-47e6-9575-24e10fa4458b`
-explicitly reports `snapshot_current: false`.
+receipts are batched into one Neon insert.
 
 The repository now includes executable `scripts/chordrift-workflow.sh` for the
 operator convenience loop. It uses the installed `chordrift` command by

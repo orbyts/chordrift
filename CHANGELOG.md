@@ -4,6 +4,8 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-08-26
+
 - Run independent saved-track, saved-album, and recent-play Spotify probes
   concurrently after the single playlist-header request.
 - Batch unchanged playlist metadata, account links, transient headers, reused
