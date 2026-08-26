@@ -602,6 +602,16 @@ preserve.
 
 ## v0.2.0 — Recipe foundation and native review UI
 
+Before recipe or UI implementation, complete the database-v2 foundation in
+`docs/design/DATABASE_ARCHITECTURE_V2.md`. The v0.1.2 database is logically
+healthy but stores raw listening metadata per event and complete provider
+membership per routine snapshot. Preserve its verified backup, rehearse a full
+restore, separate current provider state from durable intent, normalized
+evidence, and rebuildable caches, then migrate through measured invariants.
+Database cleanup, schema restructuring, migration/cutover, and code refactoring
+are sequential gates; native UI implementation must target the stable v2
+bridge rather than legacy tables.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated

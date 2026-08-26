@@ -6,7 +6,7 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-08-25.
+Last updated: 2026-08-26.
 
 ## Start the next task here: v0.2.0 product foundation
 
@@ -15,6 +15,22 @@ follow-up product-direction documentation commit. Do not resume the completed
 South Asian, legacy-route, Inbox, or Liked Songs cleanup. First read
 `README.md`, the v0.2.0-and-later sections of `ROADMAP.md`, this section, and
 `docs/HOW_TO_CHORDRIFT.md`.
+
+The immediate next task is the safe database-v2 cleanup foundation, not recipe
+or UI implementation. Read `docs/design/DATABASE_ARCHITECTURE_V2.md` first.
+The current v0.1.2 database is healthy but consumes about 391 MB because raw
+metadata is repeated across 149,314 listening events and complete playlist
+membership is copied across routine snapshots. The 13,855 unmatched tracks are
+lightweight historical identities from the Spotify archive, not current
+library members; preserve and resolve them lazily.
+
+A pre-compaction backup exists at
+`$DROPBOX/Music/Chordrift/Backups/2026-08-26-pre-compaction/`. It contains a
+25 MB custom-format dump, schema SQL, a successfully parsed `pg_restore`
+catalog, and SHA-256 checksum. Do not delete or compact production data yet.
+First restore the dump into an isolated database, run invariant reports, and
+produce a provider-free compaction plan. Production cutover and deletion each
+require later explicit approval.
 
 The approved direction is broader than static playlist organization. Chordrift
 becomes a personal listening-system designer with three distinct layers:
