@@ -239,7 +239,11 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     );
 
     // Simulate the cleanup relation renames and prove migration 0045's
-    // candidate function contains no late-bound database-v1 table names.
+    // candidate function contains no late-bound database-v1 table names. Keep
+    // the simulation transactional so the next integration surface receives
+    // the same clean migrated schema rather than this deliberately partial
+    // cleanup state.
+    let mut cleanup_simulation = database.pool().begin().await?;
     for statement in [
         "DROP VIEW provider_inventory_import_playlist_tracks",
         "DROP VIEW provider_inventory_import_playlists",
@@ -254,14 +258,17 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "ALTER TABLE provider_saved_albums RENAME TO provider_inventory_import_saved_albums",
         "ALTER TABLE provider_saved_album_tracks RENAME TO provider_inventory_import_saved_album_tracks",
     ] {
-        sqlx::query(statement).execute(database.pool()).await?;
+        sqlx::query(statement)
+            .execute(&mut *cleanup_simulation)
+            .await?;
     }
     let candidate_after_cleanup: bool =
         sqlx::query_scalar("SELECT account_track_is_library_candidate($1, gen_random_uuid())")
             .bind(account_id)
-            .fetch_one(database.pool())
+            .fetch_one(&mut *cleanup_simulation)
             .await?;
     assert!(!candidate_after_cleanup);
+    cleanup_simulation.rollback().await?;
 
     database.close().await;
     Ok(())
