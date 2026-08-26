@@ -32,6 +32,15 @@ was used to validate this branch. The next gate is a normal read-only
 compare its phase timings/request count with the v0.1.3 observation, then fix
 any measured remaining bottleneck before merge and release.
 
+The first instrumented personal pull completed in 70.3 seconds and isolated a
+57.5-second publication-check phase. The cause was unconditional recreation of
+16 managed-playlist verification headers and roughly 1,754 verification-track
+rows, issued one row per Neon round trip, despite no pending apply. The branch
+now returns after one pending-work probe when playlist membership is unchanged,
+and batches headers plus ordered tracks when a real verification is required.
+Rerun the same pull to measure this fix; the publication phase should fall from
+57.5 seconds to roughly normal Neon round-trip latency.
+
 The prior v0.1.3 release state follows.
 
 Chordrift v0.1.3 is released. Release commit

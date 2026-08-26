@@ -14,6 +14,9 @@ All notable changes to Chordrift are documented here.
   playlist/saved-surface membership rows.
 - Reuse unchanged library analysis and incrementally refresh listening
   statistics only for identities affected by new observations or new matches.
+- Skip managed-playlist baseline verification when provider membership is
+  unchanged and no apply run awaits a pull; batch verification headers and
+  ordered tracks when a real verification is required.
 - Render `sync pull` as compact library/evidence tables with per-phase elapsed
   times so real-world latency remains visible and actionable.
 

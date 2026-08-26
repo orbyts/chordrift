@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use image::{codecs::jpeg::JpegEncoder, imageops::FilterType};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sqlx::Row;
+use sqlx::{Postgres, QueryBuilder, Row};
 use storexa::Database;
 use uuid::Uuid;
 
@@ -389,15 +389,26 @@ pub async fn show(
 pub async fn verify_pending_publications(
     database: &Database,
     account_label: &str,
+    verify_current_publication: bool,
 ) -> Result<usize> {
-    let account_id: Uuid = sqlx::query_scalar(
-        "SELECT id FROM provider_accounts
-         WHERE provider = 'spotify' AND account_label = $1",
+    let account = sqlx::query(
+        "SELECT account.id,
+                EXISTS (
+                    SELECT 1 FROM sync_apply_runs apply
+                    WHERE apply.provider_account_id = account.id
+                      AND apply.status = 'awaiting_pull'
+                ) AS has_pending_verification
+         FROM provider_accounts account
+         WHERE account.provider = 'spotify' AND account.account_label = $1",
     )
     .bind(account_label)
     .fetch_optional(database.pool())
     .await?
     .ok_or_else(|| configuration("Spotify account is not imported"))?;
+    let account_id: Uuid = account.try_get("id")?;
+    if !verify_current_publication && !account.try_get::<bool, _>("has_pending_verification")? {
+        return Ok(0);
+    }
     let snapshot_id: Uuid = sqlx::query_scalar(
         "SELECT id FROM provider_inventory_observations WHERE provider_account_id = $1
          ORDER BY captured_at DESC, id DESC LIMIT 1",
@@ -496,19 +507,21 @@ pub async fn verify_pending_publications(
             verified += 1;
         }
     }
-    let current_proposal: Option<Uuid> = sqlx::query_scalar(
-        "SELECT plan.proposal_generation_id
-         FROM sync_apply_runs apply
-         JOIN sync_runs plan ON plan.id = apply.plan_id
-         WHERE apply.provider_account_id = $1 AND apply.phase = 'publish'
-           AND apply.status = 'succeeded'
-         ORDER BY apply.started_at DESC, apply.id DESC LIMIT 1",
-    )
-    .bind(account_id)
-    .fetch_optional(database.pool())
-    .await?;
-    if let Some(proposal_id) = current_proposal {
-        verify_publication(database, account_id, snapshot_id, proposal_id).await?;
+    if verify_current_publication {
+        let current_proposal: Option<Uuid> = sqlx::query_scalar(
+            "SELECT plan.proposal_generation_id
+             FROM sync_apply_runs apply
+             JOIN sync_runs plan ON plan.id = apply.plan_id
+             WHERE apply.provider_account_id = $1 AND apply.phase = 'publish'
+               AND apply.status = 'succeeded'
+             ORDER BY apply.started_at DESC, apply.id DESC LIMIT 1",
+        )
+        .bind(account_id)
+        .fetch_optional(database.pool())
+        .await?;
+        if let Some(proposal_id) = current_proposal {
+            verify_publication(database, account_id, snapshot_id, proposal_id).await?;
+        }
     }
     let destructive_runs: Vec<Uuid> = sqlx::query_scalar(
         "SELECT id FROM sync_apply_runs
@@ -745,42 +758,73 @@ async fn verify_publication(
     {
         return Ok(false);
     }
+    let verification_rows = desired
+        .iter()
+        .map(|(concept, (_, tracks))| {
+            let bytes = serde_json::to_vec(tracks)?;
+            Ok((
+                *concept,
+                current[concept].0,
+                format!("{:x}", Sha256::digest(bytes)),
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
     let mut tx = database.pool().begin().await?;
+    let mut verification_insert = QueryBuilder::<Postgres>::new(
+        "INSERT INTO managed_playlist_verifications
+         (provider_account_id, provider_playlist_id, concept_id,
+          proposal_generation_id, verified_snapshot_id, desired_state_hash) ",
+    );
+    verification_insert.push_values(
+        &verification_rows,
+        |mut row, (concept, provider_playlist_id, hash)| {
+            row.push_bind(account_id)
+                .push_bind(*provider_playlist_id)
+                .push_bind(*concept)
+                .push_bind(proposal_id)
+                .push_bind(snapshot_id)
+                .push_bind(hash);
+        },
+    );
+    verification_insert.push(
+        " ON CONFLICT (provider_account_id, provider_playlist_id, verified_snapshot_id)
+          DO UPDATE SET desired_state_hash = EXCLUDED.desired_state_hash
+          RETURNING id, concept_id",
+    );
+    let verification_ids = verification_insert
+        .build()
+        .fetch_all(&mut *tx)
+        .await?
+        .into_iter()
+        .map(|row| Ok((row.try_get("concept_id")?, row.try_get("id")?)))
+        .collect::<Result<BTreeMap<Uuid, Uuid>>>()?;
+    let mut memberships = Vec::new();
     for (concept, (_, tracks)) in desired {
-        let provider_playlist_id = current[&concept].0;
-        let bytes = serde_json::to_vec(&tracks)?;
-        let hash = format!("{:x}", Sha256::digest(bytes));
-        let verification_id: Uuid = sqlx::query_scalar(
-            "INSERT INTO managed_playlist_verifications
-             (provider_account_id, provider_playlist_id, concept_id,
-              proposal_generation_id, verified_snapshot_id, desired_state_hash)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             ON CONFLICT (provider_account_id, provider_playlist_id, verified_snapshot_id)
-             DO UPDATE SET desired_state_hash = EXCLUDED.desired_state_hash
-             RETURNING id",
-        )
-        .bind(account_id)
-        .bind(provider_playlist_id)
-        .bind(concept)
-        .bind(proposal_id)
-        .bind(snapshot_id)
-        .bind(hash)
-        .fetch_one(&mut *tx)
-        .await?;
+        let verification_id = verification_ids[&concept];
         for (position, track_id) in tracks.into_iter().enumerate() {
-            let position = i32::try_from(position)
-                .map_err(|_| configuration("verified playlist position exceeds i32"))?;
-            sqlx::query(
-                "INSERT INTO managed_playlist_verified_tracks
-                 (verification_id, track_id, position) VALUES ($1, $2, $3)
-                 ON CONFLICT (verification_id, track_id) DO NOTHING",
-            )
-            .bind(verification_id)
-            .bind(track_id)
-            .bind(position)
-            .execute(&mut *tx)
-            .await?;
+            memberships.push((
+                verification_id,
+                track_id,
+                i32::try_from(position)
+                    .map_err(|_| configuration("verified playlist position exceeds i32"))?,
+            ));
         }
+    }
+    for chunk in memberships.chunks(10_000) {
+        let mut membership_insert = QueryBuilder::<Postgres>::new(
+            "INSERT INTO managed_playlist_verified_tracks
+             (verification_id, track_id, position) ",
+        );
+        membership_insert.push_values(chunk, |mut row, (verification_id, track_id, position)| {
+            row.push_bind(*verification_id)
+                .push_bind(*track_id)
+                .push_bind(*position);
+        });
+        membership_insert.push(
+            " ON CONFLICT (verification_id, track_id) DO UPDATE
+              SET position = EXCLUDED.position",
+        );
+        membership_insert.build().execute(&mut *tx).await?;
     }
     tx.commit().await?;
     Ok(true)

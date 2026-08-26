@@ -1594,7 +1594,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                     );
 
                     let phase_started = Instant::now();
-                    let verified = apply::verify_pending_publications(&database, &account).await?;
+                    let verified = apply::verify_pending_publications(
+                        &database,
+                        &account,
+                        !import.library_unchanged,
+                    )
+                    .await?;
                     let verification_elapsed = phase_started.elapsed();
                     let timings = SyncPullTimings {
                         import: import_elapsed,
