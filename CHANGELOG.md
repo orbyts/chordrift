@@ -4,6 +4,8 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-25
+
 - Replace destination-specific review routes with one provider-owned,
   zero-signal `Re-evaluate` queue; record immutable entry/exit history, suppress
   accidental exclusion and source restoration while queued, export long queues
@@ -28,6 +30,10 @@ All notable changes to Chordrift are documented here.
 - Complete the live v0.1.2 Spotify reconciliation: publish all approved
   destinations and covers, clear 145 consumed Inbox entries, retire Monsoon
   Cinema and the three legacy routes, and reach a zero-operation plan.
+- Opt Suhail's account into verified Liked Songs consumption, remove all 346
+  supported saved tracks only after proving 345 canonical placements and one
+  durable exclusion, verify zero supported saved tracks from Spotify, and
+  converge again to a zero-operation plan.
 
 - Add account-scoped `user_cohorts`, a complete classification/CSV glossary,
   Excel-ready A.R. Rahman examples, and stronger selected-account track

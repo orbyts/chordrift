@@ -1,6 +1,6 @@
 [package]
 name = "chordrift"
-version = "0.1.2-dev.3"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.94"
 description = "Personal music-library intelligence and synchronization across streaming services."

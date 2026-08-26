@@ -555,9 +555,12 @@ tail when a prefix diff proves that the remaining ordered membership is
 unchanged, reducing Spotify requests without weakening complete-inventory
 proofs.
 
-Status: in progress; durable routing capture and publication implemented as the
-first subslice, with incremental persistence and terminal presentation now in
-progress.
+Status: complete. The approved South Asian reconciliation, canonical artwork,
+Re-evaluate replacement queue, legacy retirement, consumed Inbox cleanup, and
+opt-in Liked Songs cleanup have been published and provider-verified. The final
+v0.1.2 snapshot converges to a zero-operation plan. Configurable terminal
+presentation and the two-account/provider-boundary audit remain intentionally
+deferred to v0.2.0.
 
 Saved-album inventory, opt-in Liked Songs consumption, exclusion-aware
 readiness/execution/verification, batched changed-surface persistence, and live
@@ -593,6 +596,14 @@ two-account isolation audit, provider-neutral identifiers, and a first-class
 Re-evaluate review surface. Do not claim reusable multi-account product support
 until that audit passes. v1.0.0 remains the fully working, documented,
 installable release rather than an architectural preview.
+
+Evaluate a dedicated classic Hindi cinema destination after v0.1.2. For now,
+misplaced older Hindi songs enter `Re-evaluate` and retain their source and
+classification history. A later CSV review should distinguish era, language,
+cinema tradition, and listening intent before proposing a poetic Sanskrit-
+inspired identity and approved artwork; do not create the playlist merely from
+artist identity or a few edge cases.
+
 Regional reconciliation must operate over the complete approved library, not
 only the playlist where mistakes were noticed. Treat explicit North/South route
 decisions as stronger than embedding similarity, require positive style

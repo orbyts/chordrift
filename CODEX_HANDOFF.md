@@ -6,7 +6,30 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-08-24.
+Last updated: 2026-08-25.
+
+## v0.1.2 release closure
+
+- The live personal Spotify reconciliation is complete. Four approved
+  destinations and their covers were published, 598 placements applied, 145
+  consumed Inbox entries cleared, and Monsoon Cinema plus three legacy Route
+  playlists retired.
+- Liked Songs uses the account-scoped
+  `clear-after-verified-assignment` policy. Of 346 supported saved tracks, 345
+  had verified canonical placements and one had a durable exclusion. Cleanup
+  apply run `39bc8d9b-1d05-4e13-aa5e-2d667ac4eaf0` removed all 346 with zero
+  failures and was provider-verified against snapshot
+  `7bca3d63-48d3-4193-afca-fc9cb634360c`.
+- Final immutable plan `56a0d535-f83e-42ae-898e-8ed627e6f4e9` contains zero
+  operations. The current Spotify surface has 22 playlists, 1,791 entries,
+  1,766 unique playlist tracks, zero supported saved tracks, and no duplicate
+  entries.
+- The provider briefly reported one unsupported/unavailable saved item; it was
+  never treated as an addressable supported track. The final stable pull
+  reported zero unsupported items as well.
+- A possible dedicated classic Hindi cinema destination is deferred to v0.2.0.
+  Until reviewed as a coherent collection, move such edge cases into
+  `Re-evaluate`, export a CSV if the queue grows, and classify them explicitly.
 
 ## Private classification sidecar (current v0.1.2 work)
 
@@ -47,7 +70,7 @@ Last updated: 2026-08-24.
 - User's normal clone: `$CRATES/chordrift`, currently
   `/Users/suhail/Library/CloudStorage/Dropbox/matrix/crates/chordrift`
 - Local Storexa clone, if its source is needed: `$CRATES/storexa`
-- Released CLI: `chordrift 0.0.5`
+- Current release: `chordrift 0.1.2`
 - `main` is the Spotify-focused release line. The Apple foundation is isolated
   on `codex/apple-music` and must not be merged until it can be tested with real
   Apple credentials.
