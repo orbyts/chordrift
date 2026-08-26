@@ -647,11 +647,23 @@ The second fresh PostgreSQL 18 rehearsal measured:
 
 Migration 0044 is installed on the live `chordrift` project and immediate
 read-only verification reproduced every rehearsal invariant and runtime read.
-The production-emitted cleanup plan currently equals the rehearsal hash
+Production cleanup was explicitly approved and applied using the rehearsal hash
 `0688bf0984ea6f6b26cf65ca7ab1c9fcb762601c6a512b204e7a79312830f964`,
-but equality does not itself authorize cleanup. No Neon legacy row has been
-removed. Applying that exact hash still requires separate explicit approval,
-immediate verification, and continued retention of the former project.
+and invariant hash
+`24f5da45845bb48b3cfeb49cbd09fe371043c7f9544ea38993d3016beaf0d6a3`
+was unchanged. Immediate independent verification found legacy table names
+absent, transient provider-import staging empty, 149,314 normalized events and
+both evidence imports retained, and all database-v2 parity gates true. History,
+signals, embeddings, albums, playlists, and database-v2 status all passed on
+the clean runtime schema. The measured database size is 167,788,544 bytes and
+ordinary-table total is 156,459,008 bytes.
+
+A fresh child process using the owner-only persistent connection configuration
+also passed database health, cleanup verification, and a runtime playlist read.
+The former project remains untouched. Its deletion is a separate irreversible
+operation requiring explicit approval of immutable project ID
+`mute-recipe-86719846`; the pre-compaction backup remains the durable recovery
+artifact after that retirement.
 
 During the 0044 gate, the desktop process was found to carry a stale inherited
 database URL for the former project even though the owner-only persistent secret

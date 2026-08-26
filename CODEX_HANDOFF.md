@@ -8,7 +8,7 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: approve the exact production cleanup hash
+## Start the next task here: release closeout and rollback-project retirement
 
 Work is on `main` (the implementation is also retained on
 `codex/v0.1.3-database-v2-runtime`). The v0.1.3 code refactor is
@@ -32,28 +32,27 @@ playlists, 1,790 ordered memberships, and every durable plan/verification/audit
 reference. Its measured size is 167,974,591 bytes. Provider inventory and
 archive-history write round trips both pass against the post-clean schema.
 
-No production cleanup occurred. The configured live project remains
-`damp-hall-40280714` and its Neon display name is now lowercase `chordrift`;
-the former project `mute-recipe-86719846` is now named
-`chordrift-legacy-rollback` and remains intact as the rollback project. Do not
-delete it until production cleanup, immediate verification, and the bounded
-post-clean runtime observation gate all succeed. Immediate post-0044 checks on
-the explicit live project proved 44/44, 149,314 normalized events, 15,575
-identities, two evidence imports, 24 checkpoints, 22 playlists, 1,790 ordered
-memberships, all parity gates true, and `ready_for_cutover: true`. Runtime
-history, signals, embeddings, albums, and playlists all read successfully.
-Storage is 358,850,560 database bytes and 347,529,216 ordinary-table bytes.
-
-The live read-only cleanup plan is exact and currently matches the final
-rehearsal: plan
+Production cleanup was explicitly approved and applied to project
+`damp-hall-40280714`, display name `chordrift`, using exact plan
 `0688bf0984ea6f6b26cf65ca7ab1c9fcb762601c6a512b204e7a79312830f964`,
-invariant
+preserving invariant
 `24f5da45845bb48b3cfeb49cbd09fe371043c7f9544ea38993d3016beaf0d6a3`,
-58 observation headers retained, 157,193 duplicate provider rows eligible,
-149,314 legacy events replaced by 149,314 normalized events, and two legacy
-archive rows replaced by two evidence manifests. No cleanup apply occurred.
-Only a new explicit approval naming that exact production hash may authorize
-`db compact cleanup apply`.
+at `2026-08-26T19:52:34.237614+00:00`. Independent verification proved legacy
+tables absent, provider-import staging empty, all 149,314 normalized events and
+both evidence imports retained, 44/44 migrations, every parity gate true, and
+`ready_for_cutover: true`. History, signals, embeddings, albums, playlists, and
+database-v2 status all passed against the post-clean schema. A fresh child
+process using the owner-only persistent secret also passed database status,
+cleanup verification, and a runtime playlist read without exposing the value.
+Database size fell from 358,850,560 bytes to 167,788,544 bytes; ordinary-table
+total is 156,459,008 bytes.
+
+The former project `mute-recipe-86719846`, named
+`chordrift-legacy-rollback`, remains intact and was not contacted by cleanup.
+The post-clean observation gate has passed, but deleting an entire Neon project
+is a separate irreversible operation and still requires explicit approval that
+names this immutable project ID. The verified pre-compaction backup remains the
+long-term recovery artifact. No Spotify request or write occurred.
 
 Operational warning: this Codex desktop task inherited a stale
 `CHORDRIFT_DATABASE_URL` targeting the former project even though the persistent
@@ -63,9 +62,10 @@ additive migration to former project `mute-recipe-86719846`. No row was deleted,
 normalized, compacted, or rewritten there; it now reports 44/44 but still has
 zero normalized events and zero checkpoints. After discovery, every operation
 used explicit project ID `damp-hall-40280714`; 0044 was then applied and verified
-on the intended live project. Future production commands must not trust the
-inherited desktop variable: obtain a short-lived connection for the explicit
-project ID or start a genuinely fresh process that loads the persistent secret.
+on the intended live project. Future production commands in this still-running
+desktop process must not trust the inherited variable: obtain a short-lived
+connection for the explicit project ID or restart Codex so it loads the
+verified persistent secret.
 Do not shell-source `secrets.env`; URL query characters are not shell syntax.
 No Spotify request or write occurred.
 
