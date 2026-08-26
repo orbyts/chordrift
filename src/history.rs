@@ -604,6 +604,49 @@ pub async fn summary(database: &Database, account_label: &str) -> Result<History
     })
 }
 
+/// Summarizes listening history from the maintained per-identity statistics cache.
+///
+/// This is appropriate for the incremental sync path, which updates the affected cache rows
+/// as recent observations are inserted. Explicit history verification continues to use
+/// [`summary`] so it independently checks the normalized event evidence.
+async fn cached_summary(database: &Database, account_id: Uuid) -> Result<HistorySummary> {
+    let row = sqlx::query(
+        "SELECT
+           (SELECT count(*) FROM listening_evidence_imports
+             WHERE provider_account_id = $1) AS archives,
+           COALESCE(sum(event_count), 0)::bigint AS events,
+           count(*) AS unique_tracks,
+           count(*) FILTER (WHERE track_id IS NOT NULL) AS matched_unique_tracks,
+           count(*) FILTER (WHERE track_id IS NULL) AS unmatched_unique_tracks,
+           COALESCE(sum(event_count) FILTER (WHERE track_id IS NOT NULL), 0)::bigint
+             AS matched_events,
+           COALESCE(sum(event_count) FILTER (WHERE track_id IS NULL), 0)::bigint
+             AS unmatched_events,
+           COALESCE(sum(total_ms_played), 0)::bigint AS total_ms_played,
+           COALESCE(sum(skip_count), 0)::bigint AS skipped_events,
+           min(first_played_at) AS first_event_at,
+           max(last_played_at) AS last_event_at
+         FROM account_listening_track_statistics
+         WHERE provider_account_id = $1",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    Ok(HistorySummary {
+        archives: row.try_get("archives")?,
+        events: row.try_get("events")?,
+        unique_tracks: row.try_get("unique_tracks")?,
+        matched_unique_tracks: row.try_get("matched_unique_tracks")?,
+        unmatched_unique_tracks: row.try_get("unmatched_unique_tracks")?,
+        matched_events: row.try_get("matched_events")?,
+        unmatched_events: row.try_get("unmatched_events")?,
+        total_ms_played: row.try_get("total_ms_played")?,
+        skipped_events: row.try_get("skipped_events")?,
+        first_event_at: row.try_get("first_event_at")?,
+        last_event_at: row.try_get("last_event_at")?,
+    })
+}
+
 /// Relinks newly known Spotify IDs and rebuilds account-scoped per-track statistics.
 pub async fn refresh(database: &Database, account_label: &str) -> Result<HistorySummary> {
     let account_id = account_id(database, account_label).await?;
@@ -658,6 +701,42 @@ pub async fn refresh(database: &Database, account_label: &str) -> Result<History
     .await?;
     transaction.commit().await?;
     summary(database, account_label).await
+}
+
+/// Relinks newly imported provider identities without rebuilding all listening statistics.
+///
+/// Spotify recent-play persistence updates statistics only for identities receiving new
+/// observations. This follow-up handles old unmatched identities that became known through
+/// the current provider inventory, then reads the current aggregate summary.
+pub async fn refresh_after_recent_import(
+    database: &Database,
+    account_label: &str,
+) -> Result<HistorySummary> {
+    let account_id = account_id(database, account_label).await?;
+    sqlx::query(
+        "WITH relinked AS (
+             UPDATE historical_provider_track_identities identity
+             SET canonical_track_id = provider_track.track_id
+             FROM provider_tracks provider_track,
+                  account_listening_track_statistics statistics
+             WHERE identity.provider = 'spotify'
+               AND identity.canonical_track_id IS NULL
+               AND provider_track.provider = 'spotify'
+               AND provider_track.provider_track_id = identity.provider_track_id
+               AND statistics.provider_account_id = $1
+               AND statistics.provider_track_id = identity.provider_track_id
+             RETURNING identity.provider_track_id, identity.canonical_track_id
+         )
+         UPDATE account_listening_track_statistics statistics
+         SET track_id = relinked.canonical_track_id, calculated_at = now()
+         FROM relinked
+         WHERE statistics.provider_account_id = $1
+           AND statistics.provider_track_id = relinked.provider_track_id",
+    )
+    .bind(account_id)
+    .execute(database.pool())
+    .await?;
+    cached_summary(database, account_id).await
 }
 
 /// Lists the most-listened tracks by total retained playback duration.

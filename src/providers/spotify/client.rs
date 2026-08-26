@@ -1,4 +1,11 @@
-use std::{collections::HashSet, time::Duration};
+use std::{
+    collections::HashSet,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 use reqwest::{Client, Method, StatusCode};
 use serde::Deserialize;
@@ -47,6 +54,7 @@ fn retry_delay_seconds(value: Option<&str>) -> u64 {
 pub struct SpotifyClient {
     http: Client,
     access_token: String,
+    request_count: Arc<AtomicUsize>,
 }
 
 impl SpotifyClient {
@@ -60,7 +68,12 @@ impl SpotifyClient {
         Ok(Self {
             http,
             access_token: access_token.into(),
+            request_count: Arc::new(AtomicUsize::new(0)),
         })
+    }
+
+    pub(crate) fn request_count(&self) -> usize {
+        self.request_count.load(Ordering::Relaxed)
     }
 
     /// Returns the authenticated account's stable identity.
@@ -229,6 +242,7 @@ impl SpotifyClient {
         validate_api_url(&url)?;
         let mut attempt = 0;
         loop {
+            self.request_count.fetch_add(1, Ordering::Relaxed);
             let response = self
                 .http
                 .put(url.clone())
@@ -318,7 +332,7 @@ impl SpotifyClient {
                 }
 
                 playlist_item_fetches += 1;
-                eprintln!("spotify fetch: changed external playlist items {playlist_item_fetches}");
+                eprintln!("Spotify · changed external playlists {playlist_item_fetches}");
                 let mut items_url = playlist_items_url(&playlist.id)?;
                 items_url.query_pairs_mut().append_pair("limit", PAGE_LIMIT);
                 let (items, content_status) =
@@ -349,17 +363,22 @@ impl SpotifyClient {
                     playlist,
                     items: Vec::new(),
                     reused_from_snapshot: Some(previous.source_snapshot_id),
+                    known_provider_playlist_id: previous.provider_playlist_id,
                 });
                 playlists_reused += 1;
                 continue;
             }
 
             playlist_item_fetches += 1;
-            eprintln!("spotify fetch: changed playlist items {playlist_item_fetches}");
+            eprintln!("Spotify · changed playlists {playlist_item_fetches}");
             let mut items_url = playlist_items_url(&playlist.id)?;
             items_url.query_pairs_mut().append_pair("limit", PAGE_LIMIT);
             match self.all_pages::<PlaylistItem>(items_url, None).await {
                 Ok(items) => playlists.push(PlaylistInventory {
+                    known_provider_playlist_id: reuse
+                        .playlists
+                        .get(&playlist.id)
+                        .and_then(|previous| previous.provider_playlist_id),
                     playlist,
                     items,
                     reused_from_snapshot: None,
@@ -370,25 +389,15 @@ impl SpotifyClient {
                 Err(error) => return Err(error),
             }
         }
-        eprintln!("spotify fetch: playlists reused from Neon {playlists_reused}");
+        eprintln!("Spotify · playlists reused from Neon {playlists_reused}");
 
-        eprintln!("spotify fetch: saved tracks");
+        eprintln!("Spotify · checking saved tracks, saved albums, and recent plays");
         let mut saved_url = api_url("me/tracks")?;
         saved_url.query_pairs_mut().append_pair("limit", PAGE_LIMIT);
-        let saved_tracks = self
-            .saved_tracks(saved_url, reuse.saved_tracks.as_ref())
-            .await?;
-
-        eprintln!("spotify fetch: saved albums");
         let mut albums_url = api_url("me/albums")?;
         albums_url
             .query_pairs_mut()
             .append_pair("limit", PAGE_LIMIT);
-        let saved_albums = self
-            .saved_albums(albums_url, reuse.saved_albums.as_ref())
-            .await?;
-
-        eprintln!("spotify fetch: recently played");
         let mut recent_url = api_url("me/player/recently-played")?;
         recent_url
             .query_pairs_mut()
@@ -398,12 +407,18 @@ impl SpotifyClient {
                 .query_pairs_mut()
                 .append_pair("after", &after.timestamp_millis().to_string());
         }
-        let recently_played = self.all_cursor_pages(recent_url).await?;
+        let (saved_tracks, saved_albums, recently_played) = tokio::try_join!(
+            self.saved_tracks(saved_url, reuse.saved_tracks.as_ref()),
+            self.saved_albums(albums_url, reuse.saved_albums.as_ref()),
+            self.all_cursor_pages(recent_url),
+        )?;
         eprintln!(
-            "spotify fetch: recently played {} new observations",
+            "Spotify · recent plays {} new observations",
             recently_played.len()
         );
 
+        let active_playlists_unchanged =
+            playlists_reused == playlists.len() && playlists.len() == reuse.playlists.len();
         Ok(SpotifyInventory {
             profile,
             playlists,
@@ -413,6 +428,7 @@ impl SpotifyClient {
             recently_played,
             recent_requested_after: reuse.recent_after,
             playlists_seen,
+            active_playlists_unchanged,
             followed_playlists_skipped,
             inaccessible_collaborative_playlists,
         })
@@ -427,7 +443,7 @@ impl SpotifyClient {
         if let Some(previous) = reuse
             && saved_album_page_matches(&first, previous)
         {
-            eprintln!("spotify fetch: saved albums unchanged; reusing Neon snapshot");
+            eprintln!("Spotify · saved albums unchanged; reusing Neon state");
             return Ok(SavedAlbumsInventory {
                 items: Vec::new(),
                 total: first.total,
@@ -498,7 +514,7 @@ impl SpotifyClient {
         if let Some(previous) = reuse
             && saved_page_matches(&first, previous)
         {
-            progress.note("spotify fetch: saved tracks unchanged; reusing Neon snapshot");
+            progress.note("Spotify · saved tracks unchanged; reusing Neon state");
             progress.finish();
             return Ok(SavedTracksInventory {
                 items: Vec::new(),
@@ -605,6 +621,7 @@ impl SpotifyClient {
         validate_api_url(&url)?;
         let mut attempt = 0;
         loop {
+            self.request_count.fetch_add(1, Ordering::Relaxed);
             let response = self
                 .http
                 .get(url.clone())
@@ -660,6 +677,7 @@ impl SpotifyClient {
             if let Some(body) = &body {
                 request = request.json(body);
             }
+            self.request_count.fetch_add(1, Ordering::Relaxed);
             let response = request.send().await?;
             if should_retry(&response, &mut attempt).await {
                 continue;

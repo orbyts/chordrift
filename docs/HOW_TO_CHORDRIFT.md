@@ -29,6 +29,13 @@ After making a change in Spotify:
 $ chordrift sync pull --account personal
 ```
 
+The v0.1.4 output groups the result into provider, current-library, and
+listening-evidence tables and reports elapsed time for each phase. The provider
+row also reports how many Spotify API requests the pull used. An unchanged
+library is reused in Neon; only new Recently Played observations update
+listening evidence and the affected per-track statistics. These timings are the
+first diagnostic to share when a routine pull feels slow.
+
 Then inspect one track when you want to understand its current state:
 
 ```console

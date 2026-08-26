@@ -107,6 +107,31 @@ pub async fn refresh(database: &Database, account_label: &str) -> Result<Analysi
     summary(database, account_label).await
 }
 
+/// Repoints derived library statistics when the complete provider library was reused.
+///
+/// The caller must prove playlist membership and saved-track content are unchanged.
+/// Only the lightweight observation identity changes in that case.
+pub async fn reuse_current(
+    database: &Database,
+    account_label: &str,
+) -> Result<Option<AnalysisSummary>> {
+    let (account_id, snapshot_id) = latest_snapshot(database, account_label).await?;
+    let updated = sqlx::query(
+        "UPDATE account_analysis_state
+         SET calculated_from_snapshot_id = $2, calculated_at = now()
+         WHERE provider_account_id = $1",
+    )
+    .bind(account_id)
+    .bind(snapshot_id)
+    .execute(database.pool())
+    .await?
+    .rows_affected();
+    if updated == 0 {
+        return Ok(None);
+    }
+    summary(database, account_label).await.map(Some)
+}
+
 /// Returns aggregate statistics for the latest analyzed snapshot.
 pub async fn summary(database: &Database, account_label: &str) -> Result<AnalysisSummary> {
     let (account_id, snapshot_id) = latest_snapshot(database, account_label).await?;

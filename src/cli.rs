@@ -1,6 +1,7 @@
 use std::{
     io::{self, Write},
     path::PathBuf,
+    time::{Duration, Instant},
 };
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -1559,17 +1560,58 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
             SyncCommand::Pull { account } => {
                 let database = connect_current_database().await?;
                 let result: Result<()> = async {
+                    let total_started = Instant::now();
+                    eprintln!("sync pull: reading Spotify and persisting current state");
+                    let phase_started = Instant::now();
                     let import = spotify::import(&account, &database).await?;
-                    write_import_report(output, &import)?;
-                    let summary = analysis::refresh(&database, &account).await?;
-                    write_analysis_summary(output, &summary)?;
-                    let history = history::refresh(&database, &account).await?;
-                    if history.archives != 0 {
-                        write_history_summary(output, &history)?;
-                    }
+                    let import_elapsed = phase_started.elapsed();
+                    eprintln!(
+                        "sync pull: provider import current in {}",
+                        format_elapsed(import_elapsed)
+                    );
+
+                    let phase_started = Instant::now();
+                    let summary = if import.library_unchanged {
+                        match analysis::reuse_current(&database, &account).await? {
+                            Some(summary) => summary,
+                            None => analysis::refresh(&database, &account).await?,
+                        }
+                    } else {
+                        analysis::refresh(&database, &account).await?
+                    };
+                    let analysis_elapsed = phase_started.elapsed();
+                    eprintln!(
+                        "sync pull: library analysis current in {}",
+                        format_elapsed(analysis_elapsed)
+                    );
+
+                    let phase_started = Instant::now();
+                    let history = history::refresh_after_recent_import(&database, &account).await?;
+                    let history_elapsed = phase_started.elapsed();
+                    eprintln!(
+                        "sync pull: listening history current in {}",
+                        format_elapsed(history_elapsed)
+                    );
+
+                    let phase_started = Instant::now();
                     let verified = apply::verify_pending_publications(&database, &account).await?;
-                    if verified != 0 {
-                        writeln!(output, "verified_apply_runs: {verified}")?;
+                    let verification_elapsed = phase_started.elapsed();
+                    let timings = SyncPullTimings {
+                        import: import_elapsed,
+                        analysis: analysis_elapsed,
+                        history: history_elapsed,
+                        verification: verification_elapsed,
+                        total: total_started.elapsed(),
+                    };
+                    let history = (history.archives != 0).then_some(&history);
+                    if terminal::stdout_is_terminal() {
+                        write_sync_pull_report(
+                            output, &import, &summary, history, verified, &timings,
+                        )?;
+                    } else {
+                        write_sync_pull_plain_report(
+                            output, &import, &summary, history, verified, &timings,
+                        )?;
                     }
                     Ok(())
                 }
@@ -4682,9 +4724,270 @@ fn write_auth_status(output: &mut impl Write, status: &spotify::AuthStatus) -> R
     Ok(())
 }
 
+struct SyncPullTimings {
+    import: Duration,
+    analysis: Duration,
+    history: Duration,
+    verification: Duration,
+    total: Duration,
+}
+
+fn write_sync_pull_plain_report(
+    output: &mut impl Write,
+    import: &spotify::ImportReport,
+    analysis: &analysis::AnalysisSummary,
+    history: Option<&history::HistorySummary>,
+    verified_apply_runs: usize,
+    timings: &SyncPullTimings,
+) -> Result<()> {
+    write_import_report(output, import)?;
+    write_analysis_summary(output, analysis)?;
+    if let Some(history) = history {
+        write_history_summary(output, history)?;
+    }
+    writeln!(output, "verified_apply_runs: {verified_apply_runs}")?;
+    writeln!(
+        output,
+        "provider_elapsed_ms: {}",
+        timings.import.as_millis()
+    )?;
+    writeln!(
+        output,
+        "analysis_elapsed_ms: {}",
+        timings.analysis.as_millis()
+    )?;
+    writeln!(
+        output,
+        "history_elapsed_ms: {}",
+        timings.history.as_millis()
+    )?;
+    writeln!(
+        output,
+        "verification_elapsed_ms: {}",
+        timings.verification.as_millis()
+    )?;
+    writeln!(output, "total_elapsed_ms: {}", timings.total.as_millis())?;
+    Ok(())
+}
+
+fn write_sync_pull_report(
+    output: &mut impl Write,
+    import: &spotify::ImportReport,
+    analysis: &analysis::AnalysisSummary,
+    history: Option<&history::HistorySummary>,
+    verified_apply_runs: usize,
+    timings: &SyncPullTimings,
+) -> Result<()> {
+    writeln!(
+        output,
+        "\x1b[1;36mSync complete\x1b[0m  \x1b[2m— {} · {}\x1b[0m",
+        import.account_label,
+        format_elapsed(timings.total)
+    )?;
+    writeln!(
+        output,
+        "{}",
+        terminal::pretty_table(
+            &["Phase", "Result", "Elapsed"],
+            vec![
+                vec![
+                    "Provider state".to_owned(),
+                    if import.library_unchanged {
+                        format!(
+                            "current · {} playlists reused · {} API requests",
+                            import.playlists_reused, import.spotify_api_requests
+                        )
+                    } else {
+                        format!(
+                            "updated · {} playlists imported · {} API requests",
+                            import.playlists_imported, import.spotify_api_requests
+                        )
+                    },
+                    format_elapsed(timings.import),
+                ],
+                vec![
+                    "Library analysis".to_owned(),
+                    if import.library_unchanged {
+                        "reused".to_owned()
+                    } else {
+                        "refreshed".to_owned()
+                    },
+                    format_elapsed(timings.analysis),
+                ],
+                vec![
+                    "Listening history".to_owned(),
+                    format!("{} new observations", import.recent_plays_inserted),
+                    format_elapsed(timings.history),
+                ],
+                vec![
+                    "Publication checks".to_owned(),
+                    if verified_apply_runs == 0 {
+                        "nothing pending".to_owned()
+                    } else {
+                        format!("{verified_apply_runs} verified")
+                    },
+                    format_elapsed(timings.verification),
+                ],
+            ]
+        )
+    )?;
+
+    writeln!(output, "\n\x1b[1mCurrent library\x1b[0m")?;
+    let mut library_rows = vec![
+        vec!["Playlists".to_owned(), format_count(analysis.playlists)],
+        vec![
+            "Playlist tracks".to_owned(),
+            format!(
+                "{} entries · {} unique · {} overlaps",
+                format_count(analysis.playlist_entries),
+                format_count(analysis.unique_playlist_tracks),
+                format_count(analysis.overlapping_tracks)
+            ),
+        ],
+        vec![
+            "Saved tracks".to_owned(),
+            format!(
+                "{}{}",
+                import.saved_tracks,
+                if import.saved_tracks_reused {
+                    " · unchanged"
+                } else {
+                    ""
+                }
+            ),
+        ],
+        vec![
+            "Saved albums".to_owned(),
+            format!(
+                "{} albums · {} tracks{}",
+                import.saved_albums,
+                import.saved_album_tracks,
+                if import.saved_albums_reused {
+                    " · unchanged"
+                } else {
+                    ""
+                }
+            ),
+        ],
+        vec![
+            "Recent plays".to_owned(),
+            format!(
+                "{} seen · {} inserted{}",
+                import.recent_plays_seen,
+                import.recent_plays_inserted,
+                import
+                    .recent_plays_through
+                    .map_or_else(String::new, |value| format!(
+                        " · through {}",
+                        value.to_rfc3339()
+                    ))
+            ),
+        ],
+    ];
+    let warnings = import.unavailable_items
+        + import.unsupported_items
+        + import.inaccessible_collaborative_playlists;
+    if warnings != 0 || import.followed_playlists_skipped != 0 {
+        library_rows.push(vec![
+            "Skipped".to_owned(),
+            format!(
+                "{} unavailable/unsupported/inaccessible · {} followed playlists",
+                warnings, import.followed_playlists_skipped
+            ),
+        ]);
+    }
+    writeln!(
+        output,
+        "{}",
+        terminal::pretty_table(&["Surface", "State"], library_rows)
+    )?;
+
+    if let Some(history) = history {
+        writeln!(output, "\n\x1b[1mListening evidence\x1b[0m")?;
+        writeln!(
+            output,
+            "{}",
+            terminal::pretty_table(
+                &["Evidence", "State"],
+                vec![
+                    vec![
+                        "Events".to_owned(),
+                        format!(
+                            "{} · {} matched · {} unmatched",
+                            format_count(history.events),
+                            format_count(history.matched_events),
+                            format_count(history.unmatched_events)
+                        ),
+                    ],
+                    vec![
+                        "Track identities".to_owned(),
+                        format!(
+                            "{} · {} matched · {} unmatched",
+                            format_count(history.unique_tracks),
+                            format_count(history.matched_unique_tracks),
+                            format_count(history.unmatched_unique_tracks)
+                        ),
+                    ],
+                    vec![
+                        "Listening time".to_owned(),
+                        format!("{:.2} hours", hours(history.total_ms_played)),
+                    ],
+                    vec![
+                        "Range".to_owned(),
+                        format!(
+                            "{} → {}",
+                            history
+                                .first_event_at
+                                .map_or_else(|| "—".to_owned(), |value| value.to_rfc3339()),
+                            history
+                                .last_event_at
+                                .map_or_else(|| "—".to_owned(), |value| value.to_rfc3339())
+                        ),
+                    ],
+                ]
+            )
+        )?;
+    }
+    writeln!(
+        output,
+        "\x1b[2mObservation {} · Spotify writes disabled\x1b[0m",
+        import.snapshot_id
+    )?;
+    Ok(())
+}
+
+fn format_elapsed(duration: Duration) -> String {
+    if duration.as_secs() == 0 {
+        format!("{} ms", duration.as_millis())
+    } else {
+        format!("{:.1} s", duration.as_secs_f64())
+    }
+}
+
+fn format_count(value: i64) -> String {
+    let negative = value.is_negative();
+    let digits = value.unsigned_abs().to_string();
+    let mut formatted = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, character) in digits.chars().enumerate() {
+        if index != 0 && (digits.len() - index).is_multiple_of(3) {
+            formatted.push(',');
+        }
+        formatted.push(character);
+    }
+    if negative {
+        formatted.insert(0, '-');
+    }
+    formatted
+}
+
 fn write_import_report(output: &mut impl Write, report: &spotify::ImportReport) -> Result<()> {
     writeln!(output, "spotify import: succeeded")?;
     writeln!(output, "account: {}", report.account_label)?;
+    writeln!(
+        output,
+        "spotify_api_requests: {}",
+        report.spotify_api_requests
+    )?;
     writeln!(output, "snapshot_id: {}", report.snapshot_id)?;
     writeln!(
         output,
@@ -4692,6 +4995,7 @@ fn write_import_report(output: &mut impl Write, report: &spotify::ImportReport) 
         report.playlists_imported, report.playlists_seen
     )?;
     writeln!(output, "playlists_reused: {}", report.playlists_reused)?;
+    writeln!(output, "library_unchanged: {}", report.library_unchanged)?;
     writeln!(output, "playlist_entries: {}", report.playlist_entries)?;
     writeln!(output, "saved_tracks: {}", report.saved_tracks)?;
     writeln!(
@@ -5636,7 +5940,8 @@ mod tests {
         DbCompactCommand, DbV2Command, DbV2MigrationCommand, EmbeddingCommand, EnrichmentCommand,
         HistoryCommand, LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg,
         PlaylistSignalClassArg, ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg,
-        SignalCommand, SpotifyCommand, SyncCommand, TrackCommand, write_status,
+        SignalCommand, SpotifyCommand, SyncCommand, TrackCommand, format_count, format_elapsed,
+        write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -6466,5 +6771,13 @@ mod tests {
         assert!(output.contains("status: healthy"));
         assert!(output.contains("migrations: 0/1 applied, 1 pending, 0 failed"));
         assert!(!output.contains("postgresql://"));
+    }
+
+    #[test]
+    fn renders_human_sync_counts_and_timings() {
+        assert_eq!(format_count(149_350), "149,350");
+        assert_eq!(format_count(-1_790), "-1,790");
+        assert_eq!(format_elapsed(Duration::from_millis(842)), "842 ms");
+        assert_eq!(format_elapsed(Duration::from_millis(1_250)), "1.2 s");
     }
 }

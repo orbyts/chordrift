@@ -4,6 +4,19 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Run independent saved-track, saved-album, and recent-play Spotify probes
+  concurrently after the single playlist-header request.
+- Batch unchanged playlist metadata, account links, transient headers, reused
+  memberships, historical identities, and recent events to minimize Neon
+  round trips and writes.
+- Advance a fully unchanged materialized inventory by retaining its existing
+  content-addressed revisions instead of copying and deleting transient
+  playlist/saved-surface membership rows.
+- Reuse unchanged library analysis and incrementally refresh listening
+  statistics only for identities affected by new observations or new matches.
+- Render `sync pull` as compact library/evidence tables with per-phase elapsed
+  times so real-world latency remains visible and actionable.
+
 ## [0.1.3] - 2026-08-26
 
 - Prepare v0.1.3 as the database-v2 runtime: all ordinary reads use current

@@ -11,8 +11,8 @@ use crate::{ChordriftError, Result, terminal::TerminalProgress};
 use super::{
     auth,
     models::{
-        ExternalPlaylistInventory, PlaylistReuse, ReusePlan, SavedAlbumReuse, SavedTrackReuse,
-        SpotifyAlbum, SpotifyArtist, SpotifyInventory, SpotifyTrack,
+        ExternalPlaylistInventory, PlaylistInventory, PlaylistReuse, ReusePlan, SavedAlbumReuse,
+        SavedTrackReuse, SpotifyAlbum, SpotifyArtist, SpotifyInventory, SpotifyTrack,
     },
 };
 
@@ -47,6 +47,8 @@ pub struct ImportReport {
     pub account_label: String,
     /// Stable Spotify account identity.
     pub account_id: String,
+    /// Actual Spotify Web API requests, including bounded retries.
+    pub spotify_api_requests: usize,
     /// Spotify display name, when present.
     pub display_name: Option<String>,
     /// Database identity of the immutable library snapshot.
@@ -57,6 +59,8 @@ pub struct ImportReport {
     pub playlists_imported: usize,
     /// Playlists copied from the previous Neon snapshot without an item request.
     pub playlists_reused: usize,
+    /// Whether playlist membership and saved tracks exactly reused current state.
+    pub library_unchanged: bool,
     /// Ordered playlist entries persisted, including duplicates.
     pub playlist_entries: usize,
     /// Saved-track entries persisted.
@@ -96,7 +100,8 @@ pub async fn import(account_label: &str, database: &Database) -> Result<ImportRe
     let reuse = load_reuse_plan(account_label, database).await?;
     let session = auth::session(account_label).await?;
     let inventory = session.client.inventory(session.profile, &reuse).await?;
-    persist(account_label, inventory, database).await
+    let spotify_api_requests = session.client.request_count();
+    persist(account_label, inventory, spotify_api_requests, database).await
 }
 
 async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<ReusePlan> {
@@ -133,7 +138,7 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
     let source_snapshot_id: Uuid = latest.try_get("id")?;
     let metadata: Value = latest.try_get("metadata")?;
     let playlist_rows = sqlx::query(
-        "SELECT playlists.provider_playlist_id, snapshots.provider_snapshot_id
+        "SELECT playlists.id, playlists.provider_playlist_id, snapshots.provider_snapshot_id
          FROM provider_observed_playlists snapshots
          JOIN provider_playlists playlists ON playlists.id = snapshots.provider_playlist_id
          WHERE snapshots.snapshot_id = $1 AND snapshots.provider_snapshot_id IS NOT NULL",
@@ -149,6 +154,7 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
             Ok((
                 provider_playlist_id,
                 PlaylistReuse {
+                    provider_playlist_id: Some(row.try_get("id")?),
                     provider_snapshot_id,
                     source_snapshot_id,
                 },
@@ -175,6 +181,7 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
             Ok((
                 provider_playlist_id,
                 PlaylistReuse {
+                    provider_playlist_id: None,
                     provider_snapshot_id,
                     source_snapshot_id,
                 },
@@ -268,6 +275,7 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
 async fn persist(
     account_label: &str,
     inventory: SpotifyInventory,
+    spotify_api_requests: usize,
     database: &Database,
 ) -> Result<ImportReport> {
     let mut transaction = database.pool().begin().await?;
@@ -310,7 +318,6 @@ async fn persist(
     .await?;
 
     let mut playlist_entries = 0;
-    let mut playlists_reused = 0;
     let mut saved_tracks = 0;
     let mut saved_albums = 0;
     let mut saved_album_tracks = 0;
@@ -325,140 +332,46 @@ async fn persist(
         .map(|item| item.played_at)
         .max()
         .or(inventory.recent_requested_after);
+    let reuse_materialized_inventory = inventory.active_playlists_unchanged
+        && inventory.saved_tracks.reused_from_snapshot.is_some()
+        && inventory.saved_albums.reused_from_snapshot.is_some();
 
-    for playlist_inventory in &inventory.playlists {
-        let playlist = &playlist_inventory.playlist;
-        let playlist_name = nonempty_or(&playlist.name, "Untitled Spotify playlist");
-        let provider_playlist_id = upsert_playlist(playlist, &mut transaction).await?;
-        sqlx::query(
-            "INSERT INTO provider_account_playlists
-             (provider_account_id, provider_playlist_id, present_in_latest_snapshot)
-             VALUES ($1, $2, TRUE)
-             ON CONFLICT (provider_account_id, provider_playlist_id) DO UPDATE SET
-               present_in_latest_snapshot = TRUE,
-               last_seen_at = now(), updated_at = now()",
-        )
-        .bind(account_id)
-        .bind(provider_playlist_id)
-        .execute(&mut *transaction)
-        .await?;
-        sqlx::query(
-            "UPDATE provider_account_playlists account_playlist
-             SET role = 'inbox', drift_policy = 'provider_wins',
-                 signal_class = 'routing', semantic_weight = 0.0,
-                 behavioral_signal = NULL,
-                 clear_policy = 'after_verified_assignment', updated_at = now()
-             FROM provider_playlists provider
-             JOIN playlists playlist ON playlist.id = provider.playlist_id
-             WHERE account_playlist.provider_account_id = $1
-               AND account_playlist.provider_playlist_id = $2
-               AND provider.id = account_playlist.provider_playlist_id
-               AND playlist.kind = 'routing'",
-        )
-        .bind(account_id)
-        .bind(provider_playlist_id)
-        .execute(&mut *transaction)
-        .await?;
-        sqlx::query(
-            "UPDATE provider_account_playlists account_playlist
-             SET role = 'managed', drift_policy = 'neon_wins',
-                 signal_class = 'canonical', semantic_weight = 0.0,
-                 clear_policy = 'never', updated_at = now()
-             FROM provider_playlists provider
-             WHERE account_playlist.provider_account_id = $1
-               AND account_playlist.provider_playlist_id = $2
-               AND provider.id = account_playlist.provider_playlist_id
-               AND provider.concept_id IS NOT NULL",
-        )
-        .bind(account_id)
-        .bind(provider_playlist_id)
-        .execute(&mut *transaction)
-        .await?;
-        sqlx::query(
-            "UPDATE provider_account_playlists account_playlist
-             SET role = 'inbox', drift_policy = 'provider_wins',
-                 signal_class = 'intake', semantic_weight = 0.0,
-                 behavioral_signal = (
-                     SELECT NULLIF(planned.payload->'detail'->>'behavioral_signal', '')
-                     FROM provider_playlists provider
-                     JOIN sync_apply_playlist_targets target
-                       ON target.spotify_playlist_id = provider.provider_playlist_id
-                     JOIN sync_apply_runs run ON run.id = target.apply_run_id
-                     JOIN sync_apply_operations execution ON execution.apply_run_id = run.id
-                     JOIN sync_operations planned
-                       ON planned.id = execution.planned_operation_id
-                     WHERE provider.id = account_playlist.provider_playlist_id
-                       AND run.status = 'succeeded'
-                       AND planned.operation_type = 'create_playlist'
-                       AND planned.payload->>'playlist_name' = target.playlist_name
-                       AND planned.payload->'detail'->>'surface' = 'intake'
-                     ORDER BY run.started_at DESC LIMIT 1
-                 ),
-                 clear_policy = 'after_verified_assignment', updated_at = now()
-             WHERE account_playlist.provider_account_id = $1
-               AND account_playlist.provider_playlist_id = $2
-               AND EXISTS (
-                   SELECT 1
-                   FROM provider_playlists provider
-                   JOIN sync_apply_playlist_targets target
-                     ON target.spotify_playlist_id = provider.provider_playlist_id
-                   JOIN sync_apply_runs run ON run.id = target.apply_run_id
-                   JOIN sync_apply_operations execution ON execution.apply_run_id = run.id
-                   JOIN sync_operations planned
-                     ON planned.id = execution.planned_operation_id
-                   WHERE provider.id = account_playlist.provider_playlist_id
-                     AND run.status = 'succeeded'
-                     AND planned.operation_type = 'create_playlist'
-                     AND planned.payload->>'playlist_name' = target.playlist_name
-                     AND planned.payload->'detail'->>'surface' = 'intake'
-               )",
-        )
-        .bind(account_id)
-        .bind(provider_playlist_id)
-        .execute(&mut *transaction)
-        .await?;
-        sqlx::query(
-            "INSERT INTO provider_inventory_import_playlists
-             (snapshot_id, provider_playlist_id, name, description,
-              provider_snapshot_id, public, collaborative, total_items, metadata)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-        )
-        .bind(snapshot_id)
-        .bind(provider_playlist_id)
-        .bind(playlist_name)
-        .bind(&playlist.description)
-        .bind(&playlist.snapshot_id)
-        .bind(playlist.public)
-        .bind(playlist.collaborative)
-        .bind(to_i32(playlist.total_items(), "playlist item count")?)
-        .bind(serde_json::to_value(playlist)?)
-        .execute(&mut *transaction)
-        .await?;
+    let resolved_playlists = prepare_active_playlists(
+        account_id,
+        snapshot_id,
+        &inventory.playlists,
+        &mut transaction,
+    )
+    .await?;
+    let reused_playlists = resolved_playlists
+        .iter()
+        .filter_map(|resolved| {
+            resolved
+                .inventory
+                .reused_from_snapshot
+                .map(|source_snapshot_id| (source_snapshot_id, resolved.provider_playlist_id))
+        })
+        .collect::<Vec<_>>();
+    let reused_counts = if reuse_materialized_inventory {
+        Some(current_inventory_counts(account_id, &mut transaction).await?)
+    } else {
+        None
+    };
+    if let Some(counts) = reused_counts {
+        playlist_entries = counts.playlist_entries;
+    } else {
+        playlist_entries +=
+            copy_reused_playlist_memberships(snapshot_id, &reused_playlists, &mut transaction)
+                .await?;
+    }
+    let playlists_reused = reused_playlists.len();
 
-        if let Some(source_snapshot_id) = playlist_inventory.reused_from_snapshot {
-            let copied = sqlx::query(
-                "INSERT INTO provider_inventory_import_playlist_tracks
-                 (snapshot_id, provider_playlist_id, provider_track_id,
-                  position, added_at, metadata, captured_at)
-                 SELECT $1, provider_playlist_id, provider_track_id,
-                        position, added_at, metadata, now()
-                 FROM provider_observed_playlist_tracks
-                 WHERE snapshot_id = $2 AND provider_playlist_id = $3",
-            )
-            .bind(snapshot_id)
-            .bind(source_snapshot_id)
-            .bind(provider_playlist_id)
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected();
-            playlist_entries += usize::try_from(copied).map_err(|_| {
-                ChordriftError::Configuration(
-                    "copied playlist entry count exceeds platform limits".to_owned(),
-                )
-            })?;
-            playlists_reused += 1;
+    for resolved in &resolved_playlists {
+        let playlist_inventory = resolved.inventory;
+        if playlist_inventory.reused_from_snapshot.is_some() {
             continue;
         }
+        let provider_playlist_id = resolved.provider_playlist_id;
 
         let mut memberships = Vec::with_capacity(playlist_inventory.items.len());
         for (position, item) in playlist_inventory.items.iter().enumerate() {
@@ -796,22 +709,26 @@ async fn persist(
 
     let saved_tracks_reused = inventory.saved_tracks.reused_from_snapshot.is_some();
     if let Some(source_snapshot_id) = inventory.saved_tracks.reused_from_snapshot {
-        let copied = sqlx::query(
-            "INSERT INTO provider_inventory_import_saved_tracks
-             (snapshot_id, provider_track_id, position, saved_at, metadata)
-             SELECT $1, provider_track_id, position, saved_at, metadata
-             FROM provider_observed_saved_tracks WHERE snapshot_id = $2",
-        )
-        .bind(snapshot_id)
-        .bind(source_snapshot_id)
-        .execute(&mut *transaction)
-        .await?
-        .rows_affected();
-        saved_tracks = usize::try_from(copied).map_err(|_| {
-            ChordriftError::Configuration(
-                "copied saved-track count exceeds platform limits".to_owned(),
+        if let Some(counts) = reused_counts {
+            saved_tracks = counts.saved_tracks;
+        } else {
+            let copied = sqlx::query(
+                "INSERT INTO provider_inventory_import_saved_tracks
+                 (snapshot_id, provider_track_id, position, saved_at, metadata)
+                 SELECT $1, provider_track_id, position, saved_at, metadata
+                 FROM provider_observed_saved_tracks WHERE snapshot_id = $2",
             )
-        })?;
+            .bind(snapshot_id)
+            .bind(source_snapshot_id)
+            .execute(&mut *transaction)
+            .await?
+            .rows_affected();
+            saved_tracks = usize::try_from(copied).map_err(|_| {
+                ChordriftError::Configuration(
+                    "copied saved-track count exceeds platform limits".to_owned(),
+                )
+            })?;
+        }
     }
     let mut saved_memberships = Vec::with_capacity(inventory.saved_tracks.items.len());
     let mut saved_progress = TerminalProgress::new(
@@ -858,42 +775,47 @@ async fn persist(
 
     let saved_albums_reused = inventory.saved_albums.reused_from_snapshot.is_some();
     if let Some(source_snapshot_id) = inventory.saved_albums.reused_from_snapshot {
-        saved_albums = usize::try_from(
-            sqlx::query(
-                "INSERT INTO provider_inventory_import_saved_albums
-                 (snapshot_id, provider_album_id, position, saved_at, metadata)
-                 SELECT $1, provider_album_id, position, saved_at, metadata
-                 FROM provider_observed_saved_albums WHERE snapshot_id = $2",
+        if let Some(counts) = reused_counts {
+            saved_albums = counts.saved_albums;
+            saved_album_tracks = counts.saved_album_tracks;
+        } else {
+            saved_albums = usize::try_from(
+                sqlx::query(
+                    "INSERT INTO provider_inventory_import_saved_albums
+                     (snapshot_id, provider_album_id, position, saved_at, metadata)
+                     SELECT $1, provider_album_id, position, saved_at, metadata
+                     FROM provider_observed_saved_albums WHERE snapshot_id = $2",
+                )
+                .bind(snapshot_id)
+                .bind(source_snapshot_id)
+                .execute(&mut *transaction)
+                .await?
+                .rows_affected(),
             )
-            .bind(snapshot_id)
-            .bind(source_snapshot_id)
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected(),
-        )
-        .map_err(|_| {
-            ChordriftError::Configuration(
-                "copied saved-album count exceeds platform limits".to_owned(),
+            .map_err(|_| {
+                ChordriftError::Configuration(
+                    "copied saved-album count exceeds platform limits".to_owned(),
+                )
+            })?;
+            saved_album_tracks = usize::try_from(
+                sqlx::query(
+                    "INSERT INTO provider_inventory_import_saved_album_tracks
+                     (snapshot_id, provider_album_id, provider_track_id, position, metadata)
+                     SELECT $1, provider_album_id, provider_track_id, position, metadata
+                     FROM provider_observed_saved_album_tracks WHERE snapshot_id = $2",
+                )
+                .bind(snapshot_id)
+                .bind(source_snapshot_id)
+                .execute(&mut *transaction)
+                .await?
+                .rows_affected(),
             )
-        })?;
-        saved_album_tracks = usize::try_from(
-            sqlx::query(
-                "INSERT INTO provider_inventory_import_saved_album_tracks
-                 (snapshot_id, provider_album_id, provider_track_id, position, metadata)
-                 SELECT $1, provider_album_id, provider_track_id, position, metadata
-                 FROM provider_observed_saved_album_tracks WHERE snapshot_id = $2",
-            )
-            .bind(snapshot_id)
-            .bind(source_snapshot_id)
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected(),
-        )
-        .map_err(|_| {
-            ChordriftError::Configuration(
-                "copied saved-album track count exceeds platform limits".to_owned(),
-            )
-        })?;
+            .map_err(|_| {
+                ChordriftError::Configuration(
+                    "copied saved-album track count exceeds platform limits".to_owned(),
+                )
+            })?;
+        }
     } else {
         let album_track_total: usize = inventory
             .saved_albums
@@ -973,9 +895,12 @@ async fn persist(
         }
     }
 
-    let mut recent_plays_inserted = 0_usize;
+    let mut recent_identities = HashMap::<String, RecentIdentityInput>::new();
     for item in &inventory.recently_played {
-        let Some(provider_track_row_id) = persist_track(
+        let Some(provider_track_id) = item.track.id.as_deref() else {
+            continue;
+        };
+        let Some(_) = persist_track(
             &item.track,
             &mut tracks,
             &mut transaction,
@@ -985,83 +910,43 @@ async fn persist(
         else {
             continue;
         };
-        let canonical_track_id: Uuid =
-            sqlx::query_scalar("SELECT track_id FROM provider_tracks WHERE id = $1")
-                .bind(provider_track_row_id)
-                .fetch_one(&mut *transaction)
-                .await?;
-        let Some(provider_track_id) = item.track.id.as_deref() else {
-            continue;
-        };
-        let source_event_id = format!(
-            "spotify-recent-v1:{provider_track_id}:{}",
-            item.played_at.to_rfc3339()
-        );
-        let historical_identity_id: Uuid = sqlx::query_scalar(
-            "INSERT INTO historical_provider_track_identities
-             (provider, provider_track_id, canonical_track_id, track_name,
-              artist_name, album_name, first_observed_at, last_observed_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-             ON CONFLICT (provider, provider_track_id) DO UPDATE SET
-               canonical_track_id = COALESCE(EXCLUDED.canonical_track_id,
-                   historical_provider_track_identities.canonical_track_id),
-               track_name = COALESCE(EXCLUDED.track_name,
-                   historical_provider_track_identities.track_name),
-               artist_name = COALESCE(EXCLUDED.artist_name,
-                   historical_provider_track_identities.artist_name),
-               album_name = COALESCE(EXCLUDED.album_name,
-                   historical_provider_track_identities.album_name),
-               first_observed_at = LEAST(
-                   historical_provider_track_identities.first_observed_at,
-                   EXCLUDED.first_observed_at),
-               last_observed_at = GREATEST(
-                   historical_provider_track_identities.last_observed_at,
-                   EXCLUDED.last_observed_at)
-             RETURNING id",
-        )
-        .bind(PROVIDER)
-        .bind(provider_track_id)
-        .bind(canonical_track_id)
-        .bind(&item.track.name)
-        .bind(
-            item.track
-                .artists
-                .first()
-                .map(|artist| artist.name.as_str()),
-        )
-        .bind(item.track.album.as_ref().map(|album| album.name.as_str()))
-        .bind(item.played_at)
-        .fetch_one(&mut *transaction)
-        .await?;
-        let inserted = sqlx::query(
-            "INSERT INTO normalized_listening_events
-             (id, provider_account_id, historical_identity_id, source_kind,
-              source_event_id, played_at, context_uri, context_type,
-              provider_extensions)
-             VALUES ($1, $2, $3, 'recent_api', $4, $5, $6, $7, $8)
-             ON CONFLICT DO NOTHING",
-        )
-        .bind(Uuid::new_v4())
-        .bind(account_id)
-        .bind(historical_identity_id)
-        .bind(source_event_id)
-        .bind(item.played_at)
-        .bind(item.context.as_ref().map(|context| context.uri.as_str()))
-        .bind(item.context.as_ref().map(|context| context.kind.as_str()))
-        .bind(json!({
-            "observation": "recently_played",
-            "duration_unknown": true,
-        }))
-        .execute(&mut *transaction)
-        .await?
-        .rows_affected();
-        recent_plays_inserted =
-            recent_plays_inserted.saturating_add(usize::try_from(inserted).map_err(|_| {
+        let canonical_track_id = tracks
+            .resolved
+            .get(provider_track_id)
+            .map(|track| track.canonical_track_id)
+            .ok_or_else(|| {
                 ChordriftError::Configuration(
-                    "recent play insert count exceeded platform limits".to_owned(),
+                    "recent Spotify track did not resolve after persistence".to_owned(),
                 )
-            })?);
+            })?;
+        recent_identities
+            .entry(provider_track_id.to_owned())
+            .and_modify(|identity| {
+                identity.first_observed_at = identity.first_observed_at.min(item.played_at);
+                identity.last_observed_at = identity.last_observed_at.max(item.played_at);
+            })
+            .or_insert_with(|| RecentIdentityInput {
+                provider_track_id: provider_track_id.to_owned(),
+                canonical_track_id,
+                track_name: item.track.name.clone(),
+                artist_name: item.track.artists.first().map(|artist| artist.name.clone()),
+                album_name: item.track.album.as_ref().map(|album| album.name.clone()),
+                first_observed_at: item.played_at,
+                last_observed_at: item.played_at,
+            });
     }
+    let historical_identity_ids =
+        upsert_recent_identities(&recent_identities, &mut transaction).await?;
+    let affected_identity_ids = insert_recent_events(
+        account_id,
+        &inventory.recently_played,
+        &historical_identity_ids,
+        &mut transaction,
+    )
+    .await?;
+    let recent_plays_inserted = affected_identity_ids.len();
+    refresh_recent_listening_statistics(account_id, &affected_identity_ids, &mut transaction)
+        .await?;
     sqlx::query(
         "INSERT INTO spotify_recent_play_syncs
          (provider_account_id, requested_after, newest_played_at,
@@ -1097,11 +982,21 @@ async fn persist(
     // content-addressed playlist and saved-surface bodies. The import rows are
     // transaction-local staging in practice and are removed after the durable
     // revisions and current pointers have been materialized.
-    sqlx::query("SELECT materialize_provider_current_state_v2($1, $2)")
-        .bind(account_id)
-        .bind(snapshot_id)
-        .execute(&mut *transaction)
+    if reuse_materialized_inventory {
+        reuse_current_provider_inventory(
+            account_id,
+            snapshot_id,
+            &resolved_playlists,
+            &mut transaction,
+        )
         .await?;
+    } else {
+        sqlx::query("SELECT materialize_provider_current_state_v2($1, $2)")
+            .bind(account_id)
+            .bind(snapshot_id)
+            .execute(&mut *transaction)
+            .await?;
+    }
     sqlx::query(
         "WITH playlist_tracks AS (
              DELETE FROM provider_inventory_import_playlist_tracks
@@ -1165,11 +1060,13 @@ async fn persist(
     Ok(ImportReport {
         account_label: account_label.to_owned(),
         account_id: inventory.profile.account_id,
+        spotify_api_requests,
         display_name: inventory.profile.display_name,
         snapshot_id,
         playlists_seen: inventory.playlists_seen,
         playlists_imported,
         playlists_reused,
+        library_unchanged: inventory.active_playlists_unchanged && saved_tracks_reused,
         playlist_entries,
         saved_tracks,
         saved_tracks_reused,
@@ -1186,6 +1083,520 @@ async fn persist(
         recent_plays_seen,
         recent_plays_inserted,
         recent_plays_through,
+    })
+}
+
+struct RecentIdentityInput {
+    provider_track_id: String,
+    canonical_track_id: Uuid,
+    track_name: String,
+    artist_name: Option<String>,
+    album_name: Option<String>,
+    first_observed_at: DateTime<Utc>,
+    last_observed_at: DateTime<Utc>,
+}
+
+async fn upsert_recent_identities(
+    identities: &HashMap<String, RecentIdentityInput>,
+    transaction: &mut Transaction<'_, Postgres>,
+) -> Result<HashMap<String, Uuid>> {
+    if identities.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut upsert = QueryBuilder::<Postgres>::new(
+        "INSERT INTO historical_provider_track_identities \
+         (provider, provider_track_id, canonical_track_id, track_name, artist_name, \
+          album_name, first_observed_at, last_observed_at) ",
+    );
+    upsert.push_values(identities.values(), |mut row, identity| {
+        row.push_bind(PROVIDER)
+            .push_bind(&identity.provider_track_id)
+            .push_bind(identity.canonical_track_id)
+            .push_bind(&identity.track_name)
+            .push_bind(&identity.artist_name)
+            .push_bind(&identity.album_name)
+            .push_bind(identity.first_observed_at)
+            .push_bind(identity.last_observed_at);
+    });
+    upsert.push(
+        " ON CONFLICT (provider, provider_track_id) DO UPDATE SET \
+          canonical_track_id = COALESCE(EXCLUDED.canonical_track_id, \
+              historical_provider_track_identities.canonical_track_id), \
+          track_name = COALESCE(EXCLUDED.track_name, \
+              historical_provider_track_identities.track_name), \
+          artist_name = COALESCE(EXCLUDED.artist_name, \
+              historical_provider_track_identities.artist_name), \
+          album_name = COALESCE(EXCLUDED.album_name, \
+              historical_provider_track_identities.album_name), \
+          first_observed_at = LEAST(historical_provider_track_identities.first_observed_at, \
+              EXCLUDED.first_observed_at), \
+          last_observed_at = GREATEST(historical_provider_track_identities.last_observed_at, \
+              EXCLUDED.last_observed_at) RETURNING id, provider_track_id",
+    );
+    upsert
+        .build()
+        .fetch_all(&mut **transaction)
+        .await?
+        .into_iter()
+        .map(|row| Ok((row.try_get("provider_track_id")?, row.try_get("id")?)))
+        .collect()
+}
+
+async fn insert_recent_events(
+    account_id: Uuid,
+    observations: &[super::models::RecentlyPlayedItem],
+    identities: &HashMap<String, Uuid>,
+    transaction: &mut Transaction<'_, Postgres>,
+) -> Result<Vec<Uuid>> {
+    let supported = observations
+        .iter()
+        .filter_map(|item| {
+            let provider_track_id = item.track.id.as_deref()?;
+            Some((item, *identities.get(provider_track_id)?))
+        })
+        .collect::<Vec<_>>();
+    if supported.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut insert = QueryBuilder::<Postgres>::new(
+        "INSERT INTO normalized_listening_events \
+         (id, provider_account_id, historical_identity_id, source_kind, source_event_id, \
+          played_at, context_uri, context_type, provider_extensions) ",
+    );
+    insert.push_values(&supported, |mut row, (item, historical_identity_id)| {
+        let provider_track_id = item
+            .track
+            .id
+            .as_deref()
+            .expect("supported recent observation has a provider track ID");
+        row.push_bind(Uuid::new_v4())
+            .push_bind(account_id)
+            .push_bind(*historical_identity_id)
+            .push_bind("recent_api")
+            .push_bind(format!(
+                "spotify-recent-v1:{provider_track_id}:{}",
+                item.played_at.to_rfc3339()
+            ))
+            .push_bind(item.played_at)
+            .push_bind(item.context.as_ref().map(|context| context.uri.as_str()))
+            .push_bind(item.context.as_ref().map(|context| context.kind.as_str()))
+            .push_bind(json!({
+                "observation": "recently_played",
+                "duration_unknown": true,
+            }));
+    });
+    insert.push(" ON CONFLICT DO NOTHING RETURNING historical_identity_id");
+    insert
+        .build()
+        .fetch_all(&mut **transaction)
+        .await?
+        .into_iter()
+        .map(|row| row.try_get("historical_identity_id").map_err(Into::into))
+        .collect()
+}
+
+async fn refresh_recent_listening_statistics(
+    account_id: Uuid,
+    affected_identity_ids: &[Uuid],
+    transaction: &mut Transaction<'_, Postgres>,
+) -> Result<()> {
+    let affected_identity_ids = affected_identity_ids
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if affected_identity_ids.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(
+        "INSERT INTO account_listening_track_statistics
+             (provider_account_id, provider_track_id, track_id,
+              track_name, artist_name, album_name, event_count, play_count,
+              total_ms_played, average_ms_played, skip_count, completed_count,
+              first_played_at, last_played_at)
+         SELECT $1, identity.provider_track_id, identity.canonical_track_id,
+                identity.track_name, identity.artist_name, identity.album_name,
+                count(*), count(*) FILTER (WHERE event.ms_played >= 30000),
+                COALESCE(sum(event.ms_played), 0)::bigint,
+                COALESCE(avg(event.ms_played), 0)::double precision,
+                count(*) FILTER (WHERE event.skipped IS TRUE),
+                count(*) FILTER (WHERE event.completed IS TRUE),
+                min(event.played_at), max(event.played_at)
+         FROM normalized_listening_events event
+         JOIN historical_provider_track_identities identity
+           ON identity.id = event.historical_identity_id
+         WHERE event.provider_account_id = $1
+           AND identity.provider = 'spotify' AND event.superseded_at IS NULL
+           AND identity.id = ANY($2)
+         GROUP BY identity.id, identity.provider_track_id,
+                  identity.canonical_track_id, identity.track_name,
+                  identity.artist_name, identity.album_name
+         ON CONFLICT (provider_account_id, provider_track_id) DO UPDATE SET
+           track_id = EXCLUDED.track_id,
+           track_name = EXCLUDED.track_name,
+           artist_name = EXCLUDED.artist_name,
+           album_name = EXCLUDED.album_name,
+           event_count = EXCLUDED.event_count,
+           play_count = EXCLUDED.play_count,
+           total_ms_played = EXCLUDED.total_ms_played,
+           average_ms_played = EXCLUDED.average_ms_played,
+           skip_count = EXCLUDED.skip_count,
+           completed_count = EXCLUDED.completed_count,
+           first_played_at = EXCLUDED.first_played_at,
+           last_played_at = EXCLUDED.last_played_at,
+           calculated_at = now()",
+    )
+    .bind(account_id)
+    .bind(&affected_identity_ids)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
+struct ResolvedPlaylist<'a> {
+    provider_playlist_id: Uuid,
+    inventory: &'a PlaylistInventory,
+    metadata: Value,
+    total_items: i32,
+}
+
+#[derive(Clone, Copy)]
+struct CurrentInventoryCounts {
+    playlist_entries: usize,
+    saved_tracks: usize,
+    saved_albums: usize,
+    saved_album_tracks: usize,
+}
+
+async fn current_inventory_counts(
+    account_id: Uuid,
+    transaction: &mut Transaction<'_, Postgres>,
+) -> Result<CurrentInventoryCounts> {
+    let row = sqlx::query(
+        "SELECT COALESCE(sum(playlist_revision.item_count), 0)::bigint AS playlist_entries,
+                saved_track_revision.item_count::bigint AS saved_tracks,
+                saved_album_revision.album_count::bigint AS saved_albums,
+                saved_album_revision.track_count::bigint AS saved_album_tracks
+         FROM provider_current_inventories inventory
+         JOIN provider_saved_track_revisions saved_track_revision
+           ON saved_track_revision.id = inventory.saved_track_revision_id
+         JOIN provider_saved_album_revisions saved_album_revision
+           ON saved_album_revision.id = inventory.saved_album_revision_id
+         LEFT JOIN provider_current_playlists current_playlist
+           ON current_playlist.provider_account_id = inventory.provider_account_id
+         LEFT JOIN provider_playlist_revisions playlist_revision
+           ON playlist_revision.id = current_playlist.revision_id
+         WHERE inventory.provider_account_id = $1
+         GROUP BY saved_track_revision.item_count,
+                  saved_album_revision.album_count, saved_album_revision.track_count",
+    )
+    .bind(account_id)
+    .fetch_one(&mut **transaction)
+    .await?;
+    let count = |column| -> Result<usize> {
+        usize::try_from(row.try_get::<i64, _>(column)?).map_err(|_| {
+            ChordriftError::Configuration(format!(
+                "stored current-inventory {column} count is outside platform limits"
+            ))
+        })
+    };
+    Ok(CurrentInventoryCounts {
+        playlist_entries: count("playlist_entries")?,
+        saved_tracks: count("saved_tracks")?,
+        saved_albums: count("saved_albums")?,
+        saved_album_tracks: count("saved_album_tracks")?,
+    })
+}
+
+async fn reuse_current_provider_inventory(
+    account_id: Uuid,
+    snapshot_id: Uuid,
+    playlists: &[ResolvedPlaylist<'_>],
+    transaction: &mut Transaction<'_, Postgres>,
+) -> Result<()> {
+    if !playlists.is_empty() {
+        let mut update = QueryBuilder::<Postgres>::new(
+            "UPDATE provider_current_playlists AS target SET \
+             name = incoming.name, description = incoming.description, \
+             public = incoming.public, collaborative = incoming.collaborative, \
+             provider_revision = incoming.provider_revision, \
+             reported_item_count = incoming.reported_item_count, metadata = incoming.metadata \
+             FROM (",
+        );
+        update.push_values(playlists, |mut row, resolved| {
+            let playlist = &resolved.inventory.playlist;
+            row.push_bind(resolved.provider_playlist_id)
+                .push_bind(nonempty_or(&playlist.name, "Untitled Spotify playlist"))
+                .push_bind(&playlist.description)
+                .push_bind(playlist.public)
+                .push_bind(playlist.collaborative)
+                .push_bind(&playlist.snapshot_id)
+                .push_bind(resolved.total_items)
+                .push_bind(&resolved.metadata);
+        });
+        update.push(
+            ") AS incoming(provider_playlist_id, name, description, public, collaborative, \
+             provider_revision, reported_item_count, metadata) \
+             WHERE target.provider_account_id = ",
+        );
+        update.push_bind(account_id);
+        update.push(" AND target.provider_playlist_id = incoming.provider_playlist_id");
+        let updated = update
+            .build()
+            .execute(&mut **transaction)
+            .await?
+            .rows_affected();
+        if usize::try_from(updated).ok() != Some(playlists.len()) {
+            return Err(ChordriftError::Configuration(
+                "unchanged provider inventory did not match every current playlist".to_owned(),
+            ));
+        }
+    }
+
+    let updated = sqlx::query(
+        "WITH observation AS MATERIALIZED (
+             SELECT captured_at FROM provider_inventory_observations
+             WHERE id = $2 AND provider_account_id = $1
+         ), playlist_revision_updates AS (
+             UPDATE provider_playlist_revisions revision
+             SET last_observed_at = GREATEST(revision.last_observed_at, observation.captured_at)
+             FROM provider_current_playlists current_playlist, observation
+             WHERE current_playlist.provider_account_id = $1
+               AND revision.id = current_playlist.revision_id
+             RETURNING revision.id
+         ), saved_track_revision_update AS (
+             UPDATE provider_saved_track_revisions revision
+             SET last_observed_at = GREATEST(revision.last_observed_at, observation.captured_at)
+             FROM provider_current_inventories inventory, observation
+             WHERE inventory.provider_account_id = $1
+               AND revision.id = inventory.saved_track_revision_id
+             RETURNING revision.id
+         ), saved_album_revision_update AS (
+             UPDATE provider_saved_album_revisions revision
+             SET last_observed_at = GREATEST(revision.last_observed_at, observation.captured_at)
+             FROM provider_current_inventories inventory, observation
+             WHERE inventory.provider_account_id = $1
+               AND revision.id = inventory.saved_album_revision_id
+             RETURNING revision.id
+         )
+         UPDATE provider_current_inventories inventory
+         SET source_snapshot_id = $2, captured_at = observation.captured_at, updated_at = now()
+         FROM observation WHERE inventory.provider_account_id = $1",
+    )
+    .bind(account_id)
+    .bind(snapshot_id)
+    .execute(&mut **transaction)
+    .await?
+    .rows_affected();
+    if updated != 1 {
+        return Err(ChordriftError::Configuration(
+            "unchanged provider inventory has no materialized current state".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn prepare_active_playlists<'a>(
+    account_id: Uuid,
+    snapshot_id: Uuid,
+    playlists: &'a [PlaylistInventory],
+    transaction: &mut Transaction<'_, Postgres>,
+) -> Result<Vec<ResolvedPlaylist<'a>>> {
+    let mut resolved = Vec::with_capacity(playlists.len());
+    for inventory in playlists {
+        let provider_playlist_id = match inventory.known_provider_playlist_id {
+            Some(id) => id,
+            None => upsert_playlist(&inventory.playlist, transaction).await?,
+        };
+        resolved.push(ResolvedPlaylist {
+            provider_playlist_id,
+            inventory,
+            metadata: serde_json::to_value(&inventory.playlist)?,
+            total_items: to_i32(inventory.playlist.total_items(), "playlist item count")?,
+        });
+    }
+    if resolved.is_empty() {
+        return Ok(resolved);
+    }
+
+    let mut update = QueryBuilder::<Postgres>::new(
+        "UPDATE provider_playlists AS target SET \
+         provider_uri = incoming.provider_uri, provider_url = incoming.provider_url, \
+         snapshot_id = incoming.snapshot_id, metadata = incoming.metadata, \
+         imported_at = now(), last_seen_at = now(), updated_at = now() FROM (",
+    );
+    update.push_values(&resolved, |mut row, resolved| {
+        let playlist = &resolved.inventory.playlist;
+        row.push_bind(resolved.provider_playlist_id)
+            .push_bind(&playlist.uri)
+            .push_bind(playlist.external_urls.spotify())
+            .push_bind(&playlist.snapshot_id)
+            .push_bind(&resolved.metadata);
+    });
+    update.push(
+        ") AS incoming(id, provider_uri, provider_url, snapshot_id, metadata) \
+         WHERE target.id = incoming.id",
+    );
+    update.build().execute(&mut **transaction).await?;
+
+    let mut account_playlists = QueryBuilder::<Postgres>::new(
+        "INSERT INTO provider_account_playlists \
+         (provider_account_id, provider_playlist_id, present_in_latest_snapshot) ",
+    );
+    account_playlists.push_values(&resolved, |mut row, resolved| {
+        row.push_bind(account_id)
+            .push_bind(resolved.provider_playlist_id)
+            .push_bind(true);
+    });
+    account_playlists.push(
+        " ON CONFLICT (provider_account_id, provider_playlist_id) DO UPDATE SET \
+          present_in_latest_snapshot = TRUE, last_seen_at = now(), updated_at = now()",
+    );
+    account_playlists
+        .build()
+        .execute(&mut **transaction)
+        .await?;
+
+    refresh_active_playlist_policies(account_id, transaction).await?;
+
+    let mut stage = QueryBuilder::<Postgres>::new(
+        "INSERT INTO provider_inventory_import_playlists \
+         (snapshot_id, provider_playlist_id, name, description, provider_snapshot_id, \
+          public, collaborative, total_items, metadata) ",
+    );
+    stage.push_values(&resolved, |mut row, resolved| {
+        let playlist = &resolved.inventory.playlist;
+        row.push_bind(snapshot_id)
+            .push_bind(resolved.provider_playlist_id)
+            .push_bind(nonempty_or(&playlist.name, "Untitled Spotify playlist"))
+            .push_bind(&playlist.description)
+            .push_bind(&playlist.snapshot_id)
+            .push_bind(playlist.public)
+            .push_bind(playlist.collaborative)
+            .push_bind(resolved.total_items)
+            .push_bind(&resolved.metadata);
+    });
+    stage.build().execute(&mut **transaction).await?;
+    Ok(resolved)
+}
+
+async fn refresh_active_playlist_policies(
+    account_id: Uuid,
+    transaction: &mut Transaction<'_, Postgres>,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE provider_account_playlists account_playlist
+         SET role = 'inbox', drift_policy = 'provider_wins',
+             signal_class = 'routing', semantic_weight = 0.0,
+             behavioral_signal = NULL,
+             clear_policy = 'after_verified_assignment', updated_at = now()
+         FROM provider_playlists provider
+         JOIN playlists playlist ON playlist.id = provider.playlist_id
+         WHERE account_playlist.provider_account_id = $1
+           AND account_playlist.present_in_latest_snapshot
+           AND provider.id = account_playlist.provider_playlist_id
+           AND playlist.kind = 'routing'",
+    )
+    .bind(account_id)
+    .execute(&mut **transaction)
+    .await?;
+    sqlx::query(
+        "UPDATE provider_account_playlists account_playlist
+         SET role = 'managed', drift_policy = 'neon_wins',
+             signal_class = 'canonical', semantic_weight = 0.0,
+             clear_policy = 'never', updated_at = now()
+         FROM provider_playlists provider
+         WHERE account_playlist.provider_account_id = $1
+           AND account_playlist.present_in_latest_snapshot
+           AND provider.id = account_playlist.provider_playlist_id
+           AND provider.concept_id IS NOT NULL",
+    )
+    .bind(account_id)
+    .execute(&mut **transaction)
+    .await?;
+    sqlx::query(
+        "UPDATE provider_account_playlists account_playlist
+         SET role = 'inbox', drift_policy = 'provider_wins',
+             signal_class = 'intake', semantic_weight = 0.0,
+             behavioral_signal = (
+                 SELECT NULLIF(planned.payload->'detail'->>'behavioral_signal', '')
+                 FROM provider_playlists provider
+                 JOIN sync_apply_playlist_targets target
+                   ON target.spotify_playlist_id = provider.provider_playlist_id
+                 JOIN sync_apply_runs run ON run.id = target.apply_run_id
+                 JOIN sync_apply_operations execution ON execution.apply_run_id = run.id
+                 JOIN sync_operations planned ON planned.id = execution.planned_operation_id
+                 WHERE provider.id = account_playlist.provider_playlist_id
+                   AND run.status = 'succeeded'
+                   AND planned.operation_type = 'create_playlist'
+                   AND planned.payload->>'playlist_name' = target.playlist_name
+                   AND planned.payload->'detail'->>'surface' = 'intake'
+                 ORDER BY run.started_at DESC LIMIT 1
+             ),
+             clear_policy = 'after_verified_assignment', updated_at = now()
+         WHERE account_playlist.provider_account_id = $1
+           AND account_playlist.present_in_latest_snapshot
+           AND EXISTS (
+               SELECT 1
+               FROM provider_playlists provider
+               JOIN sync_apply_playlist_targets target
+                 ON target.spotify_playlist_id = provider.provider_playlist_id
+               JOIN sync_apply_runs run ON run.id = target.apply_run_id
+               JOIN sync_apply_operations execution ON execution.apply_run_id = run.id
+               JOIN sync_operations planned ON planned.id = execution.planned_operation_id
+               WHERE provider.id = account_playlist.provider_playlist_id
+                 AND run.status = 'succeeded'
+                 AND planned.operation_type = 'create_playlist'
+                 AND planned.payload->>'playlist_name' = target.playlist_name
+                 AND planned.payload->'detail'->>'surface' = 'intake'
+           )",
+    )
+    .bind(account_id)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
+async fn copy_reused_playlist_memberships(
+    snapshot_id: Uuid,
+    reused: &[(Uuid, Uuid)],
+    transaction: &mut Transaction<'_, Postgres>,
+) -> Result<usize> {
+    if reused.is_empty() {
+        return Ok(0);
+    }
+    let mut copy =
+        QueryBuilder::<Postgres>::new("WITH reused(source_snapshot_id, provider_playlist_id) AS (");
+    copy.push_values(
+        reused,
+        |mut row, (source_snapshot_id, provider_playlist_id)| {
+            row.push_bind(*source_snapshot_id)
+                .push_bind(*provider_playlist_id);
+        },
+    );
+    copy.push(
+        ") INSERT INTO provider_inventory_import_playlist_tracks \
+         (snapshot_id, provider_playlist_id, provider_track_id, position, added_at, \
+          metadata, captured_at) SELECT ",
+    );
+    copy.push_bind(snapshot_id);
+    copy.push(
+        ", membership.provider_playlist_id, membership.provider_track_id, \
+         membership.position, membership.added_at, membership.metadata, now() \
+         FROM reused JOIN provider_observed_playlist_tracks membership \
+           ON membership.snapshot_id = reused.source_snapshot_id \
+          AND membership.provider_playlist_id = reused.provider_playlist_id",
+    );
+    let copied = copy
+        .build()
+        .execute(&mut **transaction)
+        .await?
+        .rows_affected();
+    usize::try_from(copied).map_err(|_| {
+        ChordriftError::Configuration(
+            "copied playlist entry count exceeds platform limits".to_owned(),
+        )
     })
 }
 
@@ -1695,9 +2106,10 @@ mod tests {
         bookmarks::{
             self, BookmarkFetchOutcome, BookmarkSelector, FetchedBookmark, FetchedBookmarkItem,
         },
-        db, db_reports, playlists,
+        db, db_reports, history, playlists,
         providers::spotify::models::{
-            CurrentUser, Page, PlaylistInventory, PlaylistItem, SavedTrack, SpotifyPlaylist,
+            CurrentUser, Page, PlaylistInventory, PlaylistItem, RecentlyPlayedItem, SavedTrack,
+            SpotifyPlaylist,
         },
     };
 
@@ -1761,6 +2173,7 @@ mod tests {
                 playlist: playlists.items.into_iter().next().unwrap(),
                 items: items.items,
                 reused_from_snapshot: None,
+                known_provider_playlist_id: None,
             }],
             external_playlists: Vec::new(),
             saved_tracks: super::super::models::SavedTracksInventory {
@@ -1776,12 +2189,13 @@ mod tests {
             recently_played: Vec::new(),
             recent_requested_after: None,
             playlists_seen: 2,
+            active_playlists_unchanged: false,
             followed_playlists_skipped: 1,
             inaccessible_collaborative_playlists: 0,
         };
 
         let repeated_inventory = inventory.clone();
-        let report = persist("fixture", inventory, &database).await?;
+        let report = persist("fixture", inventory, 0, &database).await?;
         assert_eq!(report.playlists_seen, 2);
         assert_eq!(report.playlists_imported, 1);
         assert_eq!(report.playlist_entries, 1);
@@ -1806,7 +2220,7 @@ mod tests {
         // A changed-snapshot import may contain the same provider metadata.
         // Repeating it exercises the known-track fast path and batched saved
         // membership insert without creating duplicate canonical rows.
-        let repeated = persist("fixture", repeated_inventory, &database).await?;
+        let repeated = persist("fixture", repeated_inventory.clone(), 0, &database).await?;
         assert_eq!(repeated.saved_tracks, 1);
         let provider_tracks: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM provider_tracks
@@ -1873,6 +2287,64 @@ mod tests {
         assert_eq!(summary.playlist_entries, 1);
         assert_eq!(summary.unique_playlist_tracks, 1);
         assert_eq!(summary.saved_tracks, 1);
+
+        let provider_playlist_id: Uuid = sqlx::query_scalar(
+            "SELECT id FROM provider_playlists
+             WHERE provider = 'spotify' AND provider_playlist_id = 'playlist123'",
+        )
+        .fetch_one(database.pool())
+        .await?;
+        let mut optimized_reuse = repeated_inventory;
+        let recent_track = optimized_reuse.playlists[0]
+            .items
+            .iter()
+            .find_map(PlaylistItem::track)
+            .expect("fixture contains one supported track")
+            .clone();
+        optimized_reuse.active_playlists_unchanged = true;
+        optimized_reuse.playlists[0].items.clear();
+        optimized_reuse.playlists[0].reused_from_snapshot = Some(repeated.snapshot_id);
+        optimized_reuse.playlists[0].known_provider_playlist_id = Some(provider_playlist_id);
+        optimized_reuse.saved_tracks.items.clear();
+        optimized_reuse.saved_tracks.reused_from_snapshot = Some(repeated.snapshot_id);
+        optimized_reuse.saved_albums.reused_from_snapshot = Some(repeated.snapshot_id);
+        optimized_reuse.recently_played = vec![RecentlyPlayedItem {
+            track: recent_track,
+            played_at: "2026-08-26T19:38:27.480Z"
+                .parse()
+                .expect("valid fixture timestamp"),
+            context: None,
+        }];
+        let optimized = persist("fixture", optimized_reuse, 0, &database).await?;
+        assert!(optimized.library_unchanged);
+        assert_eq!(optimized.playlists_reused, 1);
+        assert_eq!(optimized.playlist_entries, 1);
+        assert_eq!(optimized.saved_tracks, 1);
+        assert_eq!(optimized.recent_plays_inserted, 1);
+        let current_source: Uuid = sqlx::query_scalar(
+            "SELECT source_snapshot_id FROM provider_current_inventories
+             WHERE provider_account_id = $1",
+        )
+        .bind(fixture_account_id)
+        .fetch_one(database.pool())
+        .await?;
+        assert_eq!(current_source, optimized.snapshot_id);
+        let reused_summary = analysis::reuse_current(&database, "fixture")
+            .await?
+            .expect("existing analysis can follow an unchanged observation");
+        assert_eq!(reused_summary.playlist_entries, 1);
+        assert_eq!(reused_summary.saved_tracks, 1);
+        let listening = history::refresh_after_recent_import(&database, "fixture").await?;
+        assert_eq!(listening.events, 1);
+        assert_eq!(listening.unique_tracks, 1);
+        let listening_statistics: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM account_listening_track_statistics
+             WHERE provider_account_id = $1",
+        )
+        .bind(fixture_account_id)
+        .fetch_one(database.pool())
+        .await?;
+        assert_eq!(listening_statistics, 1);
 
         let account_id: Uuid =
             sqlx::query_scalar("SELECT id FROM provider_accounts WHERE account_label = 'fixture'")

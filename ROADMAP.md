@@ -724,6 +724,31 @@ named `chordrift-legacy-rollback`, was then deleted under separate exact-ID
 approval. The live project remained healthy and the preserved dump checksum was
 reverified afterward.
 
+## v0.1.4 — Cheap incremental provider synchronization
+
+Make the normal Spotify-to-Neon interaction proportional to observed change on
+the database-v2 schema. Fetch independent saved-track, saved-album, and recent-
+play surfaces concurrently after playlist discovery. Count Spotify API requests
+and show phase timings so latency regressions are visible to the operator.
+
+For unchanged playlists, batch current metadata, account links, policy refresh,
+transient headers, and revision-membership reuse into set-based Neon statements
+instead of issuing the same sequence once per playlist. When every provider
+surface is unchanged, retain the current content-addressed revision pointers
+without copying 1,790 playlist memberships through transient staging. Batch historical-
+identity and normalized recent-event writes. Maintain listening statistics only
+for identities receiving new events, relink against the compact per-track cache,
+and summarize routine syncs from that cache. When the active playlist/saved-
+track library is unchanged, advance the analysis checkpoint without deleting
+and rebuilding the complete derived statistics table. Keep explicit history
+refresh and summary commands event-level and authoritative.
+
+Status: implementation complete on `codex/v0.1.4-sync-performance`; local unit,
+strict Clippy, schema migration, clean provider round-trip, and incremental
+history tests pass on PostgreSQL 18. A real read-only personal pull remains the
+measurement gate before merge/release. It must report Spotify request count and
+per-phase elapsed time; no Spotify write is part of this milestone.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated

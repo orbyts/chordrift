@@ -206,6 +206,8 @@ pub(crate) struct PlaylistInventory {
     pub items: Vec<PlaylistItem>,
     /// Prior database snapshot used instead of another Spotify item request.
     pub reused_from_snapshot: Option<Uuid>,
+    /// Existing internal provider-playlist row, avoiding another Neon lookup.
+    pub known_provider_playlist_id: Option<Uuid>,
 }
 
 /// How the current account is related to an externally owned playlist.
@@ -272,6 +274,7 @@ pub(crate) struct SavedTracksInventory {
 
 #[derive(Clone, Debug)]
 pub(crate) struct PlaylistReuse {
+    pub provider_playlist_id: Option<Uuid>,
     pub provider_snapshot_id: String,
     pub source_snapshot_id: Uuid,
 }
@@ -319,6 +322,8 @@ pub(crate) struct SpotifyInventory {
     pub recent_requested_after: Option<DateTime<Utc>>,
     /// All owned, followed, and collaborative playlists Spotify reported.
     pub playlists_seen: usize,
+    /// Every active playlist matched the complete prior active inventory.
+    pub active_playlists_unchanged: bool,
     /// Followed playlists intentionally excluded under 2026 Development Mode.
     pub followed_playlists_skipped: usize,
     /// Collaborative playlists for which Spotify denied item access.

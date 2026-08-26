@@ -8,7 +8,31 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: begin the next post-v0.1.3 milestone
+## Start the next task here: measure and finish v0.1.4 sync performance
+
+Work is on `codex/v0.1.4-sync-performance`. The v0.1.4 implementation makes a
+routine pull proportional to change: saved tracks, saved albums, and recent
+plays are fetched concurrently; unchanged playlist persistence is set-based;
+historical identities and recent events are batched; unchanged analysis reuses
+its checkpoint; and listening statistics update only identities receiving new
+events. A fully unchanged provider inventory retains its existing
+content-addressed revisions, so it no longer copies and deletes all 1,790
+playlist memberships through transient staging. The routine history summary/relink path now scans the compact
+per-identity statistics cache rather than all normalized events. Explicit
+history refresh/summary operations remain event-level verification surfaces.
+
+`sync pull` now emits compact tables, actual Spotify Web API request count, and
+provider/analysis/history/publication/total elapsed times. Local checks pass:
+formatting, all ordinary targets (93 library tests passed, two database tests
+ignored as designed), strict all-target/all-feature Clippy, PostgreSQL 18 schema
+migration, post-clean provider persistence, and the optimized recent-history
+round trip. No live Spotify request, Spotify write, or production Neon mutation
+was used to validate this branch. The next gate is a normal read-only
+`chordrift sync pull --account personal` with a locally built v0.1.4 binary,
+compare its phase timings/request count with the v0.1.3 observation, then fix
+any measured remaining bottleneck before merge and release.
+
+The prior v0.1.3 release state follows.
 
 Chordrift v0.1.3 is released. Release commit
 `2355aec3512006ec65a95fb623e5b073b005cdfd` passed GitHub CI run

@@ -215,6 +215,13 @@ saved-library snapshot is copied forward without downloading the remaining
 pages. A detected change triggers a complete reconciliation so removals are not
 silently missed.
 
+Beginning with v0.1.4, the independent saved-track, saved-album, and recent-play
+probes run concurrently. Unchanged playlist bookkeeping and memberships are
+persisted with set-based statements, recent observations are inserted in
+batches, and only affected listening-statistic rows are refreshed. Routine
+pulls report Spotify API request counts and per-phase elapsed time so provider
+latency and Neon work can be distinguished without enabling debug logs.
+
 For routine use, `chordrift sync pull` imports the current Spotify state and
 incrementally retains new Recently Played observations before refreshing
 account-scoped canonical analysis in the same invocation. The lifetime privacy
