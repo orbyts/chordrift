@@ -584,9 +584,11 @@ tables; that code refactor follows only after observation. Legacy cleanup,
 rollback, and deletion of the former project each require separate approval.
 
 After the verified connection cutover, project `damp-hall-40280714` was renamed
-from its temporary candidate label to `Chordrift`. This was a display-name-only
-Neon operation: project identity, connection configuration, database contents,
-and the former rollback project were unchanged.
+from its temporary candidate label to `chordrift`. To free that lowercase name,
+the former project `mute-recipe-86719846` was relabeled
+`chordrift-legacy-rollback`. These were display-name-only Neon operations:
+project identities, connection configuration, and database contents were
+unchanged.
 
 ### v0.1.3 clean-runtime rehearsal
 
@@ -643,7 +645,7 @@ The second fresh PostgreSQL 18 rehearsal measured:
 - successful ordinary read commands, provider-inventory persistence/reuse, and
   normalized archive import on the post-clean schema.
 
-Migration 0044 is installed on the live `Chordrift` project and immediate
+Migration 0044 is installed on the live `chordrift` project and immediate
 read-only verification reproduced every rehearsal invariant and runtime read.
 The production-emitted cleanup plan currently equals the rehearsal hash
 `0688bf0984ea6f6b26cf65ca7ab1c9fcb762601c6a512b204e7a79312830f964`,
@@ -653,7 +655,7 @@ immediate verification, and continued retention of the former project.
 
 During the 0044 gate, the desktop process was found to carry a stale inherited
 database URL for the former project even though the owner-only persistent secret
-targets `Chordrift`. The first migration invocation therefore installed the
+targets `chordrift`. The first migration invocation therefore installed the
 same additive 0044 schema on the former project. It did not delete or rewrite
 rows; the former project remains at zero normalized events/checkpoints and is
 still the rollback copy, now at 44/44 migrations. The intended project was then

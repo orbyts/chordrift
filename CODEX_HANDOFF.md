@@ -10,12 +10,13 @@ Last updated: 2026-08-26.
 
 ## Start the next task here: approve the exact production cleanup hash
 
-Work is on `codex/v0.1.3-database-v2-runtime`. The v0.1.3 code refactor is
+Work is on `main` (the implementation is also retained on
+`codex/v0.1.3-database-v2-runtime`). The v0.1.3 code refactor is
 implemented: ordinary provider reads use current/revision/checkpoint v2
 surfaces, archive and recent-play writes go directly to normalized evidence,
 and provider pulls use transient v2 import staging that is empty at commit.
 Migration 0044 supplies these runtime surfaces and cleanup receipts. It is now
-installed on the live `Chordrift` project, which is healthy at 44/44.
+installed on the live `chordrift` project, which is healthy at 44/44.
 
 The exact provider-free cleanup engine is implemented as `chordrift db compact
 cleanup plan/apply/verify`. A second fresh PostgreSQL 18 restore reached 44/44,
@@ -32,9 +33,11 @@ reference. Its measured size is 167,974,591 bytes. Provider inventory and
 archive-history write round trips both pass against the post-clean schema.
 
 No production cleanup occurred. The configured live project remains
-`damp-hall-40280714` and its Neon display name is now `Chordrift`; the former
-project `mute-recipe-86719846` remains intact
-as the rollback project and must not be deleted. Immediate post-0044 checks on
+`damp-hall-40280714` and its Neon display name is now lowercase `chordrift`;
+the former project `mute-recipe-86719846` is now named
+`chordrift-legacy-rollback` and remains intact as the rollback project. Do not
+delete it until production cleanup, immediate verification, and the bounded
+post-clean runtime observation gate all succeed. Immediate post-0044 checks on
 the explicit live project proved 44/44, 149,314 normalized events, 15,575
 identities, two evidence imports, 24 checkpoints, 22 playlists, 1,790 ordered
 memberships, all parity gates true, and `ready_for_cutover: true`. Runtime
@@ -54,7 +57,7 @@ Only a new explicit approval naming that exact production hash may authorize
 
 Operational warning: this Codex desktop task inherited a stale
 `CHORDRIFT_DATABASE_URL` targeting the former project even though the persistent
-`/Users/suhail/.config/apogee/secrets.env` value targets `Chordrift` and remains
+`/Users/suhail/.config/apogee/secrets.env` value targets `chordrift` and remains
 mode `0600`. The first approved 0044 invocation therefore added the same
 additive migration to former project `mute-recipe-86719846`. No row was deleted,
 normalized, compacted, or rewritten there; it now reports 44/44 but still has
@@ -69,12 +72,13 @@ No Spotify request or write occurred.
 ## Historical: database-v2 project cutover
 
 The no-cost replacement candidate is complete and verified. Neon project
-`damp-hall-40280714`, now named `Chordrift` (formerly
+`damp-hall-40280714`, now named `chordrift` (formerly
 `chordrift-v2-candidate-20260826`), is an isolated
 PostgreSQL 18 project in `aws-us-west-2`. It is now Chordrift's configured
 database through the private Apogee `CHORDRIFT_DATABASE_URL` value. Do not print
 or persist its connection URL elsewhere. The former production project
-`mute-recipe-86719846` remains intact and unchanged as rollback protection.
+`mute-recipe-86719846`, now named `chordrift-legacy-rollback`, remains intact
+and unchanged as rollback protection.
 
 The pre-compaction dump hash was reverified as
 `8c5796cba5729931678f825021fe03268b81129352349266d7a68b487b3711ae`.
