@@ -712,10 +712,15 @@ async fn verify_publication(
          WHERE account_playlist.provider_account_id = $1
            AND account_playlist.present_in_latest_snapshot
            AND provider.concept_id IS NOT NULL
+           AND provider.concept_id IN (
+               SELECT proposed.concept_id
+               FROM playlists proposed
+               WHERE proposed.generation_id = $3)
          ORDER BY provider.concept_id, membership.position",
     )
     .bind(account_id)
     .bind(snapshot_id)
+    .bind(proposal_id)
     .fetch_all(database.pool())
     .await?;
     let mut current: BTreeMap<Uuid, (Uuid, Vec<Uuid>)> = BTreeMap::new();

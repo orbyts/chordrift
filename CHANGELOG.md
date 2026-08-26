@@ -21,6 +21,13 @@ All notable changes to Chordrift are documented here.
 - Add the approved Drift Atlas v4 cover set for all 16 canonical and four intake
   surfaces, including new artwork for `Dakshina Pulse`, `Uttara Glow`, `Rasa
   Archive`, and the `Re-evaluate` queue.
+- Mirror the provider-owned Re-evaluate queue through exact replacement without
+  targeting the generated-membership partial uniqueness index.
+- Verify approved canonical destinations independently of separately gated
+  legacy containers, avoiding a circular verification/retirement dependency.
+- Complete the live v0.1.2 Spotify reconciliation: publish all approved
+  destinations and covers, clear 145 consumed Inbox entries, retire Monsoon
+  Cinema and the three legacy routes, and reach a zero-operation plan.
 
 - Add account-scoped `user_cohorts`, a complete classification/CSV glossary,
   Excel-ready A.R. Rahman examples, and stronger selected-account track

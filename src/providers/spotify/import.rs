@@ -676,6 +676,11 @@ async fn persist(
     .execute(&mut *transaction)
     .await?;
 
+    // The preceding delete makes this an exact provider-owned replacement.
+    // `playlist_tracks` deliberately has no unconditional membership key
+    // because manual playlists may contain the same track more than once, so
+    // this insert must not name the generated-membership partial index as an
+    // ON CONFLICT target.
     sqlx::query(
         "WITH queue_tracks AS (
              SELECT route.playlist_id, provider_track.track_id,
@@ -701,10 +706,7 @@ async fn persist(
                     'source_snapshot_id', $1::text,
                     'spotify_track_id', provider_track_id
                 )
-         FROM queue_tracks
-         ON CONFLICT (playlist_id, track_id) DO UPDATE SET
-             position = EXCLUDED.position,
-             provenance = EXCLUDED.provenance",
+         FROM queue_tracks",
     )
     .bind(snapshot_id)
     .bind(account_id)

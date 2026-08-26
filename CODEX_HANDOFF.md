@@ -1133,3 +1133,37 @@ the authenticated read-only identity/scope probe, interruption recovery, and
 idempotent replay. No Spotify write has been made. Stop here until the user
 explicitly approves applying this exact plan; do not regenerate it or pull a
 new snapshot first, because that would invalidate the audited readiness.
+
+## v0.1.2 live Spotify convergence (2026-08-25)
+
+The user approved execution. Publish run
+`a6d8b47d-1b1d-4220-9b64-4fb026971f30` completed all 606 operations with zero
+failures. Its exact-order publication batches also removed the 44 managed-drift
+memberships while placing all 598 approved additions. Verification exposed two
+edge bugs, both fixed and covered by the full test/lint gate before proceeding:
+
+- Re-evaluate mirroring named an unconditional `(playlist_id, track_id)`
+  conflict target even though only generated memberships have that partial
+  uniqueness rule. The queue is provider-owned and already cleared before
+  mirroring, so the replacement insert now correctly has no conflict clause.
+- Canonical verification included separately approved legacy concepts, creating
+  a cycle where Monsoon had to disappear before the retirement phase was
+  allowed. Verification now compares exactly the concepts in the approved
+  proposal while retaining legacy containers until their gated retirement.
+
+Canonical publication verified against snapshot
+`e41b7e51-f5d0-4f37-ad1e-8253c348749c`. Cleanup run
+`6e853243-8c5b-44d1-a990-abbc257a2a3f` removed exactly 145 consumed Inbox
+entries with zero failures; Spotify required one propagation refresh before
+snapshot `068aeb95-becb-46bb-b21e-5fa72ff5834a` verified the absences.
+Retirement-only plan `fa017618-90b8-4b6b-a62a-fec86c276cc9` and readiness
+assessment `d6ead94b-728c-4a8a-b896-cdd4861f649c` passed 11/11 checks.
+Retirement run `99d95649-3b99-4138-9bba-db5c2312a224` removed the Spotify
+library relationships for Monsoon Cinema and all three legacy routes, retaining
+their Neon inventory and history, with zero failures.
+
+Final snapshot `ca779284-b161-48e2-bc9a-bde5f0be640b` has 22 playlists, 1,791
+playlist entries, 1,766 unique playlist tracks, no duplicate entries, 346
+supported saved tracks plus one unavailable/unsupported saved item, and zero
+saved albums. Final convergence plan
+`66994c42-5f5c-4f31-8b2d-85b17ac81dd3` has zero operations in every phase.
