@@ -101,6 +101,8 @@ The roadmap and current implementation state are recorded in
 
 Database-v2 migration operators can capture repeatable, provider-free baselines
 with `chordrift db invariant-report`, `chordrift db storage-report`, and the
-strictly non-mutating `chordrift db compact plan`. See the CLI reference and
+strictly non-mutating `chordrift db compact plan`. After installing the
+additive schema, `chordrift db v2 status` compares current-state parity and
+lists every still-blocked cutover gate. See the CLI reference and
 [database-v2 design](design/DATABASE_ARCHITECTURE_V2.md) for the measured
 restore rehearsal and retention boundaries.

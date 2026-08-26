@@ -263,3 +263,62 @@ incognito mode, and the repeated display metadata. The rehearsal contains
 only in a later apply after v2 stores normalized completion/context evidence,
 identity metadata is materialized once, archive hashes/import manifests remain
 intact, and an archive-to-normalized rebuild comparison passes.
+
+## Additive v2 schema foundation
+
+Migration `0040_database_v2_foundation.sql` implements workstream 2 without
+deleting or rewriting any legacy row. It introduces four explicit storage
+boundaries:
+
+1. `provider_current_inventories` and `provider_current_playlists` hold one
+   transactionally replaceable provider state per account.
+2. `provider_playlist_revisions`, saved-track revisions, and saved-album
+   revisions retain content-addressed bodies once and reuse them when provider
+   content is unchanged. Exact order and duplicates remain part of the SHA-256.
+3. `provider_inventory_checkpoints` references those immutable revisions for
+   bounded pre-apply and named baselines. New nullable checkpoint references on
+   plans and managed verifications permit the later migration away from full
+   routine snapshots without weakening audit history.
+4. `historical_provider_track_identities`, `listening_evidence_imports`, source
+   files, and `normalized_listening_events` establish the typed evidence model.
+   They remain empty until the separately measured evidence migration; schema
+   creation is not treated as successful event migration.
+
+`materialize_provider_current_state_v2(account, snapshot)` is an internal
+transactional database function. Migration 0040 calls it once for each latest
+successful account snapshot, and the Spotify importer dual-writes through it
+after completing a compatibility snapshot. The legacy write remains until the
+later cutover so existing queries continue to work. Repeating identical
+provider content updates observation time and the one current pointer but does
+not duplicate a playlist or saved-surface revision.
+
+The provider adapter supplies data but does not define v2 retention. The
+materializer accepts an account and imported snapshot, uses provider-qualified
+identities, and performs no provider request or write.
+
+### Rehearsal result
+
+Migration 0040 was applied only to a clone of the restored PostgreSQL 18.6
+rehearsal database. It completed in 153 ms with 40/40 migrations successful.
+The complete v1 invariant report was byte-identical before and after, and
+`pg_amcheck` passed all 758 relations / 30,301 pages afterward.
+
+The v2 current state contains one inventory, 22 current playlist pointers, 22
+content revisions, and 1,790 ordered revision tracks. Current playlist order,
+saved tracks, saved albums, and album-track order all compare exactly with
+legacy snapshot `66915ea3-11e8-4e0a-b9f4-930ceab27c5d`. The additive schema
+and current backfill increased the restored database from 249,657,023 to
+251,205,311 bytes; v2 playlist revision tracks use 589,824 total bytes.
+
+The repeatable read-only command is:
+
+```console
+chordrift db v2 status --account personal
+```
+
+Its rehearsal status deliberately reports `ready_for_cutover: false` because
+149,314 normalized events, 15,575 historical identities, two evidence import
+manifests, compact checkpoints for 43 plans, and checkpoint references for 420
+managed verifications have not yet been migrated. This is the required safe
+boundary between schema workstream 2 and migration/cutover workstream 3.
+Production migration, connection cutover, and cleanup remain unapproved.

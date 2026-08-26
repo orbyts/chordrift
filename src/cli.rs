@@ -203,6 +203,12 @@ pub enum DbCommand {
         #[command(subcommand)]
         command: DbCompactCommand,
     },
+    /// Inspect additive database-v2 materialization and cutover gates.
+    V2 {
+        /// Database-v2 operation to perform.
+        #[command(subcommand)]
+        command: DbV2Command,
+    },
 }
 
 /// Provider-free database compaction commands.
@@ -210,6 +216,17 @@ pub enum DbCommand {
 pub enum DbCompactCommand {
     /// Plan retention and normalization inside a read-only transaction.
     Plan {
+        /// Local label for the provider account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+}
+
+/// Additive database-v2 inspection commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum DbV2Command {
+    /// Compare v2 materialization with legacy state without changing either.
+    Status {
         /// Local label for the provider account.
         #[arg(long, default_value = "personal")]
         account: String,
@@ -4693,7 +4710,92 @@ async fn run_db_command(
             let report = db_reports::compaction_plan(database, &account).await?;
             write_compaction_plan(output, &report)
         }
+        DbCommand::V2 {
+            command: DbV2Command::Status { account },
+        } => {
+            let report = db_reports::database_v2_status(database, &account).await?;
+            write_database_v2_status(output, &report)
+        }
     }
+}
+
+fn write_database_v2_status(
+    output: &mut impl Write,
+    report: &db_reports::DatabaseV2Status,
+) -> Result<()> {
+    writeln!(output, "database_v2_status: additive-foundation-v1")?;
+    writeln!(output, "account: {}", report.account_label)?;
+    writeln!(output, "legacy_snapshot_id: {}", report.legacy_snapshot_id)?;
+    writeln!(
+        output,
+        "current_source_snapshot_id: {}",
+        report
+            .current_source_snapshot_id
+            .map_or_else(|| "-".to_owned(), |value| value.to_string())
+    )?;
+    writeln!(output, "current_playlists: {}", report.current_playlists)?;
+    writeln!(
+        output,
+        "current_playlist_tracks: {}",
+        report.current_playlist_tracks
+    )?;
+    writeln!(output, "playlist_revisions: {}", report.playlist_revisions)?;
+    writeln!(
+        output,
+        "current_playlist_headers_match: {}",
+        report.current_playlist_headers_match
+    )?;
+    writeln!(
+        output,
+        "current_playlist_order_matches: {}",
+        report.current_playlist_order_matches
+    )?;
+    writeln!(
+        output,
+        "current_saved_tracks_match: {}",
+        report.current_saved_tracks_match
+    )?;
+    writeln!(
+        output,
+        "current_saved_albums_match: {}",
+        report.current_saved_albums_match
+    )?;
+    writeln!(
+        output,
+        "legacy_listening_events: {}",
+        report.legacy_listening_events
+    )?;
+    writeln!(
+        output,
+        "normalized_listening_events: {}",
+        report.normalized_listening_events
+    )?;
+    writeln!(
+        output,
+        "historical_identities: {}",
+        report.historical_identities
+    )?;
+    writeln!(
+        output,
+        "legacy_archive_imports: {}",
+        report.legacy_archive_imports
+    )?;
+    writeln!(output, "evidence_imports: {}", report.evidence_imports)?;
+    writeln!(output, "checkpoints: {}", report.checkpoints)?;
+    writeln!(
+        output,
+        "plans_awaiting_checkpoints: {}",
+        report.plans_awaiting_checkpoints
+    )?;
+    writeln!(
+        output,
+        "verifications_awaiting_checkpoints: {}",
+        report.verifications_awaiting_checkpoints
+    )?;
+    writeln!(output, "ready_for_cutover: {}", report.ready_for_cutover)?;
+    writeln!(output, "database_writes: disabled")?;
+    writeln!(output, "provider_requests: disabled")?;
+    Ok(())
 }
 
 fn write_invariant_report(
@@ -5069,8 +5171,8 @@ mod tests {
     use super::{
         AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand,
         ClassificationCommand, Cli, ClusterCommand, Command, DbCommand, DbCompactCommand,
-        EmbeddingCommand, EnrichmentCommand, HistoryCommand, LikedSongsPolicyArg, PlaylistCommand,
-        PlaylistRoleArg, PlaylistSignalClassArg, ReevaluateCommand, RouteCommand,
+        DbV2Command, EmbeddingCommand, EnrichmentCommand, HistoryCommand, LikedSongsPolicyArg,
+        PlaylistCommand, PlaylistRoleArg, PlaylistSignalClassArg, ReevaluateCommand, RouteCommand,
         SavedAlbumPolicyArg, SignalCommand, SpotifyCommand, SyncCommand, TrackCommand,
         write_status,
     };
@@ -5114,6 +5216,17 @@ mod tests {
             Command::Db {
                 command: DbCommand::Compact {
                     command: DbCompactCommand::Plan { account }
+                }
+            } if account == "personal"
+        ));
+
+        let v2 = Cli::try_parse_from(["chordrift", "db", "v2", "status"])
+            .expect("valid v2 status command");
+        assert!(matches!(
+            v2.command,
+            Command::Db {
+                command: DbCommand::V2 {
+                    command: DbV2Command::Status { account }
                 }
             } if account == "personal"
         ));

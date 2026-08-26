@@ -620,6 +620,16 @@ provider. The next sequential gate is implementing and rehearsing the v2 schema
 and migrations. Production cutover and deletion remain separately approval-
 gated.
 
+Database-v2 schema status: additive foundation complete. Migration 0040 adds
+content-addressed provider revisions, one current inventory per account,
+compact checkpoint structures, historical provider identities, normalized
+listening evidence, and provider-neutral cutover diagnostics. Current-state
+backfill and repeated-import revision reuse are proven on PostgreSQL 18, and a
+full restored-copy rehearsal preserved the v1 invariant report byte-for-byte.
+The next gate migrates normalized evidence and durable snapshot references on a
+rehearsal copy, verifies parity, and only then requests separate production
+cutover authority.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated

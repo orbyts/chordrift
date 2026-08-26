@@ -1063,6 +1063,15 @@ async fn persist(
         .await?;
     }
 
+    // Database v2 keeps one replaceable current inventory while reusing
+    // content-addressed playlist and saved-surface bodies. Legacy snapshots
+    // remain dual-written until the separately gated migration/cutover task.
+    sqlx::query("SELECT materialize_provider_current_state_v2($1, $2)")
+        .bind(account_id)
+        .bind(snapshot_id)
+        .execute(&mut *transaction)
+        .await?;
+
     let playlists_imported = inventory.playlists.len();
     sqlx::query(
         "INSERT INTO provider_import_runs
@@ -1635,7 +1644,7 @@ mod tests {
         bookmarks::{
             self, BookmarkFetchOutcome, BookmarkSelector, FetchedBookmark, FetchedBookmarkItem,
         },
-        db, playlists,
+        db, db_reports, playlists,
         providers::spotify::models::{
             CurrentUser, Page, PlaylistInventory, PlaylistItem, SavedTrack, SpotifyPlaylist,
         },
@@ -1752,6 +1761,37 @@ mod tests {
                 .fetch_one(database.pool())
                 .await?;
         assert_eq!(provider_tracks, 1);
+        let current_inventories: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM provider_current_inventories")
+                .fetch_one(database.pool())
+                .await?;
+        let current_playlists: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM provider_current_playlists")
+                .fetch_one(database.pool())
+                .await?;
+        let playlist_revisions: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM provider_playlist_revisions")
+                .fetch_one(database.pool())
+                .await?;
+        let revision_tracks: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM provider_playlist_revision_tracks")
+                .fetch_one(database.pool())
+                .await?;
+        let saved_revisions: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM provider_saved_track_revisions")
+                .fetch_one(database.pool())
+                .await?;
+        assert_eq!(current_inventories, 1);
+        assert_eq!(current_playlists, 1);
+        assert_eq!(playlist_revisions, 1, "unchanged bodies must be reused");
+        assert_eq!(revision_tracks, 1);
+        assert_eq!(saved_revisions, 1, "unchanged saved state must be reused");
+        let v2_status = db_reports::database_v2_status(&database, "fixture").await?;
+        assert!(v2_status.current_playlist_headers_match);
+        assert!(v2_status.current_playlist_order_matches);
+        assert!(v2_status.current_saved_tracks_match);
+        assert!(v2_status.current_saved_albums_match);
+        assert!(v2_status.ready_for_cutover);
 
         let summary = analysis::refresh(&database, "fixture").await?;
         assert_eq!(summary.playlists, 1);

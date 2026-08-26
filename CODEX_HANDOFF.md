@@ -8,7 +8,7 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: database-v2 schema and migrations
+## Start the next task here: database-v2 migration rehearsal
 
 The next conversation begins from `main` after release `v0.1.2` and the
 follow-up product-direction documentation commit. Do not resume the completed
@@ -16,12 +16,14 @@ South Asian, legacy-route, Inbox, or Liked Songs cleanup. First read
 `README.md`, the v0.2.0-and-later sections of `ROADMAP.md`, this section, and
 `docs/HOW_TO_CHORDRIFT.md`.
 
-The safe database-v2 cleanup foundation is complete on
-`codex/db-v2-safe-cleanup-foundation`. The next task is workstream 2 from
-`docs/design/DATABASE_ARCHITECTURE_V2.md`: implement the v2 schema, retention
-model, migrations, and compact current-state persistence in disposable and
-rehearsal databases. Do not begin production migration/cutover, provider writes,
-recipe work, or native UI implementation.
+The safe cleanup foundation and additive database-v2 schema are complete on
+`codex/database-v2-schema`. The next task is the rehearsal portion of
+workstream 3 from `docs/design/DATABASE_ARCHITECTURE_V2.md`: migrate normalized
+listening evidence and compact durable checkpoint references on another local
+copy, compare every invariant, and produce an exact cutover plan. Do not change
+the production connection, apply the migration to production, delete legacy
+rows, write to Spotify, begin recipes, or implement the native UI without the
+later explicit approval.
 
 The current v0.1.2 database is healthy but its production physical footprint
 was about 391 MB because raw metadata is repeated across 149,314 listening
@@ -47,6 +49,7 @@ Reusable read-only commands are now:
 chordrift db invariant-report --account personal
 chordrift db storage-report
 chordrift db compact plan --account personal
+chordrift db v2 status --account personal
 ```
 
 The compaction planner starts a read-only transaction and rolls it back. The
@@ -68,6 +71,30 @@ database-v2 design. The earlier final zero-operation sync plan remains
 `fac3d2ba-6b6e-47e6-9575-24e10fa4458b` contains one reconcile
 `exclude_track`, which must remain visible as a pending intent delta during v2
 comparison.
+
+Migration `0040_database_v2_foundation.sql` is additive. It adds one current
+provider inventory per account, content-addressed playlist/saved-surface
+revisions, compact checkpoint tables, historical provider identities, typed
+normalized listening evidence, and nullable checkpoint references for plans
+and managed verifications. The Spotify importer dual-writes the compact current
+state while retaining legacy snapshots until cutover. Repeating an identical
+fixture creates no duplicate v2 playlist or saved-surface revision.
+
+The migration was applied only to a clone of the restored PostgreSQL 18.6
+database. It completed in 153 ms with 40/40 migrations successful. The complete
+v1 invariant report was byte-identical before and after; `pg_amcheck` passed
+758 relations / 30,301 pages. The v2 current state
+has one inventory, 22 current playlist pointers, 22 immutable revisions, and
+1,790 ordered revision tracks; current playlist order and both saved surfaces
+match exactly. Database size increased only from 249,657,023 to 251,205,311
+bytes for the additive schema/backfill.
+
+`db v2 status` correctly remains blocked: 149,314 events and 15,575 historical
+identities are not yet normalized; two archive manifests are not yet in the
+provider-neutral evidence ledger; 43 plans and 420 managed verifications still
+reference complete legacy snapshots; and compact checkpoints are empty. The
+next task must migrate and compare those facts on a rehearsal copy before any
+production request is made.
 
 The approved direction is broader than static playlist organization. Chordrift
 becomes a personal listening-system designer with three distinct layers:

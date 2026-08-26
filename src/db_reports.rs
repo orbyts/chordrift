@@ -157,6 +157,49 @@ pub struct CompactionPlan {
     pub intent_audit_protected_snapshots: i64,
 }
 
+/// Read-only readiness report for the additive database-v2 schema.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DatabaseV2Status {
+    /// Selected local account label.
+    pub account_label: String,
+    /// Latest successful legacy snapshot.
+    pub legacy_snapshot_id: Uuid,
+    /// Snapshot currently materialized by the v2 current-state pointer.
+    pub current_source_snapshot_id: Option<Uuid>,
+    /// Current v2 playlist pointers.
+    pub current_playlists: i64,
+    /// Current ordered v2 playlist memberships.
+    pub current_playlist_tracks: i64,
+    /// Immutable playlist bodies retained by content revision.
+    pub playlist_revisions: i64,
+    /// Whether current playlist identities and mutable headers match.
+    pub current_playlist_headers_match: bool,
+    /// Whether v1 and v2 current playlist identity and exact order match.
+    pub current_playlist_order_matches: bool,
+    /// Whether current saved-track identity and order match.
+    pub current_saved_tracks_match: bool,
+    /// Whether current saved-album identity and order match.
+    pub current_saved_albums_match: bool,
+    /// Active legacy listening events awaiting normalized migration.
+    pub legacy_listening_events: i64,
+    /// Normalized v2 listening events.
+    pub normalized_listening_events: i64,
+    /// Historical provider identities materialized in v2.
+    pub historical_identities: i64,
+    /// Legacy archive import manifests.
+    pub legacy_archive_imports: i64,
+    /// Provider-neutral v2 evidence import manifests.
+    pub evidence_imports: i64,
+    /// Compact provider checkpoints.
+    pub checkpoints: i64,
+    /// Immutable sync plans still depending on complete legacy snapshots.
+    pub plans_awaiting_checkpoints: i64,
+    /// Managed verifications still depending on complete legacy snapshots.
+    pub verifications_awaiting_checkpoints: i64,
+    /// Whether every required cutover prerequisite is satisfied.
+    pub ready_for_cutover: bool,
+}
+
 fn sha256_lines(lines: impl IntoIterator<Item = String>) -> String {
     let mut hasher = Sha256::new();
     for line in lines {
@@ -515,6 +558,297 @@ pub async fn compaction_plan(database: &Database, account_label: &str) -> Result
         generation_protected_snapshots: row.try_get("generation_protected")?,
         bookmark_protected_snapshots: row.try_get("bookmark_protected")?,
         intent_audit_protected_snapshots: row.try_get("intent_audit_protected")?,
+    })
+}
+
+/// Reports additive v2 materialization and intentionally unsatisfied cutover gates.
+pub async fn database_v2_status(
+    database: &Database,
+    account_label: &str,
+) -> Result<DatabaseV2Status> {
+    let account_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM provider_accounts WHERE account_label = $1 ORDER BY provider LIMIT 1",
+    )
+    .bind(account_label)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(format!("unknown account label `{account_label}`"))
+    })?;
+    let legacy_snapshot_id: Uuid = sqlx::query_scalar(
+        "SELECT snapshot_id FROM provider_import_runs
+         WHERE provider_account_id = $1 AND status = 'succeeded'
+           AND snapshot_id IS NOT NULL
+         ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration("account has no successful snapshot".to_owned())
+    })?;
+
+    let current = sqlx::query(
+        "SELECT source_snapshot_id,
+                (SELECT count(*) FROM provider_current_playlists
+                  WHERE provider_account_id = $1) AS playlists,
+                (SELECT count(*)
+                   FROM provider_current_playlists current_playlist
+                   JOIN provider_playlist_revision_tracks member
+                     ON member.revision_id = current_playlist.revision_id
+                  WHERE current_playlist.provider_account_id = $1) AS playlist_tracks,
+                (SELECT count(DISTINCT revision_id)
+                   FROM provider_current_playlists
+                  WHERE provider_account_id = $1) AS revisions
+         FROM provider_current_inventories WHERE provider_account_id = $1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?;
+
+    let legacy_playlist_rows = sqlx::query(
+        "SELECT playlist.provider_playlist_id, member.position, track.provider_track_id
+         FROM provider_playlist_tracks member
+         JOIN provider_playlists playlist ON playlist.id = member.provider_playlist_id
+         JOIN provider_tracks track ON track.id = member.provider_track_id
+         WHERE member.snapshot_id = $1
+         ORDER BY playlist.provider_playlist_id, member.position, track.provider_track_id",
+    )
+    .bind(legacy_snapshot_id)
+    .fetch_all(database.pool())
+    .await?;
+    let current_playlist_rows = sqlx::query(
+        "SELECT playlist.provider_playlist_id, member.position, track.provider_track_id
+         FROM provider_current_playlists current_playlist
+         JOIN provider_playlists playlist ON playlist.id = current_playlist.provider_playlist_id
+         JOIN provider_playlist_revision_tracks member
+           ON member.revision_id = current_playlist.revision_id
+         JOIN provider_tracks track ON track.id = member.provider_track_id
+         WHERE current_playlist.provider_account_id = $1
+         ORDER BY playlist.provider_playlist_id, member.position, track.provider_track_id",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    let ordered_fingerprint = |rows: Vec<sqlx::postgres::PgRow>| {
+        sha256_lines(rows.into_iter().map(|row| {
+            format!(
+                "{}:{}:{}",
+                row.get::<String, _>("provider_playlist_id"),
+                row.get::<i32, _>("position"),
+                row.get::<String, _>("provider_track_id")
+            )
+        }))
+    };
+    let current_playlist_order_matches =
+        ordered_fingerprint(legacy_playlist_rows) == ordered_fingerprint(current_playlist_rows);
+
+    let current_playlist_headers_match: bool = sqlx::query_scalar(
+        "SELECT NOT EXISTS (
+           (SELECT playlist.provider_playlist_id, observed.name, observed.description,
+                   observed.public, observed.collaborative,
+                   observed.provider_snapshot_id, observed.total_items, observed.metadata
+              FROM provider_playlist_snapshots observed
+              JOIN provider_playlists playlist ON playlist.id = observed.provider_playlist_id
+             WHERE observed.snapshot_id = $2
+            EXCEPT
+            SELECT playlist.provider_playlist_id, current.name, current.description,
+                   current.public, current.collaborative,
+                   current.provider_revision, current.reported_item_count, current.metadata
+              FROM provider_current_playlists current
+              JOIN provider_playlists playlist ON playlist.id = current.provider_playlist_id
+             WHERE current.provider_account_id = $1)
+           UNION ALL
+           (SELECT playlist.provider_playlist_id, current.name, current.description,
+                   current.public, current.collaborative,
+                   current.provider_revision, current.reported_item_count, current.metadata
+              FROM provider_current_playlists current
+              JOIN provider_playlists playlist ON playlist.id = current.provider_playlist_id
+             WHERE current.provider_account_id = $1
+            EXCEPT
+            SELECT playlist.provider_playlist_id, observed.name, observed.description,
+                   observed.public, observed.collaborative,
+                   observed.provider_snapshot_id, observed.total_items, observed.metadata
+              FROM provider_playlist_snapshots observed
+              JOIN provider_playlists playlist ON playlist.id = observed.provider_playlist_id
+             WHERE observed.snapshot_id = $2)
+         )",
+    )
+    .bind(account_id)
+    .bind(legacy_snapshot_id)
+    .fetch_one(database.pool())
+    .await?;
+
+    let saved_match = sqlx::query(
+        "SELECT
+           NOT EXISTS (
+             (SELECT saved.position, track.provider, track.provider_track_id, saved.saved_at
+                FROM provider_saved_tracks saved
+                JOIN provider_tracks track ON track.id = saved.provider_track_id
+               WHERE saved.snapshot_id = $2
+              EXCEPT
+              SELECT saved.position, track.provider, track.provider_track_id, saved.saved_at
+                FROM provider_current_inventories inventory
+                JOIN provider_saved_track_revision_tracks saved
+                  ON saved.revision_id = inventory.saved_track_revision_id
+                JOIN provider_tracks track ON track.id = saved.provider_track_id
+               WHERE inventory.provider_account_id = $1)
+             UNION ALL
+             (SELECT saved.position, track.provider, track.provider_track_id, saved.saved_at
+                FROM provider_current_inventories inventory
+                JOIN provider_saved_track_revision_tracks saved
+                  ON saved.revision_id = inventory.saved_track_revision_id
+                JOIN provider_tracks track ON track.id = saved.provider_track_id
+               WHERE inventory.provider_account_id = $1
+              EXCEPT
+              SELECT saved.position, track.provider, track.provider_track_id, saved.saved_at
+                FROM provider_saved_tracks saved
+                JOIN provider_tracks track ON track.id = saved.provider_track_id
+               WHERE saved.snapshot_id = $2)
+           ) AS tracks_match,
+           NOT EXISTS (
+             (SELECT album.position, provider_album.provider,
+                     provider_album.provider_album_id, album.saved_at
+                FROM provider_saved_albums album
+                JOIN provider_albums provider_album ON provider_album.id = album.provider_album_id
+               WHERE album.snapshot_id = $2
+              EXCEPT
+              SELECT album.position, provider_album.provider,
+                     provider_album.provider_album_id, album.saved_at
+                FROM provider_current_inventories inventory
+                JOIN provider_saved_album_revision_albums album
+                  ON album.revision_id = inventory.saved_album_revision_id
+                JOIN provider_albums provider_album ON provider_album.id = album.provider_album_id
+               WHERE inventory.provider_account_id = $1)
+             UNION ALL
+             (SELECT album.position, provider_album.provider,
+                     provider_album.provider_album_id, album.saved_at
+                FROM provider_current_inventories inventory
+                JOIN provider_saved_album_revision_albums album
+                  ON album.revision_id = inventory.saved_album_revision_id
+                JOIN provider_albums provider_album ON provider_album.id = album.provider_album_id
+               WHERE inventory.provider_account_id = $1
+              EXCEPT
+              SELECT album.position, provider_album.provider,
+                     provider_album.provider_album_id, album.saved_at
+                FROM provider_saved_albums album
+                JOIN provider_albums provider_album ON provider_album.id = album.provider_album_id
+               WHERE album.snapshot_id = $2)
+           ) AND NOT EXISTS (
+             (SELECT provider_album.provider, provider_album.provider_album_id,
+                     track.position, provider_track.provider, provider_track.provider_track_id
+                FROM provider_saved_album_tracks track
+                JOIN provider_albums provider_album ON provider_album.id = track.provider_album_id
+                JOIN provider_tracks provider_track ON provider_track.id = track.provider_track_id
+               WHERE track.snapshot_id = $2
+              EXCEPT
+              SELECT provider_album.provider, provider_album.provider_album_id,
+                     track.position, provider_track.provider, provider_track.provider_track_id
+                FROM provider_current_inventories inventory
+                JOIN provider_saved_album_revision_tracks track
+                  ON track.revision_id = inventory.saved_album_revision_id
+                JOIN provider_albums provider_album ON provider_album.id = track.provider_album_id
+                JOIN provider_tracks provider_track ON provider_track.id = track.provider_track_id
+               WHERE inventory.provider_account_id = $1)
+             UNION ALL
+             (SELECT provider_album.provider, provider_album.provider_album_id,
+                     track.position, provider_track.provider, provider_track.provider_track_id
+                FROM provider_current_inventories inventory
+                JOIN provider_saved_album_revision_tracks track
+                  ON track.revision_id = inventory.saved_album_revision_id
+                JOIN provider_albums provider_album ON provider_album.id = track.provider_album_id
+                JOIN provider_tracks provider_track ON provider_track.id = track.provider_track_id
+               WHERE inventory.provider_account_id = $1
+              EXCEPT
+              SELECT provider_album.provider, provider_album.provider_album_id,
+                     track.position, provider_track.provider, provider_track.provider_track_id
+                FROM provider_saved_album_tracks track
+                JOIN provider_albums provider_album ON provider_album.id = track.provider_album_id
+                JOIN provider_tracks provider_track ON provider_track.id = track.provider_track_id
+               WHERE track.snapshot_id = $2)
+           ) AS albums_match",
+    )
+    .bind(account_id)
+    .bind(legacy_snapshot_id)
+    .fetch_one(database.pool())
+    .await?;
+
+    let gates = sqlx::query(
+        "SELECT
+           (SELECT count(*) FROM listening_events
+             WHERE provider_account_id = $1 AND media_type = 'track'
+               AND superseded_at IS NULL) AS legacy_events,
+           (SELECT count(*) FROM normalized_listening_events
+             WHERE provider_account_id = $1 AND superseded_at IS NULL) AS normalized_events,
+           (SELECT count(*) FROM historical_provider_track_identities) AS identities,
+           (SELECT count(*) FROM spotify_archive_imports
+             WHERE provider_account_id = $1) AS legacy_imports,
+           (SELECT count(*) FROM listening_evidence_imports
+             WHERE provider_account_id = $1) AS evidence_imports,
+           (SELECT count(*) FROM provider_inventory_checkpoints
+             WHERE provider_account_id = $1 AND released_at IS NULL) AS checkpoints,
+           (SELECT count(*) FROM sync_runs
+             WHERE provider_account_id = $1 AND source_snapshot_id IS NOT NULL
+               AND provider_checkpoint_id IS NULL) AS plans_awaiting,
+           (SELECT count(*) FROM managed_playlist_verifications
+             WHERE provider_account_id = $1 AND verified_snapshot_id IS NOT NULL
+               AND provider_checkpoint_id IS NULL) AS verifications_awaiting",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+
+    let current_source_snapshot_id = current
+        .as_ref()
+        .map(|row| row.try_get("source_snapshot_id"))
+        .transpose()?;
+    let current_playlists = current
+        .as_ref()
+        .map_or(Ok(0), |row| row.try_get("playlists"))?;
+    let current_playlist_tracks = current
+        .as_ref()
+        .map_or(Ok(0), |row| row.try_get("playlist_tracks"))?;
+    let playlist_revisions = current
+        .as_ref()
+        .map_or(Ok(0), |row| row.try_get("revisions"))?;
+    let current_saved_tracks_match: bool = saved_match.try_get("tracks_match")?;
+    let current_saved_albums_match: bool = saved_match.try_get("albums_match")?;
+    let legacy_listening_events: i64 = gates.try_get("legacy_events")?;
+    let normalized_listening_events: i64 = gates.try_get("normalized_events")?;
+    let legacy_archive_imports: i64 = gates.try_get("legacy_imports")?;
+    let evidence_imports: i64 = gates.try_get("evidence_imports")?;
+    let plans_awaiting_checkpoints: i64 = gates.try_get("plans_awaiting")?;
+    let verifications_awaiting_checkpoints: i64 = gates.try_get("verifications_awaiting")?;
+    let ready_for_cutover = current_source_snapshot_id == Some(legacy_snapshot_id)
+        && current_playlist_order_matches
+        && current_playlist_headers_match
+        && current_saved_tracks_match
+        && current_saved_albums_match
+        && normalized_listening_events == legacy_listening_events
+        && evidence_imports == legacy_archive_imports
+        && plans_awaiting_checkpoints == 0
+        && verifications_awaiting_checkpoints == 0;
+
+    Ok(DatabaseV2Status {
+        account_label: account_label.to_owned(),
+        legacy_snapshot_id,
+        current_source_snapshot_id,
+        current_playlists,
+        current_playlist_tracks,
+        playlist_revisions,
+        current_playlist_headers_match,
+        current_playlist_order_matches,
+        current_saved_tracks_match,
+        current_saved_albums_match,
+        legacy_listening_events,
+        normalized_listening_events,
+        historical_identities: gates.try_get("identities")?,
+        legacy_archive_imports,
+        evidence_imports,
+        checkpoints: gates.try_get("checkpoints")?,
+        plans_awaiting_checkpoints,
+        verifications_awaiting_checkpoints,
+        ready_for_cutover,
     })
 }
 

@@ -111,6 +111,7 @@ Database-v2 foundation diagnostics are provider-free and read-only:
 $ chordrift db invariant-report --account personal
 $ chordrift db storage-report
 $ chordrift db compact plan --account personal
+$ chordrift db v2 status --account personal
 ```
 
 The invariant report fingerprints exact provider playlist order and canonical
@@ -118,6 +119,9 @@ assignment order, preserves archive/apply/convergence checkpoints, and reports
 listening totals. The storage report emits table, heap, index, and total bytes.
 The compaction plan runs in a read-only transaction and only describes current,
 durably protected, and redundant routine snapshots; it cannot apply cleanup.
+The v2 status command compares exact current order and saved surfaces, then
+shows normalized-evidence and compact-checkpoint gates that must reach parity
+before cutover. It is also read-only.
 
 ## Spotify data archives
 
