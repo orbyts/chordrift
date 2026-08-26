@@ -4,6 +4,8 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-26
+
 - Prepare v0.1.3 as the database-v2 runtime: all ordinary reads use current
   content-addressed provider state and normalized listening evidence instead of
   duplicated provider snapshots or legacy event rows.
@@ -14,9 +16,12 @@ All notable changes to Chordrift are documented here.
 - Add exact-confirmed `db compact cleanup plan/apply/verify` phases that preserve
   durable invariants and receipts while renaming provider staging tables and
   removing superseded database-v1 event/archive tables.
-- Prove the clean runtime on a fresh PostgreSQL 18 restore: invariant parity is
-  exact, 149,314 events and both archives survive, ordinary runtime reads pass,
-  and database storage falls from 358,686,720 to 167,974,591 bytes locally.
+- Prove the clean runtime on fresh PostgreSQL 18 rehearsals, migrate the verified
+  replacement Neon project, switch the persistent application connection, and
+  retire the former project only after cleanup and observation gates pass.
+- Preserve exact invariant parity, 149,314 normalized listening events, both
+  archive manifests, 24 compact checkpoints, and all durable audit history while
+  reducing the live database from 358,850,560 to 167,788,544 bytes.
 
 ## [0.1.2] - 2026-08-25
 
