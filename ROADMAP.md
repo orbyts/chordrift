@@ -35,6 +35,36 @@ approved the LLM-suggested names and organization. Retiring an old or inbox
 playlist must be an explicit, auditable synchronization operation performed
 only after all of its tracks are accounted for in approved canonical playlists.
 
+Beyond canonical organization, Chordrift will generate renewable listening
+playlists from versioned recipes. Canonical collections answer “what is this and
+where does it belong?”; intake surfaces answer “how did it arrive or what needs
+review?”; generated playlists answer “what would be rewarding to hear now?” A
+track may participate in several generated playlists without duplicating or
+weakening its canonical identity.
+
+Recipes combine eligible source sets with composition weights, hard
+constraints, ordering policies, and a repetition budget. Initial dimensions
+include recent discovery, recent rotation, long-term favorites, forgotten
+favorites, explicit recommendations, canonical diversity, artist spacing,
+duration, energy flow, cross-output reuse, and user-defined sections. Curated
+presets and advanced controls compile to the same versioned recipe model. Each
+generation records its inputs, evidence capabilities, recipe version,
+constraints, random seed, selection reasons, and final order.
+
+Provider adapters expose capabilities rather than forcing provider-specific
+logic into recipes. A feature may be available immediately, improve as normal
+syncs accumulate observations, require an optional archive, or remain
+unsupported. The UI must say which case applies. Spotify saved timestamps
+support new-discovery recipes; Recently Played provides bounded short-term
+evidence; the optional extended-history export enables trustworthy lifetime
+rotation, skip/completion behavior, and deep rediscovery.
+
+User intent has explicit strength. Hard boundaries cannot be crossed by a
+normal recipe; strong preferences affect eligibility; soft facts affect rank;
+one-time choices affect only one generation. Approved corrections are
+account-scoped learning evidence. Chordrift may propose broader rules from
+repeated corrections, but must explain and obtain approval before activation.
+
 For every account except an explicitly selected migration, the default is
 **retire none**. User-created playlists are protected, remain provider-owned,
 and retain their custom names and exact ordering in Neon. Users may opt named
@@ -570,32 +600,51 @@ album tracks into playlists; review-then-unsave remains the stricter
 alternative. The default policies for both albums and Liked Songs remain
 preserve.
 
-## v0.2.0 — Native review UI and provider boundary
+## v0.2.0 — Recipe foundation and native review UI
 
-If the personal workflow proves useful, build a provider-neutral review UI
-around the same audited model rather than moving policy out of the CLI. It
-should answer “why is this here?” for every playlist and track, distinguish the
-active library from bookmarks and immutable history, preview proposed
-organization and artwork, approve cleanup in bounded batches, explain unknown
-or inaccessible provenance, and capture corrections when a track belongs in a
-different vibe. Product validation should establish whether this library-
-entropy problem is shared before commercial scope or multi-user operations are
-assumed.
+Build a provider-neutral review UI around the same audited model rather than
+moving policy out of the Rust core. It should answer “why is this here?” for
+every playlist and track, distinguish canonical collections, intake, generated
+experiences, bookmarks, and immutable history, preview organization and
+artwork, approve cleanup in bounded batches, explain unknown provenance, and
+capture corrections when a track belongs elsewhere.
 
-The first native client should present provider artwork, canonical title and
-artist, current Chordrift destination, listening evidence, and an explicit
-provider deep link. Double-clicking a track opens the installed provider client
-through its stable URI/URL; playback and catalog ownership remain with Spotify
-or a future provider. Keep the Rust core authoritative for identity,
+Implement the provider-neutral recipe domain before building elaborate UI:
+
+- versioned recipe definitions and immutable generation records;
+- canonical, intake, and generated-surface roles as distinct concepts;
+- provider capability and evidence-availability reporting;
+- eligibility, weights, constraints, repetition budgets, and ordering policies;
+- per-track inclusion and ordering explanations;
+- deterministic preview with no provider writes;
+- an initial `New Discoveries + Rediscovery` recipe that can use Like/save time,
+  recent observations, and optional extended history;
+- a thin native client that can inspect a proposal, adjust a small set of
+  meaningful controls, open a track in its provider, and approve through the
+  existing immutable execution gates.
+
+The first client presents provider artwork, canonical title and artist, current
+destination, listening evidence, and a provider deep link. Double-click opens
+the installed provider client; playback and catalog ownership remain with the
+provider. The Rust core remains authoritative for identity, recipes,
 classification, proposals, history, commands, and diagnostics. A thin native
-bridge exposes typed query/command DTOs to the UI; provider adapters own OAuth,
-inventory, artwork publication, and deep-link construction.
+bridge exposes typed query/command DTOs; provider adapters own OAuth, inventory,
+publication, capability reporting, and deep-link construction.
 
 This milestone also owns configurable terminal presentation, the complete
 two-account isolation audit, provider-neutral identifiers, and a first-class
 Re-evaluate review surface. Do not claim reusable multi-account product support
-until that audit passes. v1.0.0 remains the fully working, documented,
-installable release rather than an architectural preview.
+until that audit passes.
+
+The native app establishes the production operating model. It runs scheduled
+work through a quiet background helper or system service without opening
+Terminal windows or visible helper shells. It surfaces progress, completion,
+actionable failures, cancellation, and recovery in the app or normal OS
+notifications. OAuth opens the system browser only for initial or renewed
+consent and returns to the app cleanly. Release credentials and tokens live in
+1Password and the OS credential store; Apogee may expose approved development
+configuration, but the shipped product must not require Apogee. Never place
+secrets in config files, logs, shell history, source control, or launch scripts.
 
 Evaluate a dedicated classic Hindi cinema destination after v0.1.2. For now,
 misplaced older Hindi songs enter `Re-evaluate` and retain their source and
@@ -604,12 +653,47 @@ cinema tradition, and listening intent before proposing a poetic Sanskrit-
 inspired identity and approved artwork; do not create the playlist merely from
 artist identity or a few edge cases.
 
-Regional reconciliation must operate over the complete approved library, not
-only the playlist where mistakes were noticed. Treat explicit North/South route
-decisions as stronger than embedding similarity, require positive style
-evidence before using an Indian Classical destination, and return non-South-
-Asian tracks to sound-based poetic destinations rather than a generic
-"International" bucket. Retire a mixed legacy destination such as Monsoon
-Cinema only after every source track has exactly one verified replacement or a
-durable exclusion. Clear routing surfaces only after the newer assignment is
-published and verified.
+Regional reconciliation operates over the complete approved library, not only
+the playlist where mistakes were noticed. Treat explicit user decisions as
+stronger than embedding similarity, require positive evidence before assigning
+a tradition, and return globally classified tracks to sound-based destinations
+rather than a generic international bucket.
+
+## v0.3.0 — Agentic audit and visual recipe authoring
+
+Turn first-run setup into a read-only audit and editable recommendation plan.
+Explain overlap, duplicates, uncertain placement, legacy containers, collection
+candidates, available evidence, missing capabilities, and starter recipes.
+Present simple recipe philosophies first and reveal detailed controls on demand.
+The agent may inspect and propose freely; it obtains separate bounded approval
+for publication and destructive cleanup and shows the exact provider diff
+before either.
+
+Add visual collection-policy controls, hard versus soft boundaries, generated
+playlist schedules, and reproducible previews. Keep the configuration format
+authoritative and editable outside the UI.
+
+## v0.4.0 — Learned correction policies
+
+Promote `Re-evaluate` into a complete review experience. Learn only from
+explicit approved corrections, distinguish a one-track exception from a
+reusable account rule, quantify confidence, and send ambiguous or conflicting
+tracks back to review. Allow high-confidence automatic routing only under an
+explicit user policy with inspectable history and an immediate override path.
+
+## v0.5.0 — Rolling listening experiences
+
+Add scheduled daily and periodic generation, stable provider playlist identity,
+atomic replacement, historical generation comparison, freshness windows,
+cross-playlist duplication budgets, and ordering strategies such as energy
+arcs, smooth transitions, intentional contrast, and user-defined sections.
+Recipes degrade honestly when a provider or account lacks required data.
+
+## Toward v1.0.0 — Shippable product
+
+Use the remaining 0.x releases for additional providers, multi-account proof,
+recovery and migration, performance, accessibility, signed installation,
+background scheduling, privacy controls, polished onboarding, documentation,
+and end-to-end product testing. v1.0.0 means a fully working, installable,
+recoverable application—not merely a stable internal schema or architectural
+preview.

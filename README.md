@@ -16,6 +16,82 @@ archaeology, curation, and orchestration: explain where music came from,
 preserve what mattered, separate external bookmarks from personal intent, and
 make the active library enjoyable again without silently losing history.
 
+Its longer-term form is a personal listening-system designer. Chordrift should
+inspect a library, propose a coherent organization, explain every
+recommendation, and—only after approval—carry out an exact, auditable plan. It
+should serve someone who wants a good automatic result as well as someone who
+wants precise control over composition, repetition, ordering, boundaries, and
+the evidence used for each decision.
+
+## Product model
+
+Chordrift separates three concerns that streaming applications commonly mix:
+
+- **Canonical collections** are durable musical identities and user-approved
+  boundaries. A collection may be a vibe, tradition, region, era, personal
+  cohort, or another meaningful grouping.
+- **Intake surfaces** record how music entered the system or that it needs
+  attention. Liked Songs is the lowest-friction intake; named inboxes retain
+  richer provenance; `Re-evaluate` holds corrections without teaching a false
+  destination.
+- **Generated listening playlists** are renewable experiences produced from
+  versioned recipes. A track retains one explainable canonical identity while
+  being eligible for multiple mixes.
+
+A recipe can combine recent discoveries, recent rotation, forgotten favorites,
+long-term repeats, recommendations, and selected collections. Users may accept
+a curated preset or adjust controls such as new versus familiar, focused versus
+varied, rediscovery weight, duration, repetition budget, cross-playlist reuse,
+artist spacing, ordering strategy, and hard collection boundaries. Every
+output should retain the recipe version, source evidence, constraints, ordering
+rationale, and random seed needed to explain or reproduce it.
+
+This model makes a Like the ordinary low-friction action: Chordrift records the
+provider save time, preserves the discovery, assigns or reviews its canonical
+home, and makes it eligible for new-discovery recipes. An account may opt to
+clear Liked Songs only after the destination or durable exclusion is published
+and provider-verified.
+
+## Capability-aware intelligence
+
+Recipes declare which signals they require or merely benefit from. Provider
+adapters report available capabilities instead of leaking Spotify-specific
+assumptions into the core. Saved timestamps may support discovery immediately;
+bounded recent-play observations can grow rotation evidence over time; an
+optional Spotify extended-history export unlocks reliable lifetime play counts,
+skips, completions, dormant favorites, and historical rediscovery. When data is
+missing, Chordrift must disable the dependent feature or explain its reduced
+confidence rather than fabricate precision.
+
+User instructions range from hard policies (for example, keep one cultural
+collection separate) through strong preferences, soft ranking signals, and
+one-time recipe choices. Approved corrections become account-scoped evidence.
+Chordrift may propose a reusable rule after repeated consistent corrections,
+but must show the evidence and obtain approval before applying it broadly.
+
+## Agentic and quiet operation
+
+The intended first-run experience is a read-only library audit followed by an
+editable plan. Chordrift identifies overlap, duplicates, uncertain tracks,
+legacy containers, possible collections, missing data capabilities, and useful
+starter recipes. Reading and recommendation are freely repeatable; constructive
+publication and destructive cleanup receive separate bounded approvals and an
+exact provider diff.
+
+Normal operation should then be quiet and background-friendly. A signed native
+application owns scheduling, progress, notifications, and recovery without
+opening surprise Terminal windows, spawning visible helper shells, or repeating
+browser/OAuth prompts. OAuth uses the system browser only when consent is
+actually required. Secrets remain in 1Password and the operating-system
+credential store, with Apogee providing approved environment configuration for
+development; they never belong in project files, logs, command history, or
+shell startup files. Long work reports useful progress, can be cancelled, and
+resumes safely after interruption.
+
+Existing immutable plans, readiness assessments, resumable apply history,
+post-write pulls, and zero-operation convergence remain the execution
+foundation for the future UI and background agent.
+
 Neon PostgreSQL will be the canonical source of truth. Spotify and Apple Music
 will be provider adapters rather than competing authorities. Future releases
 will use playlist history, personal listening context, and versioned embeddings
@@ -28,11 +104,11 @@ and synchronization will not wait for it; when available, the export will add
 signals such as play counts, listening duration, first play, and last play.
 
 > [!WARNING]
-> Chordrift is in early development. v0.1.1 permits remote Spotify
+> Chordrift is in early development. v0.1.2 permits remote Spotify
 > mutation only through exact, audited, resumable phase confirmations. Never
 > run an apply command without inspecting its immutable plan and readiness ID.
 
-## v0.1.1 capabilities
+## Current foundation (v0.1.2)
 
 - Storexa-backed Neon PostgreSQL connection management
 - an application-owned canonical music-library schema
@@ -71,7 +147,7 @@ Set the canonical Neon connection URL through the application-specific
 
 ```console
 $ chordrift --version
-chordrift 0.1.1
+chordrift 0.1.2
 
 $ chordrift db status
 database: chordrift-primary
@@ -163,9 +239,11 @@ $ chordrift analyze overlap --limit 25
 $ chordrift analyze duplicates --limit 25
 ```
 
-Role and policy configuration is durable, but v0.0.5 remains pull-only. A
-future dry-run/apply milestone will use `neon-wins` for managed playlists and
-will require explicit, auditable approval before changing Spotify.
+Role and policy configuration is durable. Chordrift can publish managed
+playlists and artwork, consume verified intake, and retire approved legacy
+containers only through immutable plans, readiness proofs, exact phase
+confirmation, resumable operation receipts, a post-write pull, and convergence
+verification.
 
 Spotify Platform content is retained as provider inventory and provenance. It
 will not be used to train an ML or AI model. Later personal embeddings will use

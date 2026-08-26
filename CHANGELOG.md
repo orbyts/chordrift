@@ -34,6 +34,11 @@ All notable changes to Chordrift are documented here.
   supported saved tracks only after proving 345 canonical placements and one
   durable exclusion, verify zero supported saved tracks from Spotify, and
   converge again to a zero-operation plan.
+- Derive PostgreSQL integration-test migration expectations from the embedded
+  migration set so release CI cannot drift behind new schema migrations.
+- Define the canonical/intake/generated-playlist product model, capability-aware
+  recipe direction, permission-bounded agentic onboarding, quiet background
+  operation, and the staged native-product roadmap toward v1.0.0.
 
 - Add account-scoped `user_cohorts`, a complete classification/CSV glossary,
   Excel-ready A.R. Rahman examples, and stronger selected-account track

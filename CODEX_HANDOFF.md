@@ -8,6 +8,90 @@ archive contents.
 
 Last updated: 2026-08-25.
 
+## Start the next task here: v0.2.0 product foundation
+
+The next conversation begins from `main` after release `v0.1.2` and the
+follow-up product-direction documentation commit. Do not resume the completed
+South Asian, legacy-route, Inbox, or Liked Songs cleanup. First read
+`README.md`, the v0.2.0-and-later sections of `ROADMAP.md`, this section, and
+`docs/HOW_TO_CHORDRIFT.md`.
+
+The approved direction is broader than static playlist organization. Chordrift
+becomes a personal listening-system designer with three distinct layers:
+
+1. **Canonical collections** retain durable identity, membership rationale,
+   user-approved boundaries, and artwork.
+2. **Intake surfaces** retain discovery/review provenance. Like is the least-
+   friction intake; named inboxes add context; `Re-evaluate` means keep but
+   reconsider the current destination.
+3. **Generated listening playlists** are renewable, versioned recipe outputs.
+   A track may appear in several outputs without duplicating its canonical
+   identity.
+
+Recipes support both curated automatic presets and advanced controls. Initial
+dimensions are discovery recency, recent rotation, old favorites, forgotten
+favorites, recommendations, collection eligibility and diversity,
+new-versus-familiar balance, artist spacing, target duration, repetition and
+cross-output budgets, ordering philosophy, and user-defined sections. Every
+generation needs immutable inputs, recipe version, evidence capabilities,
+constraints, random seed, per-track reasons, and final order.
+
+Data availability is first-class. Provider adapters report capabilities;
+recipes declare required and optional evidence. Spotify save timestamps can
+drive New Discoveries, Recently Played supplies bounded short-term evidence,
+and the optional extended-history archive unlocks trustworthy lifetime repeats,
+skips/completions, forgotten favorites, and deep rediscovery. Missing evidence
+disables a feature or reduces confidence with a visible explanation.
+
+User intent has strength: hard collection boundaries, strong preferences, soft
+ranking facts, and one-generation choices are not interchangeable. Corrections
+become account-scoped evidence. Chordrift may propose a broader reusable rule
+after repeated consistent corrections, but cannot silently activate it. A
+future classic-Hindi collection remains a v0.2+ review candidate; use
+`Re-evaluate` until the evidence supports a coherent collection, name, and
+artwork.
+
+The intended onboarding is agentic but permission-bounded: read-only inventory
+and audit; explain findings and missing capabilities; propose collections,
+intakes, recipes, cleanup, names, and artwork; let the user edit or approve;
+show an exact diff; obtain separate publication and destructive-cleanup
+approval; execute through immutable readiness/apply gates; pull and prove
+zero-operation convergence.
+
+Recommended first slice: design the provider-neutral recipe and capability
+model plus deterministic, provider-free preview for one `New Discoveries +
+Rediscovery` recipe. Do not start with scheduling or a large UI. Reuse canonical
+identity, classifications, complete inventory, listening signals, immutable
+proposals, readiness, apply receipts, and verification.
+
+## Operator and development requirements
+
+- Normal product work runs quietly in the background. Do not design workflows
+  that open Terminal windows, visible helper shells, or repeated browser
+  pop-ups. OAuth may open the system browser only when consent is required and
+  must return to a clear success/failure state in the app.
+- The future signed native app owns scheduling, progress, cancellation,
+  notifications, retry, and interruption recovery. Long work must never look
+  stalled and must be safe to resume.
+- Personal secrets are managed through 1Password and OS Passwords/Keychain.
+  Apogee may load approved development environment variables, but Chordrift
+  must not require Apogee for end users. Never print secret values or place
+  them in config files, logs, shell history, source control, launch agents, or
+  shell startup files. Use secret references or already-loaded variables.
+- Keep user-editable non-secret configuration under
+  `$XDG_CONFIG_HOME/chordrift`. A future preferences UI reads and writes the
+  same schema so advanced users retain direct control.
+- During Codex operations, inspect first, generate immutable/provider-free
+  plans, report exact effects, request the smallest necessary approval, then
+  apply and verify. Consolidate predictable permissions before long unattended
+  work, but stop for artwork approval and final provider mutation approval.
+- Do not launch GUI applications merely to show that a file exists. Give paths
+  and instructions unless interactive OAuth, visual approval, or explicit user
+  direction requires a launch.
+- Prefer background-friendly, non-interactive commands and concise progress
+  updates. Never expose tokens, database URLs, or 1Password values in command
+  output.
+
 ## v0.1.2 release closure
 
 - The live personal Spotify reconciliation is complete. Four approved
@@ -31,7 +115,7 @@ Last updated: 2026-08-25.
   Until reviewed as a coherent collection, move such edge cases into
   `Re-evaluate`, export a CSV if the queue grows, and classify them explicitly.
 
-## Private classification sidecar (current v0.1.2 work)
+## Private classification sidecar (completed v0.1.2 foundation)
 
 - Migrations `0036_user_track_classifications.sql` and
   `0037_classification_decisions.sql` add set/clear revision history and
@@ -42,10 +126,9 @@ Last updated: 2026-08-25.
 - Embedding model v5 adds active collection/region/tradition/language facts in a
   `user-classification@v1` namespace at weight 1.25. Notes are explainability
   only. The base acoustic model vector is unchanged.
-- Next operational step: export Monsoon Cinema plus North/South routes, let
-  Suhail review the CSV over time, approve it, regenerate embeddings, then form
-  and name verified destinations. Do not retire Monsoon until all 410 tracks
-  have one verified destination or exclusion and route clearing is verified.
+- The Monsoon Cinema and North/South review was completed in v0.1.2. Its
+  resulting South Asian destinations were published and the legacy containers
+  retired. Do not repeat that migration.
 - Interactive `tracks inspect` now presents human sections and tables; raw
   provenance is opt-in with `--technical`. Interactive tables use the full
   detected terminal width. A later configuration layer belongs at
@@ -83,8 +166,10 @@ Before editing, inspect `git status --short`, the current branch, this file,
 - Neon PostgreSQL is the canonical and operational source of truth.
 - Provider APIs are adapters. Current Spotify state is pulled into immutable
   snapshots; provider state does not compete with Neon authority.
-- Chordrift is read-only against Spotify through the current v0.0.8 work. It
-  does not create, modify, reorder, or delete remote playlists or tracks.
+- Chordrift can write to Spotify only through immutable inspected plans, exact
+  readiness assessments, phase-scoped confirmation, resumable operation
+  receipts, a post-write pull, and provider convergence verification. Preserve
+  those gates for the native UI and every future provider adapter.
 - Spotify downloadable archives are optional enrichment and immutable local
   recovery inputs. They are not the operational database.
 - A routine `chordrift sync pull` reads live Spotify state and reconciles

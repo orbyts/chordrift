@@ -15,7 +15,7 @@ is staged for inspection rather than silently guessed.
 | Add or discover a song | [Add songs and preserve discovery context](how-to/ADDING_AND_DISCOVERY.md) | Like/Save it; use a named intake only for a richer signal. |
 | Inventory or retire saved albums | [Saved albums and album cleanup](how-to/SAVED_ALBUMS.md) | Archive-only retirement keeps immutable album and track history. |
 | Stop hearing a song | [Delete or exclude a track safely](how-to/DELETING_AND_EXCLUDING.md) | Remove it from its verified Chordrift playlist, then reconcile. |
-| Keep a song but reject its current vibe | [Route and reclassify a track](how-to/ROUTING_AND_RECLASSIFYING.md) | Add it to a `Route — …` corrective inbox. |
+| Keep a song but reject its current vibe | [Re-evaluate and reclassify a track](how-to/ROUTING_AND_RECLASSIFYING.md) | Move it to `Re-evaluate` and remove the wrong destination. |
 | Add private region, tradition, language, or cohort facts | [Classify tracks with user dimensions](how-to/CLASSIFICATION_DIMENSIONS.md) | Review one track/a small group directly, or approve a CSV batch. |
 | Bring Neon up to date | [Synchronize and prove convergence](how-to/SYNC_AND_CONVERGENCE.md) | Run a pull after provider changes. |
 | Understand how a future product infers intent | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Keep using Spotify; Chordrift interprets bounded changes. |
@@ -68,6 +68,13 @@ Spotify's Like button is the primary lightweight intake action. It means
 “keep and classify.” `Inbox` is the stronger high-interest variant; the other
 named intakes carry source provenance. For Suhail's opt-in policy, Liked Songs
 is cleared only after verified Chordrift placement, just like an intake queue.
+
+Future recipe playlists are a separate layer from both intake and canonical
+collections. They will turn recent discoveries, rotation, rediscovery,
+favorites, and explicit collections into renewable listening experiences while
+preserving why each track belongs in the library. The same engine will support
+automatic presets and detailed user controls; see the roadmap for the v0.2.0
+foundation.
 
 ## Important distinctions
 
