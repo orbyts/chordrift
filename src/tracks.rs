@@ -165,6 +165,213 @@ pub struct Inspection {
     pub exclusion_reason: Option<String>,
 }
 
+/// Result of an exact-confirmed reversible exclusion or restoration.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExclusionChange {
+    /// Stable Spotify track identity.
+    pub spotify_id: String,
+    /// `excluded`, `already-excluded`, or `restored`.
+    pub state: String,
+    /// Latest editable proposal affected, when present.
+    pub proposal_generation_id: Option<Uuid>,
+}
+
+/// Explicitly excludes one known track while retaining identity and history.
+pub async fn exclude(
+    database: &Database,
+    account_label: &str,
+    spotify_id: &str,
+    reason: &str,
+    confirm: &str,
+) -> Result<ExclusionChange> {
+    let spotify_id = spotify_id.trim();
+    if spotify_id.is_empty() || confirm.trim() != spotify_id {
+        return Err(configuration(
+            "--confirm must exactly repeat the Spotify track ID",
+        ));
+    }
+    let reason = reason.trim();
+    if reason.is_empty() {
+        return Err(configuration("exclusion reason cannot be empty"));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let track = resolve_track(database, &TrackSelector::SpotifyId(spotify_id.to_owned())).await?;
+    let track_id: Uuid = track.try_get("track_id")?;
+    if !sqlx::query_scalar::<_, bool>("SELECT account_track_is_library_candidate($1, $2)")
+        .bind(account_id)
+        .bind(track_id)
+        .fetch_one(database.pool())
+        .await?
+    {
+        return Err(configuration(
+            "track is not in this account's preservation universe",
+        ));
+    }
+    let mut tx = database.pool().begin().await?;
+    let existing: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM excluded_tracks
+         WHERE provider_account_id = $1 AND track_id = $2 AND restored_at IS NULL)",
+    )
+    .bind(account_id)
+    .bind(track_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let proposal_generation_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM playlist_generations
+         WHERE provider_account_id = $1 AND status = 'proposed'
+         ORDER BY created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if existing {
+        tx.commit().await?;
+        return Ok(ExclusionChange {
+            spotify_id: spotify_id.to_owned(),
+            state: "already-excluded".to_owned(),
+            proposal_generation_id,
+        });
+    }
+    let previous: Option<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
+        "SELECT provider.id, playlist.concept_id
+         FROM playlist_generations generation
+         JOIN playlists playlist ON playlist.generation_id = generation.id
+         JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+         LEFT JOIN provider_playlists provider
+           ON provider.concept_id = playlist.concept_id AND provider.provider = 'spotify'
+         WHERE generation.provider_account_id = $1
+           AND membership.track_id = $2
+         ORDER BY generation.created_at DESC, generation.id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .bind(track_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO excluded_tracks
+         (provider_account_id, track_id, source_provider,
+          source_provider_playlist_id, previous_concept_id, excluded_at,
+          exclusion_reason)
+         VALUES ($1, $2, 'user_explicit', $3, $4, now(), $5)",
+    )
+    .bind(account_id)
+    .bind(track_id)
+    .bind(previous.and_then(|value| value.0))
+    .bind(previous.and_then(|value| value.1))
+    .bind(reason)
+    .execute(&mut *tx)
+    .await?;
+    if let Some(generation_id) = proposal_generation_id {
+        sqlx::query(
+            "DELETE FROM playlist_tracks membership
+             USING playlists playlist
+             WHERE membership.playlist_id = playlist.id
+               AND playlist.generation_id = $1 AND membership.track_id = $2",
+        )
+        .bind(generation_id)
+        .bind(track_id)
+        .execute(&mut *tx)
+        .await?;
+        refresh_proposal_coverage(&mut tx, account_id, generation_id).await?;
+    }
+    tx.commit().await?;
+    Ok(ExclusionChange {
+        spotify_id: spotify_id.to_owned(),
+        state: "excluded".to_owned(),
+        proposal_generation_id,
+    })
+}
+
+/// Restores one active explicit or inferred exclusion without guessing a destination.
+pub async fn restore(
+    database: &Database,
+    account_label: &str,
+    spotify_id: &str,
+    reason: &str,
+    confirm: &str,
+) -> Result<ExclusionChange> {
+    let spotify_id = spotify_id.trim();
+    if spotify_id.is_empty() || confirm.trim() != spotify_id {
+        return Err(configuration(
+            "--confirm must exactly repeat the Spotify track ID",
+        ));
+    }
+    let reason = reason.trim();
+    if reason.is_empty() {
+        return Err(configuration("restoration reason cannot be empty"));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let track = resolve_track(database, &TrackSelector::SpotifyId(spotify_id.to_owned())).await?;
+    let track_id: Uuid = track.try_get("track_id")?;
+    let mut tx = database.pool().begin().await?;
+    let changed = sqlx::query(
+        "UPDATE excluded_tracks SET restored_at = now(), restoration_reason = $3
+         WHERE provider_account_id = $1 AND track_id = $2 AND restored_at IS NULL",
+    )
+    .bind(account_id)
+    .bind(track_id)
+    .bind(reason)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    if changed == 0 {
+        return Err(configuration("track does not have an active exclusion"));
+    }
+    let proposal_generation_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM playlist_generations
+         WHERE provider_account_id = $1 AND status = 'proposed'
+         ORDER BY created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if let Some(generation_id) = proposal_generation_id {
+        refresh_proposal_coverage(&mut tx, account_id, generation_id).await?;
+    }
+    tx.commit().await?;
+    Ok(ExclusionChange {
+        spotify_id: spotify_id.to_owned(),
+        state: "restored".to_owned(),
+        proposal_generation_id,
+    })
+}
+
+async fn refresh_proposal_coverage(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    account_id: Uuid,
+    generation_id: Uuid,
+) -> Result<()> {
+    sqlx::query(
+        "WITH required AS (
+             SELECT track.id
+             FROM tracks track
+             WHERE account_track_is_library_candidate($1, track.id)
+               AND NOT EXISTS (
+                   SELECT 1 FROM excluded_tracks exclusion
+                   WHERE exclusion.provider_account_id = $1
+                     AND exclusion.track_id = track.id
+                     AND exclusion.restored_at IS NULL
+               )
+         ), represented AS (
+             SELECT count(DISTINCT membership.track_id)::integer AS value
+             FROM playlist_tracks membership
+             JOIN playlists playlist ON playlist.id = membership.playlist_id
+             JOIN required ON required.id = membership.track_id
+             WHERE playlist.generation_id = $2
+         )
+         UPDATE playlist_generations generation
+         SET required_track_count = (SELECT count(*)::integer FROM required),
+             represented_track_count = represented.value,
+             coverage_complete = represented.value = (SELECT count(*) FROM required)
+         FROM represented WHERE generation.id = $2",
+    )
+    .bind(account_id)
+    .bind(generation_id)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
 /// Resolves one track and assembles its provider, history, signal, and ML rationale.
 pub async fn inspect(
     database: &Database,

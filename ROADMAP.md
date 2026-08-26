@@ -417,20 +417,23 @@ and verified without changing playlist membership.
 - [x] Feed active explicit facts into a separate higher-weight personalized
   feature namespace without altering pretrained acoustic vectors or public
   metadata.
-- [ ] Use the approved South Asian classification batch to split Monsoon Cinema
-  into verified North Indian, South Indian, Indian Classical, and any justified
-  sound-based international destinations; then coin poetic names and approve
-  distinct artwork.
+- [x] Use the approved South Asian classification batch to retire Monsoon
+  Cinema into `Dakshina Pulse`, `Uttara Glow`, and the personal `Rasa Archive`,
+  while returning globally classified score and pop material to existing
+  sound-based destinations. The complete proposal has zero unresolved or
+  conflicting tracks; distinct artwork remains the final user-review gate.
 - [ ] Add display preferences under
   `$XDG_CONFIG_HOME/chordrift/config.toml` (table width/layout, color policy,
   compact versus detailed inspection, and date formatting). Keep automatic
   terminal-width detection and sensible interactive defaults when unset.
+  Deferred to v0.2.0 so it does not block the personal v0.1.2 reconciliation.
 - [x] Publish a user-dimension glossary with literal CSV/Excel templates and a
   future account-scoped drag-and-drop token interaction model.
 - [ ] Before testing a friend's account, run the two-account isolation and
   provider-boundary audit in
   `docs/design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md`; fix Spotify-specific domain
-  leakage before treating the CLI as a reusable product foundation.
+  leakage before treating the CLI as a reusable product foundation. Deferred
+  to v0.2.0 before any second-account or product claim.
 
 Turn ongoing listening corrections into durable, explainable account knowledge
 rather than ad hoc Spotify edits. A correction distinguishes four separate
@@ -459,22 +462,18 @@ action intents:
 - **Exclude** — propose removing the track from active Chordrift playlists,
   still subject to explicit confirmation and reversible history.
 
-Support optional destination routing queues once the user recognizes a
-recurring category, such as `Route — South Indian`, `Route — North Indian`, and
-`Route — Decide Later`. These are short-lived action inboxes, not final
-listening playlists. Their user-authored descriptions are semantic policy
-inputs, never executable instructions. Chordrift consumes a queue only after
-its tracks have verified destinations, then clears it for reuse.
+Use one provider-native `Re-evaluate` holding queue rather than parallel
+destination routes. While listening, the user adds a misplaced track to
+Re-evaluate and removes it from the wrong destination. Chordrift preserves the
+entry and rejected source, gives the queue zero preference weight, suppresses
+both exclusion and source restoration while it is present, and removes it only
+after a newer explicit assignment targets a different approved destination.
+Long queues export through the normal classification CSV workflow.
 
-The first routing subslice provides durable Neon route identities, generic
-create/add/list/inspect commands, per-route label-free and Spotify-labeled
-artwork, provider-addition capture during pull, zero signal weight, immutable
-publish planning, and post-pull exact-membership verification. Artwork follows
-the route meaning rather than a universal template: the first South and North
-Indian routes use minimal veena and sarod studies, while Decide Later uses a
-minimal junction motif. Full route consumption into existing or newly promoted
-canonical destinations remains part of the listening-review reconciliation
-slice; cleanup must remain gated on verified destination coverage.
+Legacy multi-route surfaces remain immutable history. Exact-confirmed
+`reevaluate retire-legacy` requires the replacement queue plus complete
+proposal-or-exclusion coverage, changes only Neon, and lets the next reviewed
+plan archive the obsolete Spotify containers after publication.
 
 A later review session starts from the currently approved library without
 rebuilding or renaming unaffected playlists. The CLI and future UI should
@@ -568,7 +567,7 @@ album tracks into playlists; review-then-unsave remains the stricter
 alternative. The default policies for both albums and Liked Songs remain
 preserve.
 
-## Post-v0.1 product direction — Review UI
+## v0.2.0 — Native review UI and provider boundary
 
 If the personal workflow proves useful, build a provider-neutral review UI
 around the same audited model rather than moving policy out of the CLI. It
@@ -579,6 +578,21 @@ or inaccessible provenance, and capture corrections when a track belongs in a
 different vibe. Product validation should establish whether this library-
 entropy problem is shared before commercial scope or multi-user operations are
 assumed.
+
+The first native client should present provider artwork, canonical title and
+artist, current Chordrift destination, listening evidence, and an explicit
+provider deep link. Double-clicking a track opens the installed provider client
+through its stable URI/URL; playback and catalog ownership remain with Spotify
+or a future provider. Keep the Rust core authoritative for identity,
+classification, proposals, history, commands, and diagnostics. A thin native
+bridge exposes typed query/command DTOs to the UI; provider adapters own OAuth,
+inventory, artwork publication, and deep-link construction.
+
+This milestone also owns configurable terminal presentation, the complete
+two-account isolation audit, provider-neutral identifiers, and a first-class
+Re-evaluate review surface. Do not claim reusable multi-account product support
+until that audit passes. v1.0.0 remains the fully working, documented,
+installable release rather than an architectural preview.
 Regional reconciliation must operate over the complete approved library, not
 only the playlist where mistakes were noticed. Treat explicit North/South route
 decisions as stronger than embedding similarity, require positive style

@@ -1,0 +1,349 @@
+{
+  "schema_version": 2,
+  "proposal_generation_id": "f521e707-8e5f-4283-a0bd-d123df3329f1",
+  "visual_system": "Drift Atlas v4 — approved regional identities and Spotify-scale labeled surfaces",
+  "generator": {
+    "provider": "OpenAI + Chordrift",
+    "model": "imagegen + deterministic CoreText overlay",
+    "version": "drift-atlas-v4"
+  },
+  "contact_sheet": "contact-sheet.png",
+  "artifacts": [
+    {
+      "stable_key": "playlist-d3c6c6f62a9a",
+      "target": "canonical",
+      "name": "Afterlight Score",
+      "file": "playlist-d3c6c6f62a9a.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "1b16ceba93fee61570efb36eb398d0d970cdcef5d060a81ab53701dc845321e8",
+      "tags": [
+        "neoclassical",
+        "soundtrack",
+        "piano",
+        "afterglow"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Afterlight Score."
+    },
+    {
+      "stable_key": "playlist-444678928139",
+      "target": "canonical",
+      "name": "Constellations at Rest",
+      "file": "playlist-444678928139.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "49019b8d6068043d430be71e0170c19190bc8f6676f9a6110755c2dfb5f39f7e",
+      "tags": [
+        "ambient",
+        "modern classical",
+        "stillness",
+        "night"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Constellations at Rest."
+    },
+    {
+      "stable_key": "playlist-a101297467c8",
+      "target": "canonical",
+      "name": "Dakshina Pulse",
+      "file": "playlist-a101297467c8.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "74da4d5cb03bc22db049a2ab4aab9c0096e186fd349fbf0d5c56593a92cffd53",
+      "tags": [
+        "south-indian",
+        "cinema",
+        "A. R. Rahman",
+        "melodic"
+      ],
+      "prompt": "New Drift Atlas background: copper-and-magenta rhythmic wave cycles with brass-gold filaments and a teal countercurrent; deterministic Helvetica Neue Bold label overlay: Dakshina Pulse."
+    },
+    {
+      "stable_key": "playlist-548a2b9655cc",
+      "target": "canonical",
+      "name": "Elysium Transit",
+      "file": "playlist-548a2b9655cc.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "7a18f24c8d43233149c83824741245417b1fe50d9a9e083ede0d9610899e9cb3",
+      "tags": [
+        "cinematic ambient",
+        "meditative",
+        "instrumental",
+        "journey"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Elysium Transit."
+    },
+    {
+      "stable_key": "playlist-30296401a829",
+      "target": "canonical",
+      "name": "Lightleak Reverie",
+      "file": "playlist-30296401a829.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "732a61b24636d9ce9ec793af4429716e44198e7d55e2b26f28c028ef4f77adc7",
+      "tags": [
+        "indie",
+        "art pop",
+        "soft electronic",
+        "reverie"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Lightleak Reverie."
+    },
+    {
+      "stable_key": "playlist-78f894373cd7",
+      "target": "canonical",
+      "name": "Midnight Niagara",
+      "file": "playlist-78f894373cd7.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "e10bb3a4d294a53d50b32a2c5fb60db5ae67cfc5c64b333eeb27252898c25973",
+      "tags": [
+        "M83",
+        "synth",
+        "widescreen",
+        "melancholic"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Midnight Niagara."
+    },
+    {
+      "stable_key": "playlist-212326194c41",
+      "target": "canonical",
+      "name": "Neon Affection",
+      "file": "playlist-212326194c41.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "c9ca883a650eaf9f3980a18be9fe801e70ea23a4c81aa0b0683670578b434cac",
+      "tags": [
+        "indie electronic",
+        "dreamy",
+        "nocturnal",
+        "groove"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Neon Affection."
+    },
+    {
+      "stable_key": "playlist-4d16e2c72e9e",
+      "target": "canonical",
+      "name": "Open-Sky Anthems",
+      "file": "playlist-4d16e2c72e9e.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "3917ab84c34ee3a8b5a342e7b42c551d4c482e9cd0559796d87b6b1a4a5fc01b",
+      "tags": [
+        "alternative",
+        "pop-rock",
+        "anthemic",
+        "widescreen"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Open-Sky Anthems."
+    },
+    {
+      "stable_key": "playlist-93b60e96e38d",
+      "target": "canonical",
+      "name": "Rasa Archive",
+      "file": "playlist-93b60e96e38d.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "96df159ce482199470ca85473edbdea5c563eb6456c3287e6350982a308b13d0",
+      "tags": [
+        "south-asian",
+        "nostalgia",
+        "pop",
+        "personal"
+      ],
+      "prompt": "New Drift Atlas background: layered aubergine, peacock-teal, ruby, and saffron memory strata preserving a warm luminous essence; deterministic Helvetica Neue Bold label overlay: Rasa Archive."
+    },
+    {
+      "stable_key": "playlist-f1759734a641",
+      "target": "canonical",
+      "name": "Snowglass Letters",
+      "file": "playlist-f1759734a641.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "b45827d1da4efdb1c1e2603b80cc5d7b43cd2280816b48145227ee3e4429c0c5",
+      "tags": [
+        "piano",
+        "strings",
+        "cinematic",
+        "delicate"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Snowglass Letters."
+    },
+    {
+      "stable_key": "playlist-888b633d5b86",
+      "target": "canonical",
+      "name": "Stillwater Sanctuary",
+      "file": "playlist-888b633d5b86.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "fe5c225e829c52515bf030108bee0ebd7844d3e346091a122941494c886f17d5",
+      "tags": [
+        "new age",
+        "meditation",
+        "calm",
+        "sleep"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Stillwater Sanctuary."
+    },
+    {
+      "stable_key": "playlist-8cef85f2ac2d",
+      "target": "canonical",
+      "name": "Tidal Hush",
+      "file": "playlist-8cef85f2ac2d.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "c25e1a9fc002ed1883977b7e2644c27829b8ee966fc9a077ef765e09cc091a2c",
+      "tags": [
+        "ambient indie",
+        "slow drift",
+        "intimate",
+        "waterside"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Tidal Hush."
+    },
+    {
+      "stable_key": "playlist-52a3435dea63",
+      "target": "canonical",
+      "name": "Uttara Glow",
+      "file": "playlist-52a3435dea63.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "35dc093dd383581b38301369337ea4afc9a22491ad06e7c142943a4333a7ee1d",
+      "tags": [
+        "north-indian",
+        "cinema",
+        "A. R. Rahman",
+        "romantic"
+      ],
+      "prompt": "New Drift Atlas background: sapphire twilight with antique-gold raga-like arcs, ivory radiance, and restrained rose-cyan currents; deterministic Helvetica Neue Bold label overlay: Uttara Glow."
+    },
+    {
+      "stable_key": "playlist-27326fbe2008",
+      "target": "canonical",
+      "name": "Velvet Overture",
+      "file": "playlist-27326fbe2008.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "e5c0c54719fe95c414ffbd98205fab4db8b4716659921cf7b7cdd0c81943eff5",
+      "tags": [
+        "classical",
+        "romantic",
+        "orchestral",
+        "piano"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Velvet Overture."
+    },
+    {
+      "stable_key": "playlist-6a691b9a95ae",
+      "target": "canonical",
+      "name": "Warm Glow Weather",
+      "file": "playlist-6a691b9a95ae.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "2176dccdb28e1f914069b6cbae532b3fd4c9069eb88e8eee377549b8b0aa84fc",
+      "tags": [
+        "indie folk",
+        "warm",
+        "reflective",
+        "soft pop"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Warm Glow Weather."
+    },
+    {
+      "stable_key": "playlist-a419d5c830cf",
+      "target": "canonical",
+      "name": "Weightless Horizons",
+      "file": "playlist-a419d5c830cf.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "5a5dfec1ba09401f978921016c9ba6b6c6ba5c2ac5384b831c6e9a8cc068c664",
+      "tags": [
+        "ambient",
+        "post-rock",
+        "cinematic",
+        "spacious"
+      ],
+      "prompt": "Approved Drift Atlas v1 background preserved; deterministic Helvetica Neue Bold label overlay: Weightless Horizons."
+    },
+    {
+      "stable_key": "intake-inbox",
+      "target": "intake",
+      "name": "Inbox",
+      "file": "intake-inbox.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "fed91ccc30108a7b88769a5047b79bbc493b52cb6c1d5cf97c04fbc05f6fa50c",
+      "tags": [
+        "intake",
+        "personal discovery",
+        "recent favorite"
+      ],
+      "prompt": "New Drift Atlas background: a luminous musical idea arriving into a dark indigo field; deterministic Helvetica Neue Bold label overlay: Inbox."
+    },
+    {
+      "stable_key": "intake-from-friends",
+      "target": "intake",
+      "name": "From Friends",
+      "file": "intake-from-friends.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "95c0dd705cc4225ed9bdb2b1679fe3e0bcee715c50b5fb9d643fcd8219a5d2f3",
+      "tags": [
+        "intake",
+        "recommendation",
+        "friends"
+      ],
+      "prompt": "New Drift Atlas background: two warm currents exchanging a spark in burgundy darkness; deterministic Helvetica Neue Bold label overlay: From Friends."
+    },
+    {
+      "stable_key": "intake-liked-from-radio",
+      "target": "intake",
+      "name": "Liked from Radio",
+      "file": "intake-liked-from-radio.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "aeaf5b425afa546194f0c9f628c6084be8826813342bc4916e6f1683f58300f3",
+      "tags": [
+        "intake",
+        "radio",
+        "provider discovery"
+      ],
+      "prompt": "New Drift Atlas background: a coral-gold discovery pulse among dark petrol signal arcs; deterministic Helvetica Neue Bold label overlay: Liked from Radio."
+    },
+    {
+      "stable_key": "intake-from-prompts",
+      "target": "intake",
+      "name": "From Prompts",
+      "file": "intake-from-prompts.png",
+      "media_type": "image/png",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "5cce237e5e72a50c028989228431ee5ba85e4b5bf82c4d5df390a7c339597554",
+      "tags": [
+        "intake",
+        "prompted",
+        "intentional discovery"
+      ],
+      "prompt": "New Drift Atlas background: an intentional geometric seed unfolding into a luminous musical path; deterministic Helvetica Neue Bold label overlay: From Prompts."
+    }
+  ]
+}

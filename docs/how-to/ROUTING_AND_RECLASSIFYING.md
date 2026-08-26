@@ -1,77 +1,88 @@
-# Route and reclassify a track
+# Re-evaluate and reclassify a track
 
-Use a route when you want to keep a track but reject its current Chordrift
-destination. A route is a temporary corrective inbox, not a final playlist and
-not a preference signal.
+Use the single `Re-evaluate` playlist when you want to keep a track but reject
+its current Chordrift destination. It is a temporary holding queue, not a final
+playlist and not a preference signal.
 
 ## Capture while listening
 
-Add the playing track in Spotify to the most truthful route, such as:
-
-- `Route — South Indian`;
-- `Route — North Indian`;
-- `Route — Decide Later` when the current placement feels wrong but you do not
-  yet know the destination.
-
-Do not also remove it from its current Chordrift playlist. Keeping the source
-membership until verified reassignment makes interruption harmless.
+In Spotify, move the playing track to `Re-evaluate`: add it there and remove it
+from the wrong Chordrift destination. The visible library immediately matches
+your judgment, while Chordrift retains the transition in Neon.
 
 Then run:
 
 ```console
 $ chordrift sync pull --account personal
-$ chordrift routes tracks --account personal --route "South Indian"
+$ chordrift reevaluate status --account personal
 ```
 
-The pull records the provider addition as durable, zero-signal route membership
-in Neon.
+The pull records an immutable queue-entry event and current zero-signal queue
+membership in Neon. While the track remains there, Chordrift neither infers an
+exclusion nor restores the rejected source membership.
 
-## Add from the CLI instead
+## Review a longer queue in CSV
 
 ```console
-$ chordrift routes add \
+$ chordrift reevaluate export \
     --account personal \
-    --route "Decide Later" \
-    --spotify-id SPOTIFY_TRACK_ID \
-    --reason "Current vibe feels wrong; destination undecided"
+    --file reevaluate.csv
 ```
 
-This changes Neon only. Use the normal plan/readiness/publish workflow to make
-the route membership visible in Spotify.
+Add only classifications you actually know, mark changed rows with
+`action=set`, and import/approve through the existing classification batch
+workflow.
 
-## Create a new route
+## Create the queue
 
-Every route needs its own meaning, description, label-free artwork master, and
-provider-labeled artwork. Artwork should follow the route's subject; it does
-not need to reuse the Indian instrument visual language.
+The queue has one stable identity, a label-free artwork master, and a
+provider-labeled artwork artifact.
 
 ```console
 $ chordrift artwork render \
-    --background artwork/routing/NEW_ROUTE_BACKGROUND.png \
-    --title "Route — NEW ROUTE" \
-    --output artwork/routing/NEW_ROUTE_SPOTIFY.png
+    --background artwork/review/re-evaluate-background.png \
+    --title "Re-evaluate" \
+    --output artwork/review/re-evaluate-spotify.png
 
-$ chordrift routes create \
+$ chordrift reevaluate create \
     --account personal \
-    --name "NEW ROUTE" \
-    --description "A concise description of what belongs here." \
-    --background artwork/routing/NEW_ROUTE_BACKGROUND.png \
-    --artwork artwork/routing/NEW_ROUTE_SPOTIFY.png
+    --background artwork/review/re-evaluate-background.png \
+    --artwork artwork/review/re-evaluate-spotify.png
 ```
 
 ## Reconciliation invariant
 
-A non-empty route means pending work. Later review must either:
+A non-empty Re-evaluate queue means pending work. Later review must either:
 
 1. move the track into an existing canonical playlist and record the correction;
 2. promote a coherent cohort into a new poetic canonical playlist with its own
    identity and artwork; or
-3. leave it in review because the destination remains uncertain.
+3. leave it in Re-evaluate because the destination remains uncertain.
 
-Chordrift clears route membership only after the selected destination has been
-published and verified. Full automatic route consumption is the next v0.1.2
-reconciliation slice; the current routing subslice safely captures and
-publishes the corrective inboxes without prematurely clearing them.
+Removing a track from both its verified source and Re-evaluate is the explicit
+provider gesture from which Chordrift may stage a reversible exclusion. Queue
+history remains in Neon even after the current queue membership disappears.
+
+Chordrift clears queue membership only after the selected destination has been
+published and verified. The cleanup is additionally gated on a manual
+assignment revision newer than the queue-entry event and a destination that is
+different from the rejected source. Merely regenerating a proposal cannot
+silently clear the queue.
+
+## Retire the old multi-route workflow
+
+After `Re-evaluate` exists and every old route track is represented in the
+current proposal or explicitly excluded, retire the legacy queues in Neon:
+
+```console
+$ chordrift reevaluate retire-legacy \
+    --account personal \
+    --confirm "RETIRE LEGACY ROUTES"
+```
+
+This command performs no Spotify write. It marks only the old routing surfaces
+inactive. The next immutable sync plan archives their Spotify containers in the
+retirement phase after the replacement destinations are published.
 
 ## Add a private classification dimension
 

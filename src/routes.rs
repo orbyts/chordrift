@@ -10,6 +10,8 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result};
 
 const PREFIX: &str = "Route — ";
+const REEVALUATE_NAME: &str = "Re-evaluate";
+const REEVALUATE_KEY: &str = "re-evaluate";
 
 /// One configured routing surface.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -60,6 +62,15 @@ pub struct AddReport {
     pub reused: usize,
 }
 
+/// Result of retiring the obsolete multi-route review workflow in Neon.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RetireLegacyReport {
+    /// Legacy routes made inactive.
+    pub routes: usize,
+    /// Distinct route tracks already represented or explicitly excluded.
+    pub tracks: usize,
+}
+
 /// Creates one durable route without contacting Spotify.
 pub async fn create(
     database: &Database,
@@ -70,12 +81,72 @@ pub async fn create(
     artwork_path: &Path,
 ) -> Result<RouteRecord> {
     let name = normalized_name(name)?;
+    let stable_key = stable_key(&name);
+    create_surface(
+        database,
+        account_label,
+        SurfaceSpec {
+            name: &name,
+            stable_key: &stable_key,
+            purpose: "legacy_route",
+            description,
+            background_path,
+            artwork_path,
+        },
+    )
+    .await
+}
+
+/// Creates or updates the account's single provider-native Re-evaluate queue.
+pub async fn create_reevaluate(
+    database: &Database,
+    account_label: &str,
+    description: &str,
+    background_path: &Path,
+    artwork_path: &Path,
+) -> Result<RouteRecord> {
+    create_surface(
+        database,
+        account_label,
+        SurfaceSpec {
+            name: REEVALUATE_NAME,
+            stable_key: REEVALUATE_KEY,
+            purpose: "reevaluate",
+            description,
+            background_path,
+            artwork_path,
+        },
+    )
+    .await
+}
+
+struct SurfaceSpec<'a> {
+    name: &'a str,
+    stable_key: &'a str,
+    purpose: &'a str,
+    description: &'a str,
+    background_path: &'a Path,
+    artwork_path: &'a Path,
+}
+
+async fn create_surface(
+    database: &Database,
+    account_label: &str,
+    spec: SurfaceSpec<'_>,
+) -> Result<RouteRecord> {
+    let SurfaceSpec {
+        name,
+        stable_key,
+        purpose,
+        description,
+        background_path,
+        artwork_path,
+    } = spec;
     let description = description.trim();
     if description.is_empty() {
         return Err(configuration("route description cannot be empty"));
     }
     let account_id = account_id(database, account_label).await?;
-    let stable_key = stable_key(&name);
     let background_path = checked_png_path(background_path, "route background")?;
     let artwork_path = checked_png_path(artwork_path, "route artwork")?;
     let artwork_sha256 = sha256_file(Path::new(&artwork_path))?;
@@ -86,7 +157,7 @@ pub async fn create(
          WHERE provider_account_id = $1 AND stable_key = $2",
     )
     .bind(account_id)
-    .bind(&stable_key)
+    .bind(stable_key)
     .fetch_optional(&mut *tx)
     .await?
     {
@@ -95,14 +166,14 @@ pub async fn create(
              WHERE id = $1",
         )
         .bind(existing_id)
-        .bind(&name)
+        .bind(name)
         .bind(description)
         .execute(&mut *tx)
         .await?;
         sqlx::query(
             "UPDATE routing_surfaces SET background_path = $3, artwork_path = $4,
                  artwork_sha256 = $5, artwork_approved_at = now(), active = TRUE,
-                 updated_at = now()
+                 purpose = $6, updated_at = now()
              WHERE provider_account_id = $1 AND playlist_id = $2",
         )
         .bind(account_id)
@@ -110,10 +181,11 @@ pub async fn create(
         .bind(&background_path)
         .bind(&artwork_path)
         .bind(&artwork_sha256)
+        .bind(purpose)
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
-        return resolve(database, account_id, &name).await;
+        return resolve_exact(database, account_id, name).await;
     }
 
     let playlist_id: Uuid = sqlx::query_scalar(
@@ -121,27 +193,121 @@ pub async fn create(
          VALUES ($1, $2, 'routing', $3, '[\"routing\", \"zero_signal\"]'::jsonb)
          RETURNING id",
     )
-    .bind(&name)
+    .bind(name)
     .bind(description)
-    .bind(&stable_key)
+    .bind(stable_key)
     .fetch_one(&mut *tx)
     .await?;
     sqlx::query(
         "INSERT INTO routing_surfaces
          (provider_account_id, playlist_id, stable_key, background_path,
-          artwork_path, artwork_sha256)
-         VALUES ($1, $2, $3, $4, $5, $6)",
+          artwork_path, artwork_sha256, purpose)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(account_id)
     .bind(playlist_id)
-    .bind(&stable_key)
+    .bind(stable_key)
     .bind(&background_path)
     .bind(&artwork_path)
     .bind(&artwork_sha256)
+    .bind(purpose)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    resolve(database, account_id, &name).await
+    resolve_exact(database, account_id, name).await
+}
+
+/// Returns the configured Re-evaluate queue.
+pub async fn reevaluate(database: &Database, account_label: &str) -> Result<RouteRecord> {
+    let account_id = account_id(database, account_label).await?;
+    resolve_exact(database, account_id, REEVALUATE_NAME).await
+}
+
+/// Retires every legacy route only after the replacement queue exists and every
+/// routed track is represented by the current proposal or a durable exclusion.
+pub async fn retire_legacy(
+    database: &Database,
+    account_label: &str,
+    confirm: &str,
+) -> Result<RetireLegacyReport> {
+    const PHRASE: &str = "RETIRE LEGACY ROUTES";
+    if confirm != PHRASE {
+        return Err(configuration(format!(
+            "legacy route retirement requires --confirm {PHRASE:?}"
+        )));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let replacement_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM routing_surfaces
+         WHERE provider_account_id = $1 AND active AND purpose = 'reevaluate')",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    if !replacement_exists {
+        return Err(configuration(
+            "create the Re-evaluate queue before retiring legacy routes",
+        ));
+    }
+    let generation_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM playlist_generations
+         WHERE provider_account_id = $1 AND status IN ('proposed', 'approved')
+         ORDER BY created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("no current playlist proposal exists"))?;
+    let uncovered: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT membership.track_id)::bigint
+         FROM routing_surfaces route
+         JOIN playlist_tracks membership ON membership.playlist_id = route.playlist_id
+         WHERE route.provider_account_id = $1 AND route.active
+           AND route.purpose = 'legacy_route'
+           AND NOT EXISTS (
+               SELECT 1 FROM playlists proposed
+               JOIN playlist_tracks placed ON placed.playlist_id = proposed.id
+               WHERE proposed.generation_id = $2
+                 AND placed.track_id = membership.track_id)
+           AND NOT EXISTS (
+               SELECT 1 FROM excluded_tracks exclusion
+               WHERE exclusion.provider_account_id = $1
+                 AND exclusion.track_id = membership.track_id
+                 AND exclusion.restored_at IS NULL)",
+    )
+    .bind(account_id)
+    .bind(generation_id)
+    .fetch_one(database.pool())
+    .await?;
+    if uncovered != 0 {
+        return Err(configuration(format!(
+            "cannot retire legacy routes: {uncovered} routed track(s) are neither represented nor excluded"
+        )));
+    }
+    let tracks: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT membership.track_id)::bigint
+         FROM routing_surfaces route
+         JOIN playlist_tracks membership ON membership.playlist_id = route.playlist_id
+         WHERE route.provider_account_id = $1 AND route.active
+           AND route.purpose = 'legacy_route'",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    let changed = sqlx::query(
+        "UPDATE routing_surfaces SET active = FALSE, updated_at = now()
+         WHERE provider_account_id = $1 AND active AND purpose = 'legacy_route'",
+    )
+    .bind(account_id)
+    .execute(database.pool())
+    .await?
+    .rows_affected();
+    Ok(RetireLegacyReport {
+        routes: usize::try_from(changed)
+            .map_err(|_| configuration("legacy route count exceeds usize"))?,
+        tracks: usize::try_from(tracks)
+            .map_err(|_| configuration("legacy route track count exceeds usize"))?,
+    })
 }
 
 /// Lists configured routes, including routes not yet published to Spotify.
@@ -292,6 +458,17 @@ async fn resolve(database: &Database, account_id: Uuid, selector: &str) -> Resul
         1 => route_record(rows.into_iter().next().expect("one route")),
         _ => Err(configuration(format!(
             "route selector {selector:?} is ambiguous"
+        ))),
+    }
+}
+
+async fn resolve_exact(database: &Database, account_id: Uuid, name: &str) -> Result<RouteRecord> {
+    let rows = route_query(database, account_id, Some(name)).await?;
+    match rows.len() {
+        0 => Err(configuration(format!("no review surface matches {name:?}"))),
+        1 => route_record(rows.into_iter().next().expect("one route")),
+        _ => Err(configuration(format!(
+            "review surface {name:?} is ambiguous"
         ))),
     }
 }

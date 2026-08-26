@@ -59,7 +59,14 @@ pub enum Command {
         #[command(subcommand)]
         command: AlbumCommand,
     },
-    /// Create and inspect durable zero-signal routing playlists.
+    /// Create and inspect the provider-native Re-evaluate holding queue.
+    Reevaluate {
+        /// Re-evaluation operation to perform.
+        #[command(subcommand)]
+        command: ReevaluateCommand,
+    },
+    /// Legacy multi-route commands retained only for migration.
+    #[command(hide = true)]
     Routes {
         /// Routing operation to perform.
         #[command(subcommand)]
@@ -124,6 +131,53 @@ pub enum Command {
         /// Enrichment operation to perform.
         #[command(subcommand)]
         command: EnrichmentCommand,
+    },
+}
+
+/// Provider-native Re-evaluate queue commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ReevaluateCommand {
+    /// Create or update the single Neon-backed Re-evaluate playlist.
+    Create {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Instructions shown in the Spotify playlist description.
+        #[arg(
+            long,
+            default_value = "Move a misplaced track here and remove it from its current destination. Chordrift will preserve it for later reassignment."
+        )]
+        description: String,
+        /// Label-free PNG master retained for future providers.
+        #[arg(long)]
+        background: PathBuf,
+        /// Deterministically labeled PNG approved for Spotify.
+        #[arg(long)]
+        artwork: PathBuf,
+    },
+    /// Show current queue configuration and desired membership.
+    Status {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Export the current Spotify queue to the standard classification worksheet.
+    Export {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Destination CSV file.
+        #[arg(long)]
+        file: PathBuf,
+    },
+    /// Retire the obsolete multi-route review surfaces after coverage is complete.
+    RetireLegacy {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact destructive confirmation phrase.
+        #[arg(long)]
+        confirm: String,
     },
 }
 
@@ -597,6 +651,36 @@ pub enum TrackCommand {
         #[arg(long)]
         technical: bool,
     },
+    /// Reversibly exclude one exact track from active Chordrift destinations.
+    Exclude {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Stable Spotify track ID.
+        #[arg(long = "spotify-id")]
+        spotify_id: String,
+        /// Required durable explanation.
+        #[arg(long)]
+        reason: String,
+        /// Must exactly repeat the Spotify track ID.
+        #[arg(long)]
+        confirm: String,
+    },
+    /// Restore one excluded track to unresolved review without guessing a destination.
+    Restore {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Stable Spotify track ID.
+        #[arg(long = "spotify-id")]
+        spotify_id: String,
+        /// Required durable explanation.
+        #[arg(long)]
+        reason: String,
+        /// Must exactly repeat the Spotify track ID.
+        #[arg(long)]
+        confirm: String,
+    },
 }
 
 /// Private user-authored track classification commands.
@@ -990,6 +1074,18 @@ pub enum ProposalCommand {
         /// Auditable explanation for the manual decision.
         #[arg(long)]
         reason: String,
+    },
+    /// Remove one empty destination from the editable proposal.
+    RetireEmpty {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Stable playlist key reported by `proposals list`.
+        #[arg(long)]
+        playlist: String,
+        /// Must exactly repeat the stable playlist key.
+        #[arg(long)]
+        confirm: String,
     },
     /// Remove one assignment and return the track to internal review.
     Review {
@@ -1568,6 +1664,12 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
             database.close().await;
             result?;
         }
+        Command::Reevaluate { command } => {
+            let database = connect_current_database().await?;
+            let result = run_reevaluate_command(command, output, &database).await;
+            database.close().await;
+            result?;
+        }
         Command::Routes { command } => {
             let database = connect_current_database().await?;
             let result = run_route_command(command, output, &database).await;
@@ -1745,6 +1847,64 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
     }
 
     Ok(())
+}
+
+async fn run_reevaluate_command(
+    command: ReevaluateCommand,
+    output: &mut impl Write,
+    database: &storexa::Database,
+) -> Result<()> {
+    match command {
+        ReevaluateCommand::Create {
+            account,
+            description,
+            background,
+            artwork,
+        } => {
+            let queue =
+                routes::create_reevaluate(database, &account, &description, &background, &artwork)
+                    .await?;
+            writeln!(output, "queue: {}", queue.name)?;
+            writeln!(output, "stable_key: {}", queue.stable_key)?;
+            writeln!(output, "playlist_id: {}", queue.playlist_id)?;
+            writeln!(output, "artwork_sha256: {}", queue.artwork_sha256)?;
+            writeln!(
+                output,
+                "spotify_playlist_id: {}",
+                queue.spotify_playlist_id.as_deref().unwrap_or("-")
+            )?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        ReevaluateCommand::Status { account } => {
+            let queue = routes::reevaluate(database, &account).await?;
+            writeln!(output, "queue: {}", queue.name)?;
+            writeln!(output, "active: {}", queue.active)?;
+            writeln!(output, "tracks: {}", queue.track_count)?;
+            writeln!(
+                output,
+                "spotify_playlist_id: {}",
+                queue.spotify_playlist_id.as_deref().unwrap_or("-")
+            )?;
+            writeln!(output, "description: {}", clean_cell(&queue.description))?;
+            Ok(())
+        }
+        ReevaluateCommand::Export { account, file } => {
+            let queue = routes::reevaluate(database, &account).await?;
+            let report = classifications::export(database, &account, &[queue.name], &file).await?;
+            writeln!(output, "file: {}", report.path)?;
+            writeln!(output, "tracks: {}", report.tracks)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        ReevaluateCommand::RetireLegacy { account, confirm } => {
+            let report = routes::retire_legacy(database, &account, &confirm).await?;
+            writeln!(output, "legacy_routes_retired: {}", report.routes)?;
+            writeln!(output, "covered_tracks: {}", report.tracks)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+    }
 }
 
 fn write_readiness_report(
@@ -2669,6 +2829,46 @@ async fn run_track_command(
                     .map(clean_cell)
                     .unwrap_or_else(|| "false".to_owned())
             )?;
+            Ok(())
+        }
+        TrackCommand::Exclude {
+            account,
+            spotify_id,
+            reason,
+            confirm,
+        } => {
+            let report =
+                tracks::exclude(database, &account, &spotify_id, &reason, &confirm).await?;
+            writeln!(output, "spotify_id: {}", report.spotify_id)?;
+            writeln!(output, "state: {}", report.state)?;
+            writeln!(
+                output,
+                "proposal_generation_id: {}",
+                report
+                    .proposal_generation_id
+                    .map_or_else(|| "-".to_owned(), |value| value.to_string())
+            )?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        TrackCommand::Restore {
+            account,
+            spotify_id,
+            reason,
+            confirm,
+        } => {
+            let report =
+                tracks::restore(database, &account, &spotify_id, &reason, &confirm).await?;
+            writeln!(output, "spotify_id: {}", report.spotify_id)?;
+            writeln!(output, "state: {}", report.state)?;
+            writeln!(
+                output,
+                "proposal_generation_id: {}",
+                report
+                    .proposal_generation_id
+                    .map_or_else(|| "-".to_owned(), |value| value.to_string())
+            )?;
+            writeln!(output, "spotify_writes: disabled")?;
             Ok(())
         }
     }
@@ -3698,6 +3898,18 @@ async fn run_proposal_command(
             }
             Ok(())
         }
+        ProposalCommand::RetireEmpty {
+            account,
+            playlist,
+            confirm,
+        } => {
+            let retired = proposals::retire_empty(database, &account, &playlist, &confirm).await?;
+            writeln!(output, "proposal_generation_id: {}", retired.generation_id)?;
+            writeln!(output, "retired: {}", clean_cell(&retired.name))?;
+            writeln!(output, "stable_key: {}", retired.stable_key)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
         ProposalCommand::Review {
             account,
             spotify_id,
@@ -4519,8 +4731,8 @@ mod tests {
         AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand,
         ClassificationCommand, Cli, ClusterCommand, Command, DbCommand, EmbeddingCommand,
         EnrichmentCommand, HistoryCommand, LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg,
-        PlaylistSignalClassArg, RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand,
-        SyncCommand, TrackCommand, write_status,
+        PlaylistSignalClassArg, ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg,
+        SignalCommand, SpotifyCommand, SyncCommand, TrackCommand, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -4532,6 +4744,19 @@ mod tests {
             Command::Db {
                 command: DbCommand::Status
             }
+        ));
+    }
+
+    #[test]
+    fn parses_reevaluate_export() {
+        let cli =
+            Cli::try_parse_from(["chordrift", "reevaluate", "export", "--file", "review.csv"])
+                .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Reevaluate {
+                command: ReevaluateCommand::Export { account, file }
+            } if account == "personal" && file == std::path::Path::new("review.csv")
         ));
     }
 

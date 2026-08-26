@@ -4,6 +4,24 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Replace destination-specific review routes with one provider-owned,
+  zero-signal `Re-evaluate` queue; record immutable entry/exit history, suppress
+  accidental exclusion and source restoration while queued, export long queues
+  through the standard classification worksheet, and clear an item only after
+  a newer explicit assignment selects a different approved destination.
+- Add exact-confirmed, coverage-gated legacy-route retirement whose Spotify
+  container archival remains an immutable retirement-plan operation.
+- Require complete approved proposals to emit an explicit, separately gated
+  retirement for every omitted managed canonical playlist, preventing retired
+  concepts such as `Monsoon Cinema` from surviving silently.
+- Reconcile the approved 454-track South Asian review into `Dakshina Pulse`,
+  `Uttara Glow`, and `Rasa Archive`; retire unavailable `Latika's Theme`, move
+  global score material back to `Afterlight Score`, and reach a complete
+  1,754-track proposal with zero unresolved or conflicting placements.
+- Add the approved Drift Atlas v4 cover set for all 16 canonical and four intake
+  surfaces, including new artwork for `Dakshina Pulse`, `Uttara Glow`, `Rasa
+  Archive`, and the `Re-evaluate` queue.
+
 - Add account-scoped `user_cohorts`, a complete classification/CSV glossary,
   Excel-ready A.R. Rahman examples, and stronger selected-account track
   isolation as the `0.1.2-dev.3` checkpoint.

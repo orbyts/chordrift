@@ -135,6 +135,7 @@ struct DesiredTrack {
 
 #[derive(Clone, Debug)]
 struct CurrentPlaylist {
+    playlist_id: Uuid,
     provider_playlist_id: Uuid,
     spotify_id: String,
     name: String,
@@ -181,10 +182,13 @@ pub async fn create(
 
     let desired = desired_playlists(database, account_id, proposal_id).await?;
     let current = current_managed_playlists(database, account_id, snapshot_id).await?;
-    let mut operations = playlist_diff(&desired, &current);
+    let reevaluating = current_reevaluate_tracks(database, account_id, snapshot_id).await?;
+    let mut operations = playlist_diff(&desired, &current, &reevaluating);
+    operations.extend(canonical_retirement_operations(&desired, &current));
     operations.extend(artwork_operations(database, account_id, proposal_id, &current).await?);
     operations.extend(intake_surface_operations(database, account_id, snapshot_id).await?);
-    operations.extend(routing_surface_operations(database, account_id, snapshot_id).await?);
+    operations
+        .extend(routing_surface_operations(database, account_id, snapshot_id, proposal_id).await?);
     operations.extend(cleanup_operations(database, account_id, snapshot_id, proposal_id).await?);
     operations.extend(album_retirement_operations(database, account_id, snapshot_id).await?);
     operations.extend(external_cleanup_operations(database, account_id).await?);
@@ -533,11 +537,12 @@ async fn routing_surface_operations(
     database: &Database,
     account_id: Uuid,
     snapshot_id: Uuid,
+    proposal_id: Uuid,
 ) -> Result<Vec<PlanOperationInput>> {
     let routes = sqlx::query(
         "SELECT route.playlist_id, route.stable_key, playlist.name,
                 COALESCE(playlist.description, '') AS description,
-                route.artwork_path, route.artwork_sha256,
+                route.artwork_path, route.artwork_sha256, route.active, route.purpose,
                 provider.id AS provider_playlist_row_id,
                 provider.provider_playlist_id AS spotify_playlist_id,
                 snapshot.name AS current_name,
@@ -548,7 +553,7 @@ async fn routing_surface_operations(
            ON provider.playlist_id = route.playlist_id AND provider.provider = 'spotify'
          LEFT JOIN provider_playlist_snapshots snapshot
            ON snapshot.provider_playlist_id = provider.id AND snapshot.snapshot_id = $2
-         WHERE route.provider_account_id = $1 AND route.active
+         WHERE route.provider_account_id = $1
          ORDER BY lower(playlist.name), route.playlist_id",
     )
     .bind(account_id)
@@ -563,9 +568,40 @@ async fn routing_surface_operations(
         let description: String = route.try_get("description")?;
         let provider_playlist_id: Option<Uuid> = route.try_get("provider_playlist_row_id")?;
         let spotify_playlist_id: Option<String> = route.try_get("spotify_playlist_id")?;
+        let active: bool = route.try_get("active")?;
+        let purpose: String = route.try_get("purpose")?;
         let present = route
             .try_get::<Option<String>, _>("current_name")?
             .is_some();
+
+        if !active {
+            if present && purpose == "legacy_route" {
+                operations.push(PlanOperationInput {
+                    phase: "retirement".to_owned(),
+                    operation_type: "archive_playlist".to_owned(),
+                    operation_key: format!("retire:{stable_key}"),
+                    playlist_id: Some(playlist_id),
+                    provider_playlist_id,
+                    playlist_name: name,
+                    spotify_playlist_id,
+                    spotify_track_id: None,
+                    payload: json!({
+                        "expected_snapshot_id": route.try_get::<Option<String>, _>("provider_snapshot_id")?,
+                        "surface": "legacy_routing",
+                        "replacement": "Re-evaluate",
+                        "container_only": true,
+                        "inventory_retained": true
+                    }),
+                    safety: json!({
+                        "destructive": true,
+                        "deferred": true,
+                        "requires_snapshot_match": true,
+                        "tracks_preserved_in_approved_proposal": true
+                    }),
+                });
+            }
+            continue;
+        }
 
         if !present {
             operations.push(PlanOperationInput {
@@ -697,6 +733,75 @@ async fn routing_surface_operations(
             }
         }
 
+        if purpose == "reevaluate" && present {
+            let resolved = sqlx::query(
+                "SELECT desired.track_id, provider_track.provider_track_id
+                 FROM playlist_tracks desired
+                 JOIN provider_tracks provider_track
+                   ON provider_track.track_id = desired.track_id
+                  AND provider_track.provider = 'spotify'
+                 JOIN LATERAL (
+                     SELECT event.observed_at,
+                            NULLIF(event.metadata->>'previous_concept_id', '')::uuid
+                                AS previous_concept_id
+                     FROM reevaluation_events event
+                     WHERE event.provider_account_id = $1
+                       AND event.playlist_id = $2
+                       AND event.track_id = desired.track_id
+                       AND event.event_type = 'entered'
+                     ORDER BY event.observed_at DESC, event.id DESC LIMIT 1
+                 ) entry ON TRUE
+                 JOIN track_playlist_assignment_revisions revision
+                   ON revision.provider_account_id = $1
+                  AND revision.track_id = desired.track_id
+                  AND revision.superseded_at IS NULL
+                  AND revision.decision = 'assign'
+                  AND revision.created_at > entry.observed_at
+                 JOIN playlists proposed
+                   ON proposed.generation_id = $3
+                  AND proposed.concept_id = revision.destination_concept_id
+                 JOIN playlist_tracks placed
+                   ON placed.playlist_id = proposed.id
+                  AND placed.track_id = desired.track_id
+                 WHERE desired.playlist_id = $2
+                   AND entry.previous_concept_id IS NOT NULL
+                   AND revision.destination_concept_id <> entry.previous_concept_id
+                 ORDER BY desired.position",
+            )
+            .bind(account_id)
+            .bind(playlist_id)
+            .bind(proposal_id)
+            .fetch_all(database.pool())
+            .await?;
+            for row in resolved {
+                let track_id: Uuid = row.try_get("track_id")?;
+                let spotify_track_id: String = row.try_get("provider_track_id")?;
+                operations.push(PlanOperationInput {
+                    phase: "cleanup".to_owned(),
+                    operation_type: "remove_track".to_owned(),
+                    operation_key: format!("resolve:{stable_key}:{spotify_track_id}"),
+                    playlist_id: Some(playlist_id),
+                    provider_playlist_id,
+                    playlist_name: name.clone(),
+                    spotify_playlist_id: spotify_playlist_id.clone(),
+                    spotify_track_id: Some(spotify_track_id.clone()),
+                    payload: json!({
+                        "canonical_track_id": track_id,
+                        "spotify_track_id": spotify_track_id,
+                        "reason": "verified_reevaluation_assignment",
+                        "expected_snapshot_id": route.try_get::<Option<String>, _>("provider_snapshot_id")?
+                    }),
+                    safety: json!({
+                        "destructive": true,
+                        "deferred": true,
+                        "requires_snapshot_match": true,
+                        "requires_new_destination_in_approved_proposal": true,
+                        "removes_holding_queue_membership_only": true
+                    }),
+                });
+            }
+        }
+
         let artwork_sha256: String = route.try_get("artwork_sha256")?;
         let artwork_key = format!("artwork:{stable_key}:{artwork_sha256}");
         let already_uploaded = match &spotify_playlist_id {
@@ -811,6 +916,7 @@ pub async fn show(
 fn playlist_diff(
     desired: &[DesiredPlaylist],
     current: &BTreeMap<Uuid, CurrentPlaylist>,
+    reevaluating: &BTreeSet<Uuid>,
 ) -> Vec<PlanOperationInput> {
     let mut operations = Vec::new();
     for playlist in desired {
@@ -893,8 +999,13 @@ fn playlist_diff(
         }
         for track in &playlist.tracks {
             if !current_tracks.contains(&track.canonical_id) {
+                let removed_from_verified_destination = observed
+                    .is_some_and(|value| value.verified_tracks.contains(&track.canonical_id));
+                if reevaluating.contains(&track.canonical_id) && removed_from_verified_destination {
+                    continue;
+                }
                 if let Some(observed) = observed
-                    && observed.verified_tracks.contains(&track.canonical_id)
+                    && removed_from_verified_destination
                     && !track.restored
                 {
                     operations.push(PlanOperationInput {
@@ -961,6 +1072,71 @@ fn playlist_diff(
         }
     }
     operations
+}
+
+fn canonical_retirement_operations(
+    desired: &[DesiredPlaylist],
+    current: &BTreeMap<Uuid, CurrentPlaylist>,
+) -> Vec<PlanOperationInput> {
+    let retained = desired
+        .iter()
+        .map(|playlist| playlist.concept_id)
+        .collect::<BTreeSet<_>>();
+    current
+        .iter()
+        .filter(|(concept_id, _)| !retained.contains(concept_id))
+        .map(|(concept_id, playlist)| PlanOperationInput {
+            phase: "retirement".to_owned(),
+            operation_type: "archive_playlist".to_owned(),
+            operation_key: format!("retire-canonical:{}", playlist.spotify_id),
+            playlist_id: Some(playlist.playlist_id),
+            provider_playlist_id: Some(playlist.provider_playlist_id),
+            playlist_name: playlist.name.clone(),
+            spotify_playlist_id: Some(playlist.spotify_id.clone()),
+            spotify_track_id: None,
+            payload: json!({
+                "concept_id": concept_id,
+                "expected_snapshot_id": playlist.provider_snapshot_id,
+                "container_only": true,
+                "inventory_retained": true,
+                "reason": "concept_absent_from_complete_approved_proposal"
+            }),
+            safety: json!({
+                "destructive": true,
+                "deferred": true,
+                "requires_separate_approval": true,
+                "requires_snapshot_match": true,
+                "requires_complete_approved_proposal": true,
+                "immutable_inventory_retained": true
+            }),
+        })
+        .collect()
+}
+
+async fn current_reevaluate_tracks(
+    database: &Database,
+    account_id: Uuid,
+    snapshot_id: Uuid,
+) -> Result<BTreeSet<Uuid>> {
+    let rows = sqlx::query_scalar(
+        "SELECT DISTINCT provider_track.track_id
+         FROM routing_surfaces route
+         JOIN provider_playlists provider
+           ON provider.playlist_id = route.playlist_id
+          AND provider.provider = 'spotify'
+         JOIN provider_playlist_tracks membership
+           ON membership.provider_playlist_id = provider.id
+          AND membership.snapshot_id = $2
+         JOIN provider_tracks provider_track
+           ON provider_track.id = membership.provider_track_id
+         WHERE route.provider_account_id = $1
+           AND route.active AND route.purpose = 'reevaluate'",
+    )
+    .bind(account_id)
+    .bind(snapshot_id)
+    .fetch_all(database.pool())
+    .await?;
+    Ok(rows.into_iter().collect())
 }
 
 async fn cleanup_operations(
@@ -1373,7 +1549,8 @@ async fn current_managed_playlists(
     snapshot_id: Uuid,
 ) -> Result<BTreeMap<Uuid, CurrentPlaylist>> {
     let rows = sqlx::query(
-        "SELECT provider.id AS provider_playlist_row_id, provider.concept_id,
+        "SELECT provider.id AS provider_playlist_row_id, provider.playlist_id,
+                provider.concept_id,
                 provider.provider_playlist_id, snapshot.name, snapshot.provider_snapshot_id,
                 membership.position, track.track_id, track.provider_track_id
          FROM provider_account_playlists account_playlist
@@ -1400,6 +1577,9 @@ async fn current_managed_playlists(
         let playlist = playlists
             .entry(concept_id)
             .or_insert_with(|| CurrentPlaylist {
+                playlist_id: row
+                    .try_get("playlist_id")
+                    .expect("selected playlist row ID"),
                 provider_playlist_id: row
                     .try_get("provider_playlist_row_id")
                     .expect("selected provider playlist row ID"),
@@ -1685,8 +1865,9 @@ fn json_string(value: &Value, key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CurrentPlaylist, DesiredPlaylist, DesiredTrack, PlanOperationInput, count_kind, hex_sha256,
-        operation_position, operation_rank, phase_rank, playlist_diff, summarize,
+        CurrentPlaylist, DesiredPlaylist, DesiredTrack, PlanOperationInput,
+        canonical_retirement_operations, count_kind, hex_sha256, operation_position,
+        operation_rank, phase_rank, playlist_diff, summarize,
     };
     use serde_json::json;
     use std::collections::{BTreeMap, BTreeSet};
@@ -1734,6 +1915,32 @@ mod tests {
     }
 
     #[test]
+    fn absent_managed_concept_becomes_an_explicit_retirement() {
+        let concept_id = Uuid::new_v4();
+        let current = CurrentPlaylist {
+            playlist_id: Uuid::new_v4(),
+            provider_playlist_id: Uuid::new_v4(),
+            spotify_id: "spotify-playlist".to_owned(),
+            name: "Retired concept".to_owned(),
+            provider_snapshot_id: Some("snapshot".to_owned()),
+            tracks: Vec::new(),
+            verified_tracks: BTreeSet::new(),
+        };
+
+        let operations =
+            canonical_retirement_operations(&[], &BTreeMap::from([(concept_id, current)]));
+
+        assert_eq!(operations.len(), 1);
+        assert_eq!(operations[0].phase, "retirement");
+        assert_eq!(operations[0].operation_type, "archive_playlist");
+        assert_eq!(operations[0].payload["concept_id"], concept_id.to_string());
+        assert_eq!(
+            operations[0].payload["reason"],
+            "concept_absent_from_complete_approved_proposal"
+        );
+    }
+
+    #[test]
     fn creation_precedes_position_ordered_additions() {
         let create = operation("create_playlist", "publish", false);
         let mut first = operation("add_track", "publish", false);
@@ -1762,6 +1969,7 @@ mod tests {
             }],
         };
         let current = CurrentPlaylist {
+            playlist_id: Uuid::new_v4(),
             provider_playlist_id: Uuid::new_v4(),
             spotify_id: "spotify-playlist".to_owned(),
             name: "Test".to_owned(),
@@ -1769,8 +1977,47 @@ mod tests {
             tracks: Vec::new(),
             verified_tracks: BTreeSet::from([track_id]),
         };
-        let operations = playlist_diff(&[desired], &BTreeMap::from([(concept_id, current)]));
+        let operations = playlist_diff(
+            &[desired],
+            &BTreeMap::from([(concept_id, current)]),
+            &BTreeSet::new(),
+        );
         assert_eq!(count_kind(&operations, "exclude_track"), 1);
+        assert_eq!(count_kind(&operations, "add_track"), 0);
+    }
+
+    #[test]
+    fn verified_user_removal_in_reevaluate_is_not_excluded_or_readded() {
+        let concept_id = Uuid::new_v4();
+        let track_id = Uuid::new_v4();
+        let desired = DesiredPlaylist {
+            playlist_id: Uuid::new_v4(),
+            concept_id,
+            stable_key: "playlist-test".to_owned(),
+            name: "Test".to_owned(),
+            description: "Test".to_owned(),
+            tracks: vec![DesiredTrack {
+                canonical_id: track_id,
+                spotify_id: "spotify-track".to_owned(),
+                position: 0,
+                restored: false,
+            }],
+        };
+        let current = CurrentPlaylist {
+            playlist_id: Uuid::new_v4(),
+            provider_playlist_id: Uuid::new_v4(),
+            spotify_id: "spotify-playlist".to_owned(),
+            name: "Test".to_owned(),
+            provider_snapshot_id: Some("snapshot".to_owned()),
+            tracks: Vec::new(),
+            verified_tracks: BTreeSet::from([track_id]),
+        };
+        let operations = playlist_diff(
+            &[desired],
+            &BTreeMap::from([(concept_id, current)]),
+            &BTreeSet::from([track_id]),
+        );
+        assert_eq!(count_kind(&operations, "exclude_track"), 0);
         assert_eq!(count_kind(&operations, "add_track"), 0);
     }
 

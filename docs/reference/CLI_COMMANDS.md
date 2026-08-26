@@ -310,59 +310,76 @@ manually in a client surface that supports it. For a playlist, register or use
 an approved artwork artifact and run `artwork update --playlist NAME` to create
 an auditable one-cover plan.
 
-### Routing playlists: capture a correction while listening
+### Re-evaluate: capture a correction while listening
 
-Routes are temporary corrective inboxes, not final listening playlists. A
-non-empty route means Chordrift has pending recategorization work. Route
-membership carries zero clustering, embedding, rotation, or preference weight.
-The steady state is empty: Chordrift first retains every routed track in Neon,
-then assigns it to an existing canonical playlist or proposes a genuinely new
-poetic playlist with its own name and artwork, publishes and verifies that
-destination, and only then clears the route.
+Re-evaluate is one provider-native holding queue, not a final listening
+playlist. Move a misplaced track into it and remove the track from its current
+destination. Membership carries zero clustering, embedding, rotation, or
+preference weight. Chordrift records entry and exit events, suppresses both
+exclusion and source restoration while the track is present, and clears the
+queue only after a replacement destination is published and verified.
 
-Create or update a route in Neon with its own meaning-specific artwork. The
-name is normalized to the `Route —` prefix. Keep the label-free master as well
-as the deterministically labeled Spotify cover:
+Create or update the queue in Neon with a label-free master and a
+deterministically labeled Spotify cover:
 
 ```console
-$ chordrift routes create \
+$ chordrift reevaluate create \
     --account personal \
-    --name "South Indian" \
-    --description "Corrective inbox for South Indian recordings that need verified reassignment; not a final listening playlist." \
-    --background artwork/routing/route-signals-v1/backgrounds/route-south-indian.png \
-    --artwork artwork/routing/route-signals-v1/route-south-indian.png
+    --background artwork/review/re-evaluate-background.png \
+    --artwork artwork/review/re-evaluate-spotify.png
 ```
 
-Future routes are not required to reuse the regional instrument treatment.
-Generate artwork appropriate to each route's meaning, render its Spotify label
-with `chordrift artwork render`, and pass both paths to `routes create`.
-
-Add one or several known tracks from the CLI without contacting Spotify:
+Inspect the queue or export a long queue to the standard revisioned
+classification worksheet:
 
 ```console
-$ chordrift routes add \
-    --account personal \
-    --route "South Indian" \
-    --spotify-id 42lDp1YYCiy50UtXUO9FNp \
-    --spotify-id 1VdBV90HgsUkjdKo95qnLf \
-    --reason "Regional context does not belong in Tidal Hush"
+$ chordrift reevaluate status --account personal
+$ chordrift reevaluate export --account personal --file reevaluate.csv
+$ chordrift reevaluate retire-legacy --account personal \
+    --confirm "RETIRE LEGACY ROUTES"
 ```
 
-While listening on the go, the lowest-friction equivalent is to add the
-playing track directly to the appropriate `Route — …` playlist in Spotify.
-The next `chordrift sync pull` captures that addition into Neon before any
-cleanup. Do not also remove the track from its current canonical playlist; the
-later verified recategorization performs the safe move.
+The CSV uses the same columns and safe import/approval flow as `classify
+export`; fill only evidence you know and mark intended rows with `action=set`.
+Then use `chordrift classify import` and `chordrift classify approve`.
 
-Inspect all routes or the durable desired membership of one route:
+`reevaluate retire-legacy` is an exact-confirmed Neon-only transition. It
+requires the replacement queue and complete proposal-or-exclusion coverage;
+Spotify retirement remains a later reviewed plan operation.
+
+An intentional removal from both a verified destination and Re-evaluate is
+normally inferred after a pull and reviewed plan. A provider-unavailable track
+or another known exception can be retired directly with an exact confirmation;
+restoration retains the exclusion history and returns it to unresolved review:
+
+```console
+$ chordrift tracks exclude --spotify-id SPOTIFY_TRACK_ID \
+    --reason "Provider-unavailable recording" --confirm SPOTIFY_TRACK_ID
+$ chordrift tracks restore --spotify-id SPOTIFY_TRACK_ID \
+    --reason "Available again; reconsider placement" --confirm SPOTIFY_TRACK_ID
+```
+
+After the last track leaves a legacy destination, remove only that empty
+playlist from the editable proposal with an exact stable-key confirmation. Its
+concept and provider history remain available for audited retirement:
+
+```console
+$ chordrift proposals retire-empty --playlist playlist-STABLE_KEY \
+    --confirm playlist-STABLE_KEY
+```
+
+The former multi-route commands remain temporarily available only for
+migration and retirement auditing:
 
 ```console
 $ chordrift routes list --account personal
+$ chordrift routes create --help
+$ chordrift routes add --help
 $ chordrift routes tracks --account personal --route "Route — South Indian"
 ```
 
-Creating or adding through `routes` changes Neon only. Publish route creation,
-membership, and artwork through the normal inspected workflow:
+Creating Re-evaluate changes Neon only. Publish it through the normal inspected
+workflow:
 
 ```console
 $ chordrift sync plan --account personal

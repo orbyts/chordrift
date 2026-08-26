@@ -1066,3 +1066,70 @@ tracks return to existing sound-based poetic destinations, with a new poetic
 destination created only when their sound warrants it. Route cleanup requires
 a newer durable assignment and verified destination; current mere placement in
 the rejected destination is insufficient.
+
+## v0.1.2 final reconciliation and Re-evaluate handoff (2026-08-25)
+
+Work is on `codex/v0.1.2-listening-review`. Reviewed CSV
+`/Users/suhail/Downloads/south-asian-classification-completed.csv` activated as
+classification batch `01256e29-40d3-4ade-a9a5-74e79dad252b`; its exact backup
+is `south-asian-classification-completed.before-chordrift-v0.1.2.csv`.
+Embedding generation `6b726259-9027-411c-84a2-baedebeebcd9` feeds editable
+proposal `f521e707-8e5f-4283-a0bd-d123df3329f1`.
+
+The proposal currently represents 1,754 required tracks exactly once, with 106
+durable exclusions, zero unresolved, zero conflicts, and no missing retirement
+coverage. `Latika's Theme` (`1Nnrj856MMGbtVRzJBMTFE`) is reversibly excluded as
+provider-unavailable. `Monsoon Cinema` is absent from the draft. New concepts:
+
+- `Dakshina Pulse` (`playlist-a101297467c8`): reviewed South Indian cinema plus
+  the new Tamil Inbox tracks;
+- `Uttara Glow` (`playlist-52a3435dea63`): reviewed North Indian cinema plus
+  `Rihaayi De`;
+- `Rasa Archive` (`playlist-93b60e96e38d`): the intentionally personal,
+  nostalgic South Asian cross-section.
+
+A final CSV-versus-proposal audit found and corrected centroid spillover. All 17
+globally classified A. R. Rahman/Rachel Portman film-score cues plus `Unborn
+Children` now belong to `Afterlight Score`; LCD Soundsystem's `Someone Great`
+belongs to `Midnight Niagara`. These are explicit assignment revisions, not
+new cultural claims.
+
+The old `Route — South Indian`, `Route — North Indian`, and `Route — Decide
+Later` workflow is superseded by one `Re-evaluate` queue. Migration 0039 adds
+the surface purpose and immutable entry/exit ledger. Pulls capture the rejected
+source concept. Planning suppresses exclusion/restoration while queued and
+clears a track only when an explicit assignment revision newer than queue entry
+targets a different concept. `reevaluate retire-legacy --confirm "RETIRE LEGACY
+ROUTES"` is Neon-only, requires replacement-queue existence and complete
+coverage, and makes the later plan archive the old Spotify containers.
+
+The user approved all four new covers. The complete Drift Atlas v4 batch lives
+in `artwork/canonical/drift-atlas-v4/`: 16 canonical and four intake artifacts,
+plus preserved label-free backgrounds and `contact-sheet.png`. Artwork batch
+`e1e7697a-def7-414d-8835-981af018b059` is imported and approved with input hash
+`6bde7f1743b9ee06c1d526cd44e1de58d7f956483cb176a957acf07880ff0abc`.
+The approved Re-evaluate cover is also retained under `artwork/review/`.
+
+The Neon-only Re-evaluate surface is `0f81d8ea-3b63-4b23-bf0e-c6d8c52d02dd`.
+All three legacy route records are inactive and retain coverage history. The
+proposal is approved. Planner v10 now explicitly retires any current managed
+canonical concept absent from a complete approved proposal; a regression test
+protects this invariant so `Monsoon Cinema` cannot survive silently.
+
+The final immutable plan is `9d3fdc18-1ae5-48ef-a9bd-00d1e0a4b3a9`, sourced
+from current snapshot `69b80f1a-0c20-4834-9f51-b7a02cfd1c18`. Its 799 exact
+operations are: four playlist creates, 598 additions, four artwork uploads, 189
+removals, and four container retirements. The removals are exactly 145 consumed
+Inbox entries and 44 managed-provider-drift corrections; there are no
+exclusions, external cleanups, unexplained removal reasons, renames, reorders,
+or restorations. Retirements are `Monsoon Cinema`, `Route — Decide Later`,
+`Route — North Indian`, and `Route — South Indian`. Exact retirement approval
+is recorded.
+
+Provider-free preflight passed: 1,754 playlist entries, 26 batched item writes,
+four artwork uploads, and an estimated 34 Spotify writes. Final readiness
+assessment `78dcee8c-055e-4508-937c-d9b4fbd22af2` passed 11/11 checks, including
+the authenticated read-only identity/scope probe, interruption recovery, and
+idempotent replay. No Spotify write has been made. Stop here until the user
+explicitly approves applying this exact plan; do not regenerate it or pull a
+new snapshot first, because that would invalidate the audited readiness.

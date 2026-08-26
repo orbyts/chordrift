@@ -59,9 +59,10 @@ Use these playlists to tell Chordrift why a newly encountered track matters:
 | `Liked from Radio` | Discovery from radio or autoplay. |
 | `From Prompts` | Discovery from a Spotify prompt-generated playlist. |
 
-Use `Route — …` playlists differently: they mean “keep this track, but its
-current Chordrift destination needs correction.” Routes are temporary inboxes
-whose steady state is empty after verified reassignment.
+Use `Re-evaluate` differently: it means “keep this track, but its current
+Chordrift destination needs correction.” Move the track into Re-evaluate and
+remove it from the wrong destination. Chordrift retains the event and will not
+restore the rejected membership while the track remains in the queue.
 
 Spotify's Like button is the primary lightweight intake action. It means
 “keep and classify.” `Inbox` is the stronger high-interest variant; the other
@@ -72,11 +73,15 @@ is cleared only after verified Chordrift placement, just like an intake queue.
 
 - Removing a track from a verified Chordrift playlist can stage an exclusion.
 - Removing it only from Liked Songs means “unsave,” not necessarily “forget.”
-- Adding it to a route means “keep and reclassify,” not “exclude.”
+- Adding it to Re-evaluate means “keep and reclassify,” not “exclude.”
+- A track is eligible for inferred exclusion only when it is absent from both
+  its verified destination and Re-evaluate.
 - Removing it from a protected user-managed playlist changes that playlist but
   does not automatically teach a global preference.
 - Exclusion removes a track from active Chordrift listening surfaces; it does
   not erase listening history, provenance, or recoverability from Neon.
+- Known provider-unavailable exceptions can use exact-confirmed `chordrift
+  tracks exclude`; `chordrift tracks restore` is the reversible counterpart.
 
 ## Setup and complete reference
 

@@ -262,6 +262,17 @@ pub struct ManualCategory {
     pub generation_id: Uuid,
 }
 
+/// One empty destination removed from an editable proposal while its concept survives.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RetiredEmptyPlaylist {
+    /// Proposal generation edited.
+    pub generation_id: Uuid,
+    /// Stable concept key retained for history and provider retirement.
+    pub stable_key: String,
+    /// Former display name.
+    pub name: String,
+}
+
 /// Result of a reversible manual assignment decision.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AssignmentReport {
@@ -1605,7 +1616,7 @@ pub async fn extend_approved(
     let embedding_input_hash: String = embedding.try_get("input_hash")?;
     let input_hash = hash_parts(&[
         "stable-playlist-extension",
-        "1",
+        "2",
         &base_generation_id.to_string(),
         &base_input_hash,
         &embedding_generation_id.to_string(),
@@ -1702,7 +1713,7 @@ pub async fn extend_approved(
         "INSERT INTO playlist_generations
          (model, model_version, status, parameters, provider_account_id,
           cluster_generation_id, input_hash)
-         VALUES ('stable-playlist-extension', '1', 'proposed', $1, $2, $3, $4)
+         VALUES ('stable-playlist-extension', '2', 'proposed', $1, $2, $3, $4)
          RETURNING id",
     )
     .bind(json!({
@@ -1710,6 +1721,7 @@ pub async fn extend_approved(
         "embedding_generation_id": embedding_generation_id,
         "min_similarity": min_similarity,
         "preserves_existing_membership": true,
+        "omits_active_exclusions": true,
         "spotify_writes": false
     }))
     .bind(account_id)
@@ -1744,13 +1756,21 @@ pub async fn extend_approved(
         .await?;
         sqlx::query(
             "INSERT INTO playlist_tracks (playlist_id, track_id, position, source, provenance)
-             SELECT $2, track_id, position, source, provenance ||
+             SELECT $2, membership.track_id, membership.position, membership.source,
+                    membership.provenance ||
                     jsonb_build_object('extended_from_generation_id', $3::uuid)
-             FROM playlist_tracks WHERE playlist_id = $1 ORDER BY position",
+             FROM playlist_tracks membership
+             LEFT JOIN excluded_tracks exclusion
+               ON exclusion.provider_account_id = $4
+              AND exclusion.track_id = membership.track_id
+              AND exclusion.restored_at IS NULL
+             WHERE membership.playlist_id = $1 AND exclusion.id IS NULL
+             ORDER BY membership.position",
         )
         .bind(old_id)
         .bind(new_id)
         .bind(base_generation_id)
+        .bind(account_id)
         .execute(&mut *transaction)
         .await?;
         sqlx::query(
@@ -1945,6 +1965,58 @@ pub async fn needs_review(
     reason: &str,
 ) -> Result<AssignmentReport> {
     change_assignment(database, account_label, spotify_id, None, reason).await
+}
+
+/// Removes an empty playlist from the latest editable proposal.
+pub async fn retire_empty(
+    database: &Database,
+    account_label: &str,
+    stable_key: &str,
+    confirm: &str,
+) -> Result<RetiredEmptyPlaylist> {
+    let stable_key = stable_key.trim();
+    if stable_key.is_empty() || confirm.trim() != stable_key {
+        return Err(ChordriftError::Configuration(
+            "--confirm must exactly repeat the stable playlist key".to_owned(),
+        ));
+    }
+    let generation = status(database, account_label).await?;
+    require_editable(&generation)?;
+    let row = sqlx::query(
+        "SELECT playlist.id, playlist.name,
+                count(membership.id)::bigint AS tracks
+         FROM playlists playlist
+         JOIN playlist_concepts concept ON concept.id = playlist.concept_id
+         LEFT JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+         WHERE playlist.generation_id = $1 AND concept.stable_key = $2
+         GROUP BY playlist.id, playlist.name",
+    )
+    .bind(generation.generation_id)
+    .bind(stable_key)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(format!(
+            "latest proposal has no playlist with stable key `{stable_key}`"
+        ))
+    })?;
+    let tracks: i64 = row.try_get("tracks")?;
+    if tracks != 0 {
+        return Err(ChordriftError::Configuration(format!(
+            "playlist `{stable_key}` still contains {tracks} track(s); reassign or exclude every track first"
+        )));
+    }
+    let playlist_id: Uuid = row.try_get("id")?;
+    let name: String = row.try_get("name")?;
+    sqlx::query("DELETE FROM playlists WHERE id = $1")
+        .bind(playlist_id)
+        .execute(database.pool())
+        .await?;
+    Ok(RetiredEmptyPlaylist {
+        generation_id: generation.generation_id,
+        stable_key: stable_key.to_owned(),
+        name,
+    })
 }
 
 /// Builds and records a deterministic naming context for the latest proposal.

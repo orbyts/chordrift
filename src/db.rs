@@ -7,7 +7,7 @@ use crate::Result;
 
 /// Chordrift's strictly ordered, application-owned, embedded migrations.
 ///
-/// The catalog includes routing-inbox policy and its verified-clear constraint.
+/// The catalog includes the provider-native Re-evaluate queue and its event ledger.
 pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 /// Read-only diagnostics for the canonical database.
