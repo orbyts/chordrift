@@ -352,8 +352,8 @@ pub async fn configure_retirement(
          JOIN provider_accounts account ON account.id = policy.provider_account_id
          JOIN LATERAL (
              SELECT item.name, item.metadata
-             FROM provider_playlist_snapshots item
-             JOIN provider_library_snapshots library ON library.id = item.snapshot_id
+             FROM provider_observed_playlists item
+             JOIN provider_inventory_observations library ON library.id = item.snapshot_id
              WHERE item.provider_playlist_id = provider.id
                AND library.provider_account_id = policy.provider_account_id
              ORDER BY library.captured_at DESC, library.id DESC LIMIT 1
@@ -451,7 +451,7 @@ pub async fn tracks(
         ));
     }
     let snapshot_id: Uuid = sqlx::query_scalar(
-        "SELECT id FROM provider_library_snapshots
+        "SELECT id FROM provider_inventory_observations
          WHERE provider_account_id = $1
          ORDER BY captured_at DESC, id DESC LIMIT 1",
     )
@@ -462,7 +462,7 @@ pub async fn tracks(
         "SELECT membership.position, track.title,
                 COALESCE(string_agg(artist.name, ', ' ORDER BY track_artist.position), '') AS artists,
                 album.title AS album, provider_track.provider_track_id
-         FROM provider_playlist_tracks membership
+         FROM provider_observed_playlist_tracks membership
          JOIN provider_playlists provider_playlist
            ON provider_playlist.id = membership.provider_playlist_id
          JOIN provider_tracks provider_track

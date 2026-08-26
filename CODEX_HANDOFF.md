@@ -8,10 +8,44 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: observe the database-v2 project cutover
+## Start the next task here: approve the v0.1.3 production runtime migration
+
+Work is on `codex/v0.1.3-database-v2-runtime`. The v0.1.3 code refactor is
+implemented: ordinary provider reads use current/revision/checkpoint v2
+surfaces, archive and recent-play writes go directly to normalized evidence,
+and provider pulls use transient v2 import staging that is empty at commit.
+Migration 0044 supplies these runtime surfaces and cleanup receipts. It has not
+been applied to Neon.
+
+The exact provider-free cleanup engine is implemented as `chordrift db compact
+cleanup plan/apply/verify`. A second fresh PostgreSQL 18 restore reached 44/44,
+reapplied approved data plan
+`a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`, and
+successfully applied rehearsal-only cleanup plan
+`0688bf0984ea6f6b26cf65ca7ab1c9fcb762601c6a512b204e7a79312830f964`.
+The invariant hash remained
+`24f5da45845bb48b3cfeb49cbd09fe371043c7f9544ea38993d3016beaf0d6a3`.
+The clean copy retains 149,314 normalized events, 15,575 historical identities,
+both evidence manifests, 58 observation headers, 24 checkpoints, 22 current
+playlists, 1,790 ordered memberships, and every durable plan/verification/audit
+reference. Its measured size is 167,974,591 bytes. Provider inventory and
+archive-history write round trips both pass against the post-clean schema.
+
+No production cleanup occurred. The configured live project remains
+`damp-hall-40280714` and its Neon display name is now `Chordrift`; the former
+project `mute-recipe-86719846` remains intact
+and must not be modified or deleted. The next production sequence requires
+separate approvals: first install additive migration 0044 and immediately run
+read-only/runtime checks; then emit a fresh production cleanup hash and stop;
+only an explicit approval naming that exact production hash may authorize
+cleanup apply. Never reuse the rehearsal cleanup hash as production authority.
+No Spotify write is part of this sequence.
+
+## Historical: database-v2 project cutover
 
 The no-cost replacement candidate is complete and verified. Neon project
-`damp-hall-40280714`, named `chordrift-v2-candidate-20260826`, is an isolated
+`damp-hall-40280714`, now named `Chordrift` (formerly
+`chordrift-v2-candidate-20260826`), is an isolated
 PostgreSQL 18 project in `aws-us-west-2`. It is now Chordrift's configured
 database through the private Apogee `CHORDRIFT_DATABASE_URL` value. Do not print
 or persist its connection URL elsewhere. The former production project
@@ -77,7 +111,7 @@ This failed in-place path is superseded by the verified replacement-project
 cutover. Do not retry or maintain the former project merely because this record
 exists; it is retained only for rollback until separately retired.
 
-The next conversation begins from the pushed
+The prior cutover task ended on the pushed
 `codex/database-v2-migration-rehearsal` branch. Do not resume the completed South Asian,
 legacy-route, Inbox, or Liked Songs cleanup. First read `README.md`, the
 v0.2.0-and-later sections of `ROADMAP.md`, this section, and

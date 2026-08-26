@@ -102,10 +102,12 @@ pub async fn import(account_label: &str, database: &Database) -> Result<ImportRe
 async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<ReusePlan> {
     let recent_after = sqlx::query_scalar(
         "SELECT max(event.played_at)
-         FROM listening_events event
+         FROM normalized_listening_events event
          JOIN provider_accounts account ON account.id = event.provider_account_id
+         JOIN historical_provider_track_identities identity
+           ON identity.id = event.historical_identity_id
          WHERE account.provider = $1 AND account.account_label = $2
-           AND event.provider = $1 AND event.superseded_at IS NULL",
+           AND identity.provider = $1 AND event.superseded_at IS NULL",
     )
     .bind(PROVIDER)
     .bind(account_label)
@@ -113,7 +115,7 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
     .await?;
     let latest = sqlx::query(
         "SELECT snapshots.id, snapshots.metadata
-         FROM provider_library_snapshots snapshots
+         FROM provider_inventory_observations snapshots
          JOIN provider_accounts accounts ON accounts.id = snapshots.provider_account_id
          WHERE accounts.provider = $1 AND accounts.account_label = $2
          ORDER BY snapshots.captured_at DESC, snapshots.id DESC LIMIT 1",
@@ -132,7 +134,7 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
     let metadata: Value = latest.try_get("metadata")?;
     let playlist_rows = sqlx::query(
         "SELECT playlists.provider_playlist_id, snapshots.provider_snapshot_id
-         FROM provider_playlist_snapshots snapshots
+         FROM provider_observed_playlists snapshots
          JOIN provider_playlists playlists ON playlists.id = snapshots.provider_playlist_id
          WHERE snapshots.snapshot_id = $1 AND snapshots.provider_snapshot_id IS NOT NULL",
     )
@@ -187,7 +189,7 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
     {
         let rows = sqlx::query(
             "SELECT saved.position, tracks.provider_track_id, saved.saved_at
-             FROM provider_saved_tracks saved
+             FROM provider_observed_saved_tracks saved
              JOIN provider_tracks tracks ON tracks.id = saved.provider_track_id
              WHERE saved.snapshot_id = $1 AND saved.position < 50
              ORDER BY saved.position",
@@ -224,7 +226,7 @@ async fn load_reuse_plan(account_label: &str, database: &Database) -> Result<Reu
     {
         let rows = sqlx::query(
             "SELECT saved.position, album.provider_album_id, saved.saved_at
-             FROM provider_saved_albums saved
+             FROM provider_observed_saved_albums saved
              JOIN provider_albums album ON album.id = saved.provider_album_id
              WHERE saved.snapshot_id = $1 AND saved.position < 50
              ORDER BY saved.position",
@@ -290,7 +292,7 @@ async fn persist(
     .await?;
     let snapshot_id = Uuid::new_v4();
     sqlx::query(
-        "INSERT INTO provider_library_snapshots
+        "INSERT INTO provider_inventory_observations
          (id, provider, source, provider_account_id, metadata)
          VALUES ($1, $2, 'spotify_web_api', $3, $4)",
     )
@@ -416,7 +418,7 @@ async fn persist(
         .execute(&mut *transaction)
         .await?;
         sqlx::query(
-            "INSERT INTO provider_playlist_snapshots
+            "INSERT INTO provider_inventory_import_playlists
              (snapshot_id, provider_playlist_id, name, description,
               provider_snapshot_id, public, collaborative, total_items, metadata)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
@@ -435,12 +437,12 @@ async fn persist(
 
         if let Some(source_snapshot_id) = playlist_inventory.reused_from_snapshot {
             let copied = sqlx::query(
-                "INSERT INTO provider_playlist_tracks
+                "INSERT INTO provider_inventory_import_playlist_tracks
                  (snapshot_id, provider_playlist_id, provider_track_id,
                   position, added_at, metadata, captured_at)
                  SELECT $1, provider_playlist_id, provider_track_id,
                         position, added_at, metadata, now()
-                 FROM provider_playlist_tracks
+                 FROM provider_observed_playlist_tracks
                  WHERE snapshot_id = $2 AND provider_playlist_id = $3",
             )
             .bind(snapshot_id)
@@ -481,7 +483,7 @@ async fn persist(
         }
         for chunk in memberships.chunks(MEMBERSHIP_INSERT_BATCH_SIZE) {
             let mut insert = QueryBuilder::<Postgres>::new(
-                "INSERT INTO provider_playlist_tracks \
+                "INSERT INTO provider_inventory_import_playlist_tracks \
                  (snapshot_id, provider_playlist_id, provider_track_id, \
                   position, added_at, metadata) ",
             );
@@ -519,7 +521,7 @@ async fn persist(
              JOIN provider_playlists provider
                ON provider.playlist_id = route.playlist_id
               AND provider.provider = 'spotify'
-             JOIN provider_playlist_tracks membership
+             JOIN provider_inventory_import_playlist_tracks membership
                ON membership.provider_playlist_id = provider.id
               AND membership.snapshot_id = $1
              JOIN provider_tracks provider_track
@@ -574,20 +576,20 @@ async fn persist(
              JOIN provider_playlists provider
                ON provider.playlist_id = route.playlist_id
               AND provider.provider = 'spotify'
-             JOIN provider_playlist_snapshots observed
+             JOIN provider_inventory_import_playlists observed
                ON observed.provider_playlist_id = provider.id
               AND observed.snapshot_id = $1
              WHERE route.provider_account_id = $2
                AND route.active AND route.purpose = 'reevaluate'
          ), previous AS (
              SELECT id
-             FROM provider_library_snapshots
+             FROM provider_inventory_observations
              WHERE provider_account_id = $2 AND id <> $1
              ORDER BY captured_at DESC, id DESC LIMIT 1
          ), current_tracks AS (
              SELECT queue.playlist_id, provider_track.track_id
              FROM queue
-             JOIN provider_playlist_tracks membership
+             JOIN provider_inventory_import_playlist_tracks membership
                ON membership.snapshot_id = $1
               AND membership.provider_playlist_id = queue.provider_playlist_id
              JOIN provider_tracks provider_track
@@ -596,7 +598,7 @@ async fn persist(
              SELECT queue.playlist_id, provider_track.track_id
              FROM queue
              CROSS JOIN previous
-             JOIN provider_playlist_tracks membership
+             JOIN provider_inventory_import_playlist_tracks membership
                ON membership.snapshot_id = previous.id
               AND membership.provider_playlist_id = queue.provider_playlist_id
              JOIN provider_tracks provider_track
@@ -609,7 +611,7 @@ async fn persist(
                         JOIN provider_playlists previous_provider
                           ON previous_provider.provider = 'spotify'
                          AND previous_provider.concept_id IS NOT NULL
-                        JOIN provider_playlist_tracks prior_membership
+                        JOIN provider_inventory_import_playlist_tracks prior_membership
                           ON prior_membership.snapshot_id = prior_snapshot.id
                          AND prior_membership.provider_playlist_id = previous_provider.id
                         JOIN provider_tracks prior_track
@@ -617,7 +619,7 @@ async fn persist(
                          AND prior_track.track_id = current.track_id
                         WHERE NOT EXISTS (
                             SELECT 1
-                            FROM provider_playlist_tracks current_membership
+                            FROM provider_inventory_import_playlist_tracks current_membership
                             JOIN provider_tracks current_track
                               ON current_track.id = current_membership.provider_track_id
                             WHERE current_membership.snapshot_id = $1
@@ -662,7 +664,7 @@ async fn persist(
     sqlx::query(
         "DELETE FROM playlist_tracks desired
          USING routing_surfaces route, provider_playlists provider,
-               provider_playlist_snapshots observed
+               provider_inventory_import_playlists observed
          WHERE route.provider_account_id = $2
            AND route.active AND route.purpose = 'reevaluate'
            AND desired.playlist_id = route.playlist_id
@@ -690,7 +692,7 @@ async fn persist(
              JOIN provider_playlists provider
                ON provider.playlist_id = route.playlist_id
               AND provider.provider = 'spotify'
-             JOIN provider_playlist_tracks membership
+             JOIN provider_inventory_import_playlist_tracks membership
                ON membership.provider_playlist_id = provider.id
               AND membership.snapshot_id = $1
              JOIN provider_tracks provider_track
@@ -795,10 +797,10 @@ async fn persist(
     let saved_tracks_reused = inventory.saved_tracks.reused_from_snapshot.is_some();
     if let Some(source_snapshot_id) = inventory.saved_tracks.reused_from_snapshot {
         let copied = sqlx::query(
-            "INSERT INTO provider_saved_tracks
+            "INSERT INTO provider_inventory_import_saved_tracks
              (snapshot_id, provider_track_id, position, saved_at, metadata)
              SELECT $1, provider_track_id, position, saved_at, metadata
-             FROM provider_saved_tracks WHERE snapshot_id = $2",
+             FROM provider_observed_saved_tracks WHERE snapshot_id = $2",
         )
         .bind(snapshot_id)
         .bind(source_snapshot_id)
@@ -836,7 +838,7 @@ async fn persist(
     saved_progress.finish();
     for chunk in saved_memberships.chunks(MEMBERSHIP_INSERT_BATCH_SIZE) {
         let mut insert = QueryBuilder::<Postgres>::new(
-            "INSERT INTO provider_saved_tracks \
+            "INSERT INTO provider_inventory_import_saved_tracks \
              (snapshot_id, provider_track_id, position, saved_at, metadata) ",
         );
         insert.push_values(chunk, |mut row, (provider_track_id, position, saved_at)| {
@@ -858,10 +860,10 @@ async fn persist(
     if let Some(source_snapshot_id) = inventory.saved_albums.reused_from_snapshot {
         saved_albums = usize::try_from(
             sqlx::query(
-                "INSERT INTO provider_saved_albums
+                "INSERT INTO provider_inventory_import_saved_albums
                  (snapshot_id, provider_album_id, position, saved_at, metadata)
                  SELECT $1, provider_album_id, position, saved_at, metadata
-                 FROM provider_saved_albums WHERE snapshot_id = $2",
+                 FROM provider_observed_saved_albums WHERE snapshot_id = $2",
             )
             .bind(snapshot_id)
             .bind(source_snapshot_id)
@@ -876,10 +878,10 @@ async fn persist(
         })?;
         saved_album_tracks = usize::try_from(
             sqlx::query(
-                "INSERT INTO provider_saved_album_tracks
+                "INSERT INTO provider_inventory_import_saved_album_tracks
                  (snapshot_id, provider_album_id, provider_track_id, position, metadata)
                  SELECT $1, provider_album_id, provider_track_id, position, metadata
-                 FROM provider_saved_album_tracks WHERE snapshot_id = $2",
+                 FROM provider_observed_saved_album_tracks WHERE snapshot_id = $2",
             )
             .bind(snapshot_id)
             .bind(source_snapshot_id)
@@ -917,7 +919,7 @@ async fn persist(
             .fetch_one(&mut *transaction)
             .await?;
             sqlx::query(
-                "INSERT INTO provider_saved_albums
+                "INSERT INTO provider_inventory_import_saved_albums
                  (snapshot_id, provider_album_id, position, saved_at, metadata)
                  VALUES ($1, $2, $3, $4, $5)",
             )
@@ -953,7 +955,7 @@ async fn persist(
         album_progress.finish();
         for chunk in album_memberships.chunks(MEMBERSHIP_INSERT_BATCH_SIZE) {
             let mut insert = QueryBuilder::<Postgres>::new(
-                "INSERT INTO provider_saved_album_tracks \
+                "INSERT INTO provider_inventory_import_saved_album_tracks \
                  (snapshot_id, provider_album_id, provider_track_id, position, metadata) ",
             );
             insert.push_values(
@@ -995,30 +997,58 @@ async fn persist(
             "spotify-recent-v1:{provider_track_id}:{}",
             item.played_at.to_rfc3339()
         );
+        let historical_identity_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO historical_provider_track_identities
+             (provider, provider_track_id, canonical_track_id, track_name,
+              artist_name, album_name, first_observed_at, last_observed_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+             ON CONFLICT (provider, provider_track_id) DO UPDATE SET
+               canonical_track_id = COALESCE(EXCLUDED.canonical_track_id,
+                   historical_provider_track_identities.canonical_track_id),
+               track_name = COALESCE(EXCLUDED.track_name,
+                   historical_provider_track_identities.track_name),
+               artist_name = COALESCE(EXCLUDED.artist_name,
+                   historical_provider_track_identities.artist_name),
+               album_name = COALESCE(EXCLUDED.album_name,
+                   historical_provider_track_identities.album_name),
+               first_observed_at = LEAST(
+                   historical_provider_track_identities.first_observed_at,
+                   EXCLUDED.first_observed_at),
+               last_observed_at = GREATEST(
+                   historical_provider_track_identities.last_observed_at,
+                   EXCLUDED.last_observed_at)
+             RETURNING id",
+        )
+        .bind(PROVIDER)
+        .bind(provider_track_id)
+        .bind(canonical_track_id)
+        .bind(&item.track.name)
+        .bind(
+            item.track
+                .artists
+                .first()
+                .map(|artist| artist.name.as_str()),
+        )
+        .bind(item.track.album.as_ref().map(|album| album.name.as_str()))
+        .bind(item.played_at)
+        .fetch_one(&mut *transaction)
+        .await?;
         let inserted = sqlx::query(
-            "INSERT INTO listening_events
-             (id, provider_account_id, track_id, provider, provider_track_id,
-              source_event_id, played_at, context_uri, source_file, media_type,
-              source_kind, raw_metadata)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'spotify_web_api', 'track',
-                     'recent_api', $9)
-             ON CONFLICT (provider_account_id, source_event_id)
-               WHERE provider_account_id IS NOT NULL AND source_event_id IS NOT NULL
-             DO NOTHING",
+            "INSERT INTO normalized_listening_events
+             (id, provider_account_id, historical_identity_id, source_kind,
+              source_event_id, played_at, context_uri, context_type,
+              provider_extensions)
+             VALUES ($1, $2, $3, 'recent_api', $4, $5, $6, $7, $8)
+             ON CONFLICT DO NOTHING",
         )
         .bind(Uuid::new_v4())
         .bind(account_id)
-        .bind(canonical_track_id)
-        .bind(PROVIDER)
-        .bind(provider_track_id)
+        .bind(historical_identity_id)
         .bind(source_event_id)
         .bind(item.played_at)
         .bind(item.context.as_ref().map(|context| context.uri.as_str()))
+        .bind(item.context.as_ref().map(|context| context.kind.as_str()))
         .bind(json!({
-            "track_name": item.track.name,
-            "artist_name": item.track.artists.first().map(|artist| artist.name.as_str()),
-            "album_name": item.track.album.as_ref().map(|album| album.name.as_str()),
-            "context_type": item.context.as_ref().map(|context| context.kind.as_str()),
             "observation": "recently_played",
             "duration_unknown": true,
         }))
@@ -1064,13 +1094,34 @@ async fn persist(
     }
 
     // Database v2 keeps one replaceable current inventory while reusing
-    // content-addressed playlist and saved-surface bodies. Legacy snapshots
-    // remain dual-written until the separately gated migration/cutover task.
+    // content-addressed playlist and saved-surface bodies. The import rows are
+    // transaction-local staging in practice and are removed after the durable
+    // revisions and current pointers have been materialized.
     sqlx::query("SELECT materialize_provider_current_state_v2($1, $2)")
         .bind(account_id)
         .bind(snapshot_id)
         .execute(&mut *transaction)
         .await?;
+    sqlx::query(
+        "WITH playlist_tracks AS (
+             DELETE FROM provider_inventory_import_playlist_tracks
+              WHERE snapshot_id = $1 RETURNING 1
+         ), playlists AS (
+             DELETE FROM provider_inventory_import_playlists
+              WHERE snapshot_id = $1 RETURNING 1
+         ), saved_album_tracks AS (
+             DELETE FROM provider_inventory_import_saved_album_tracks
+              WHERE snapshot_id = $1 RETURNING 1
+         ), saved_albums AS (
+             DELETE FROM provider_inventory_import_saved_albums
+              WHERE snapshot_id = $1 RETURNING 1
+         )
+         DELETE FROM provider_inventory_import_saved_tracks
+          WHERE snapshot_id = $1",
+    )
+    .bind(snapshot_id)
+    .execute(&mut *transaction)
+    .await?;
 
     let playlists_imported = inventory.playlists.len();
     sqlx::query(
@@ -1738,49 +1789,73 @@ mod tests {
         assert_eq!(report.unavailable_items, 2);
 
         let playlist_rows: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM provider_playlist_tracks WHERE snapshot_id = $1",
+            "SELECT count(*) FROM provider_inventory_import_playlist_tracks WHERE snapshot_id = $1",
         )
         .bind(report.snapshot_id)
         .fetch_one(database.pool())
         .await?;
-        let saved_rows: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM provider_saved_tracks WHERE snapshot_id = $1")
-                .bind(report.snapshot_id)
-                .fetch_one(database.pool())
-                .await?;
-        assert_eq!(playlist_rows, 1);
-        assert_eq!(saved_rows, 1);
+        let saved_rows: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM provider_inventory_import_saved_tracks WHERE snapshot_id = $1",
+        )
+        .bind(report.snapshot_id)
+        .fetch_one(database.pool())
+        .await?;
+        assert_eq!(playlist_rows, 0, "playlist import staging must be empty");
+        assert_eq!(saved_rows, 0, "saved-track import staging must be empty");
 
         // A changed-snapshot import may contain the same provider metadata.
         // Repeating it exercises the known-track fast path and batched saved
         // membership insert without creating duplicate canonical rows.
         let repeated = persist("fixture", repeated_inventory, &database).await?;
         assert_eq!(repeated.saved_tracks, 1);
-        let provider_tracks: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM provider_tracks WHERE provider = 'spotify'")
-                .fetch_one(database.pool())
-                .await?;
+        let provider_tracks: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM provider_tracks
+             WHERE provider = 'spotify' AND provider_track_id = 'track123'",
+        )
+        .fetch_one(database.pool())
+        .await?;
         assert_eq!(provider_tracks, 1);
-        let current_inventories: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM provider_current_inventories")
+        let fixture_account_id: Uuid =
+            sqlx::query_scalar("SELECT id FROM provider_accounts WHERE account_label = 'fixture'")
                 .fetch_one(database.pool())
                 .await?;
-        let current_playlists: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM provider_current_playlists")
-                .fetch_one(database.pool())
-                .await?;
-        let playlist_revisions: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM provider_playlist_revisions")
-                .fetch_one(database.pool())
-                .await?;
-        let revision_tracks: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM provider_playlist_revision_tracks")
-                .fetch_one(database.pool())
-                .await?;
-        let saved_revisions: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM provider_saved_track_revisions")
-                .fetch_one(database.pool())
-                .await?;
+        let current_inventories: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM provider_current_inventories
+             WHERE provider_account_id = $1",
+        )
+        .bind(fixture_account_id)
+        .fetch_one(database.pool())
+        .await?;
+        let current_playlists: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM provider_current_playlists
+             WHERE provider_account_id = $1",
+        )
+        .bind(fixture_account_id)
+        .fetch_one(database.pool())
+        .await?;
+        let playlist_revisions: i64 = sqlx::query_scalar(
+            "SELECT count(DISTINCT revision_id) FROM provider_current_playlists
+             WHERE provider_account_id = $1",
+        )
+        .bind(fixture_account_id)
+        .fetch_one(database.pool())
+        .await?;
+        let revision_tracks: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM provider_current_playlists current
+             JOIN provider_playlist_revision_tracks track
+               ON track.revision_id = current.revision_id
+             WHERE current.provider_account_id = $1",
+        )
+        .bind(fixture_account_id)
+        .fetch_one(database.pool())
+        .await?;
+        let saved_revisions: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM provider_saved_track_revisions
+             WHERE provider_account_id = $1",
+        )
+        .bind(fixture_account_id)
+        .fetch_one(database.pool())
+        .await?;
         assert_eq!(current_inventories, 1);
         assert_eq!(current_playlists, 1);
         assert_eq!(playlist_revisions, 1, "unchanged bodies must be reused");

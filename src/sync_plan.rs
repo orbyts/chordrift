@@ -490,7 +490,7 @@ async fn intake_surface_operations(
     let current_names: Vec<String> = sqlx::query_scalar(
         "SELECT snapshot.name
          FROM provider_account_playlists account_playlist
-         JOIN provider_playlist_snapshots snapshot
+         JOIN provider_observed_playlists snapshot
            ON snapshot.provider_playlist_id = account_playlist.provider_playlist_id
           AND snapshot.snapshot_id = $2
          WHERE account_playlist.provider_account_id = $1
@@ -551,7 +551,7 @@ async fn routing_surface_operations(
          JOIN playlists playlist ON playlist.id = route.playlist_id
          LEFT JOIN provider_playlists provider
            ON provider.playlist_id = route.playlist_id AND provider.provider = 'spotify'
-         LEFT JOIN provider_playlist_snapshots snapshot
+         LEFT JOIN provider_observed_playlists snapshot
            ON snapshot.provider_playlist_id = provider.id AND snapshot.snapshot_id = $2
          WHERE route.provider_account_id = $1
          ORDER BY lower(playlist.name), route.playlist_id",
@@ -673,7 +673,7 @@ async fn routing_surface_operations(
         let current: Vec<Uuid> = if let Some(provider_row_id) = provider_playlist_id {
             sqlx::query_scalar(
                 "SELECT track.track_id
-                 FROM provider_playlist_tracks membership
+                 FROM provider_observed_playlist_tracks membership
                  JOIN provider_tracks track ON track.id = membership.provider_track_id
                  WHERE membership.snapshot_id = $1
                    AND membership.provider_playlist_id = $2
@@ -843,7 +843,7 @@ pub async fn show(
     let row = sqlx::query(
         "SELECT id, proposal_generation_id, source_snapshot_id, input_hash, summary,
                 started_at,
-                source_snapshot_id = (SELECT id FROM provider_library_snapshots
+                source_snapshot_id = (SELECT id FROM provider_inventory_observations
                     WHERE provider_account_id = $1 ORDER BY captured_at DESC, id DESC LIMIT 1)
                     AS snapshot_current
          FROM sync_runs
@@ -1124,7 +1124,7 @@ async fn current_reevaluate_tracks(
          JOIN provider_playlists provider
            ON provider.playlist_id = route.playlist_id
           AND provider.provider = 'spotify'
-         JOIN provider_playlist_tracks membership
+         JOIN provider_observed_playlist_tracks membership
            ON membership.provider_playlist_id = provider.id
           AND membership.snapshot_id = $2
          JOIN provider_tracks provider_track
@@ -1160,9 +1160,9 @@ async fn cleanup_operations(
                 (exclusion.id IS NOT NULL) AS excluded
          FROM provider_account_playlists account_playlist
          JOIN provider_playlists provider ON provider.id = account_playlist.provider_playlist_id
-         JOIN provider_playlist_snapshots snapshot
+         JOIN provider_observed_playlists snapshot
            ON snapshot.provider_playlist_id = provider.id AND snapshot.snapshot_id = $2
-         LEFT JOIN provider_playlist_tracks membership
+         LEFT JOIN provider_observed_playlist_tracks membership
            ON membership.provider_playlist_id = provider.id AND membership.snapshot_id = $2
          LEFT JOIN provider_tracks track ON track.id = membership.provider_track_id
          LEFT JOIN proposed ON proposed.track_id = track.track_id
@@ -1287,7 +1287,7 @@ async fn cleanup_operations(
              SELECT saved.position, provider.provider_track_id,
                     proposed.track_id IS NOT NULL AS assigned,
                     exclusion.id IS NOT NULL AS excluded
-             FROM provider_saved_tracks saved
+             FROM provider_observed_saved_tracks saved
              JOIN provider_tracks provider ON provider.id = saved.provider_track_id
              LEFT JOIN proposed ON proposed.track_id = provider.track_id
              LEFT JOIN excluded_tracks exclusion
@@ -1438,10 +1438,10 @@ async fn album_retirement_operations(
         "SELECT provider.id AS provider_album_row_id, provider.provider_album_id,
                 album.title, saved.position, saved.saved_at,
                 count(membership.*)::bigint AS track_count
-         FROM provider_saved_albums saved
+         FROM provider_observed_saved_albums saved
          JOIN provider_albums provider ON provider.id = saved.provider_album_id
          JOIN albums album ON album.id = provider.album_id
-         LEFT JOIN provider_saved_album_tracks membership
+         LEFT JOIN provider_observed_saved_album_tracks membership
            ON membership.snapshot_id = saved.snapshot_id
           AND membership.provider_album_id = saved.provider_album_id
          WHERE saved.snapshot_id = $1
@@ -1555,9 +1555,9 @@ async fn current_managed_playlists(
                 membership.position, track.track_id, track.provider_track_id
          FROM provider_account_playlists account_playlist
          JOIN provider_playlists provider ON provider.id = account_playlist.provider_playlist_id
-         JOIN provider_playlist_snapshots snapshot
+         JOIN provider_observed_playlists snapshot
            ON snapshot.provider_playlist_id = provider.id AND snapshot.snapshot_id = $2
-         LEFT JOIN provider_playlist_tracks membership
+         LEFT JOIN provider_observed_playlist_tracks membership
            ON membership.provider_playlist_id = provider.id AND membership.snapshot_id = $2
          LEFT JOIN provider_tracks track ON track.id = membership.provider_track_id
          WHERE account_playlist.provider_account_id = $1
@@ -1708,7 +1708,7 @@ async fn account_id(database: &Database, account_label: &str) -> Result<Uuid> {
 
 async fn latest_snapshot(database: &Database, account_id: Uuid) -> Result<Uuid> {
     sqlx::query_scalar(
-        "SELECT id FROM provider_library_snapshots WHERE provider_account_id = $1
+        "SELECT id FROM provider_inventory_observations WHERE provider_account_id = $1
          ORDER BY captured_at DESC, id DESC LIMIT 1",
     )
     .bind(account_id)

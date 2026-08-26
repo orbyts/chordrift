@@ -691,7 +691,7 @@ pub async fn cleanup_approve(
 async fn account_and_snapshot(database: &Database, account_label: &str) -> Result<(Uuid, Uuid)> {
     let row = sqlx::query(
         "SELECT account.id,
-                (SELECT snapshot.id FROM provider_library_snapshots snapshot
+                (SELECT snapshot.id FROM provider_inventory_observations snapshot
                  WHERE snapshot.provider_account_id = account.id
                  ORDER BY snapshot.captured_at DESC, snapshot.id DESC LIMIT 1) AS snapshot_id
          FROM provider_accounts account

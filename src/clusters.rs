@@ -133,8 +133,8 @@ pub async fn generate(
         "SELECT embedding.track_id, embedding.embedding,
                 EXISTS (
                     SELECT 1
-                    FROM provider_playlist_tracks membership
-                    JOIN provider_library_snapshots library
+                    FROM provider_observed_playlist_tracks membership
+                    JOIN provider_inventory_observations library
                       ON library.id = membership.snapshot_id
                     JOIN provider_tracks provider_track
                       ON provider_track.id = membership.provider_track_id

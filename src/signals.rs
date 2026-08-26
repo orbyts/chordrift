@@ -229,7 +229,7 @@ async fn load_inputs(
 ) -> Result<(Uuid, Uuid, BTreeMap<Uuid, TrackSignal>)> {
     let account_id = account_id(database, account_label).await?;
     let snapshot_id: Uuid = sqlx::query_scalar(
-        "SELECT id FROM provider_library_snapshots
+        "SELECT id FROM provider_inventory_observations
          WHERE provider_account_id = $1
          ORDER BY captured_at DESC, id DESC LIMIT 1",
     )
@@ -249,12 +249,12 @@ async fn load_inputs(
                 COALESCE(listening.completed_count, 0) AS completed_count,
                 listening.last_played_at,
                 EXISTS (
-                    SELECT 1 FROM provider_saved_tracks saved
+                    SELECT 1 FROM provider_observed_saved_tracks saved
                     JOIN provider_tracks saved_track ON saved_track.id = saved.provider_track_id
                     WHERE saved.snapshot_id = $2 AND saved_track.track_id = track.id
                 ) AS saved,
                 EXISTS (
-                    SELECT 1 FROM provider_playlist_tracks membership
+                    SELECT 1 FROM provider_observed_playlist_tracks membership
                     JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
                     JOIN provider_account_playlists policy
                       ON policy.provider_playlist_id = membership.provider_playlist_id
@@ -264,7 +264,7 @@ async fn load_inputs(
                       AND policy.behavioral_signal = 'rotation'
                 ) AS provider_rotation,
                 EXISTS (
-                    SELECT 1 FROM provider_playlist_tracks membership
+                    SELECT 1 FROM provider_observed_playlist_tracks membership
                     JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
                     JOIN provider_account_playlists policy
                       ON policy.provider_playlist_id = membership.provider_playlist_id
@@ -273,7 +273,7 @@ async fn load_inputs(
                       AND policy.behavioral_signal = 'discovery'
                 ) AS provider_discovery,
                 EXISTS (
-                    SELECT 1 FROM provider_playlist_tracks membership
+                    SELECT 1 FROM provider_observed_playlist_tracks membership
                     JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
                     JOIN provider_account_playlists policy
                       ON policy.provider_playlist_id = membership.provider_playlist_id
@@ -282,7 +282,7 @@ async fn load_inputs(
                       AND policy.behavioral_signal = 'prompted'
                 ) AS prompted_interest,
                 EXISTS (
-                    SELECT 1 FROM provider_playlist_tracks membership
+                    SELECT 1 FROM provider_observed_playlist_tracks membership
                     JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
                     JOIN provider_account_playlists policy
                       ON policy.provider_playlist_id = membership.provider_playlist_id
@@ -291,7 +291,7 @@ async fn load_inputs(
                       AND policy.signal_class = 'intake'
                 ) AS intake,
                 EXISTS (
-                    SELECT 1 FROM provider_playlist_tracks membership
+                    SELECT 1 FROM provider_observed_playlist_tracks membership
                     JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
                     JOIN provider_account_playlists policy
                       ON policy.provider_playlist_id = membership.provider_playlist_id
@@ -310,11 +310,11 @@ async fn load_inputs(
              WHERE stats.provider_account_id = $1 AND stats.track_id = track.id
          ) listening ON TRUE
          WHERE EXISTS (
-             SELECT 1 FROM provider_playlist_tracks membership
+             SELECT 1 FROM provider_observed_playlist_tracks membership
              JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
              WHERE membership.snapshot_id = $2 AND member_track.track_id = track.id
          ) OR EXISTS (
-             SELECT 1 FROM provider_saved_tracks saved
+             SELECT 1 FROM provider_observed_saved_tracks saved
              JOIN provider_tracks saved_track ON saved_track.id = saved.provider_track_id
              WHERE saved.snapshot_id = $2 AND saved_track.track_id = track.id
          ) OR listening.event_count IS NOT NULL

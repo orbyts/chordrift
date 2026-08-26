@@ -231,7 +231,7 @@ pub async fn invariant_report(database: &Database, account_label: &str) -> Resul
     let snapshot = sqlx::query(
         "SELECT snapshot.id, snapshot.captured_at
          FROM provider_import_runs run
-         JOIN provider_library_snapshots snapshot ON snapshot.id = run.snapshot_id
+         JOIN provider_inventory_observations snapshot ON snapshot.id = run.snapshot_id
          WHERE run.provider_account_id = $1 AND run.status = 'succeeded'
          ORDER BY run.finished_at DESC NULLS LAST, run.id DESC LIMIT 1",
     )
@@ -246,13 +246,13 @@ pub async fn invariant_report(database: &Database, account_label: &str) -> Resul
 
     let provider_state = sqlx::query(
         "SELECT
-           (SELECT count(*) FROM provider_playlist_snapshots WHERE snapshot_id = $1) AS playlists,
+           (SELECT count(*) FROM provider_observed_playlists WHERE snapshot_id = $1) AS playlists,
            count(*) AS memberships,
            count(DISTINCT track.provider_track_id) AS unique_tracks,
-           (SELECT count(*) FROM provider_saved_tracks WHERE snapshot_id = $1) AS saved_tracks,
-           (SELECT count(*) FROM provider_saved_albums WHERE snapshot_id = $1) AS saved_albums,
-           (SELECT count(*) FROM provider_saved_album_tracks WHERE snapshot_id = $1) AS saved_album_tracks
-         FROM provider_playlist_tracks member
+           (SELECT count(*) FROM provider_observed_saved_tracks WHERE snapshot_id = $1) AS saved_tracks,
+           (SELECT count(*) FROM provider_observed_saved_albums WHERE snapshot_id = $1) AS saved_albums,
+           (SELECT count(*) FROM provider_observed_saved_album_tracks WHERE snapshot_id = $1) AS saved_album_tracks
+         FROM provider_observed_playlist_tracks member
          JOIN provider_tracks track ON track.id = member.provider_track_id
          WHERE member.snapshot_id = $1",
     )
@@ -261,7 +261,7 @@ pub async fn invariant_report(database: &Database, account_label: &str) -> Resul
     .await?;
     let provider_order_rows = sqlx::query(
         "SELECT playlist.provider_playlist_id, member.position, track.provider_track_id
-         FROM provider_playlist_tracks member
+         FROM provider_observed_playlist_tracks member
          JOIN provider_playlists playlist ON playlist.id = member.provider_playlist_id
          JOIN provider_tracks track ON track.id = member.provider_track_id
          WHERE member.snapshot_id = $1
@@ -333,7 +333,7 @@ pub async fn invariant_report(database: &Database, account_label: &str) -> Resul
            (SELECT count(*) FROM reevaluate) AS surfaces,
            count(member.provider_track_id) AS queue_tracks
          FROM reevaluate
-         LEFT JOIN provider_playlist_tracks member
+         LEFT JOIN provider_observed_playlist_tracks member
            ON member.snapshot_id = $2 AND member.provider_playlist_id = reevaluate.provider_playlist_id",
     )
     .bind(account_id)
@@ -344,7 +344,7 @@ pub async fn invariant_report(database: &Database, account_label: &str) -> Resul
         "SELECT member.position, track.provider_track_id
          FROM routing_surfaces surface
          JOIN provider_playlists playlist ON playlist.playlist_id = surface.playlist_id
-         JOIN provider_playlist_tracks member
+         JOIN provider_observed_playlist_tracks member
            ON member.snapshot_id = $2 AND member.provider_playlist_id = playlist.id
          JOIN provider_tracks track ON track.id = member.provider_track_id
          WHERE surface.provider_account_id = $1 AND surface.active
@@ -365,8 +365,10 @@ pub async fn invariant_report(database: &Database, account_label: &str) -> Resul
 
     let history = history::summary(database, account_label).await?;
     let archive_rows = sqlx::query(
-        "SELECT archive_sha256, archive_kind, events_imported, events_matched, imported_at
-         FROM spotify_archive_imports WHERE provider_account_id = $1
+        "SELECT archive_sha256, archive_kind, event_count AS events_imported,
+                COALESCE((manifest->>'events_matched')::bigint, 0) AS events_matched,
+                imported_at
+         FROM listening_evidence_imports WHERE provider_account_id = $1
          ORDER BY imported_at, archive_sha256 COLLATE \"C\"",
     )
     .bind(account_id)
@@ -613,7 +615,7 @@ pub async fn database_v2_status(
 
     let legacy_playlist_rows = sqlx::query(
         "SELECT playlist.provider_playlist_id, member.position, track.provider_track_id
-         FROM provider_playlist_tracks member
+         FROM provider_observed_playlist_tracks member
          JOIN provider_playlists playlist ON playlist.id = member.provider_playlist_id
          JOIN provider_tracks track ON track.id = member.provider_track_id
          WHERE member.snapshot_id = $1
@@ -655,7 +657,7 @@ pub async fn database_v2_status(
            (SELECT playlist.provider_playlist_id, observed.name, observed.description,
                    observed.public, observed.collaborative,
                    observed.provider_snapshot_id, observed.total_items, observed.metadata
-              FROM provider_playlist_snapshots observed
+              FROM provider_observed_playlists observed
               JOIN provider_playlists playlist ON playlist.id = observed.provider_playlist_id
              WHERE observed.snapshot_id = $2
             EXCEPT
@@ -676,7 +678,7 @@ pub async fn database_v2_status(
             SELECT playlist.provider_playlist_id, observed.name, observed.description,
                    observed.public, observed.collaborative,
                    observed.provider_snapshot_id, observed.total_items, observed.metadata
-              FROM provider_playlist_snapshots observed
+              FROM provider_observed_playlists observed
               JOIN provider_playlists playlist ON playlist.id = observed.provider_playlist_id
              WHERE observed.snapshot_id = $2)
          )",
@@ -690,7 +692,7 @@ pub async fn database_v2_status(
         "SELECT
            NOT EXISTS (
              (SELECT saved.position, track.provider, track.provider_track_id, saved.saved_at
-                FROM provider_saved_tracks saved
+                FROM provider_observed_saved_tracks saved
                 JOIN provider_tracks track ON track.id = saved.provider_track_id
                WHERE saved.snapshot_id = $2
               EXCEPT
@@ -709,14 +711,14 @@ pub async fn database_v2_status(
                WHERE inventory.provider_account_id = $1
               EXCEPT
               SELECT saved.position, track.provider, track.provider_track_id, saved.saved_at
-                FROM provider_saved_tracks saved
+                FROM provider_observed_saved_tracks saved
                 JOIN provider_tracks track ON track.id = saved.provider_track_id
                WHERE saved.snapshot_id = $2)
            ) AS tracks_match,
            NOT EXISTS (
              (SELECT album.position, provider_album.provider,
                      provider_album.provider_album_id, album.saved_at
-                FROM provider_saved_albums album
+                FROM provider_observed_saved_albums album
                 JOIN provider_albums provider_album ON provider_album.id = album.provider_album_id
                WHERE album.snapshot_id = $2
               EXCEPT
@@ -738,13 +740,13 @@ pub async fn database_v2_status(
               EXCEPT
               SELECT album.position, provider_album.provider,
                      provider_album.provider_album_id, album.saved_at
-                FROM provider_saved_albums album
+                FROM provider_observed_saved_albums album
                 JOIN provider_albums provider_album ON provider_album.id = album.provider_album_id
                WHERE album.snapshot_id = $2)
            ) AND NOT EXISTS (
              (SELECT provider_album.provider, provider_album.provider_album_id,
                      track.position, provider_track.provider, provider_track.provider_track_id
-                FROM provider_saved_album_tracks track
+                FROM provider_observed_saved_album_tracks track
                 JOIN provider_albums provider_album ON provider_album.id = track.provider_album_id
                 JOIN provider_tracks provider_track ON provider_track.id = track.provider_track_id
                WHERE track.snapshot_id = $2
@@ -769,7 +771,7 @@ pub async fn database_v2_status(
               EXCEPT
               SELECT provider_album.provider, provider_album.provider_album_id,
                      track.position, provider_track.provider, provider_track.provider_track_id
-                FROM provider_saved_album_tracks track
+                FROM provider_observed_saved_album_tracks track
                 JOIN provider_albums provider_album ON provider_album.id = track.provider_album_id
                 JOIN provider_tracks provider_track ON provider_track.id = track.provider_track_id
                WHERE track.snapshot_id = $2)
@@ -780,36 +782,66 @@ pub async fn database_v2_status(
     .fetch_one(database.pool())
     .await?;
 
-    let gates = sqlx::query(
-        "SELECT
-           (SELECT count(*) FROM listening_events
-             WHERE provider_account_id = $1 AND media_type = 'track'
-               AND superseded_at IS NULL) AS legacy_events,
-           (SELECT count(*) FROM normalized_listening_events
-             WHERE provider_account_id = $1 AND superseded_at IS NULL) AS normalized_events,
-           (SELECT count(*) FROM historical_provider_track_identities) AS identities,
-           (SELECT count(*) FROM spotify_archive_imports
-             WHERE provider_account_id = $1) AS legacy_imports,
-           (SELECT count(*) FROM listening_evidence_imports
-             WHERE provider_account_id = $1) AS evidence_imports,
-           (SELECT count(*) FROM provider_inventory_checkpoints
-             WHERE provider_account_id = $1 AND released_at IS NULL) AS checkpoints,
-           (SELECT count(*) FROM sync_runs
-             WHERE provider_account_id = $1 AND source_snapshot_id IS NOT NULL
-               AND provider_checkpoint_id IS NULL) AS plans_awaiting,
-           (SELECT count(*) FROM managed_playlist_verifications
-             WHERE provider_account_id = $1 AND verified_snapshot_id IS NOT NULL
-               AND provider_checkpoint_id IS NULL) AS verifications_awaiting,
-           (SELECT count(*) FROM external_playlist_cleanup_batches
-             WHERE provider_account_id = $1 AND source_snapshot_id IS NOT NULL
-               AND provider_checkpoint_id IS NULL) AS cleanups_awaiting,
-           (SELECT count(*) FROM reevaluation_events
-             WHERE provider_account_id = $1 AND provider_snapshot_id IS NOT NULL
-               AND provider_checkpoint_id IS NULL) AS reevaluations_awaiting",
+    let legacy_evidence_available: bool = sqlx::query_scalar(
+        "SELECT to_regclass('public.listening_events') IS NOT NULL
+             AND to_regclass('public.spotify_archive_imports') IS NOT NULL",
     )
-    .bind(account_id)
     .fetch_one(database.pool())
     .await?;
+    let gates = if legacy_evidence_available {
+        sqlx::query(
+            "SELECT
+               (SELECT count(*) FROM listening_events
+                 WHERE provider_account_id = $1 AND media_type = 'track'
+                   AND superseded_at IS NULL) AS legacy_events,
+               (SELECT count(*) FROM normalized_listening_events
+                 WHERE provider_account_id = $1 AND superseded_at IS NULL) AS normalized_events,
+               (SELECT count(*) FROM historical_provider_track_identities) AS identities,
+               (SELECT count(*) FROM spotify_archive_imports
+                 WHERE provider_account_id = $1) AS legacy_imports,
+               (SELECT count(*) FROM listening_evidence_imports
+                 WHERE provider_account_id = $1) AS evidence_imports,
+               (SELECT count(*) FROM provider_inventory_checkpoints
+                 WHERE provider_account_id = $1 AND released_at IS NULL) AS checkpoints,
+               (SELECT count(*) FROM sync_runs
+                 WHERE provider_account_id = $1 AND source_snapshot_id IS NOT NULL
+                   AND provider_checkpoint_id IS NULL) AS plans_awaiting,
+               (SELECT count(*) FROM managed_playlist_verifications
+                 WHERE provider_account_id = $1 AND verified_snapshot_id IS NOT NULL
+                   AND provider_checkpoint_id IS NULL) AS verifications_awaiting,
+               (SELECT count(*) FROM external_playlist_cleanup_batches
+                 WHERE provider_account_id = $1 AND source_snapshot_id IS NOT NULL
+                   AND provider_checkpoint_id IS NULL) AS cleanups_awaiting,
+               (SELECT count(*) FROM reevaluation_events
+                 WHERE provider_account_id = $1 AND provider_snapshot_id IS NOT NULL
+                   AND provider_checkpoint_id IS NULL) AS reevaluations_awaiting",
+        )
+        .bind(account_id)
+        .fetch_one(database.pool())
+        .await?
+    } else {
+        sqlx::query(
+            "SELECT
+               (SELECT count(*) FROM normalized_listening_events
+                 WHERE provider_account_id = $1 AND superseded_at IS NULL) AS legacy_events,
+               (SELECT count(*) FROM normalized_listening_events
+                 WHERE provider_account_id = $1 AND superseded_at IS NULL) AS normalized_events,
+               (SELECT count(*) FROM historical_provider_track_identities) AS identities,
+               (SELECT count(*) FROM listening_evidence_imports
+                 WHERE provider_account_id = $1) AS legacy_imports,
+               (SELECT count(*) FROM listening_evidence_imports
+                 WHERE provider_account_id = $1) AS evidence_imports,
+               (SELECT count(*) FROM provider_inventory_checkpoints
+                 WHERE provider_account_id = $1 AND released_at IS NULL) AS checkpoints,
+               0::bigint AS plans_awaiting,
+               0::bigint AS verifications_awaiting,
+               0::bigint AS cleanups_awaiting,
+               0::bigint AS reevaluations_awaiting",
+        )
+        .bind(account_id)
+        .fetch_one(database.pool())
+        .await?
+    };
 
     let current_source_snapshot_id = current
         .as_ref()

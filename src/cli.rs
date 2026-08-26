@@ -7,9 +7,9 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
     ChordriftError, Result, albums, analysis, apply, apply_readiness, artwork, bookmarks,
-    classifications, clusters, config, db, db_reports, db_v2_migration, embeddings, enrichment,
-    history, model_inference, playlists, proposals, providers::spotify, routes, signals, sync_plan,
-    terminal, tracks,
+    classifications, clusters, config, db, db_cleanup, db_reports, db_v2_migration, embeddings,
+    enrichment, history, model_inference, playlists, proposals, providers::spotify, routes,
+    signals, sync_plan, terminal, tracks,
 };
 
 /// Chordrift command-line interface.
@@ -216,6 +216,38 @@ pub enum DbCommand {
 pub enum DbCompactCommand {
     /// Plan retention and normalization inside a read-only transaction.
     Plan {
+        /// Local label for the provider account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Exact-plan, apply, or verify removal of superseded database-v1 storage.
+    Cleanup {
+        /// Cleanup phase.
+        #[command(subcommand)]
+        command: DbCleanupCommand,
+    },
+}
+
+/// Destructive database cleanup phases, each provider-free.
+#[derive(Clone, Debug, Subcommand)]
+pub enum DbCleanupCommand {
+    /// Emit the exact cleanup confirmation hash without writing.
+    Plan {
+        /// Local label for the provider account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Apply only the exact plan hash supplied by the operator.
+    Apply {
+        /// Local label for the provider account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact SHA-256 emitted by `cleanup plan`.
+        #[arg(long)]
+        confirm: String,
+    },
+    /// Verify the latest cleanup receipt and durable invariants.
+    Verify {
         /// Local label for the provider account.
         #[arg(long, default_value = "personal")]
         account: String,
@@ -4748,6 +4780,22 @@ async fn run_db_command(
             let report = db_reports::compaction_plan(database, &account).await?;
             write_compaction_plan(output, &report)
         }
+        DbCommand::Compact {
+            command: DbCompactCommand::Cleanup { command },
+        } => match command {
+            DbCleanupCommand::Plan { account } => {
+                let report = db_cleanup::plan(database, &account).await?;
+                write_database_cleanup_plan(output, &report)
+            }
+            DbCleanupCommand::Apply { account, confirm } => {
+                let report = db_cleanup::apply(database, &account, &confirm).await?;
+                write_database_cleanup_verification(output, &report)
+            }
+            DbCleanupCommand::Verify { account } => {
+                let report = db_cleanup::verify(database, &account).await?;
+                write_database_cleanup_verification(output, &report)
+            }
+        },
         DbCommand::V2 {
             command: DbV2Command::Status { account },
         } => {
@@ -5433,6 +5481,79 @@ fn write_compaction_plan(
     Ok(())
 }
 
+fn write_database_cleanup_plan(
+    output: &mut impl Write,
+    report: &db_cleanup::CleanupPlan,
+) -> Result<()> {
+    writeln!(output, "cleanup_plan: database-v2-clean-runtime-v1")?;
+    writeln!(output, "account: {}", report.account_label)?;
+    writeln!(output, "plan_sha256: {}", report.plan_sha256)?;
+    writeln!(output, "invariant_sha256: {}", report.invariant_sha256)?;
+    writeln!(
+        output,
+        "provider_observations_retained: {}",
+        report.observations_retained
+    )?;
+    writeln!(
+        output,
+        "legacy_provider_rows_removed: {}",
+        report.legacy_provider_rows_removed
+    )?;
+    writeln!(
+        output,
+        "legacy_listening_events_removed: {}",
+        report.legacy_listening_events_removed
+    )?;
+    writeln!(
+        output,
+        "legacy_archive_imports_removed: {}",
+        report.legacy_archive_imports_removed
+    )?;
+    writeln!(
+        output,
+        "normalized_listening_events_retained: {}",
+        report.normalized_listening_events_retained
+    )?;
+    writeln!(
+        output,
+        "evidence_imports_retained: {}",
+        report.evidence_imports_retained
+    )?;
+    writeln!(output, "database_writes: disabled")?;
+    writeln!(output, "provider_requests: disabled")?;
+    writeln!(output, "approval_required: exact_plan_sha256")?;
+    Ok(())
+}
+
+fn write_database_cleanup_verification(
+    output: &mut impl Write,
+    report: &db_cleanup::CleanupVerification,
+) -> Result<()> {
+    writeln!(output, "cleanup_verification: database-v2-clean-runtime-v1")?;
+    writeln!(output, "plan_sha256: {}", report.plan_sha256)?;
+    writeln!(output, "invariant_sha256: {}", report.invariant_sha256)?;
+    writeln!(
+        output,
+        "legacy_tables_absent: {}",
+        report.legacy_tables_absent
+    )?;
+    writeln!(
+        output,
+        "provider_import_staging_empty: {}",
+        report.import_staging_empty
+    )?;
+    writeln!(
+        output,
+        "normalized_listening_events: {}",
+        report.normalized_listening_events
+    )?;
+    writeln!(output, "evidence_imports: {}", report.evidence_imports)?;
+    writeln!(output, "verified_at: {}", report.verified_at.to_rfc3339())?;
+    writeln!(output, "verified: {}", report.verified)?;
+    writeln!(output, "provider_requests: disabled")?;
+    Ok(())
+}
+
 fn write_status(output: &mut impl Write, status: &db::DatabaseStatus) -> Result<()> {
     writeln!(output, "database: chordrift-primary")?;
     writeln!(output, "provider: neon")?;
@@ -5511,11 +5632,11 @@ mod tests {
 
     use super::{
         AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand,
-        ClassificationCommand, Cli, ClusterCommand, Command, DbCommand, DbCompactCommand,
-        DbV2Command, DbV2MigrationCommand, EmbeddingCommand, EnrichmentCommand, HistoryCommand,
-        LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg, PlaylistSignalClassArg,
-        ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand,
-        SyncCommand, TrackCommand, write_status,
+        ClassificationCommand, Cli, ClusterCommand, Command, DbCleanupCommand, DbCommand,
+        DbCompactCommand, DbV2Command, DbV2MigrationCommand, EmbeddingCommand, EnrichmentCommand,
+        HistoryCommand, LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg,
+        PlaylistSignalClassArg, ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg,
+        SignalCommand, SpotifyCommand, SyncCommand, TrackCommand, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -5559,6 +5680,27 @@ mod tests {
                     command: DbCompactCommand::Plan { account }
                 }
             } if account == "personal"
+        ));
+
+        let cleanup = Cli::try_parse_from([
+            "chordrift",
+            "db",
+            "compact",
+            "cleanup",
+            "apply",
+            "--confirm",
+            "abc",
+        ])
+        .expect("valid cleanup command");
+        assert!(matches!(
+            cleanup.command,
+            Command::Db {
+                command: DbCommand::Compact {
+                    command: DbCompactCommand::Cleanup {
+                        command: DbCleanupCommand::Apply { account, confirm }
+                    }
+                }
+            } if account == "personal" && confirm == "abc"
         ));
 
         let v2 = Cli::try_parse_from(["chordrift", "db", "v2", "status"])

@@ -231,7 +231,7 @@ pub async fn export(
     let account_id = account_id(database, account_label).await?;
     let rows = sqlx::query(
         "WITH latest AS (
-             SELECT id FROM provider_library_snapshots
+             SELECT id FROM provider_inventory_observations
              WHERE provider_account_id = $1
              ORDER BY captured_at DESC, id DESC LIMIT 1
          ), selected AS (
@@ -245,7 +245,7 @@ pub async fn export(
                     track.title, album.title AS album,
                     COALESCE(string_agg(DISTINCT artist.name, ', '), '') AS artists
              FROM latest
-             JOIN provider_playlist_tracks membership ON membership.snapshot_id = latest.id
+             JOIN provider_observed_playlist_tracks membership ON membership.snapshot_id = latest.id
              JOIN selected ON selected.provider_playlist_id = membership.provider_playlist_id
              JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
              JOIN tracks track ON track.id = provider_track.track_id

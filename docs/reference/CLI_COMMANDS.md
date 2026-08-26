@@ -111,6 +111,9 @@ Database-v2 foundation diagnostics are provider-free and read-only:
 $ chordrift db invariant-report --account personal
 $ chordrift db storage-report
 $ chordrift db compact plan --account personal
+$ chordrift db compact cleanup plan --account personal
+$ chordrift db compact cleanup apply --account personal --confirm <PLAN_SHA256>
+$ chordrift db compact cleanup verify --account personal
 $ chordrift db v2 status --account personal
 $ chordrift db v2 migration plan --account personal
 $ chordrift db v2 migration apply --account personal --confirm <PLAN_SHA256>

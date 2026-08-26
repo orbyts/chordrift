@@ -88,7 +88,7 @@ async fn account_and_snapshot(database: &Database, account: &str) -> Result<(Uui
         "SELECT account.id, snapshot.id
          FROM provider_accounts account
          JOIN LATERAL (
-             SELECT id FROM provider_library_snapshots
+             SELECT id FROM provider_inventory_observations
              WHERE provider_account_id = account.id
              ORDER BY captured_at DESC, id DESC LIMIT 1
          ) snapshot ON TRUE
@@ -114,11 +114,11 @@ pub async fn list(database: &Database, account: &str) -> Result<Vec<SavedAlbumSu
                       AND exclusion.restored_at IS NULL
                       AND track.id = membership.provider_track_id
                 ) AND (
-                    EXISTS (SELECT 1 FROM provider_saved_tracks st
+                    EXISTS (SELECT 1 FROM provider_observed_saved_tracks st
                             WHERE st.snapshot_id = $2
                               AND st.provider_track_id = membership.provider_track_id)
                     OR EXISTS (
-                        SELECT 1 FROM provider_playlist_tracks pt
+                        SELECT 1 FROM provider_observed_playlist_tracks pt
                         JOIN provider_account_playlists ap
                           ON ap.provider_playlist_id = pt.provider_playlist_id
                          AND ap.provider_account_id = $1
@@ -133,10 +133,10 @@ pub async fn list(database: &Database, account: &str) -> Result<Vec<SavedAlbumSu
                       AND exclusion.restored_at IS NULL
                       AND track.id = membership.provider_track_id
                 ))::bigint AS excluded
-         FROM provider_saved_albums saved
+         FROM provider_observed_saved_albums saved
          JOIN provider_albums provider ON provider.id = saved.provider_album_id
          JOIN albums album ON album.id = provider.album_id
-         LEFT JOIN provider_saved_album_tracks membership
+         LEFT JOIN provider_observed_saved_album_tracks membership
            ON membership.snapshot_id = saved.snapshot_id
           AND membership.provider_album_id = saved.provider_album_id
          WHERE saved.snapshot_id = $2
@@ -177,8 +177,8 @@ pub async fn history(database: &Database, account: &str) -> Result<Vec<SavedAlbu
                       PARTITION BY saved.provider_album_id
                       ORDER BY snapshot.captured_at DESC, saved.snapshot_id DESC
                     ) AS recency
-             FROM provider_saved_albums saved
-             JOIN provider_library_snapshots snapshot ON snapshot.id = saved.snapshot_id
+             FROM provider_observed_saved_albums saved
+             JOIN provider_inventory_observations snapshot ON snapshot.id = saved.snapshot_id
              WHERE snapshot.provider_account_id = $1
          ), aggregate AS (
              SELECT provider_album_id, min(saved_at) AS first_saved_at,
@@ -189,19 +189,19 @@ pub async fn history(database: &Database, account: &str) -> Result<Vec<SavedAlbu
                 latest.metadata #>> '{artists,0,name}' AS artist,
                 aggregate.first_saved_at, aggregate.last_saved_at,
                 CASE WHEN current.provider_album_id IS NULL THEN 'retired' ELSE 'current' END AS state,
-                (SELECT count(*)::bigint FROM provider_saved_album_tracks membership
+                (SELECT count(*)::bigint FROM provider_observed_saved_album_tracks membership
                  WHERE membership.snapshot_id = latest.snapshot_id
                    AND membership.provider_album_id = latest.provider_album_id) AS tracks
          FROM aggregate
          JOIN observations observation
            ON observation.provider_album_id = aggregate.provider_album_id
           AND observation.recency = 1
-         JOIN provider_saved_albums latest
+         JOIN provider_observed_saved_albums latest
            ON latest.snapshot_id = observation.snapshot_id
           AND latest.provider_album_id = observation.provider_album_id
          JOIN provider_albums provider ON provider.id = aggregate.provider_album_id
          JOIN albums album ON album.id = provider.album_id
-         LEFT JOIN provider_saved_albums current
+         LEFT JOIN provider_observed_saved_albums current
            ON current.snapshot_id = $2
           AND current.provider_album_id = aggregate.provider_album_id
          ORDER BY state, lower(album.title), provider.provider_album_id",
@@ -233,7 +233,7 @@ pub async fn audit(database: &Database, account: &str) -> Result<AlbumAudit> {
     let row = sqlx::query(
         "WITH inventory AS (
              SELECT DISTINCT membership.provider_track_id
-             FROM provider_saved_album_tracks membership
+             FROM provider_observed_saved_album_tracks membership
              WHERE membership.snapshot_id = $2
          ), disposition AS (
              SELECT inventory.provider_track_id,
@@ -244,11 +244,11 @@ pub async fn audit(database: &Database, account: &str) -> Result<AlbumAudit> {
                         AND exclusion.restored_at IS NULL
                         AND track.id = inventory.provider_track_id
                     ) AS excluded,
-                    EXISTS (SELECT 1 FROM provider_saved_tracks st
+                    EXISTS (SELECT 1 FROM provider_observed_saved_tracks st
                             WHERE st.snapshot_id = $2
                               AND st.provider_track_id = inventory.provider_track_id)
                     OR EXISTS (
-                      SELECT 1 FROM provider_playlist_tracks pt
+                      SELECT 1 FROM provider_observed_playlist_tracks pt
                       JOIN provider_account_playlists ap
                         ON ap.provider_playlist_id = pt.provider_playlist_id
                        AND ap.provider_account_id = $1
@@ -296,11 +296,11 @@ pub async fn tracks(
                                WHERE exclusion.provider_account_id = $1
                                  AND exclusion.track_id = track.id
                                  AND exclusion.restored_at IS NULL) THEN 'excluded'
-                  WHEN EXISTS (SELECT 1 FROM provider_saved_tracks st
+                  WHEN EXISTS (SELECT 1 FROM provider_observed_saved_tracks st
                                WHERE st.snapshot_id = $2
                                  AND st.provider_track_id = provider_track.id)
                     OR EXISTS (
-                       SELECT 1 FROM provider_playlist_tracks pt
+                       SELECT 1 FROM provider_observed_playlist_tracks pt
                        JOIN provider_account_playlists ap
                          ON ap.provider_playlist_id = pt.provider_playlist_id
                         AND ap.provider_account_id = $1
@@ -310,10 +310,10 @@ pub async fn tracks(
                     ) THEN 'preserved'
                   ELSE 'review'
                 END AS disposition
-         FROM provider_saved_albums saved
+         FROM provider_observed_saved_albums saved
          JOIN provider_albums provider_album ON provider_album.id = saved.provider_album_id
          JOIN albums album ON album.id = provider_album.album_id
-         JOIN provider_saved_album_tracks membership
+         JOIN provider_observed_saved_album_tracks membership
            ON membership.snapshot_id = saved.snapshot_id
           AND membership.provider_album_id = saved.provider_album_id
          JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id

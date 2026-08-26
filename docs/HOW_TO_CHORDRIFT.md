@@ -126,3 +126,20 @@ Treat production as separate gates. First apply only additive schema/current-
 state migrations 0040-0043, rerun the read-only reports, and stop to review the
 production-emitted migration plan hash. Do not combine that schema gate with
 `migration apply`, read cutover, observation-window start, or legacy cleanup.
+
+After v0.1.3 runtime migration and a fresh invariant report, database-v1
+storage cleanup has its own exact-confirmed provider-free phases:
+
+```console
+chordrift db compact cleanup plan --account personal
+chordrift db compact cleanup apply --account personal --confirm <PLAN_SHA256>
+chordrift db compact cleanup verify --account personal
+```
+
+`cleanup plan` is read-only. `cleanup apply` removes the superseded physical
+provider bodies and legacy event/archive tables, so its hash is database-specific
+and requires separate production approval. `cleanup verify` proves that the v2
+invariant fingerprint is unchanged, normalized evidence counts match the
+receipt, legacy table names are absent, and transient provider-import tables are
+empty. Never copy a rehearsal cleanup hash to production without comparing the
+production-emitted plan and obtaining explicit approval.

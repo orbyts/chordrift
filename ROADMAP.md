@@ -696,6 +696,27 @@ changes the database project but does not yet refactor individual application
 queries from legacy to v2 tables. Observation, read-path refactoring, cleanup,
 rollback, and old-project deletion remain separately controlled gates.
 
+Database-v2 v0.1.3 runtime status: implemented and locally verified. Migration
+0044 adds stable v2 runtime read surfaces, transient provider-import surfaces,
+and exact cleanup receipts. Ordinary application reads no longer depend on
+duplicated snapshot bodies; Spotify archives and recent observations write
+directly to normalized listening evidence; provider pulls materialize reusable
+content revisions and clear import staging before commit. A second fresh
+PostgreSQL 18 restore migrated all 149,314 events, applied rehearsal-only cleanup
+plan `0688bf0984ea6f6b26cf65ca7ab1c9fcb762601c6a512b204e7a79312830f964`,
+and preserved invariant fingerprint
+`24f5da45845bb48b3cfeb49cbd09fe371043c7f9544ea38993d3016beaf0d6a3`.
+The clean database retains 58 lightweight observations, 22 current playlists,
+1,790 ordered memberships, both archive manifests, 24 checkpoints, and every
+durable audit reference while shrinking locally to 167,974,591 bytes. Both a
+provider-inventory round trip and a normalized archive-import round trip pass
+against the post-clean schema. Migration 0044 and destructive cleanup have not
+been applied to Neon; each remains a separate exact production gate.
+
+The verified live Neon project keeps stable ID `damp-hall-40280714` and now has
+the final display name `Chordrift`; renaming changed neither its connection nor
+database contents. The former project remains untouched for rollback.
+
 Build a provider-neutral review UI around the same audited model rather than
 moving policy out of the Rust core. It should answer “why is this here?” for
 every playlist and track, distinguish canonical collections, intake, generated

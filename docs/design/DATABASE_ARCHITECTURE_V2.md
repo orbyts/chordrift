@@ -582,3 +582,69 @@ bounded connection-level rollback target during observation. This project
 switch does not itself change application queries from legacy tables to v2
 tables; that code refactor follows only after observation. Legacy cleanup,
 rollback, and deletion of the former project each require separate approval.
+
+After the verified connection cutover, project `damp-hall-40280714` was renamed
+from its temporary candidate label to `Chordrift`. This was a display-name-only
+Neon operation: project identity, connection configuration, database contents,
+and the former rollback project were unchanged.
+
+### v0.1.3 clean-runtime rehearsal
+
+Migration 0044 establishes the application boundary used by v0.1.3. Current
+provider reads are reconstructed from `provider_current_inventories`, current
+playlist pointers, content-addressed playlist/saved revisions, and compact
+checkpoints. Listening reads are reconstructed from
+`normalized_listening_events`, `historical_provider_track_identities`, evidence
+imports, and source-file manifests. Display metadata is stored once per
+historical provider identity. No ordinary runtime module reads a duplicated
+provider snapshot body or the database-v1 listening-event table.
+
+Provider pulls now write through five explicitly transient
+`provider_inventory_import_*` surfaces. The materializer reuses unchanged
+content revisions, atomically replaces current pointers, and deletes every
+staged membership before commit. The lightweight
+`provider_inventory_observations` row remains as the pull receipt and stable
+foreign-key target. Spotify archive imports and recent-play observations write
+directly to normalized identities and typed evidence; database-v1 dual-write
+triggers are no longer part of runtime correctness.
+
+Cleanup is not an automatic schema migration. `db compact cleanup plan` first
+requires every database-v2 parity gate and hashes the durable invariant report
+with exact source counts. Only `cleanup apply --confirm <PLAN_SHA256>` may:
+
+1. remove the temporary dual-write triggers;
+2. truncate the duplicated provider bodies and rename their physical tables to
+   the v2 import-staging names;
+3. rename the lightweight snapshot header to
+   `provider_inventory_observations`;
+4. remove `listening_events` and `spotify_archive_imports` after exact normalized
+   parity; and
+5. record a durable cleanup receipt before commit.
+
+`cleanup verify` requires the same logical invariant fingerprint, retained event
+and archive counts, absent database-v1 table names, and empty provider-import
+staging. Plans, approvals, apply receipts, managed verifications, exclusions,
+canonical assignments, archive hashes, historical identities, normalized
+events, and compact checkpoints remain intact.
+
+The second fresh PostgreSQL 18 rehearsal measured:
+
+- 58 provider observations retained;
+- 157,193 duplicated provider-body rows removed;
+- 149,314 legacy events removed and 149,314 normalized events retained;
+- two legacy archive rows removed and two evidence manifests retained;
+- invariant SHA-256
+  `24f5da45845bb48b3cfeb49cbd09fe371043c7f9544ea38993d3016beaf0d6a3` before
+  and after cleanup;
+- exact rehearsal cleanup plan
+  `0688bf0984ea6f6b26cf65ca7ab1c9fcb762601c6a512b204e7a79312830f964`;
+- 167,974,591 database bytes after cleanup, versus 358,686,720 bytes for the
+  verified dual-storage Neon candidate; and
+- successful ordinary read commands, provider-inventory persistence/reuse, and
+  normalized archive import on the post-clean schema.
+
+The rehearsal hash is evidence, not production authority. Migration 0044 has
+not been installed on Neon and no Neon legacy row has been removed. Production
+must emit its own current plan, receive explicit approval for that exact hash,
+apply, verify immediately, and keep the former project untouched until a later
+rollback-retirement decision.

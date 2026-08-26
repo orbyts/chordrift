@@ -30,6 +30,8 @@ pub mod config;
 pub mod credentials;
 /// Storexa-backed database lifecycle and migration inspection.
 pub mod db;
+/// Exact-confirmed removal of superseded database-v1 storage.
+pub mod db_cleanup;
 /// Read-only database invariants, storage measurement, and compaction planning.
 pub mod db_reports;
 /// Exact-confirmed database-v2 evidence and checkpoint migration.

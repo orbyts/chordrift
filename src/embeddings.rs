@@ -517,7 +517,7 @@ struct Candidate {
 async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs> {
     let account_id = account_id(database, account_label).await?;
     let snapshot_id: Uuid = sqlx::query_scalar(
-        "SELECT id FROM provider_library_snapshots
+        "SELECT id FROM provider_inventory_observations
          WHERE provider_account_id = $1
          ORDER BY captured_at DESC, id DESC LIMIT 1",
     )
@@ -585,17 +585,17 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
            ON provider.id = account_playlist.provider_playlist_id
          JOIN LATERAL (
              SELECT historical_name.name
-             FROM provider_playlist_snapshots historical_name
-             JOIN provider_library_snapshots historical_library
+             FROM provider_observed_playlists historical_name
+             JOIN provider_inventory_observations historical_library
                ON historical_library.id = historical_name.snapshot_id
              WHERE historical_name.provider_playlist_id = provider.id
                AND historical_library.provider_account_id = $1
              ORDER BY historical_library.captured_at DESC, historical_library.id DESC
              LIMIT 1
          ) latest_name ON TRUE
-         JOIN provider_library_snapshots historical_library
+         JOIN provider_inventory_observations historical_library
            ON historical_library.provider_account_id = $1
-         JOIN provider_playlist_tracks membership
+         JOIN provider_observed_playlist_tracks membership
            ON membership.provider_playlist_id = provider.id
           AND membership.snapshot_id = historical_library.id
          JOIN provider_tracks member_track ON member_track.id = membership.provider_track_id
@@ -633,8 +633,8 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
     }
     let name_rows = sqlx::query(
         "SELECT DISTINCT snapshot.provider_playlist_id, snapshot.name
-         FROM provider_playlist_snapshots snapshot
-         JOIN provider_library_snapshots library ON library.id = snapshot.snapshot_id
+         FROM provider_observed_playlists snapshot
+         JOIN provider_inventory_observations library ON library.id = snapshot.snapshot_id
          WHERE library.provider_account_id = $1
          ORDER BY snapshot.provider_playlist_id, snapshot.name",
     )
@@ -743,7 +743,7 @@ async fn load_inputs(database: &Database, account_label: &str) -> Result<Inputs>
                     lag(event.played_at) OVER (
                         ORDER BY event.played_at, event.id
                     ) AS previous_played_at
-             FROM listening_events event
+             FROM listening_evidence_events event
              WHERE event.provider_account_id = $1 AND event.track_id IS NOT NULL
                AND event.superseded_at IS NULL
                AND COALESCE(event.ms_played, 0) >= 30000

@@ -41,6 +41,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "clusters",
         "embedding_generations",
         "database_v2_migration_runs",
+        "database_v2_cleanup_runs",
         "enrichment_runs",
         "excluded_tracks",
         "external_playlist_bookmark_snapshots",
@@ -124,6 +125,23 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     .fetch_optional(database.pool())
     .await?;
     assert_eq!(current_view.as_deref(), Some("current_spotify_playlists"));
+
+    let runtime_views: Vec<String> = sqlx::query_scalar(
+        "SELECT table_name FROM information_schema.views
+         WHERE table_schema = 'public' AND table_name = ANY($1)",
+    )
+    .bind([
+        "provider_inventory_observations",
+        "provider_observed_playlists",
+        "provider_observed_playlist_tracks",
+        "provider_observed_saved_tracks",
+        "provider_observed_saved_albums",
+        "provider_observed_saved_album_tracks",
+        "listening_evidence_events",
+    ])
+    .fetch_all(database.pool())
+    .await?;
+    assert_eq!(runtime_views.len(), 7);
 
     let account_id = Uuid::new_v4();
     sqlx::query(

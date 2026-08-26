@@ -179,6 +179,17 @@ struct HistoryEvent {
     metadata: Value,
 }
 
+#[derive(Debug)]
+struct HistoricalIdentitySeed {
+    provider_track_id: String,
+    canonical_track_id: Option<Uuid>,
+    track_name: Option<String>,
+    artist_name: Option<String>,
+    album_name: Option<String>,
+    first_observed_at: DateTime<Utc>,
+    last_observed_at: DateTime<Utc>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct ExtendedRecord {
     ts: String,
@@ -261,59 +272,144 @@ pub async fn import(database: &Database, account_label: &str, path: &Path) -> Re
         .saturating_add(loaded.inspection.video_events)
         .saturating_add(loaded.inspection.simplified_music_events);
     sqlx::query(
-        "INSERT INTO spotify_archive_imports
-         (id, provider_account_id, archive_sha256, archive_kind,
-          source_filename, source_files, events_seen, events_matched,
-          events_ignored, first_event_at, last_event_at, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+        "INSERT INTO listening_evidence_imports
+         (id, provider_account_id, provider, archive_kind, archive_sha256,
+          parser_version, source_filename, source_file_count, event_count,
+          first_event_at, last_event_at, manifest)
+         VALUES ($1, $2, 'spotify', $3, $4, 'chordrift-history-v2', $5,
+                 $6, 0, $7, $8, $9)",
     )
     .bind(import_id)
     .bind(account_id)
-    .bind(&loaded.inspection.sha256)
     .bind(loaded.inspection.kind.as_str())
+    .bind(&loaded.inspection.sha256)
     .bind(&loaded.inspection.source_filename)
     .bind(to_i32(loaded.inspection.source_files, "source file count")?)
-    .bind(to_i64(loaded.inspection.track_events, "event count")?)
-    .bind(to_i64(events_matched, "matched event count")?)
-    .bind(to_i64(ignored, "ignored event count")?)
     .bind(loaded.inspection.first_event_at)
     .bind(loaded.inspection.last_event_at)
-    .bind(inspection_metadata(&loaded.inspection))
+    .bind(json!({
+        "events_seen": loaded.inspection.track_events,
+        "events_matched": events_matched,
+        "events_ignored": ignored,
+        "inspection": inspection_metadata(&loaded.inspection),
+        "member_hashes": "unavailable; containing archive hash verified"
+    }))
     .execute(&mut *transaction)
     .await?;
+
+    let identity_seeds = historical_identity_seeds(&loaded.events, &track_map);
+    for chunk in identity_seeds.chunks(750) {
+        let mut builder = QueryBuilder::<Postgres>::new(
+            "INSERT INTO historical_provider_track_identities
+             (provider, provider_track_id, canonical_track_id, track_name,
+              artist_name, album_name, first_observed_at, last_observed_at) ",
+        );
+        builder.push_values(chunk, |mut row, identity| {
+            row.push_bind("spotify")
+                .push_bind(&identity.provider_track_id)
+                .push_bind(identity.canonical_track_id)
+                .push_bind(&identity.track_name)
+                .push_bind(&identity.artist_name)
+                .push_bind(&identity.album_name)
+                .push_bind(identity.first_observed_at)
+                .push_bind(identity.last_observed_at);
+        });
+        builder.push(
+            " ON CONFLICT (provider, provider_track_id) DO UPDATE SET
+                canonical_track_id = COALESCE(EXCLUDED.canonical_track_id,
+                    historical_provider_track_identities.canonical_track_id),
+                track_name = COALESCE(EXCLUDED.track_name,
+                    historical_provider_track_identities.track_name),
+                artist_name = COALESCE(EXCLUDED.artist_name,
+                    historical_provider_track_identities.artist_name),
+                album_name = COALESCE(EXCLUDED.album_name,
+                    historical_provider_track_identities.album_name),
+                first_observed_at = LEAST(
+                    historical_provider_track_identities.first_observed_at,
+                    EXCLUDED.first_observed_at),
+                last_observed_at = GREATEST(
+                    historical_provider_track_identities.last_observed_at,
+                    EXCLUDED.last_observed_at)",
+        );
+        builder.build().execute(&mut *transaction).await?;
+    }
+    let provider_track_ids: Vec<_> = identity_seeds
+        .iter()
+        .map(|identity| identity.provider_track_id.clone())
+        .collect();
+    let identity_rows = sqlx::query(
+        "SELECT id, provider_track_id
+         FROM historical_provider_track_identities
+         WHERE provider = 'spotify' AND provider_track_id = ANY($1)",
+    )
+    .bind(&provider_track_ids)
+    .fetch_all(&mut *transaction)
+    .await?;
+    let identity_ids: HashMap<String, Uuid> = identity_rows
+        .into_iter()
+        .map(|row| Ok((row.try_get("provider_track_id")?, row.try_get("id")?)))
+        .collect::<Result<_>>()?;
+
+    let mut source_counts = HashMap::<String, i64>::new();
+    for event in &loaded.events {
+        *source_counts.entry(event.source_file.clone()).or_default() += 1;
+    }
+    let source_files: Vec<_> = source_counts.into_iter().collect();
+    for chunk in source_files.chunks(750) {
+        let mut builder = QueryBuilder::<Postgres>::new(
+            "INSERT INTO listening_evidence_source_files
+             (id, import_id, source_path, content_sha256, event_count, hash_status) ",
+        );
+        builder.push_values(chunk, |mut row, (source_path, event_count)| {
+            row.push_bind(Uuid::new_v4())
+                .push_bind(import_id)
+                .push_bind(source_path)
+                .push_bind(Option::<String>::None)
+                .push_bind(*event_count)
+                .push_bind("archive_manifest_only");
+        });
+        builder.push(" ON CONFLICT (import_id, source_path) DO NOTHING");
+        builder.build().execute(&mut *transaction).await?;
+    }
+    let source_rows = sqlx::query(
+        "SELECT id, source_path FROM listening_evidence_source_files
+         WHERE import_id = $1",
+    )
+    .bind(import_id)
+    .fetch_all(&mut *transaction)
+    .await?;
+    let source_file_ids: HashMap<String, Uuid> = source_rows
+        .into_iter()
+        .map(|row| Ok((row.try_get("source_path")?, row.try_get("id")?)))
+        .collect::<Result<_>>()?;
 
     let mut events_inserted = 0_usize;
     for chunk in loaded.events.chunks(750) {
         let mut builder = QueryBuilder::<Postgres>::new(
-            "INSERT INTO listening_events
-             (id, provider_account_id, source_import_id, track_id, provider,
-              provider_track_id, source_event_id, played_at, ms_played, skipped,
-              source_file, media_type, source_occurrence, raw_metadata) ",
+            "INSERT INTO normalized_listening_events
+             (id, provider_account_id, historical_identity_id, source_import_id,
+              source_file_id, source_kind, source_event_id, source_occurrence,
+              played_at, ms_played, skipped, completed, completion_reason,
+              provider_extensions) ",
         );
         builder.push_values(chunk, |mut row, event| {
+            let completion_reason = event.metadata.get("reason_end").and_then(Value::as_str);
             row.push_bind(Uuid::new_v4())
                 .push_bind(account_id)
+                .push_bind(identity_ids[&event.provider_track_id])
                 .push_bind(import_id)
-                .push_bind(track_map.get(&event.provider_track_id).copied())
-                .push_bind("spotify")
-                .push_bind(&event.provider_track_id)
+                .push_bind(source_file_ids[&event.source_file])
+                .push_bind("archive")
                 .push_bind(&event.source_event_id)
+                .push_bind(event.source_occurrence)
                 .push_bind(event.played_at)
                 .push_bind(event.ms_played)
                 .push_bind(event.skipped)
-                .push_bind(&event.source_file)
-                .push_bind("track")
-                .push_bind(event.source_occurrence)
-                .push_bind(&event.metadata);
+                .push_bind(completion_reason.map(|reason| reason == "trackdone"))
+                .push_bind(completion_reason)
+                .push_bind(json!({}));
         });
-        builder.push(
-            " ON CONFLICT (provider_account_id, provider, provider_track_id,
-                           played_at, ms_played, source_occurrence)
-              WHERE provider_account_id IS NOT NULL
-                AND provider_track_id IS NOT NULL
-                AND ms_played IS NOT NULL
-              DO NOTHING",
-        );
+        builder.push(" ON CONFLICT DO NOTHING");
         events_inserted = events_inserted.saturating_add(
             usize::try_from(
                 builder
@@ -327,7 +423,7 @@ pub async fn import(database: &Database, account_label: &str, path: &Path) -> Re
             })?,
         );
     }
-    sqlx::query("UPDATE spotify_archive_imports SET events_imported = $2 WHERE id = $1")
+    sqlx::query("UPDATE listening_evidence_imports SET event_count = $2 WHERE id = $1")
         .bind(import_id)
         .bind(to_i64(events_inserted, "inserted event count")?)
         .execute(&mut *transaction)
@@ -336,9 +432,9 @@ pub async fn import(database: &Database, account_label: &str, path: &Path) -> Re
         && let Some(covered_through) = loaded.inspection.last_event_at
     {
         sqlx::query(
-            "UPDATE listening_events
+            "UPDATE normalized_listening_events
              SET superseded_at = now()
-             WHERE provider_account_id = $1 AND provider = 'spotify'
+             WHERE provider_account_id = $1
                AND source_kind = 'recent_api' AND superseded_at IS NULL
                AND played_at <= $2",
         )
@@ -468,23 +564,27 @@ pub async fn summary(database: &Database, account_label: &str) -> Result<History
     let account_id = account_id(database, account_label).await?;
     let row = sqlx::query(
         "SELECT
-           (SELECT count(*) FROM spotify_archive_imports
+           (SELECT count(*) FROM listening_evidence_imports
              WHERE provider_account_id = $1) AS archives,
            count(*) AS events,
-           count(DISTINCT provider_track_id) AS unique_tracks,
-           count(DISTINCT provider_track_id) FILTER (WHERE track_id IS NOT NULL)
+           count(DISTINCT identity.provider_track_id) AS unique_tracks,
+           count(DISTINCT identity.provider_track_id)
+             FILTER (WHERE identity.canonical_track_id IS NOT NULL)
              AS matched_unique_tracks,
-           count(DISTINCT provider_track_id) FILTER (WHERE track_id IS NULL)
+           count(DISTINCT identity.provider_track_id)
+             FILTER (WHERE identity.canonical_track_id IS NULL)
              AS unmatched_unique_tracks,
-           count(*) FILTER (WHERE track_id IS NOT NULL) AS matched_events,
-           count(*) FILTER (WHERE track_id IS NULL) AS unmatched_events,
-           COALESCE(sum(ms_played), 0)::bigint AS total_ms_played,
-           count(*) FILTER (WHERE skipped IS TRUE) AS skipped_events,
-           min(played_at) AS first_event_at,
-           max(played_at) AS last_event_at
-         FROM listening_events
-         WHERE provider_account_id = $1 AND provider = 'spotify' AND media_type = 'track'
-           AND superseded_at IS NULL",
+           count(*) FILTER (WHERE identity.canonical_track_id IS NOT NULL) AS matched_events,
+           count(*) FILTER (WHERE identity.canonical_track_id IS NULL) AS unmatched_events,
+           COALESCE(sum(event.ms_played), 0)::bigint AS total_ms_played,
+           count(*) FILTER (WHERE event.skipped IS TRUE) AS skipped_events,
+           min(event.played_at) AS first_event_at,
+           max(event.played_at) AS last_event_at
+         FROM normalized_listening_events event
+         JOIN historical_provider_track_identities identity
+           ON identity.id = event.historical_identity_id
+         WHERE event.provider_account_id = $1 AND identity.provider = 'spotify'
+           AND event.superseded_at IS NULL",
     )
     .bind(account_id)
     .fetch_one(database.pool())
@@ -509,14 +609,19 @@ pub async fn refresh(database: &Database, account_label: &str) -> Result<History
     let account_id = account_id(database, account_label).await?;
     let mut transaction = database.pool().begin().await?;
     sqlx::query(
-        "UPDATE listening_events event
-         SET track_id = provider_track.track_id
-         FROM provider_tracks provider_track
-         WHERE event.provider_account_id = $1
-           AND event.provider = 'spotify'
-           AND event.track_id IS NULL
+        "WITH account_identities AS MATERIALIZED (
+             SELECT DISTINCT historical_identity_id
+             FROM normalized_listening_events
+             WHERE provider_account_id = $1 AND superseded_at IS NULL
+         )
+         UPDATE historical_provider_track_identities identity
+         SET canonical_track_id = provider_track.track_id
+         FROM provider_tracks provider_track, account_identities account_identity
+         WHERE identity.provider = 'spotify'
+           AND identity.canonical_track_id IS NULL
+           AND account_identity.historical_identity_id = identity.id
            AND provider_track.provider = 'spotify'
-           AND provider_track.provider_track_id = event.provider_track_id",
+           AND provider_track.provider_track_id = identity.provider_track_id",
     )
     .bind(account_id)
     .execute(&mut *transaction)
@@ -526,39 +631,27 @@ pub async fn refresh(database: &Database, account_label: &str) -> Result<History
         .execute(&mut *transaction)
         .await?;
     sqlx::query(
-        "WITH latest_metadata AS (
-             SELECT DISTINCT ON (provider_track_id)
-                    provider_track_id,
-                    raw_metadata->>'track_name' AS track_name,
-                    raw_metadata->>'artist_name' AS artist_name,
-                    raw_metadata->>'album_name' AS album_name
-             FROM listening_events
-             WHERE provider_account_id = $1
-               AND provider = 'spotify' AND media_type = 'track'
-               AND superseded_at IS NULL
-             ORDER BY provider_track_id, played_at DESC, id DESC
-         )
-         INSERT INTO account_listening_track_statistics
+        "INSERT INTO account_listening_track_statistics
              (provider_account_id, provider_track_id, track_id,
               track_name, artist_name, album_name, event_count, play_count,
               total_ms_played, average_ms_played, skip_count, completed_count,
               first_played_at, last_played_at)
-         SELECT $1, event.provider_track_id,
-                (array_agg(event.track_id) FILTER (WHERE event.track_id IS NOT NULL))[1],
-                metadata.track_name, metadata.artist_name, metadata.album_name,
+         SELECT $1, identity.provider_track_id, identity.canonical_track_id,
+                identity.track_name, identity.artist_name, identity.album_name,
                 count(*), count(*) FILTER (WHERE event.ms_played >= 30000),
                 COALESCE(sum(event.ms_played), 0)::bigint,
                 COALESCE(avg(event.ms_played), 0)::double precision,
                 count(*) FILTER (WHERE event.skipped IS TRUE),
-                count(*) FILTER (WHERE event.raw_metadata->>'reason_end' = 'trackdone'),
+                count(*) FILTER (WHERE event.completed IS TRUE),
                 min(event.played_at), max(event.played_at)
-         FROM listening_events event
-         JOIN latest_metadata metadata USING (provider_track_id)
+         FROM normalized_listening_events event
+         JOIN historical_provider_track_identities identity
+           ON identity.id = event.historical_identity_id
          WHERE event.provider_account_id = $1
-           AND event.provider = 'spotify' AND event.media_type = 'track'
-           AND event.superseded_at IS NULL
-         GROUP BY event.provider_track_id, metadata.track_name,
-                  metadata.artist_name, metadata.album_name",
+           AND identity.provider = 'spotify' AND event.superseded_at IS NULL
+         GROUP BY identity.id, identity.provider_track_id,
+                  identity.canonical_track_id, identity.track_name,
+                  identity.artist_name, identity.album_name",
     )
     .bind(account_id)
     .execute(&mut *transaction)
@@ -900,15 +993,59 @@ fn inspection_metadata(inspection: &ArchiveInspection) -> Value {
     })
 }
 
+fn historical_identity_seeds(
+    events: &[HistoryEvent],
+    track_map: &HashMap<String, Uuid>,
+) -> Vec<HistoricalIdentitySeed> {
+    let mut identities = HashMap::<String, HistoricalIdentitySeed>::new();
+    for event in events {
+        let entry = identities
+            .entry(event.provider_track_id.clone())
+            .or_insert_with(|| HistoricalIdentitySeed {
+                provider_track_id: event.provider_track_id.clone(),
+                canonical_track_id: track_map.get(&event.provider_track_id).copied(),
+                track_name: None,
+                artist_name: None,
+                album_name: None,
+                first_observed_at: event.played_at,
+                last_observed_at: event.played_at,
+            });
+        entry.first_observed_at = entry.first_observed_at.min(event.played_at);
+        if event.played_at >= entry.last_observed_at {
+            entry.last_observed_at = event.played_at;
+            entry.track_name = event
+                .metadata
+                .get("track_name")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            entry.artist_name = event
+                .metadata
+                .get("artist_name")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            entry.album_name = event
+                .metadata
+                .get("album_name")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+        }
+    }
+    let mut identities: Vec<_> = identities.into_values().collect();
+    identities.sort_by(|left, right| left.provider_track_id.cmp(&right.provider_track_id));
+    identities
+}
+
 async fn existing_report(
     database: &Database,
     account_id: Uuid,
     inspection: &ArchiveInspection,
 ) -> Result<Option<ImportReport>> {
     let row = sqlx::query(
-        "SELECT events_imported, events_matched
-         FROM spotify_archive_imports
-         WHERE provider_account_id = $1 AND archive_sha256 = $2",
+        "SELECT event_count,
+                COALESCE((manifest->>'events_matched')::bigint, 0) AS events_matched
+         FROM listening_evidence_imports
+         WHERE provider_account_id = $1 AND provider = 'spotify'
+           AND archive_sha256 = $2",
     )
     .bind(account_id)
     .bind(&inspection.sha256)
@@ -958,7 +1095,14 @@ fn to_i64(value: usize, name: &str) -> Result<i64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExtendedRecord, record_fingerprint, spotify_track_id};
+    use std::{fs::File, io::Write};
+
+    use storexa::{DatabaseConfig, PostgresProvider};
+    use uuid::Uuid;
+    use zip::{ZipWriter, write::SimpleFileOptions};
+
+    use super::{ExtendedRecord, import, record_fingerprint, spotify_track_id, summary};
+    use crate::db;
 
     #[test]
     fn parses_only_track_uris() {
@@ -1000,5 +1144,66 @@ mod tests {
             record_fingerprint(&record).expect("fingerprint"),
             record_fingerprint(&record.clone()).expect("fingerprint")
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for disposable PostgreSQL"]
+    async fn normalized_history_round_trip_without_legacy_tables() -> crate::Result<()> {
+        let config = DatabaseConfig::from_env_var("CHORDRIFT_TEST_DATABASE_URL")?
+            .with_name("chordrift-history-v2-test")?
+            .with_provider(PostgresProvider::Neon)?
+            .with_min_connections(0)
+            .with_max_connections(2);
+        let database = db::connect(config).await?;
+        let account_label = format!("history-fixture-{}", Uuid::new_v4().simple());
+        let account_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO provider_accounts
+             (id, provider, provider_account_id, account_label)
+             VALUES ($1, 'spotify', $2, $3)",
+        )
+        .bind(account_id)
+        .bind(format!("spotify-{account_id}"))
+        .bind(&account_label)
+        .execute(database.pool())
+        .await?;
+
+        let archive_path = std::env::temp_dir().join(format!("{account_label}.zip"));
+        let mut archive = ZipWriter::new(File::create(&archive_path)?);
+        archive.start_file(
+            "Spotify Extended Streaming History/Streaming_History_Audio_2026.json",
+            SimpleFileOptions::default(),
+        )?;
+        archive.write_all(
+            serde_json::to_string(&[serde_json::json!({
+                "ts": "2026-08-20T04:33:23Z",
+                "ms_played": 12345,
+                "master_metadata_track_name": "Fixture Track",
+                "master_metadata_album_artist_name": "Fixture Artist",
+                "master_metadata_album_album_name": "Fixture Album",
+                "spotify_track_uri": "spotify:track:history-track-1",
+                "reason_end": "trackdone",
+                "skipped": false
+            })])?
+            .as_bytes(),
+        )?;
+        archive.finish()?;
+
+        let report = import(&database, &account_label, &archive_path).await?;
+        assert_eq!(report.events_inserted, 1);
+        let state = summary(&database, &account_label).await?;
+        assert_eq!(state.events, 1);
+        assert_eq!(state.unique_tracks, 1);
+        assert_eq!(state.total_ms_played, 12_345);
+        let legacy_tables_absent: bool = sqlx::query_scalar(
+            "SELECT to_regclass('public.listening_events') IS NULL
+                 AND to_regclass('public.spotify_archive_imports') IS NULL",
+        )
+        .fetch_one(database.pool())
+        .await?;
+        assert!(legacy_tables_absent);
+        std::fs::remove_file(&archive_path)?;
+        database.close().await;
+        Ok(())
     }
 }

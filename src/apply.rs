@@ -105,7 +105,7 @@ pub async fn preflight_publish(
 ) -> Result<PublishPreflightReport> {
     let plan = sqlx::query(
         "SELECT run.id, run.planner_version, run.source_snapshot_id,
-                (SELECT id FROM provider_library_snapshots latest
+                (SELECT id FROM provider_inventory_observations latest
                  WHERE latest.provider_account_id = account.id
                  ORDER BY captured_at DESC, id DESC LIMIT 1) AS latest_snapshot_id
          FROM sync_runs run
@@ -222,7 +222,7 @@ pub async fn approve_retirement(
     let row = sqlx::query(
         "SELECT account.id AS account_id, run.input_hash, run.planner_version,
                 run.source_snapshot_id,
-                (SELECT id FROM provider_library_snapshots latest
+                (SELECT id FROM provider_inventory_observations latest
                  WHERE latest.provider_account_id = account.id
                  ORDER BY captured_at DESC, id DESC LIMIT 1) AS latest_snapshot_id,
                 (SELECT count(*)::bigint FROM sync_operations operation
@@ -399,7 +399,7 @@ pub async fn verify_pending_publications(
     .await?
     .ok_or_else(|| configuration("Spotify account is not imported"))?;
     let snapshot_id: Uuid = sqlx::query_scalar(
-        "SELECT id FROM provider_library_snapshots WHERE provider_account_id = $1
+        "SELECT id FROM provider_inventory_observations WHERE provider_account_id = $1
          ORDER BY captured_at DESC, id DESC LIMIT 1",
     )
     .bind(account_id)
@@ -466,7 +466,7 @@ pub async fn verify_pending_publications(
                      FROM provider_account_playlists account_playlist
                      JOIN provider_playlists playlist
                        ON playlist.id = account_playlist.provider_playlist_id
-                     JOIN provider_playlist_tracks membership
+                     JOIN provider_observed_playlist_tracks membership
                        ON membership.provider_playlist_id = playlist.id
                       AND membership.snapshot_id = $3
                      JOIN provider_tracks track ON track.id = membership.provider_track_id
@@ -530,7 +530,7 @@ pub async fn verify_pending_publications(
                      FROM provider_account_playlists account_playlist
                      JOIN provider_playlists playlist
                        ON playlist.id = account_playlist.provider_playlist_id
-                     JOIN provider_playlist_tracks membership
+                     JOIN provider_observed_playlist_tracks membership
                        ON membership.provider_playlist_id = playlist.id
                       AND membership.snapshot_id = $3
                      JOIN provider_tracks track ON track.id = membership.provider_track_id
@@ -541,7 +541,7 @@ pub async fn verify_pending_publications(
                  )) OR
                 (planned.operation_type = 'remove_saved_track' AND EXISTS (
                      SELECT 1
-                     FROM provider_saved_tracks saved
+                     FROM provider_observed_saved_tracks saved
                      JOIN provider_tracks track ON track.id = saved.provider_track_id
                      WHERE saved.snapshot_id = $3
                        AND track.provider = 'spotify'
@@ -549,7 +549,7 @@ pub async fn verify_pending_publications(
                  )) OR
                  (planned.operation_type = 'remove_saved_album' AND EXISTS (
                      SELECT 1
-                     FROM provider_saved_albums saved
+                     FROM provider_observed_saved_albums saved
                      JOIN provider_albums album ON album.id = saved.provider_album_id
                      WHERE saved.snapshot_id = $3
                        AND album.provider = 'spotify'
@@ -636,7 +636,7 @@ async fn verify_routing_publication(
              JOIN provider_playlists provider
                ON provider.id = policy.provider_playlist_id
               AND provider.playlist_id = $2
-             JOIN provider_playlist_tracks membership
+             JOIN provider_observed_playlist_tracks membership
                ON membership.provider_playlist_id = provider.id
               AND membership.snapshot_id = $3
              JOIN provider_tracks track ON track.id = membership.provider_track_id
@@ -706,7 +706,7 @@ async fn verify_publication(
                 membership.position, track.track_id
          FROM provider_account_playlists account_playlist
          JOIN provider_playlists provider ON provider.id = account_playlist.provider_playlist_id
-         LEFT JOIN provider_playlist_tracks membership
+         LEFT JOIN provider_observed_playlist_tracks membership
            ON membership.provider_playlist_id = provider.id AND membership.snapshot_id = $2
          LEFT JOIN provider_tracks track ON track.id = membership.provider_track_id
          WHERE account_playlist.provider_account_id = $1
@@ -804,7 +804,7 @@ async fn load_gate(
                 assessment.sync_run_id AS plan_id, assessment.status AS readiness_status,
                 assessment.assessment_version, run.planner_version, run.input_hash,
                 run.source_snapshot_id, run.proposal_generation_id,
-                (SELECT id FROM provider_library_snapshots latest
+                (SELECT id FROM provider_inventory_observations latest
                  WHERE latest.provider_account_id = account.id
                  ORDER BY captured_at DESC, id DESC LIMIT 1) AS latest_snapshot_id
          FROM sync_readiness_assessments assessment

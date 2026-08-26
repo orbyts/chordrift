@@ -653,7 +653,7 @@ pub async fn coverage(database: &Database, account_label: &str) -> Result<Vec<Co
     let generation = status(database, account_label).await?;
     let rows = sqlx::query(
         "WITH latest AS (
-             SELECT id FROM provider_library_snapshots
+             SELECT id FROM provider_inventory_observations
              WHERE provider_account_id = $1 ORDER BY captured_at DESC, id DESC LIMIT 1
          ), proposed AS (
              SELECT DISTINCT membership.track_id
@@ -668,9 +668,9 @@ pub async fn coverage(database: &Database, account_label: &str) -> Result<Vec<Co
          FROM provider_account_playlists account_playlist
          JOIN provider_playlists provider_playlist ON provider_playlist.id = account_playlist.provider_playlist_id
          JOIN latest ON true
-         JOIN provider_playlist_snapshots snapshot
+         JOIN provider_observed_playlists snapshot
            ON snapshot.provider_playlist_id = provider_playlist.id AND snapshot.snapshot_id = latest.id
-         JOIN provider_playlist_tracks membership
+         JOIN provider_observed_playlist_tracks membership
            ON membership.provider_playlist_id = provider_playlist.id AND membership.snapshot_id = latest.id
          JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
          LEFT JOIN proposed ON proposed.track_id = provider_track.track_id
@@ -714,7 +714,7 @@ pub async fn missing(
     let generation = status(database, account_label).await?;
     let rows = sqlx::query(
         "WITH latest AS (
-             SELECT id FROM provider_library_snapshots
+             SELECT id FROM provider_inventory_observations
              WHERE provider_account_id = $1 ORDER BY captured_at DESC, id DESC LIMIT 1
          ), required AS (
              SELECT provider_track.track_id,
@@ -724,10 +724,10 @@ pub async fn missing(
              JOIN provider_playlists provider_playlist
                ON provider_playlist.id = account_playlist.provider_playlist_id
              JOIN latest ON true
-             JOIN provider_playlist_snapshots snapshot
+             JOIN provider_observed_playlists snapshot
                ON snapshot.provider_playlist_id = provider_playlist.id
               AND snapshot.snapshot_id = latest.id
-             JOIN provider_playlist_tracks membership
+             JOIN provider_observed_playlist_tracks membership
                ON membership.provider_playlist_id = provider_playlist.id
               AND membership.snapshot_id = latest.id
              JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
@@ -784,22 +784,22 @@ pub async fn historical_coverage(
     let generation = status(database, account_label).await?;
     let rows = sqlx::query(
         "WITH latest AS (
-             SELECT id FROM provider_library_snapshots
+             SELECT id FROM provider_inventory_observations
              WHERE provider_account_id = $1
              ORDER BY captured_at DESC, id DESC LIMIT 1
          ), sources AS (
              SELECT DISTINCT 'saved'::text AS signal_class, NULL::uuid AS playlist_id,
                     provider_track.track_id
              FROM latest
-             JOIN provider_saved_tracks saved ON saved.snapshot_id = latest.id
+             JOIN provider_observed_saved_tracks saved ON saved.snapshot_id = latest.id
              JOIN provider_tracks provider_track ON provider_track.id = saved.provider_track_id
              UNION ALL
              SELECT DISTINCT policy.signal_class, policy.provider_playlist_id,
                     provider_track.track_id
              FROM provider_account_playlists policy
-             JOIN provider_library_snapshots library
+             JOIN provider_inventory_observations library
                ON library.provider_account_id = policy.provider_account_id
-             JOIN provider_playlist_tracks membership
+             JOIN provider_observed_playlist_tracks membership
                ON membership.snapshot_id = library.id
               AND membership.provider_playlist_id = policy.provider_playlist_id
              JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
@@ -896,24 +896,24 @@ pub async fn historical_missing(
     let generation = status(database, account_label).await?;
     let rows = sqlx::query(
         "WITH latest AS (
-             SELECT id FROM provider_library_snapshots
+             SELECT id FROM provider_inventory_observations
              WHERE provider_account_id = $1
              ORDER BY captured_at DESC, id DESC LIMIT 1
          ), sources AS (
              SELECT DISTINCT provider_track.track_id, 'Saved tracks'::text AS name,
                     'saved'::text AS signal_class
              FROM latest
-             JOIN provider_saved_tracks saved ON saved.snapshot_id = latest.id
+             JOIN provider_observed_saved_tracks saved ON saved.snapshot_id = latest.id
              JOIN provider_tracks provider_track ON provider_track.id = saved.provider_track_id
              UNION ALL
              SELECT DISTINCT provider_track.track_id, snapshot.name, policy.signal_class
              FROM provider_account_playlists policy
-             JOIN provider_library_snapshots library
+             JOIN provider_inventory_observations library
                ON library.provider_account_id = policy.provider_account_id
-             JOIN provider_playlist_snapshots snapshot
+             JOIN provider_observed_playlists snapshot
                ON snapshot.snapshot_id = library.id
               AND snapshot.provider_playlist_id = policy.provider_playlist_id
-             JOIN provider_playlist_tracks membership
+             JOIN provider_observed_playlist_tracks membership
                ON membership.snapshot_id = library.id
               AND membership.provider_playlist_id = policy.provider_playlist_id
              JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id

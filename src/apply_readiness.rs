@@ -130,7 +130,7 @@ pub async fn assess(
         .collect();
 
     let latest_snapshot: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM provider_library_snapshots WHERE provider_account_id = $1
+        "SELECT id FROM provider_inventory_observations WHERE provider_account_id = $1
          ORDER BY captured_at DESC, id DESC LIMIT 1",
     )
     .bind(account_id)

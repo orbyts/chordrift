@@ -488,7 +488,7 @@ async fn current_playlists(
     let rows = sqlx::query(
         "SELECT current.name, membership.position, current.role, current.signal_class
          FROM current_spotify_playlists current
-         JOIN provider_playlist_tracks membership
+         JOIN provider_observed_playlist_tracks membership
            ON membership.snapshot_id = current.snapshot_id
           AND membership.provider_playlist_id = current.provider_playlist_id
          JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
@@ -567,13 +567,13 @@ async fn historical_playlists(
                 min(library.captured_at) AS first_seen_at,
                 max(library.captured_at) AS last_seen_at,
                 policy.present_in_latest_snapshot AS present
-         FROM provider_library_snapshots library
-         JOIN provider_playlist_snapshots snapshot ON snapshot.snapshot_id = library.id
+         FROM provider_inventory_observations library
+         JOIN provider_observed_playlists snapshot ON snapshot.snapshot_id = library.id
          JOIN provider_playlists provider_playlist ON provider_playlist.id = snapshot.provider_playlist_id
          JOIN provider_account_playlists policy
            ON policy.provider_account_id = library.provider_account_id
           AND policy.provider_playlist_id = provider_playlist.id
-         JOIN provider_playlist_tracks membership
+         JOIN provider_observed_playlist_tracks membership
            ON membership.snapshot_id = library.id
           AND membership.provider_playlist_id = provider_playlist.id
          JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id

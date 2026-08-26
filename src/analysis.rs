@@ -66,13 +66,13 @@ pub async fn refresh(database: &Database, account_label: &str) -> Result<Analysi
              SELECT provider_track.track_id,
                     count(DISTINCT membership.provider_playlist_id)::integer AS playlist_count,
                     count(*)::integer AS total_entries
-             FROM provider_playlist_tracks membership
+             FROM provider_observed_playlist_tracks membership
              JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
              WHERE membership.snapshot_id = $2
              GROUP BY provider_track.track_id
          ), saved AS (
              SELECT DISTINCT provider_track.track_id
-             FROM provider_saved_tracks membership
+             FROM provider_observed_saved_tracks membership
              JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
              WHERE membership.snapshot_id = $2
          )
@@ -125,19 +125,19 @@ pub async fn summary(database: &Database, account_label: &str) -> Result<Analysi
     }
     let row = sqlx::query(
         "SELECT
-           (SELECT count(*) FROM provider_playlist_snapshots WHERE snapshot_id = $1) AS playlists,
-           (SELECT count(*) FROM provider_playlist_tracks WHERE snapshot_id = $1) AS playlist_entries,
+           (SELECT count(*) FROM provider_observed_playlists WHERE snapshot_id = $1) AS playlists,
+           (SELECT count(*) FROM provider_observed_playlist_tracks WHERE snapshot_id = $1) AS playlist_entries,
            (SELECT count(DISTINCT provider_track.track_id)
-              FROM provider_playlist_tracks membership
+              FROM provider_observed_playlist_tracks membership
               JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
              WHERE membership.snapshot_id = $1) AS unique_playlist_tracks,
-           (SELECT count(*) FROM provider_saved_tracks WHERE snapshot_id = $1) AS saved_tracks,
+           (SELECT count(*) FROM provider_observed_saved_tracks WHERE snapshot_id = $1) AS saved_tracks,
            (SELECT count(*) FROM account_track_statistics
              WHERE provider_account_id = $2 AND playlist_occurrence_count > 1) AS overlapping_tracks,
            (SELECT COALESCE(sum(duplicates.entries - 1), 0)::bigint
               FROM (
                 SELECT count(*) AS entries
-                FROM provider_playlist_tracks membership
+                FROM provider_observed_playlist_tracks membership
                 JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
                 WHERE membership.snapshot_id = $1
                 GROUP BY membership.provider_playlist_id, provider_track.track_id
@@ -216,8 +216,8 @@ pub async fn duplicates(
     let rows = sqlx::query(
         "SELECT snapshot.name AS playlist_name, track.title AS track_title,
                 count(*) AS entries
-         FROM provider_playlist_tracks membership
-         JOIN provider_playlist_snapshots snapshot
+         FROM provider_observed_playlist_tracks membership
+         JOIN provider_observed_playlists snapshot
            ON snapshot.snapshot_id = membership.snapshot_id
           AND snapshot.provider_playlist_id = membership.provider_playlist_id
          JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
@@ -249,7 +249,7 @@ async fn latest_snapshot(database: &Database, account_label: &str) -> Result<(Uu
         "SELECT account.id, snapshot.id
          FROM provider_accounts account
          JOIN LATERAL (
-             SELECT id FROM provider_library_snapshots
+             SELECT id FROM provider_inventory_observations
              WHERE provider_account_id = account.id
              ORDER BY captured_at DESC, id DESC LIMIT 1
          ) snapshot ON TRUE

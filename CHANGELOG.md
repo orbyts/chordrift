@@ -4,6 +4,20 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Prepare v0.1.3 as the database-v2 runtime: all ordinary reads use current
+  content-addressed provider state and normalized listening evidence instead of
+  duplicated provider snapshots or legacy event rows.
+- Write Spotify archive and recent-play evidence directly to normalized imports,
+  historical identities, source files, and typed listening events.
+- Persist provider pulls through transient v2 import surfaces, reuse unchanged
+  playlist and saved-library revisions, and leave import staging empty at commit.
+- Add exact-confirmed `db compact cleanup plan/apply/verify` phases that preserve
+  durable invariants and receipts while renaming provider staging tables and
+  removing superseded database-v1 event/archive tables.
+- Prove the clean runtime on a fresh PostgreSQL 18 restore: invariant parity is
+  exact, 149,314 events and both archives survive, ordinary runtime reads pass,
+  and database storage falls from 358,686,720 to 167,974,591 bytes locally.
+
 ## [0.1.2] - 2026-08-25
 
 - Replace destination-specific review routes with one provider-owned,

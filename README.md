@@ -104,11 +104,11 @@ and synchronization will not wait for it; when available, the export will add
 signals such as play counts, listening duration, first play, and last play.
 
 > [!WARNING]
-> Chordrift is in early development. v0.1.2 permits remote Spotify
+> Chordrift is in early development. v0.1.3 permits remote Spotify
 > mutation only through exact, audited, resumable phase confirmations. Never
 > run an apply command without inspecting its immutable plan and readiness ID.
 
-## Current foundation (v0.1.2)
+## Current foundation (v0.1.3)
 
 - Storexa-backed Neon PostgreSQL connection management
 - an application-owned canonical music-library schema
@@ -147,7 +147,7 @@ Set the canonical Neon connection URL through the application-specific
 
 ```console
 $ chordrift --version
-chordrift 0.1.2
+chordrift 0.1.3
 
 $ chordrift db status
 database: chordrift-primary
