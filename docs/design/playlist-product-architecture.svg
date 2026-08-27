@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1220" viewBox="0 0 1800 1220" role="img" aria-labelledby="title desc">
+  <title id="title">Chordrift playlist product architecture</title>
+  <desc id="desc">A high-level view of onboarding, database table groups, and corresponding Rust domain types for provider-neutral playlist orchestration.</desc>
+  <defs>
+    <style>
+      text { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17202a; }
+      .title { font-size: 34px; font-weight: 700; }
+      .subtitle { font-size: 17px; fill: #52606d; }
+      .section { font-size: 22px; font-weight: 700; }
+      .label { font-size: 16px; font-weight: 700; }
+      .body { font-size: 14px; fill: #334155; }
+      .small { font-size: 12px; fill: #52606d; }
+      .panel { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; rx: 18; }
+      .node { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; rx: 12; }
+      .provider { fill: #eef7ff; stroke: #70a9d8; }
+      .intent { fill: #f4f0ff; stroke: #9277c8; }
+      .evidence { fill: #edf9f2; stroke: #69a981; }
+      .audit { fill: #fff7e8; stroke: #d5a34f; }
+      .cache { fill: #f3f4f6; stroke: #9ca3af; }
+      .rust { fill: #fff3ed; stroke: #cf7b55; }
+      .arrow { fill: none; stroke: #64748b; stroke-width: 2; marker-end: url(#arrow); }
+      .soft-arrow { fill: none; stroke: #94a3b8; stroke-width: 1.5; marker-end: url(#arrow); }
+      .divider { stroke: #dbe3ec; stroke-width: 2; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect width="1800" height="1220" fill="#f7f9fc"/>
+  <text x="70" y="62" class="title">Chordrift: from provider library to renewable listening experiences</text>
+  <text x="70" y="92" class="subtitle">Spotify first · provider-neutral core · useful without an archive · every Spin previewed, approved, published, and verified</text>
+
+  <text x="70" y="142" class="section">1 · First-run and everyday loop</text>
+  <g>
+    <rect x="70" y="165" width="210" height="108" class="node provider"/>
+    <text x="90" y="195" class="label">Connect</text>
+    <text x="90" y="220" class="body">Choose Spotify</text>
+    <text x="90" y="241" class="body">Provider-owned OAuth</text>
+    <text x="90" y="260" class="small">More providers later</text>
+
+    <rect x="320" y="165" width="210" height="108" class="node provider"/>
+    <text x="340" y="195" class="label">Observe</text>
+    <text x="340" y="220" class="body">Full current inventory</text>
+    <text x="340" y="241" class="body">Capability snapshot</text>
+    <text x="340" y="260" class="small">No provider writes</text>
+
+    <rect x="570" y="165" width="230" height="108" class="node evidence"/>
+    <text x="590" y="195" class="label">Enrich (optional)</text>
+    <text x="590" y="220" class="body">History archives</text>
+    <text x="590" y="241" class="body">Listening accumulates</text>
+    <text x="590" y="260" class="small">Basic use never blocked</text>
+
+    <rect x="840" y="165" width="230" height="108" class="node intent"/>
+    <text x="860" y="195" class="label">Choose a start</text>
+    <text x="860" y="220" class="body">Preserve + learn</text>
+    <text x="860" y="241" class="body">or preview starter set</text>
+    <text x="860" y="260" class="small">Default: preserve</text>
+
+    <rect x="1110" y="165" width="210" height="108" class="node intent"/>
+    <text x="1130" y="195" class="label">Compose + Spin</text>
+    <text x="1130" y="220" class="body">Collections → recipe</text>
+    <text x="1130" y="241" class="body">Select → order → explain</text>
+    <text x="1130" y="260" class="small">Provider-free preview</text>
+
+    <rect x="1360" y="165" width="210" height="108" class="node audit"/>
+    <text x="1380" y="195" class="label">Approve + publish</text>
+    <text x="1380" y="220" class="body">Plan → apply → verify</text>
+    <text x="1380" y="241" class="body">Stable playlist target</text>
+    <text x="1380" y="260" class="small">Explicit provider write</text>
+
+    <path d="M280 219 H320" class="arrow"/>
+    <path d="M530 219 H570" class="arrow"/>
+    <path d="M800 219 H840" class="arrow"/>
+    <path d="M1070 219 H1110" class="arrow"/>
+    <path d="M1320 219 H1360" class="arrow"/>
+    <path d="M1465 273 C1465 310 1215 310 1215 273" class="soft-arrow"/>
+    <text x="1290" y="326" class="small">verified observations and corrections improve the next Spin</text>
+  </g>
+
+  <line x1="70" y1="355" x2="1730" y2="355" class="divider"/>
+  <text x="70" y="400" class="section">2 · PostgreSQL: organized by ownership and retention</text>
+
+  <g>
+    <rect x="70" y="425" width="1010" height="700" class="panel"/>
+
+    <rect x="100" y="455" width="290" height="150" class="node provider"/>
+    <text x="120" y="484" class="label">Account + provider links</text>
+    <text x="120" y="510" class="body">chordrift_accounts (new root)</text>
+    <text x="120" y="532" class="body">provider_accounts + capabilities</text>
+    <text x="120" y="561" class="small">Connection identity; secrets stay</text>
+    <text x="120" y="579" class="small">outside PostgreSQL</text>
+
+    <rect x="430" y="455" width="300" height="150" class="node provider"/>
+    <text x="450" y="484" class="label">Current provider state</text>
+    <text x="450" y="510" class="body">provider_current_inventories</text>
+    <text x="450" y="532" class="body">current playlists + revisions</text>
+    <text x="450" y="554" class="body">saved-surface revisions</text>
+    <text x="450" y="579" class="small">One current materialization</text>
+
+    <rect x="770" y="455" width="280" height="150" class="node evidence"/>
+    <text x="790" y="484" class="label">Permanent evidence</text>
+    <text x="790" y="510" class="body">normalized_listening_events</text>
+    <text x="790" y="532" class="body">historical identities</text>
+    <text x="790" y="554" class="body">archive import manifests</text>
+    <text x="790" y="579" class="small">Append-oriented ledger</text>
+
+    <rect x="100" y="650" width="290" height="175" class="node intent"/>
+    <text x="120" y="679" class="label">Music identity + library map</text>
+    <text x="120" y="705" class="body">tracks · artists · albums</text>
+    <text x="120" y="727" class="body">library_collections</text>
+    <text x="120" y="749" class="body">collection relationships</text>
+    <text x="120" y="771" class="body">rules + membership revisions</text>
+    <text x="120" y="800" class="small">Overlapping, explainable belonging</text>
+
+    <rect x="430" y="650" width="300" height="175" class="node intent"/>
+    <text x="450" y="679" class="label">Playlist surfaces + recipes</text>
+    <text x="450" y="705" class="body">playlist_surfaces</text>
+    <text x="450" y="727" class="body">provider links + directives</text>
+    <text x="450" y="749" class="body">playlist_recipes + revisions</text>
+    <text x="450" y="771" class="body">recipe dependencies</text>
+    <text x="450" y="800" class="small">Durable user intent</text>
+
+    <rect x="770" y="650" width="280" height="175" class="node audit"/>
+    <text x="790" y="679" class="label">Spins + publication audit</text>
+    <text x="790" y="705" class="body">playlist_spins</text>
+    <text x="790" y="727" class="body">playlist_spin_tracks</text>
+    <text x="790" y="749" class="body">spin publications</text>
+    <text x="790" y="771" class="body">plans · receipts · verification</text>
+    <text x="790" y="800" class="small">Exact output and safety history</text>
+
+    <rect x="275" y="875" width="600" height="145" class="node cache"/>
+    <text x="295" y="904" class="label">Rebuildable intelligence</text>
+    <text x="295" y="930" class="body">statistics · signals · embeddings · candidate generations</text>
+    <text x="295" y="954" class="body">Versioned by inputs and algorithm; referenced results protected</text>
+    <text x="295" y="982" class="small">Eligible for retention when no durable plan or Spin depends on it</text>
+
+    <path d="M390 530 H430" class="arrow"/>
+    <path d="M730 530 H770" class="soft-arrow"/>
+    <path d="M580 605 V650" class="arrow"/>
+    <path d="M910 605 V650" class="arrow"/>
+    <path d="M390 738 H430" class="arrow"/>
+    <path d="M730 738 H770" class="arrow"/>
+    <path d="M245 825 C245 850 420 850 420 875" class="soft-arrow"/>
+    <path d="M910 825 C910 850 730 850 730 875" class="soft-arrow"/>
+  </g>
+
+  <text x="1140" y="400" class="section">3 · Rust: policy stays typed</text>
+  <g>
+    <rect x="1120" y="425" width="610" height="700" class="panel"/>
+
+    <rect x="1150" y="455" width="250" height="120" class="node rust"/>
+    <text x="1170" y="484" class="label">AccountContext</text>
+    <text x="1170" y="510" class="body">ChordriftAccountId</text>
+    <text x="1170" y="532" class="body">Connection + capabilities</text>
+    <text x="1170" y="554" class="small">Explicit scope everywhere</text>
+
+    <rect x="1450" y="455" width="250" height="120" class="node provider"/>
+    <text x="1470" y="484" class="label">ProviderAdapter trait</text>
+    <text x="1470" y="510" class="body">observe · publish · verify</text>
+    <text x="1470" y="532" class="body">deep links · OAuth boundary</text>
+    <text x="1470" y="554" class="small">Spotify implementation first</text>
+
+    <rect x="1150" y="620" width="250" height="135" class="node rust"/>
+    <text x="1170" y="649" class="label">LibraryMap</text>
+    <text x="1170" y="675" class="body">Collection + relationship</text>
+    <text x="1170" y="697" class="body">RuleRevision</text>
+    <text x="1170" y="719" class="body">MembershipRevision</text>
+    <text x="1170" y="741" class="small">Belonging, not playlist order</text>
+
+    <rect x="1450" y="620" width="250" height="135" class="node rust"/>
+    <text x="1470" y="649" class="label">PlaylistSurface</text>
+    <text x="1470" y="675" class="body">Authority · Purpose</text>
+    <text x="1470" y="697" class="body">RefreshPolicy</text>
+    <text x="1470" y="719" class="body">TrackDirective</text>
+    <text x="1470" y="741" class="small">Ownership is orthogonal</text>
+
+    <rect x="1150" y="800" width="250" height="145" class="node rust"/>
+    <text x="1170" y="829" class="label">RecipeRevision</text>
+    <text x="1170" y="855" class="body">SourceLane + Allocation</text>
+    <text x="1170" y="877" class="body">Guardrail + Cadence</text>
+    <text x="1170" y="899" class="body">OrderingNarrative + Section</text>
+    <text x="1170" y="927" class="small">Immutable composition contract</text>
+
+    <rect x="1450" y="800" width="250" height="145" class="node rust"/>
+    <text x="1470" y="829" class="label">Spin</text>
+    <text x="1470" y="855" class="body">EvidenceCapabilities</text>
+    <text x="1470" y="877" class="body">SpinTrack + reasons</text>
+    <text x="1470" y="899" class="body">seed + input fingerprint</text>
+    <text x="1470" y="927" class="small">Reproducible selection + order</text>
+
+    <rect x="1250" y="990" width="350" height="95" class="node audit"/>
+    <text x="1270" y="1019" class="label">Publication workflow</text>
+    <text x="1270" y="1045" class="body">Plan → Approval → ApplyReceipt → Verification</text>
+    <text x="1270" y="1068" class="small">Existing safety boundary, provider-specific execution</text>
+
+    <path d="M1400 515 H1450" class="arrow"/>
+    <path d="M1275 575 V620" class="arrow"/>
+    <path d="M1575 575 V620" class="soft-arrow"/>
+    <path d="M1400 687 H1450" class="arrow"/>
+    <path d="M1275 755 V800" class="arrow"/>
+    <path d="M1575 755 V800" class="arrow"/>
+    <path d="M1400 872 H1450" class="arrow"/>
+    <path d="M1575 945 C1575 968 1425 968 1425 990" class="arrow"/>
+  </g>
+
+  <text x="70" y="1170" class="label">Design invariant:</text>
+  <text x="220" y="1170" class="body">provider state is observed · musical memory is retained · user intent is durable · derived intelligence is rebuildable · provider writes are always verified</text>
+</svg>

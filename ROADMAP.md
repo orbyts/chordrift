@@ -8,6 +8,13 @@ importable enrichment source. No other milestone is blocked on receiving it.
 
 ## Discovery and orchestration model
 
+The proposed playlist-product foundation is documented in
+[`docs/design/PLAYLIST_PRODUCT_ARCHITECTURE.md`](docs/design/PLAYLIST_PRODUCT_ARCHITECTURE.md),
+with a zoomable overview of the first-run journey, database boundaries, and
+matching Rust domain types. It treats collections as an overlapping dynamic
+library map and Spins as ordered, reproducible projections from versioned
+recipes. This design is not yet an applied schema migration.
+
 The guiding product principle is **a clean listening surface backed by lossless
 musical memory**. Every active playlist should have an intentional purpose;
 every retained track should have inspectable provenance explaining whether it

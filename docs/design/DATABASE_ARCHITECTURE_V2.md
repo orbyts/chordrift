@@ -4,6 +4,11 @@ The zoomable [schema overview](database-v2-schema-overview.svg) maps the
 implemented table groups, their main relationships, the retained compatibility
 layer, and the lifecycle of a manual Spotify playlist removal.
 
+The proposed post-v0.1.4 product layer is documented separately in
+[Playlist product architecture](PLAYLIST_PRODUCT_ARCHITECTURE.md). It builds
+account ownership, overlapping collections, versioned recipes, and reproducible
+Spins additively on this clean v2 foundation; it is not yet a migration.
+
 Status: approved direction, 2026-08-26. This document defines the storage
 redesign that precedes recipe work and the native UI. It is not authorization
 to delete the current Neon database.

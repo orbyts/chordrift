@@ -1639,3 +1639,28 @@ playlist entries, 1,766 unique playlist tracks, no duplicate entries, 346
 supported saved tracks plus one unavailable/unsupported saved item, and zero
 saved albums. Final convergence plan
 `66994c42-5f5c-4f31-8b2d-85b17ac81dd3` has zero operations in every phase.
+
+## Playlist-product foundation proposal (2026-08-26)
+
+The next product direction is now recorded in
+`docs/design/PLAYLIST_PRODUCT_ARCHITECTURE.md` and its zoomable
+`playlist-product-architecture.svg`. The proposed boundary supports Spotify-
+first onboarding while keeping provider payloads behind a capability-based
+adapter; optional listening archives enrich but never gate basic use.
+It adds a product-level `chordrift_accounts` ownership root above the existing
+provider-account boundary so one user can eventually connect several providers
+without merging their inventories or actions.
+
+Collections are overlapping, unordered musical worlds with navigational
+hierarchy, revisioned rules, provenance, and user-authoritative boundaries.
+Playlist surfaces separately model authority, purpose, and refresh behavior.
+Versioned recipes allocate lifecycle lanes and define cadence, guardrails, and
+ordering narrative. A reproducible Spin stores its evidence capabilities,
+input fingerprint, seed, selected tracks, explanations, and exact order before
+the existing plan/apply/verify publication boundary.
+
+No migration or runtime refactor has been performed for this proposal. The next
+implementation gate is to freeze the provider-neutral IDs, capability contract,
+surface axes, collection membership strengths, and recipe-v1 Rust types with
+unit tests; then prove isolation with a fake provider before designing an
+additive migration.
