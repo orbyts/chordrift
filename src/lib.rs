@@ -67,6 +67,8 @@ pub mod recipe_execution;
 pub mod routes;
 /// Versioned account-specific preference and lifecycle signals.
 pub mod signals;
+/// Deterministic ordered Spin previews and migration-0046 persistence.
+pub mod spin_preview;
 /// Immutable provider synchronization plans that never mutate remote services.
 pub mod sync_plan;
 mod terminal;

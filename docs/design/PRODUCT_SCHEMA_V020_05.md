@@ -132,6 +132,11 @@ V020-08 likewise adds no migration: it binds the captured archive fingerprint
 to the existing database-v2 listening import and normalized-event ledger; see
 the [enriched audit record](ENRICHED_ONBOARDING_AUDIT_V020_08.md).
 V020-09 also adds no migration or persistence call. Its deterministic recipe
-executor returns an unordered selection draft in memory; the existing Spin
-tables remain reserved for V020-10. See the
-[recipe execution record](DISCOVERY_REDISCOVERY_RECIPE_V020_09.md).
+executor returns an unordered selection draft in memory; see the
+[recipe execution record](DISCOVERY_REDISCOVERY_RECIPE_V020_09.md). V020-10 now
+uses the existing Spin tables without a migration change. It stores the
+full unsigned seed and capability/preview manifest in `playlist_spins`, exact
+zero-based physical positions and structured reason objects in
+`playlist_spin_tracks`, and returns one-based application views. Replay uses the
+existing account/input-fingerprint/seed uniqueness boundary. See the
+[Spin preview record](DETERMINISTIC_SPIN_PREVIEW_V020_10.md).

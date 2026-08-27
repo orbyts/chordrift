@@ -14,9 +14,10 @@ on isolated PostgreSQL 18. V020-06 adds a provider-read-only onboarding
 application boundary, V020-07 adds its read-only inventory-audit query, and
 V020-08 adds the explicitly selected extended-history comparison. V020-09 adds
 provider-neutral deterministic recipe selection as an unordered Rust value;
-exact Spin order and persistence remain V020-10. These development boundaries
-introduce no CLI command and do not change the released v0.1.4 runtime;
-migration 0046 is not applied to production Neon.
+V020-10 now assigns and persists the exact provider-free Spin order with typed
+reasons and an application query view. These development boundaries introduce
+no CLI command and do not change the released v0.1.4 runtime. CLI rehearsal is
+V020-11; migration 0046 is not applied to production Neon.
 
 Chordrift reads Spotify state into Neon and changes Spotify only through an
 exact inspected plan, readiness assessment, and explicitly confirmed apply

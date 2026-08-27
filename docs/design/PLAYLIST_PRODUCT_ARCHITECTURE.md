@@ -9,8 +9,8 @@ behavior. Existing database-v2 names remain unchanged. Migration 0046 now
 implements the additive recipe, collection, surface, onboarding, and Spin table
 names shown here, but remains isolated from production Neon.
 
-Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-09
-are implemented; V020-10 is next. This document is a design contract, not
+Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-10
+are implemented; V020-11 is next. This document is a design contract, not
 authorization to apply a migration or write to a provider.
 
 ## Current implementation status
@@ -54,10 +54,15 @@ authorization to apply a migration or write to a provider.
   enforces eligibility and repetition/artist budgets, and reports capability
   degradation as a deterministic unordered draft without provider or database
   access.
-- **Next — V020-10:** assign and persist the exact deterministic Spin order and
-  its selection/ordering explanations from the V020-09 draft.
-- **Not implemented yet:** collection authoring/approval, ordered Spin preview,
-  CLI rehearsal, publication integration, hosted transport, and native clients.
+- **Implemented — V020-10:** the Spin preview boundary verifies the unordered
+  draft and capability snapshot, assigns exact deterministic one-based order,
+  persists full seeds and structured selection/ordering reasons in migration
+  0046, and returns the same account-scoped view on replay without a provider
+  action.
+- **Next — V020-11:** expose the implemented onboarding, collection, recipe, and
+  Spin-preview path through a consistent development CLI rehearsal.
+- **Not implemented yet:** approved collection authoring, CLI rehearsal,
+  publication integration, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the
   existence of contract or domain types.
 
@@ -432,10 +437,12 @@ an honest usable experience.
    and enriched provider-free audit results. CLI exposure remains V020-11.
 7. **Complete:** implement initial **Discovery + Rediscovery** selection with
    allocation, cadence capacity, eligibility, budgets, and section capacity.
-8. Persist and display the deterministic exact Spin order and explanations.
-9. Connect approved Spins to the existing immutable sync plan/apply/verify
+8. **Complete:** persist and display the deterministic exact Spin order,
+   fingerprints, capability snapshot, seed, and per-track explanations.
+9. Rehearse the complete provider-write-free product path through the CLI.
+10. Connect approved Spins to the existing immutable sync plan/apply/verify
    boundary.
-10. Introduce the hosted Rust service and authenticated client transport without
+11. Introduce the hosted Rust service and authenticated client transport without
    distributing Neon or provider refresh credentials.
-11. Build native clients over the stable contract only after isolation,
+12. Build native clients over the stable contract only after isolation,
    compatibility, and deterministic-preview tests pass.

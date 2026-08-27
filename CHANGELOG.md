@@ -43,6 +43,11 @@ All notable changes to Chordrift are documented here.
   narrative-section capacity, enforce eligibility plus track/artist budgets,
   expose unavailable or degraded evidence and unfilled seats, and return an
   explicitly unordered fingerprinted draft for the later Spin preview.
+- Add exact deterministic Spin previews over verified recipe drafts. Persist
+  stable account/recipe identity, full unsigned seed, capability and provenance
+  fingerprints, one-based ordered views, per-track selection/ordering reasons,
+  narrative sections, and honest constraint warnings in migration 0046's
+  existing Spin tables, with idempotent replay and account-isolated reads.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

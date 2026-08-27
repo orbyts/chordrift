@@ -350,6 +350,8 @@ pub struct RecipeExecutionDraft {
     pub draft_fingerprint: RecipeExecutionFingerprint,
     /// Requested target size.
     pub target_tracks: u16,
+    /// Ordering narrative selected by the immutable recipe revision.
+    pub ordering_narrative: OrderingNarrative,
     /// Selected entries, canonically sorted rather than playback ordered.
     pub selections: Vec<DraftTrackSelection>,
     /// Source availability and seat fulfillment.
@@ -366,6 +368,13 @@ pub struct RecipeExecutionDraft {
     pub unfilled_seats: u16,
     /// Always false in V020-09; exact playback order belongs to V020-10.
     pub playback_order_assigned: bool,
+}
+
+impl RecipeExecutionDraft {
+    /// Verifies that this draft still matches its deterministic payload fingerprint.
+    pub fn verify_fingerprint(&self) -> Result<bool, RecipeExecutionError> {
+        Ok(draft_fingerprint(self)? == self.draft_fingerprint)
+    }
 }
 
 /// Stable failure from provider-neutral recipe execution.
@@ -512,6 +521,7 @@ impl RecipeExecutor {
             input_fingerprint,
             draft_fingerprint: RecipeExecutionFingerprint("0".repeat(64)),
             target_tracks: target,
+            ordering_narrative: request.recipe.ordering(),
             selections,
             sources: source_reports,
             exclusions,
@@ -779,6 +789,7 @@ struct DraftFingerprintPayload<'draft> {
     recipe_revision: RecipeRevisionIdentity,
     input_fingerprint: &'draft RecipeExecutionFingerprint,
     target_tracks: u16,
+    ordering_narrative: OrderingNarrative,
     selections: &'draft [DraftTrackSelection],
     sources: &'draft [SourceExecutionReport],
     exclusions: &'draft BTreeMap<CandidateExclusionReason, u64>,
@@ -796,6 +807,7 @@ fn draft_fingerprint(
         recipe_revision: draft.recipe_revision,
         input_fingerprint: &draft.input_fingerprint,
         target_tracks: draft.target_tracks,
+        ordering_narrative: draft.ordering_narrative,
         selections: &draft.selections,
         sources: &draft.sources,
         exclusions: &draft.exclusions,

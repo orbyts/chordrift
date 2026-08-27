@@ -53,8 +53,12 @@ Rediscovery recipe revisions as deterministic, unordered selection drafts. It
 allocates source seats, reserves familiarity cadence and narrative-section
 capacity, enforces eligibility and repetition/artist budgets, and reports
 capability degradation and unfilled seats without provider or database access.
-V020-10's exact ordered, persisted Spin preview is next; hosted transport and
-native clients remain later work.
+V020-10 now turns that verified draft into an exact ordered Spin with stable
+identity, seed, capability snapshot, selection/ordering reasons, narrative
+sections, warnings, fingerprints, idempotent migration-0046 persistence, and an
+account-scoped query view. It still performs no provider action. V020-11's
+CLI-first product rehearsal is next; hosted transport and native clients remain
+later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages

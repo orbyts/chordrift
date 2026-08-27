@@ -28,7 +28,9 @@ V020-09 consumes only explicit recipe inputs and prepared candidate facts. Its
 deterministic selection draft enforces explicit exclusion and hard collection
 boundaries, reports unavailable evidence instead of guessing, and creates no
 approved collection intent or provider change. Exact ordered Spin presentation
-remains V020-10.
+is now implemented in V020-10 as a provider-free immutable preview. Every track
+has structured selection and ordering reasons, and shortfalls remain warnings;
+approval, publication, and provider mutation remain later boundaries.
 
 ## Confidence policy
 

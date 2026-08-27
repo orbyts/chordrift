@@ -77,7 +77,7 @@ deterministic provider-free Spins.
 - [x] **V020-09 — Discovery + Rediscovery recipe v1.** Implement immutable source
   lanes, allocation, familiarity cadence, eligibility, hard boundaries,
   repetition/artist budgets, and simple narrative sections.
-- [ ] **V020-10 — Deterministic Spin preview.** Persist and display the exact
+- [x] **V020-10 — Deterministic Spin preview.** Persist and display the exact
   ordered tracks, selection and ordering reasons, recipe revision, capability
   snapshot, input fingerprint, and seed. Replaying identical inputs must produce
   identical output.
@@ -174,7 +174,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-10 — Deterministic Spin preview`.
+**Next slice:** `V020-11 — CLI-first product rehearsal`.
 
 ## Portable core and native clients
 

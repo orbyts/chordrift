@@ -8,23 +8,41 @@ archive contents.
 
 Last updated: 2026-08-27.
 
-## Start the next task here: v0.2.0 slice V020-10
+## Start the next task here: v0.2.0 slice V020-11
 
-Implement only `V020-10 — Deterministic Spin preview` from the authoritative
-execution map at the top of `ROADMAP.md`. Consume V020-09's deterministic
-unordered selection draft, assign the exact playback order, and persist/display
-the preview with concise selection and ordering reasons for every track. Bind
-the Spin to its account-owned recipe revision, capability snapshot, canonical
-input fingerprint, and deterministic seed. Replaying identical inputs must
-produce identical selected tracks, order, reasons, and identity.
+Implement only `V020-11 — CLI-first product rehearsal` from the authoritative
+execution map at the top of `ROADMAP.md`. Add one consistent development-line
+CLI surface for onboarding input capture/audit, collection and immutable recipe
+review, recipe execution, and exact Spin preview creation/display. Add an
+installed-binary helper workflow that can compare inventory-only and explicitly
+enriched results and reach the same Rust-owned preview without reimplementing
+domain behavior in CLI parsing or presentation.
 
-Do not add or change released CLI commands/output (CLI rehearsal is V020-11),
-approve collection intent, publish or write to a provider, access a live
-provider, change credentials/configuration, or apply migration 0046 to
-production Neon. Keep provider behavior fake/provider-free and use only an
-isolated PostgreSQL 18 database for the required Spin persistence proof.
+Do not alter the released v0.1.4 command meanings or its normal daily workflow,
+approve inferred collection intent, publish/approve a Spin, write to a provider,
+change credentials/configuration, access production Neon, or apply migration
+0046 there. Keep the rehearsal provider-write-free and use fake inputs plus an
+isolated PostgreSQL 18 database unless a separately reviewed read-only personal
+comparison is explicitly approved. Do not begin V020-12 publication planning.
 
-V020-01 through V020-09 are complete. V020-09 adds the public
+V020-01 through V020-10 are complete. V020-10 adds the public `spin_preview`
+boundary behind `ApplicationFacade`. It verifies V020-09's unordered draft and
+capability snapshot, derives a stable account/input/seed Spin identity, assigns
+exact one-based playback order from cadence, lifecycle narrative, section
+capacity, artist spacing, and SHA-256 seed ranks, and emits structured selection
+and ordering reasons for every track. The complete ordered value has a stable
+fingerprint and retains honest unfilled-seat, cadence, spacing, duration-policy,
+and cross-output-policy warnings. `SpinPreviewBoundary` persists and reloads the
+exact value through migration 0046's existing `playlist_spins` and
+`playlist_spin_tracks` tables, preserves the full `u64` seed, returns identical
+command replay, and exposes account-scoped `Query::SpinPreview` display. Its
+provider-free and isolated PostgreSQL 18 proofs cover deterministic replay,
+seed variation, reasons, sections, degradation, mutated inputs, cross-account
+create/read, and zero publication rows. It adds no migration, CLI command,
+provider port, production access, or provider write. See
+`docs/design/DETERMINISTIC_SPIN_PREVIEW_V020_10.md`.
+
+V020-09 adds the public
 `recipe_execution` boundary behind `ApplicationFacade`. It canonicalizes one
 account-owned immutable recipe revision and its prepared candidates, allocates
 positive source weights deterministically, reserves familiar-anchor and

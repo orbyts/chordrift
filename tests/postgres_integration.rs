@@ -1,4 +1,4 @@
-use std::{cell::Cell, collections::BTreeMap, future};
+use std::{cell::Cell, collections::BTreeMap, future, num::NonZeroU16};
 
 use chordrift::{
     application::ApplicationFacade,
@@ -8,9 +8,13 @@ use chordrift::{
     },
     db, db_reports,
     domain::{
-        AccountContext, CapabilityStatus, ChordriftAccountId, EvidenceCapabilities,
-        EvidenceCapability, ProviderAccountId, ProviderCapabilities, ProviderCapability,
-        ProviderConnectionId, ProviderConnectionIdentity, ProviderNamespace,
+        AccountContext, AccountOwnedId, AllocationWeight, CanonicalArtistId, CanonicalTrackId,
+        CapabilityStatus, ChordriftAccountId, CollectionId, EvidenceCapabilities,
+        EvidenceCapability, FamiliarityCadence, GuardrailKind, OrderingNarrative,
+        ProviderAccountId, ProviderCapabilities, ProviderCapability, ProviderConnectionId,
+        ProviderConnectionIdentity, ProviderNamespace, RecipeId, RecipeRevisionId,
+        RecipeRevisionIdentity, RecipeSection, RecipeSource, RecipeV1, SourceAllocation,
+        SourceLane,
     },
     onboarding::{
         ContentFingerprint, OnboardingEvidence, OnboardingInputs, OnboardingInventory,
@@ -21,6 +25,11 @@ use chordrift::{
         EnrichedAuditLimitation, InventoryOnlyAuditBoundary, StarterCollectionBasis,
         StarterProposalConfidence, StrengthenedConclusionKind,
     },
+    recipe_execution::{
+        CandidateEligibility, RecipeCandidate, RecipeExecutionRequest, RecipeExecutor,
+        SelectionBudgets,
+    },
+    spin_preview::{SpinPreviewBoundary, SpinPreviewInput},
 };
 use serde_json::json;
 use storexa::{Database, DatabaseConfig, PostgresProvider};
@@ -1087,6 +1096,204 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     .bind(first_collection_id)
     .execute(database.pool())
     .await?;
+
+    let product_account = ChordriftAccountId::from_uuid(chordrift_account_id);
+    let collection_source = RecipeSource::Collection(AccountOwnedId::new(
+        product_account,
+        CollectionId::from_uuid(first_collection_id),
+    ));
+    let spin_recipe = RecipeV1::new(
+        RecipeRevisionIdentity {
+            recipe_id: AccountOwnedId::new(product_account, RecipeId::from_uuid(recipe_id)),
+            revision_id: RecipeRevisionId::from_uuid(recipe_revision_id),
+        },
+        vec![
+            SourceAllocation {
+                lane: SourceLane::Discovery,
+                source: collection_source.clone(),
+                weight: AllocationWeight::new(1),
+            },
+            SourceAllocation {
+                lane: SourceLane::Familiar,
+                source: collection_source.clone(),
+                weight: AllocationWeight::new(1),
+            },
+        ],
+        FamiliarityCadence::Every(NonZeroU16::new(2).expect("nonzero")),
+        OrderingNarrative::SectionedJourney,
+        vec![
+            RecipeSection::WarmUp,
+            RecipeSection::Focus,
+            RecipeSection::Landing,
+        ],
+        vec![
+            GuardrailKind::HardBoundaries,
+            GuardrailKind::ArtistRepetition,
+            GuardrailKind::ArtistSpacing,
+        ],
+    )
+    .expect("Spin fixture recipe is valid");
+    sqlx::query("UPDATE playlist_recipe_revisions SET recipe_document = $1 WHERE id = $2")
+        .bind(serde_json::to_value(&spin_recipe).expect("recipe serializes"))
+        .bind(recipe_revision_id)
+        .execute(database.pool())
+        .await?;
+    sqlx::query(
+        "INSERT INTO playlist_recipe_dependencies
+         (chordrift_account_id, recipe_revision_id, lane, dependency_kind,
+          collection_id, allocation_weight)
+         VALUES ($1, $2, 'familiar', 'collection', $3, 1)",
+    )
+    .bind(chordrift_account_id)
+    .bind(recipe_revision_id)
+    .bind(first_collection_id)
+    .execute(database.pool())
+    .await?;
+
+    let canonical_tracks: Vec<Uuid> =
+        sqlx::query_scalar("SELECT id FROM tracks ORDER BY title, id LIMIT 4")
+            .fetch_all(database.pool())
+            .await?;
+    assert_eq!(canonical_tracks.len(), 4);
+    let spin_candidates = canonical_tracks
+        .iter()
+        .enumerate()
+        .map(|(index, track_id)| {
+            RecipeCandidate::new(
+                AccountOwnedId::new(product_account, CanonicalTrackId::from_uuid(*track_id)),
+                vec![CanonicalArtistId::from_uuid(Uuid::from_u128(
+                    500 + u128::try_from(index % 3).expect("fixture index fits"),
+                ))],
+                if index < 2 {
+                    SourceLane::Discovery
+                } else {
+                    SourceLane::Familiar
+                },
+                collection_source.clone(),
+                100 - u64::try_from(index).expect("fixture index fits"),
+                CandidateEligibility {
+                    in_current_inventory: true,
+                    playable: true,
+                    explicitly_excluded: false,
+                },
+                vec![AccountOwnedId::new(
+                    product_account,
+                    CollectionId::from_uuid(first_collection_id),
+                )],
+            )
+            .expect("Spin fixture candidate is valid")
+        })
+        .collect();
+    let recipe_request = RecipeExecutionRequest::new(
+        spin_recipe,
+        NonZeroU16::new(4).expect("nonzero"),
+        spin_candidates,
+        EvidenceCapabilities::default(),
+        vec![AccountOwnedId::new(
+            product_account,
+            CollectionId::from_uuid(first_collection_id),
+        )],
+        SelectionBudgets {
+            max_occurrences_per_track: NonZeroU16::new(1).expect("nonzero"),
+            max_tracks_per_artist: NonZeroU16::new(2).expect("nonzero"),
+        },
+    )
+    .expect("Spin fixture request is valid");
+    let spin_input = SpinPreviewInput {
+        draft: RecipeExecutor::new()
+            .execute(&recipe_request)
+            .expect("Spin fixture recipe executes"),
+        capability_snapshot: EvidenceCapabilities::default(),
+        seed: u64::MAX,
+    };
+    let preview_request = CommandRequest {
+        contract_version: CONTRACT_VERSION,
+        request_id: Default::default(),
+        idempotency_key: IdempotencyKey::new(),
+        command: Command::PreviewSpin {
+            recipe_revision_id: ResourceId::from_uuid(recipe_revision_id),
+        },
+    };
+    let preview_boundary = SpinPreviewBoundary::new(&database);
+    let preview = ApplicationFacade::new()
+        .invoke(preview_boundary.create_invocation(product_account, &preview_request, &spin_input))
+        .await?
+        .expect("provider-free Spin preview persists");
+    assert!(preview.playback_order_assigned);
+    assert!(preview.verify_fingerprint().expect("preview verifies"));
+    assert_eq!(preview.tracks.len(), 4);
+    assert_eq!(preview.tracks[1].position, 2);
+    assert_eq!(
+        preview.tracks[1].selection_reason.lane,
+        SourceLane::Familiar
+    );
+    assert_eq!(preview.tracks[3].position, 4);
+    assert_eq!(
+        preview.tracks[3].selection_reason.lane,
+        SourceLane::Familiar
+    );
+
+    let replayed_preview = ApplicationFacade::new()
+        .invoke(preview_boundary.create_invocation(product_account, &preview_request, &spin_input))
+        .await?
+        .expect("identical preview replay succeeds");
+    assert_eq!(replayed_preview, preview);
+    let preview_query = QueryRequest {
+        contract_version: CONTRACT_VERSION,
+        request_id: Default::default(),
+        query: Query::SpinPreview {
+            spin_id: ResourceId::from_uuid(preview.identity.spin_id().into_resource_id().as_uuid()),
+        },
+    };
+    let displayed_preview = ApplicationFacade::new()
+        .invoke(preview_boundary.read_invocation(product_account, &preview_query))
+        .await?
+        .expect("persisted preview displays");
+    assert_eq!(displayed_preview.value, preview);
+    let persisted_seed: String =
+        sqlx::query_scalar("SELECT seed::text FROM playlist_spins WHERE id = $1")
+            .bind(preview.identity.spin_id().into_resource_id().as_uuid())
+            .fetch_one(database.pool())
+            .await?;
+    assert_eq!(persisted_seed, u64::MAX.to_string());
+    let persisted_track_rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM playlist_spin_tracks WHERE spin_id = $1
+           AND jsonb_typeof(selection_reason) = 'object'
+           AND jsonb_typeof(ordering_reason) = 'object'",
+    )
+    .bind(preview.identity.spin_id().into_resource_id().as_uuid())
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(persisted_track_rows, 4);
+    let cross_account_preview = ApplicationFacade::new()
+        .invoke(preview_boundary.create_invocation(
+            ChordriftAccountId::from_uuid(other_chordrift_account_id),
+            &preview_request,
+            &spin_input,
+        ))
+        .await?
+        .expect_err("another account cannot persist this Spin");
+    assert_eq!(
+        cross_account_preview.client_error().code,
+        chordrift::contract::ErrorCode::PermissionDenied
+    );
+    let cross_account_read = ApplicationFacade::new()
+        .invoke(preview_boundary.read_invocation(
+            ChordriftAccountId::from_uuid(other_chordrift_account_id),
+            &preview_query,
+        ))
+        .await?
+        .expect_err("another account cannot display this Spin");
+    assert_eq!(
+        cross_account_read.client_error().code,
+        chordrift::contract::ErrorCode::ResourceNotFound
+    );
+    let preview_publications: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM playlist_spin_publications")
+            .fetch_one(database.pool())
+            .await?;
+    assert_eq!(preview_publications, 0);
+
     let spin_id: Uuid = sqlx::query_scalar(
         "INSERT INTO playlist_spins
          (chordrift_account_id, recipe_revision_id, onboarding_session_id,

@@ -21,7 +21,9 @@ the released CLI remain on the v0.1.4 path. V020-08 applies the same ownership
 check before resolving the selected history import by provider account and
 content fingerprint. V020-09 then accepts only account-owned recipe/candidate
 values and rejects cross-account collection sources or boundaries before its
-pure in-memory selection; it has no provider port.
+pure in-memory selection; it has no provider port. V020-10 validates the same
+owner across the command, recipe revision, draft tracks, and persisted Spin;
+account-scoped reads hide another account's Spin as not found.
 
 ## Implemented application boundary
 
@@ -71,6 +73,12 @@ sources participate only when the supplied capability snapshot is available or
 degraded; unavailable sources are disabled visibly, not emulated through a
 different provider. The executor is provider-free and storage-free. See the
 [recipe execution record](DISCOVERY_REDISCOVERY_RECIPE_V020_09.md).
+
+V020-10's `SpinPreviewBoundary` likewise has no provider port. Its isolated
+PostgreSQL proof rejects cross-account creation before persistence and returns
+resource-not-found for a cross-account preview query. The database's composite
+recipe ownership and application-level track ownership checks both remain in
+force. See the [Spin preview record](DETERMINISTIC_SPIN_PREVIEW_V020_10.md).
 
 ## Current account model
 

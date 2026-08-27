@@ -13,7 +13,9 @@ implements that product-schema foundation, V020-06 uses its onboarding tables,
 V020-07 reads the referenced immutable inventory revisions, and V020-08 reads
 one explicitly fingerprinted database-v2 listening import in isolated tests;
 V020-09 consumes prepared provider-neutral candidate facts entirely in memory
-and adds no schema or database access. Migration 0046 is not applied to
+and adds no schema or database access. V020-10 persists exact ordered previews
+in migration 0046's existing `playlist_spins` and `playlist_spin_tracks` tables
+without changing database-v2 or the migration. Migration 0046 is not applied to
 production Neon.
 
 Status: database-v2 foundation complete in the released v0.1.4 runtime, updated
@@ -54,7 +56,9 @@ existing `listening_evidence_imports`, historical identities, and normalized
 events without another schema change. The
 [V020-09 recipe executor](DISCOVERY_REDISCOVERY_RECIPE_V020_09.md) is a pure
 Rust selection boundary and likewise leaves database-v2 and migration 0046
-unchanged.
+unchanged. The [V020-10 Spin preview](DETERMINISTIC_SPIN_PREVIEW_V020_10.md)
+is the first runtime consumer of the existing Spin tables; it adds no migration
+and performs no provider operation.
 
 ## Why this redesign existed
 

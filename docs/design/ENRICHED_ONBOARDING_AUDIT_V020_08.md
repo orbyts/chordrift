@@ -83,6 +83,8 @@ recipe execution, Spin, or publication behavior.
 
 `V020-09 — Discovery + Rediscovery recipe v1` now consumes prepared provider-
 neutral inventory and evidence facts through an immutable, deterministic
-selection boundary. It does not infer preference from this audit and does not
-begin the persisted ordered Spin preview assigned to V020-10 or provider
-publication. See [the focused record](DISCOVERY_REDISCOVERY_RECIPE_V020_09.md).
+selection boundary. It does not infer preference from this audit. V020-10 now
+orders and persists a separately verified recipe draft; neither boundary begins
+provider publication. See the
+[recipe record](DISCOVERY_REDISCOVERY_RECIPE_V020_09.md) and
+[Spin record](DETERMINISTIC_SPIN_PREVIEW_V020_10.md).

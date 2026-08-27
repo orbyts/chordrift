@@ -86,10 +86,11 @@ V020-09 adds no migration and does not access PostgreSQL. Migration 0046 remains
 the already rehearsed additive persistence foundation and remains unapplied to
 production Neon. The installed v0.1.4 workflow is unchanged.
 
-## Boundary for V020-10
+## V020-10 consumer
 
-`V020-10 — Deterministic Spin preview` may consume this draft to assign and
-persist the exact ordered tracks. It must add selection and ordering reasons,
-the recipe revision, capability snapshot, input fingerprint, and deterministic
-seed to the Spin preview, and prove identical replay. It must not reinterpret
-the canonical serialization order from V020-09 as playback order.
+`V020-10 — Deterministic Spin preview` now consumes this verified draft, using
+the ordering narrative carried in the draft rather than its canonical
+serialization order. It assigns and persists exact tracks, selection/ordering
+reasons, recipe revision, capability snapshot, input fingerprint, and seed, and
+proves identical replay. See the
+[focused Spin record](DETERMINISTIC_SPIN_PREVIEW_V020_10.md).
