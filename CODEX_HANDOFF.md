@@ -8,7 +8,29 @@ archive contents.
 
 Last updated: 2026-08-26.
 
-## Start the next task here: observe the released v0.1.4 workflow
+## Start the next task here: v0.2.0 slice V020-01
+
+Implement only `V020-01 — Application contract foundation` from the
+authoritative execution map at the top of `ROADMAP.md`. Define versioned Rust
+command, query, lifecycle-event, progress, cancellation, structured-error, and
+compatibility types with focused contract tests. Establish boundaries that the
+CLI, hosted service, and future native clients can share, but do not yet route
+existing CLI handlers through them; that is V020-02.
+
+This slice must not change CLI behavior or output, database schema or queries,
+configuration, the production Neon database, or Spotify. It requires no
+production credentials. Run formatting, strict Clippy, and relevant unit/doc
+tests; update the execution checkbox and this handoff; commit and push. If the
+work reveals a decision that would materially change the command/query/event
+contract, stop and request user direction instead of absorbing V020-02 or later
+work.
+
+The user continues normal cleanup and listening with released v0.1.4 while
+v0.2.0 is built. Treat any real v0.1.4 defect as event-driven `release/0.1`
+maintenance; do not retrofit v0.2 features into that line. Experimental v0.2
+database work remains local until the separately approved candidate gate.
+
+## Released v0.1.4 operational state
 
 Chordrift v0.1.4 is released from commit
 `657c85a995bdff92559bbd819f2244c9ee54ca71`. GitHub CI run

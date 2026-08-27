@@ -6,6 +6,176 @@ of truth throughout, while Spotify and Apple Music remain provider adapters.
 The Spotify downloadable history archive is an optional, independently
 importable enrichment source. No other milestone is blocked on receiving it.
 
+## Release execution map
+
+This section is the authoritative ordered backlog. Each slice is one bounded
+Codex task and ends with tests appropriate to its risk, documentation and
+`CODEX_HANDOFF.md` updates, a commit, and a push. `CODEX_HANDOFF.md` identifies
+the one slice that is currently allowed to start. Later narrative sections
+preserve design rationale and completed migration history; they do not override
+this order.
+
+Normal use of released v0.1.4 continues throughout v0.2 development. The live
+`chordrift` database remains authoritative for listening evidence, configured
+intake, exclusions, Re-evaluate state, classifications, and verified sync
+history. v0.2 development uses isolated local PostgreSQL rehearsals. It must not
+dual-write experimental state into the live database or change Spotify unless a
+later exact plan receives separate approval.
+
+### v0.1.x maintenance line
+
+Runtime behavior is frozen except for correctness, security, compatibility,
+and serious usability fixes discovered during normal use.
+
+- [ ] **M01 — Establish the maintenance line when the first fix is needed.**
+  Create `release/0.1` from the last compatible main commit; do not interrupt
+  the installed v0.1.4 workflow merely to create a release.
+- [ ] **M02 — Reproduce and fix one reported defect.** Add a regression test,
+  preserve database/provider safety, and carry the fix into both `release/0.1`
+  and `main`.
+- [ ] **M03 — Publish the next patch only when warranted.** Use v0.1.5, then
+  v0.1.6 and so on. Cargo releases do not use four-part versions such as
+  v0.1.4.1.
+
+Maintenance slices are event-driven and may interrupt the v0.2 sequence only
+for a real reported defect. They are not prerequisites for v0.2.0.
+
+### v0.2.0 — Portable core and CLI-first Spins
+
+Goal: prove the new product model end to end through the CLI, migrate the
+latest personal state without interrupting v0.1.x use, and generate the first
+deterministic provider-free Spins.
+
+- [ ] **V020-01 — Application contract foundation.** Define versioned command,
+  query, event, progress, cancellation, structured-error, and compatibility
+  types. Add contract tests. Do not change CLI behavior, SQL, configuration,
+  Neon, or Spotify.
+- [ ] **V020-02 — CLI application-facade parity.** Route existing CLI handlers
+  through one Rust application facade while preserving commands, redirected
+  output, interactive presentation, and provider/database behavior.
+- [ ] **V020-03 — Provider-neutral domain foundation.** Add typed ownership and
+  provider IDs, capability reports, collection membership strength, playlist-
+  surface axes, recipe-v1 values, and Spin identities without leaking SQL or
+  Spotify payload types.
+- [ ] **V020-04 — Isolation and fake-provider proof.** Add two-account and two-
+  provider-namespace adversarial tests plus deterministic generation,
+  idempotency, cancellation, retry, and unsupported-capability coverage.
+- [ ] **V020-05 — Additive schema plan and local rehearsal.** Reconcile proposed
+  ownership, collection, surface, recipe, Spin, onboarding-session, and
+  publication-link tables with existing equivalents. Implement and verify an
+  additive migration only on isolated PostgreSQL 18.
+- [ ] **V020-06 — Onboarding session boundary.** Allow a session to read a
+  provider inventory and selected evidence while ignoring existing Chordrift
+  intent by default. Persist session inputs and output provenance without any
+  provider write.
+- [ ] **V020-07 — Inventory-only new-account audit.** Produce an honest library,
+  overlap, uncertainty, and capability report plus a starter organization using
+  OAuth/current-inventory evidence alone.
+- [ ] **V020-08 — Enriched new-account audit.** Run the same acceptance path
+  with extended listening evidence and explain exactly which conclusions became
+  stronger. The inventory-only path must remain usable.
+- [ ] **V020-09 — Discovery + Rediscovery recipe v1.** Implement immutable source
+  lanes, allocation, familiarity cadence, eligibility, hard boundaries,
+  repetition/artist budgets, and simple narrative sections.
+- [ ] **V020-10 — Deterministic Spin preview.** Persist and display the exact
+  ordered tracks, selection and ordering reasons, recipe revision, capability
+  snapshot, input fingerprint, and seed. Replaying identical inputs must produce
+  identical output.
+- [ ] **V020-11 — CLI-first product rehearsal.** Add consistent onboarding,
+  collection, recipe, and Spin preview commands plus an installed-binary helper
+  workflow. Compare inventory-only and enriched results without provider writes.
+- [ ] **V020-12 — Publication-plan integration.** Convert an approved Spin into
+  the existing immutable plan/readiness/apply/verify model. Exercise planning
+  and verification with a fake provider; stop before a real Spotify write.
+- [ ] **V020-13 — Latest-state migration rehearsal.** Take a new logical backup
+  of the then-current live database, migrate a local copy, and compare current
+  inventory/order, intake, exclusions, Re-evaluate, assignments, listening
+  evidence, archives, and durable plan/apply/verification history.
+- [ ] **V020-14 — Candidate and personal cutover gate.** Create a fresh candidate
+  only when local rehearsal passes and capacity permits. Migrate the newest live
+  state, verify runtime and invariants, present exact database and Spotify plans,
+  and stop for separate approvals before connection cutover or provider writes.
+- [ ] **V020-15 — Release v0.2.0.** Complete formatting, strict Clippy, unit/doc/
+  PostgreSQL integration tests, packaging, recovery documentation, GitHub
+  release, and crates.io publication after the personal candidate is verified.
+
+### v0.2.1 — Hosted Rust authority
+
+Goal: make the same application contract safely consumable by shipped clients
+without distributing database or provider credentials.
+
+- [ ] **V021-01 — Authenticated service transport.** Expose the existing
+  command/query/event contract without redefining domain behavior.
+- [ ] **V021-02 — Product identity and authorization.** Implement sessions,
+  account ownership, revocation, and tenant-safe authorization tests.
+- [ ] **V021-03 — Encrypted provider credential vault.** Keep refresh credentials
+  server-side with rotation and revocation; clients retain only Chordrift
+  sessions.
+- [ ] **V021-04 — Durable background operations.** Add job persistence,
+  progress, cancellation, retry, recovery, and idempotent replay.
+- [ ] **V021-05 — Remote CLI parity.** Make the installed CLI an authenticated
+  service client while retaining an explicit local development transport.
+- [ ] **V021-06 — Service deployment and release.** Select hosting and product
+  authentication with the user, verify backup/restore and observability, then
+  release without exposing Neon or provider secrets.
+
+### v0.2.2 — Native macOS client
+
+- [ ] **V022-01 — SwiftUI shell and generated client binding.** Establish native
+  navigation, application state, compatibility handshake, and accessibility.
+- [ ] **V022-02 — Sign-in and Spotify connection.** Implement system-browser
+  OAuth handoff and Keychain storage for the Chordrift session only.
+- [ ] **V022-03 — Onboarding and library audit.** Render inventory, evidence
+  availability, uncertainty, and preserve-or-organize choice.
+- [ ] **V022-04 — Collections, recipes, and Spin preview.** Render Rust-owned
+  views with native SwiftUI and Liquid Glass where supported.
+- [ ] **V022-05 — Publication and operations.** Present exact diffs, approval,
+  progress, cancellation, recovery, and verification without hidden writes.
+- [ ] **V022-06 — macOS release gate.** Complete accessibility, performance,
+  signing, notarization, packaging, update, and recovery tests.
+
+### v0.2.3 — Native Windows client and portability proof
+
+- [ ] **V023-01 — Select and establish the native Windows shell.** Keep the
+  client contract independent of the chosen presentation framework.
+- [ ] **V023-02 — Windows authentication and OS integration.** Add OAuth handoff,
+  Credential Manager session storage, notifications, links, and lifecycle.
+- [ ] **V023-03 — Workflow parity.** Support onboarding, collection review,
+  recipe/Spin preview, publication approval, progress, and recovery.
+- [ ] **V023-04 — Cross-platform conformance.** Run identical contract fixtures
+  through CLI, macOS, and Windows clients and prove Rust-owned decisions match.
+- [ ] **V023-05 — Windows release gate.** Complete accessibility, signing,
+  packaging, update, performance, and recovery tests.
+
+### v0.3.0 through v1.0.0
+
+Later releases have stable outcomes but intentionally receive exact numbered
+slices at the preceding release boundary, after real use informs their shape:
+
+- **v0.3.0 — Agentic audit and visual recipe authoring:** collection-policy
+  editor, simple presets and advanced composition, deterministic visual
+  previews, generated name/artwork proposals, and exact provider diffs.
+- **v0.4.0 — Learned correction policies:** explicit correction evidence,
+  proposed reusable rules, confidence/conflict review, opt-in automatic routing,
+  and immediate overrides.
+- **v0.5.0 — Rolling listening experiences:** schedules, stable playlist
+  targets, atomic refresh, freshness and duplication budgets, narrative ordering,
+  notifications, comparison, and recovery.
+- **v0.6.0 — Multi-provider orchestration:** Apple Music as the second proven
+  adapter, cross-provider identity evidence, per-provider capability degradation,
+  and one account with several isolated provider connections.
+- **v0.7.0 — Additional native reach:** Linux or another client only when demand
+  justifies it, using the unchanged client contract.
+- **v0.8.0 — Privacy and portability:** complete account export, deletion,
+  retention controls, credential revocation, and restore-on-new-device flows.
+- **v0.9.0 — Product hardening:** installation, updates, accessibility,
+  performance/load budgets, observability, support diagnostics, failure
+  injection, and end-to-end recovery rehearsals.
+- **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
+  whose supported clients pass the same contract and safety suite.
+
+**Next slice:** `V020-01 — Application contract foundation`.
+
 ## Portable core and native clients
 
 Chordrift is one portable Rust product with several thin clients. The CLI is
@@ -630,7 +800,7 @@ album tracks into playlists; review-then-unsave remains the stricter
 alternative. The default policies for both albums and Liked Songs remain
 preserve.
 
-## v0.2.0 — Recipe foundation and native review UI
+## v0.2.0 — Portable core and CLI-first Spins
 
 The first acceptance target is CLI-first rather than UI-first. Treat the
 existing personal Spotify inventory and enrichment history as newly supplied
