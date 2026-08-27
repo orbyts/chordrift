@@ -520,13 +520,27 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     .await;
     assert!(cross_account_capability.is_err());
 
-    let checkpoint_id = seed_inventory_checkpoint(&database, account_id).await?;
+    // Keep the onboarding/audit inventory on its own provider connection. The
+    // retained Spotify persistence proof runs later against the legacy
+    // `fixture` label in the same CI database and must not inherit these
+    // content-addressed saved-surface revisions.
+    let audit_provider_account_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO provider_accounts
+         (id, provider, provider_account_id, account_label, chordrift_account_id)
+         VALUES ($1, 'spotify', 'v02007-fixture-user', 'v02007-fixture', $2)",
+    )
+    .bind(audit_provider_account_id)
+    .bind(chordrift_account_id)
+    .execute(database.pool())
+    .await?;
+    let checkpoint_id = seed_inventory_checkpoint(&database, audit_provider_account_id).await?;
     let provider_connection = ProviderConnectionIdentity {
-        connection_id: ProviderConnectionId::from_uuid(account_id),
+        connection_id: ProviderConnectionId::from_uuid(audit_provider_account_id),
         account_id: ChordriftAccountId::from_uuid(chordrift_account_id),
         provider_account_id: ProviderAccountId::new(
             ProviderNamespace::new("spotify").expect("namespace is valid"),
-            "fixture-user",
+            "v02007-fixture-user",
         )
         .expect("provider account is valid"),
     };
@@ -785,7 +799,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
             AND input_fingerprint IS NOT NULL",
     )
     .bind(chordrift_account_id)
-    .bind(account_id)
+    .bind(audit_provider_account_id)
     .fetch_one(database.pool())
     .await?;
     assert_eq!(captured_rows, 2);
@@ -796,7 +810,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     assert_eq!(publication_rows, 0);
 
     let wrong_owner_connection = ProviderConnectionIdentity {
-        connection_id: ProviderConnectionId::from_uuid(account_id),
+        connection_id: ProviderConnectionId::from_uuid(audit_provider_account_id),
         account_id: ChordriftAccountId::from_uuid(other_chordrift_account_id),
         provider_account_id: provider_connection.provider_account_id.clone(),
     };
