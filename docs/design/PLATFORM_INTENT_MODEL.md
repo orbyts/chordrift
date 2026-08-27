@@ -20,6 +20,10 @@ no-intent/no-write provenance through application code. V020-07 now reports
 observable current-library shape and a conservative starter organization while
 explicitly labeling user intent, listening behavior, and collection membership
 as not inferred. The proposal is unapproved and writes no intent or recipe.
+V020-08 adds directly observed listening, repetition, long-span, completion,
+skip, and history-only facts from one selected import, but explicitly does not
+translate those observations into preference, favorite status, collection
+membership, or approved intent.
 
 ## Confidence policy
 

@@ -93,5 +93,10 @@ Those boundaries remain separately reviewable.
 `V020-07 — Inventory-only new-account audit` now consumes only the captured
 current-inventory inputs and capability snapshot to produce an honest library,
 overlap, uncertainty, and starter-organization proposal. It remains read-only
-and does not begin the enriched-history comparison assigned to V020-08. See the
+and does not consume extended history. See the
 [inventory-only audit record](ONBOARDING_AUDIT_V020_07.md).
+
+V020-08 subsequently consumes the session form that explicitly selected one
+extended-history source. It verifies the captured fingerprint and record count
+against one account-owned import before reading its normalized events; see the
+[enriched audit record](ENRICHED_ONBOARDING_AUDIT_V020_08.md).

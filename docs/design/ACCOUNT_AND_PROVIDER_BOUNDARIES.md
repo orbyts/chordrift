@@ -17,7 +17,9 @@ V020-06 checks the persisted provider owner before a fake-provider onboarding
 read and stores one account-owned immutable session. V020-07 revalidates that
 owner and selected connection before reading the session's immutable revisions;
 its PostgreSQL proof rejects cross-account audit access. Production Spotify and
-the released CLI remain on the v0.1.4 path.
+the released CLI remain on the v0.1.4 path. V020-08 applies the same ownership
+check before resolving the selected history import by provider account and
+content fingerprint.
 
 ## Implemented application boundary
 
@@ -53,6 +55,13 @@ sessions on the inventory-only path, and creates neither collection intent nor
 provider work. Its cross-account rejection, unchanged session state, and zero
 additional fake-provider reads are covered by the isolated PostgreSQL proof.
 See the [inventory-only audit record](ONBOARDING_AUDIT_V020_07.md).
+
+V020-08's `EnrichedAuditBoundary` additionally requires one account-owned
+`extended_streaming_history` import whose archive hash and event count match the
+captured manifest. It reads only events linked to that import, rejects the
+inventory-only session mode and cross-account contexts, and still exposes no
+provider or intent mutation. See the
+[enriched audit record](ENRICHED_ONBOARDING_AUDIT_V020_08.md).
 
 ## Current account model
 

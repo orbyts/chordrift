@@ -10,8 +10,9 @@ The v0.2 product layer now under development is documented separately in
 account ownership, overlapping collections, versioned recipes, and reproducible
 Spins additively on this clean v2 foundation. Development migration 0046 now
 implements that product-schema foundation, V020-06 uses its onboarding tables,
-and V020-07 reads the referenced immutable inventory revisions in isolated
-tests; migration 0046 is not applied to production Neon.
+V020-07 reads the referenced immutable inventory revisions, and V020-08 reads
+one explicitly fingerprinted database-v2 listening import in isolated tests;
+migration 0046 is not applied to production Neon.
 
 Status: database-v2 foundation complete in the released v0.1.4 runtime, updated
 2026-08-27. The live project uses content-addressed current provider state,
@@ -46,6 +47,9 @@ consumer is the provider-read-only
 [V020-06 onboarding boundary](ONBOARDING_SESSION_V020_06.md); its first
 read-only result consumer is the
 [V020-07 inventory audit](ONBOARDING_AUDIT_V020_07.md).
+The [V020-08 enriched audit](ENRICHED_ONBOARDING_AUDIT_V020_08.md) reuses the
+existing `listening_evidence_imports`, historical identities, and normalized
+events without another schema change.
 
 ## Why this redesign existed
 

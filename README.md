@@ -44,8 +44,12 @@ inventory to return a deterministic library, overlap, uncertainty, capability,
 and preserve-first starter-organization report. It performs no provider or
 database writes, treats the proposal as unapproved, and explicitly refuses to
 infer listening behavior, user intent, or collection membership. The enriched
-audit is next in V020-08; generation, hosted transport, and native clients
-remain later work.
+V020-08 now runs that same inventory baseline with one explicitly selected,
+content-addressed extended-history import. It reports only directly supported
+gains—observed, repeated, long-term, history-only, completion, and skip
+evidence—with exact supporting record/track counts, while still refusing to
+infer preference or intent. Discovery + Rediscovery recipe v1 is next in
+V020-09; generation, hosted transport, and native clients remain later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages

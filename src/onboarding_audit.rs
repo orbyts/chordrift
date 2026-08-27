@@ -22,7 +22,7 @@ use crate::{
         AccountContext, CapabilityStatus, ChordriftAccountId, EvidenceCapabilities,
         EvidenceCapability, OnboardingSessionId, ProviderCapabilities, ProviderCapability,
     },
-    onboarding::ContentFingerprint,
+    onboarding::{ContentFingerprint, OnboardingEvidence},
 };
 
 /// Evidence boundary used to produce an onboarding audit.
@@ -31,6 +31,135 @@ use crate::{
 pub enum AuditEvidenceBasis {
     /// Only the immutable current provider inventory was consulted.
     CurrentInventoryOnly,
+}
+
+/// Evidence boundary used by the enriched onboarding audit.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnrichedAuditEvidenceBasis {
+    /// Current inventory plus one explicitly captured extended-history import.
+    CurrentInventoryAndExtendedHistory,
+}
+
+/// A conclusion that current inventory cannot establish by itself.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StrengthenedConclusionKind {
+    /// At least one selected-history play was observed.
+    ListeningObserved,
+    /// At least one track has more than one selected-history play.
+    RepeatedListeningObserved,
+    /// At least one track has observations at least 180 days apart.
+    LongTermListeningObserved,
+    /// Selected history includes a track outside the current inventory.
+    HistoryOutsideCurrentInventory,
+    /// Selected history contains explicit completion observations.
+    CompletionEvidenceObserved,
+    /// Selected history contains explicit skip observations.
+    SkipEvidenceObserved,
+}
+
+/// Strength available for one audit conclusion.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditConclusionStrength {
+    /// The inventory-only audit has no listening evidence for this conclusion.
+    UnavailableFromCurrentInventory,
+    /// The selected extended-history records directly support the conclusion.
+    DirectlyObservedFromExtendedHistory,
+}
+
+/// Exact explanation of one conclusion strengthened by extended history.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EvidenceStrengthening {
+    /// Stable conclusion category.
+    pub conclusion: StrengthenedConclusionKind,
+    /// Strength available from the unchanged inventory-only baseline.
+    pub inventory_only_strength: AuditConclusionStrength,
+    /// Strength after reading the selected history import.
+    pub enriched_strength: AuditConclusionStrength,
+    /// Selected-history records supporting this conclusion.
+    pub supporting_records: u64,
+    /// Distinct tracks supporting this conclusion.
+    pub supporting_tracks: u64,
+    /// Stable provider-neutral explanation suitable for a thin client.
+    pub explanation: String,
+}
+
+/// Aggregate facts from the one captured extended-history import.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ExtendedHistoryReport {
+    /// Captured archive content fingerprint.
+    pub content_fingerprint: ContentFingerprint,
+    /// Record count declared by the V020-06 input manifest and import row.
+    pub declared_records: u64,
+    /// Normalized records linked to the selected import.
+    pub readable_records: u64,
+    /// Non-superseded records usable for conclusions.
+    pub usable_records: u64,
+    /// Superseded records retained but excluded from conclusions.
+    pub superseded_records: u64,
+    /// Earliest usable observation, when present.
+    pub first_observed_at: Option<chrono::DateTime<Utc>>,
+    /// Latest usable observation, when present.
+    pub last_observed_at: Option<chrono::DateTime<Utc>>,
+    /// Distinct provider-track identities in usable history.
+    pub distinct_historical_tracks: u64,
+    /// Current-inventory tracks with at least one usable history record.
+    pub current_tracks_with_history: u64,
+    /// Historical tracks absent from the captured current inventory.
+    pub history_only_tracks: u64,
+    /// Tracks with two or more usable observations.
+    pub repeatedly_played_tracks: u64,
+    /// Records belonging to tracks with two or more usable observations.
+    pub repeated_track_records: u64,
+    /// Tracks observed across at least 180 days.
+    pub long_term_observed_tracks: u64,
+    /// Records belonging to tracks observed across at least 180 days.
+    pub long_term_observed_records: u64,
+    /// Records belonging to historical tracks outside current inventory.
+    pub history_only_records: u64,
+    /// Highest usable observation count for one track.
+    pub maximum_track_plays: u64,
+    /// Records explicitly marked completed.
+    pub completed_records: u64,
+    /// Distinct tracks with an explicitly completed record.
+    pub completed_tracks: u64,
+    /// Records explicitly marked skipped.
+    pub skipped_records: u64,
+    /// Distinct tracks with an explicitly skipped record.
+    pub skipped_tracks: u64,
+}
+
+/// Limits that remain even after selected extended history is available.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnrichedAuditLimitation {
+    /// Listening observations do not approve or explain user intent.
+    UserIntentNotInferred,
+    /// Listening observations do not establish collection membership.
+    CollectionMembershipNotInferred,
+    /// Repetition is not silently labeled as preference or favorite status.
+    PreferenceNotInferred,
+    /// Conclusions cover the captured import rather than all possible listening.
+    LimitedToSelectedHistory,
+}
+
+/// Enriched audit with an unchanged inventory-only baseline and traceable gains.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EnrichedOnboardingAudit {
+    /// Inventory-only analysis produced by the same acceptance path.
+    pub inventory_baseline: OnboardingAudit,
+    /// Evidence boundary used for the enriched result.
+    pub evidence_basis: EnrichedAuditEvidenceBasis,
+    /// Facts from the selected extended-history import.
+    pub history: ExtendedHistoryReport,
+    /// Only conclusions that became stronger, each with exact support counts.
+    pub strengthened_conclusions: Vec<EvidenceStrengthening>,
+    /// Inference limits that extended history does not remove.
+    pub remaining_limitations: Vec<EnrichedAuditLimitation>,
+    /// Fingerprint of the complete deterministic enriched value.
+    pub audit_fingerprint: ContentFingerprint,
 }
 
 /// Capability snapshot relevant to an inventory-only audit.
@@ -302,8 +431,25 @@ impl<'database> InventoryOnlyAuditBoundary<'database> {
         context: &AccountContext,
         request: &QueryRequest,
     ) -> Result<View<OnboardingAudit>, OnboardingAuditError> {
+        let (audit, _) = self
+            .read_baseline(context, request, AuditSessionSelection::InventoryOnly)
+            .await?;
+        Ok(View {
+            contract_version: CONTRACT_VERSION,
+            request_id: request.request_id,
+            generated_at: Utc::now(),
+            value: audit,
+        })
+    }
+
+    async fn read_baseline(
+        &self,
+        context: &AccountContext,
+        request: &QueryRequest,
+        selection: AuditSessionSelection,
+    ) -> Result<(OnboardingAudit, CapturedSession), OnboardingAuditError> {
         let session_id = validate_request(request)?;
-        let captured = self.load_session(context, session_id).await?;
+        let captured = self.load_session(context, session_id, selection).await?;
         let playlists = self.load_playlists(captured.checkpoint_id).await?;
         let raw_summary = self.load_summary(captured.checkpoint_id).await?;
         let saved_surfaces_missing = !raw_summary.saved_surfaces_present;
@@ -367,7 +513,7 @@ impl<'database> InventoryOnlyAuditBoundary<'database> {
             session_id,
             account_id: captured.account_id,
             provider_connection_id: ResourceId::from_uuid(captured.provider_account_id),
-            input_fingerprint: captured.input_fingerprint,
+            input_fingerprint: captured.input_fingerprint.clone(),
             audit_fingerprint,
             evidence_basis: AuditEvidenceBasis::CurrentInventoryOnly,
             capabilities,
@@ -377,18 +523,14 @@ impl<'database> InventoryOnlyAuditBoundary<'database> {
             uncertainty,
             starter_organization,
         };
-        Ok(View {
-            contract_version: CONTRACT_VERSION,
-            request_id: request.request_id,
-            generated_at: Utc::now(),
-            value: audit,
-        })
+        Ok((audit, captured))
     }
 
     async fn load_session(
         &self,
         context: &AccountContext,
         session_id: OnboardingSessionId,
+        selection: AuditSessionSelection,
     ) -> Result<CapturedSession, OnboardingAuditError> {
         let row = sqlx::query(
             "SELECT session.chordrift_account_id,
@@ -438,12 +580,21 @@ impl<'database> InventoryOnlyAuditBoundary<'database> {
         let ignored_existing_intent: bool = row.try_get("ignore_existing_intent")?;
         let input_manifest: Value = row.try_get("input_manifest")?;
         let output_provenance: Value = row.try_get("output_provenance")?;
-        if include_extended_history
-            || !ignored_existing_intent
-            || input_manifest
+        let evidence: Vec<OnboardingEvidence> = serde_json::from_value(
+            input_manifest
                 .get("evidence")
-                .and_then(Value::as_array)
-                .is_none_or(|evidence| !evidence.is_empty())
+                .cloned()
+                .ok_or_else(|| client_error(ErrorCode::StateConflict))?,
+        )
+        .map_err(|_| client_error(ErrorCode::StateConflict))?;
+        let selected_extended = evidence
+            .iter()
+            .filter(|item| item.capability == EvidenceCapability::ExtendedPlaybackHistory)
+            .count();
+        if include_extended_history != selection.include_extended_history()
+            || evidence.len() != selected_extended
+            || selected_extended != usize::from(include_extended_history)
+            || !ignored_existing_intent
             || input_manifest.get("ignore_existing_intent") != Some(&Value::Bool(true))
             || output_provenance.get("chordrift_intent_read") != Some(&Value::Bool(false))
             || output_provenance.get("provider_write_requested") != Some(&Value::Bool(false))
@@ -480,6 +631,8 @@ impl<'database> InventoryOnlyAuditBoundary<'database> {
             input_fingerprint,
             provider_capabilities,
             evidence_capabilities,
+            provider_namespace: row.try_get("provider")?,
+            evidence,
         })
     }
 
@@ -630,6 +783,250 @@ impl ApplicationInvocation for InventoryOnlyAuditInvocation<'_, '_> {
     }
 }
 
+/// PostgreSQL-backed enriched audit over one explicitly captured history import.
+pub struct EnrichedAuditBoundary<'database> {
+    database: &'database Database,
+}
+
+impl<'database> EnrichedAuditBoundary<'database> {
+    /// Creates an enriched audit boundary over Chordrift's database connection.
+    #[must_use]
+    pub const fn new(database: &'database Database) -> Self {
+        Self { database }
+    }
+
+    /// Reads the inventory baseline and its selected extended-history evidence.
+    pub async fn read(
+        &self,
+        context: &AccountContext,
+        request: &QueryRequest,
+    ) -> Result<View<EnrichedOnboardingAudit>, OnboardingAuditError> {
+        let inventory_boundary = InventoryOnlyAuditBoundary::new(self.database);
+        let (inventory_baseline, captured) = inventory_boundary
+            .read_baseline(context, request, AuditSessionSelection::ExtendedHistory)
+            .await?;
+        let evidence = captured
+            .evidence
+            .first()
+            .ok_or_else(|| client_error(ErrorCode::StateConflict))?;
+        let history = self.load_history(&captured, evidence).await?;
+        let strengthened_conclusions = strengthened_conclusions(&history);
+        let remaining_limitations = vec![
+            EnrichedAuditLimitation::UserIntentNotInferred,
+            EnrichedAuditLimitation::CollectionMembershipNotInferred,
+            EnrichedAuditLimitation::PreferenceNotInferred,
+            EnrichedAuditLimitation::LimitedToSelectedHistory,
+        ];
+        let audit_fingerprint = enriched_audit_fingerprint(
+            &inventory_baseline,
+            &history,
+            &strengthened_conclusions,
+            &remaining_limitations,
+        )?;
+        Ok(View {
+            contract_version: CONTRACT_VERSION,
+            request_id: request.request_id,
+            generated_at: Utc::now(),
+            value: EnrichedOnboardingAudit {
+                inventory_baseline,
+                evidence_basis: EnrichedAuditEvidenceBasis::CurrentInventoryAndExtendedHistory,
+                history,
+                strengthened_conclusions,
+                remaining_limitations,
+                audit_fingerprint,
+            },
+        })
+    }
+
+    async fn load_history(
+        &self,
+        captured: &CapturedSession,
+        evidence: &OnboardingEvidence,
+    ) -> Result<ExtendedHistoryReport, OnboardingAuditError> {
+        let import = sqlx::query(
+            "SELECT id, event_count::bigint AS declared_records
+               FROM listening_evidence_imports
+              WHERE provider_account_id = $1
+                AND provider = $2
+                AND archive_kind = 'extended_streaming_history'
+                AND archive_sha256 = $3",
+        )
+        .bind(captured.provider_account_id)
+        .bind(&captured.provider_namespace)
+        .bind(evidence.content_fingerprint.as_str())
+        .fetch_optional(self.database.pool())
+        .await
+        .map_err(ChordriftError::from)?;
+        let Some(import) = import else {
+            return Err(client_error(ErrorCode::StateConflict));
+        };
+        let declared_records = nonnegative(&import, "declared_records")?;
+        if declared_records != evidence.record_count {
+            return Err(client_error(ErrorCode::StateConflict));
+        }
+        let import_id: uuid::Uuid = import.try_get("id")?;
+        let row = sqlx::query(
+            "WITH current_track_ids AS (
+                 SELECT track.provider, track.provider_track_id
+                   FROM provider_inventory_checkpoint_playlists playlist
+                   JOIN provider_playlist_revision_tracks member
+                     ON member.revision_id = playlist.revision_id
+                   JOIN provider_tracks track ON track.id = member.provider_track_id
+                  WHERE playlist.checkpoint_id = $1
+                 UNION
+                 SELECT track.provider, track.provider_track_id
+                   FROM provider_inventory_checkpoint_saved_surfaces surface
+                   JOIN provider_saved_track_revision_tracks member
+                     ON member.revision_id = surface.saved_track_revision_id
+                   JOIN provider_tracks track ON track.id = member.provider_track_id
+                  WHERE surface.checkpoint_id = $1
+                 UNION
+                 SELECT track.provider, track.provider_track_id
+                   FROM provider_inventory_checkpoint_saved_surfaces surface
+                   JOIN provider_saved_album_revision_tracks member
+                     ON member.revision_id = surface.saved_album_revision_id
+                   JOIN provider_tracks track ON track.id = member.provider_track_id
+                  WHERE surface.checkpoint_id = $1
+             ), selected_events AS (
+                 SELECT event.played_at, event.completed, event.skipped,
+                        event.superseded_at, event.source_kind,
+                        identity.provider, identity.provider_track_id
+                   FROM normalized_listening_events event
+                   JOIN historical_provider_track_identities identity
+                     ON identity.id = event.historical_identity_id
+                  WHERE event.source_import_id = $2
+             ), usable_events AS (
+                 SELECT * FROM selected_events WHERE superseded_at IS NULL
+             ), track_history AS (
+                 SELECT provider, provider_track_id, count(*)::bigint AS plays,
+                        min(played_at) AS first_played_at,
+                        max(played_at) AS last_played_at
+                   FROM usable_events
+                  GROUP BY provider, provider_track_id
+             )
+             SELECT
+               (SELECT count(*)::bigint FROM selected_events) AS readable_records,
+               (SELECT count(*)::bigint FROM usable_events) AS usable_records,
+               (SELECT count(*)::bigint FROM selected_events
+                 WHERE superseded_at IS NOT NULL) AS superseded_records,
+               (SELECT count(*)::bigint FROM selected_events
+                 WHERE source_kind <> 'archive') AS invalid_source_records,
+               (SELECT min(played_at) FROM usable_events) AS first_observed_at,
+               (SELECT max(played_at) FROM usable_events) AS last_observed_at,
+               (SELECT count(*)::bigint FROM track_history)
+                 AS distinct_historical_tracks,
+               (SELECT count(*)::bigint FROM track_history history
+                 WHERE EXISTS (SELECT 1 FROM current_track_ids current
+                                WHERE current.provider = history.provider
+                                  AND current.provider_track_id = history.provider_track_id))
+                 AS current_tracks_with_history,
+               (SELECT count(*)::bigint FROM track_history history
+                 WHERE NOT EXISTS (SELECT 1 FROM current_track_ids current
+                                    WHERE current.provider = history.provider
+                                      AND current.provider_track_id = history.provider_track_id))
+                 AS history_only_tracks,
+               (SELECT count(*)::bigint FROM track_history WHERE plays >= 2)
+                 AS repeatedly_played_tracks,
+               COALESCE((SELECT sum(plays) FROM track_history WHERE plays >= 2), 0)::bigint
+                 AS repeated_track_records,
+               (SELECT count(*)::bigint FROM track_history
+                 WHERE last_played_at - first_played_at >= interval '180 days')
+                 AS long_term_observed_tracks,
+               COALESCE((SELECT sum(plays) FROM track_history
+                 WHERE last_played_at - first_played_at >= interval '180 days'), 0)::bigint
+                 AS long_term_observed_records,
+               COALESCE((SELECT sum(plays) FROM track_history history
+                 WHERE NOT EXISTS (SELECT 1 FROM current_track_ids current
+                                    WHERE current.provider = history.provider
+                                      AND current.provider_track_id = history.provider_track_id)), 0)::bigint
+                 AS history_only_records,
+               COALESCE((SELECT max(plays) FROM track_history), 0)::bigint
+                 AS maximum_track_plays,
+               (SELECT count(*)::bigint FROM usable_events WHERE completed IS TRUE)
+                 AS completed_records,
+               (SELECT count(DISTINCT (provider, provider_track_id))::bigint
+                  FROM usable_events WHERE completed IS TRUE) AS completed_tracks,
+               (SELECT count(*)::bigint FROM usable_events WHERE skipped IS TRUE)
+                 AS skipped_records,
+               (SELECT count(DISTINCT (provider, provider_track_id))::bigint
+                  FROM usable_events WHERE skipped IS TRUE) AS skipped_tracks",
+        )
+        .bind(captured.checkpoint_id)
+        .bind(import_id)
+        .fetch_one(self.database.pool())
+        .await
+        .map_err(ChordriftError::from)?;
+        let readable_records = nonnegative(&row, "readable_records")?;
+        if readable_records != declared_records || nonnegative(&row, "invalid_source_records")? != 0
+        {
+            return Err(client_error(ErrorCode::StateConflict));
+        }
+        Ok(ExtendedHistoryReport {
+            content_fingerprint: evidence.content_fingerprint.clone(),
+            declared_records,
+            readable_records,
+            usable_records: nonnegative(&row, "usable_records")?,
+            superseded_records: nonnegative(&row, "superseded_records")?,
+            first_observed_at: row.try_get("first_observed_at")?,
+            last_observed_at: row.try_get("last_observed_at")?,
+            distinct_historical_tracks: nonnegative(&row, "distinct_historical_tracks")?,
+            current_tracks_with_history: nonnegative(&row, "current_tracks_with_history")?,
+            history_only_tracks: nonnegative(&row, "history_only_tracks")?,
+            repeatedly_played_tracks: nonnegative(&row, "repeatedly_played_tracks")?,
+            repeated_track_records: nonnegative(&row, "repeated_track_records")?,
+            long_term_observed_tracks: nonnegative(&row, "long_term_observed_tracks")?,
+            long_term_observed_records: nonnegative(&row, "long_term_observed_records")?,
+            history_only_records: nonnegative(&row, "history_only_records")?,
+            maximum_track_plays: nonnegative(&row, "maximum_track_plays")?,
+            completed_records: nonnegative(&row, "completed_records")?,
+            completed_tracks: nonnegative(&row, "completed_tracks")?,
+            skipped_records: nonnegative(&row, "skipped_records")?,
+            skipped_tracks: nonnegative(&row, "skipped_tracks")?,
+        })
+    }
+
+    /// Wraps this query for execution through [`crate::application::ApplicationFacade`].
+    #[must_use]
+    pub const fn invocation<'request>(
+        &'request self,
+        context: &'request AccountContext,
+        request: &'request QueryRequest,
+    ) -> EnrichedAuditInvocation<'request, 'database> {
+        EnrichedAuditInvocation {
+            boundary: self,
+            context,
+            request,
+        }
+    }
+}
+
+/// One enriched onboarding query submitted through the shared application facade.
+pub struct EnrichedAuditInvocation<'request, 'database> {
+    boundary: &'request EnrichedAuditBoundary<'database>,
+    context: &'request AccountContext,
+    request: &'request QueryRequest,
+}
+
+impl ApplicationInvocation for EnrichedAuditInvocation<'_, '_> {
+    type Output = Result<View<EnrichedOnboardingAudit>, OnboardingAuditError>;
+
+    async fn execute(self) -> crate::Result<Self::Output> {
+        Ok(self.boundary.read(self.context, self.request).await)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum AuditSessionSelection {
+    InventoryOnly,
+    ExtendedHistory,
+}
+
+impl AuditSessionSelection {
+    const fn include_extended_history(self) -> bool {
+        matches!(self, Self::ExtendedHistory)
+    }
+}
+
 struct CapturedSession {
     account_id: ChordriftAccountId,
     provider_account_id: uuid::Uuid,
@@ -637,6 +1034,8 @@ struct CapturedSession {
     input_fingerprint: ContentFingerprint,
     provider_capabilities: ProviderCapabilities,
     evidence_capabilities: EvidenceCapabilities,
+    provider_namespace: String,
+    evidence: Vec<OnboardingEvidence>,
 }
 
 struct RawInventorySummary {
@@ -849,6 +1248,79 @@ fn audit_fingerprint(
     .map_err(|_| client_error(ErrorCode::Internal))
 }
 
+fn strengthened_conclusions(history: &ExtendedHistoryReport) -> Vec<EvidenceStrengthening> {
+    let mut conclusions = Vec::new();
+    let mut add = |conclusion, records, tracks, explanation: &str| {
+        if records > 0 || tracks > 0 {
+            conclusions.push(EvidenceStrengthening {
+                conclusion,
+                inventory_only_strength: AuditConclusionStrength::UnavailableFromCurrentInventory,
+                enriched_strength: AuditConclusionStrength::DirectlyObservedFromExtendedHistory,
+                supporting_records: records,
+                supporting_tracks: tracks,
+                explanation: explanation.to_owned(),
+            });
+        }
+    };
+    add(
+        StrengthenedConclusionKind::ListeningObserved,
+        history.usable_records,
+        history.distinct_historical_tracks,
+        "The selected extended-history import directly records listening events.",
+    );
+    add(
+        StrengthenedConclusionKind::RepeatedListeningObserved,
+        history.repeated_track_records,
+        history.repeatedly_played_tracks,
+        "At least two selected-history observations exist for each supporting track.",
+    );
+    add(
+        StrengthenedConclusionKind::LongTermListeningObserved,
+        history.long_term_observed_records,
+        history.long_term_observed_tracks,
+        "Supporting tracks have selected-history observations at least 180 days apart.",
+    );
+    add(
+        StrengthenedConclusionKind::HistoryOutsideCurrentInventory,
+        history.history_only_records,
+        history.history_only_tracks,
+        "Selected history includes provider-track identities absent from the captured inventory.",
+    );
+    add(
+        StrengthenedConclusionKind::CompletionEvidenceObserved,
+        history.completed_records,
+        history.completed_tracks,
+        "Selected history explicitly marks these records completed.",
+    );
+    add(
+        StrengthenedConclusionKind::SkipEvidenceObserved,
+        history.skipped_records,
+        history.skipped_tracks,
+        "Selected history explicitly marks these records skipped.",
+    );
+    conclusions
+}
+
+fn enriched_audit_fingerprint(
+    inventory_baseline: &OnboardingAudit,
+    history: &ExtendedHistoryReport,
+    strengthened_conclusions: &[EvidenceStrengthening],
+    remaining_limitations: &[EnrichedAuditLimitation],
+) -> Result<ContentFingerprint, OnboardingAuditError> {
+    let value = serde_json::json!({
+        "schema_version": 1,
+        "inventory_baseline": inventory_baseline,
+        "evidence_basis": EnrichedAuditEvidenceBasis::CurrentInventoryAndExtendedHistory,
+        "history": history,
+        "strengthened_conclusions": strengthened_conclusions,
+        "remaining_limitations": remaining_limitations,
+    });
+    ContentFingerprint::new(hex_sha256(
+        &serde_json::to_vec(&value).map_err(ChordriftError::from)?,
+    ))
+    .map_err(|_| client_error(ErrorCode::Internal))
+}
+
 fn nonnegative(row: &PgRow, column: &str) -> Result<u64, OnboardingAuditError> {
     u64::try_from(row.try_get::<i64, _>(column)?)
         .map_err(|_| client_error(ErrorCode::StateConflict))
@@ -869,6 +1341,32 @@ fn hex_sha256(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn history_report() -> ExtendedHistoryReport {
+        ExtendedHistoryReport {
+            content_fingerprint: ContentFingerprint::new("e".repeat(64))
+                .expect("fixture fingerprint is valid"),
+            declared_records: 0,
+            readable_records: 0,
+            usable_records: 0,
+            superseded_records: 0,
+            first_observed_at: None,
+            last_observed_at: None,
+            distinct_historical_tracks: 0,
+            current_tracks_with_history: 0,
+            history_only_tracks: 0,
+            repeatedly_played_tracks: 0,
+            repeated_track_records: 0,
+            long_term_observed_tracks: 0,
+            long_term_observed_records: 0,
+            history_only_records: 0,
+            maximum_track_plays: 0,
+            completed_records: 0,
+            completed_tracks: 0,
+            skipped_records: 0,
+            skipped_tracks: 0,
+        }
+    }
 
     fn playlist(id: u128, name: &str, tracks: u64) -> AuditedPlaylist {
         AuditedPlaylist {
@@ -930,5 +1428,29 @@ mod tests {
                 .limitations
                 .contains(&AuditLimitation::ExtendedHistoryNotUsed)
         );
+    }
+
+    #[test]
+    fn enriched_conclusions_include_only_directly_supported_gains() {
+        assert!(strengthened_conclusions(&history_report()).is_empty());
+
+        let mut history = history_report();
+        history.usable_records = 3;
+        history.distinct_historical_tracks = 2;
+        history.repeatedly_played_tracks = 1;
+        history.repeated_track_records = 2;
+        let conclusions = strengthened_conclusions(&history);
+
+        assert_eq!(conclusions.len(), 2);
+        assert_eq!(
+            conclusions[0].inventory_only_strength,
+            AuditConclusionStrength::UnavailableFromCurrentInventory
+        );
+        assert_eq!(
+            conclusions[0].enriched_strength,
+            AuditConclusionStrength::DirectlyObservedFromExtendedHistory
+        );
+        assert_eq!(conclusions[1].supporting_records, 2);
+        assert_eq!(conclusions[1].supporting_tracks, 1);
     }
 }

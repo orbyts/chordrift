@@ -128,3 +128,6 @@ changing migration 0046; see [its focused design record](ONBOARDING_SESSION_V020
 V020-07 then reads the checkpoint's existing immutable revisions without a
 schema change or write; see the
 [inventory-only audit record](ONBOARDING_AUDIT_V020_07.md).
+V020-08 likewise adds no migration: it binds the captured archive fingerprint
+to the existing database-v2 listening import and normalized-event ledger; see
+the [enriched audit record](ENRICHED_ONBOARDING_AUDIT_V020_08.md).

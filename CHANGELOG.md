@@ -33,6 +33,11 @@ All notable changes to Chordrift are documented here.
   preserve-first starter-organization values; exposes unreadable data and
   inference limits; creates no approved intent; and is proven against fake
   inventory plus fresh and migration-45 PostgreSQL 18 rehearsals.
+- Add the enriched form of the same audit over one explicitly fingerprinted
+  extended-history import. Preserve the inventory-only findings, report exact
+  history coverage and only directly supported strengthened conclusions, keep
+  preference and intent visibly uninferred, and prove both modes side by side
+  without provider or database mutation.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

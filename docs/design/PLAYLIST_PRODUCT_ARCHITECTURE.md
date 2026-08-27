@@ -9,8 +9,8 @@ behavior. Existing database-v2 names remain unchanged. Migration 0046 now
 implements the additive recipe, collection, surface, onboarding, and Spin table
 names shown here, but remains isolated from production Neon.
 
-Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-07
-are implemented; V020-08 is next. This document is a design contract, not
+Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-08
+are implemented; V020-09 is next. This document is a design contract, not
 authorization to apply a migration or write to a provider.
 
 ## Current implementation status
@@ -45,10 +45,14 @@ authorization to apply a migration or write to a provider.
   captured immutable current inventory and returns deterministic library,
   overlap, capability, uncertainty, and unapproved preserve-first starter-
   organization values without a provider call or database write.
-- **Next — V020-08:** compare the same acceptance path with explicitly selected
-  extended listening evidence while preserving the inventory-only result.
-- **Not implemented yet:** enriched audit conclusions, collection and recipe
-  execution, Spin generation, hosted transport, and native clients.
+- **Implemented — V020-08:** the enriched query preserves the same inventory
+  baseline, binds one selected history import by account, fingerprint, kind, and
+  record count, and returns only directly supported listening conclusions with
+  exact support counts and remaining inference limits.
+- **Next — V020-09:** implement the provider-neutral Discovery + Rediscovery
+  recipe-v1 execution boundary without generating or publishing a Spin.
+- **Not implemented yet:** collection and recipe execution, Spin generation,
+  hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the
   existence of contract or domain types.
 

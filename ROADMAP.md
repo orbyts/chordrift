@@ -71,7 +71,7 @@ deterministic provider-free Spins.
 - [x] **V020-07 — Inventory-only new-account audit.** Produce an honest library,
   overlap, uncertainty, and capability report plus a starter organization using
   OAuth/current-inventory evidence alone.
-- [ ] **V020-08 — Enriched new-account audit.** Run the same acceptance path
+- [x] **V020-08 — Enriched new-account audit.** Run the same acceptance path
   with extended listening evidence and explain exactly which conclusions became
   stronger. The inventory-only path must remain usable.
 - [ ] **V020-09 — Discovery + Rediscovery recipe v1.** Implement immutable source
@@ -174,7 +174,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-08 — Enriched new-account audit`.
+**Next slice:** `V020-09 — Discovery + Rediscovery recipe v1`.
 
 ## Portable core and native clients
 

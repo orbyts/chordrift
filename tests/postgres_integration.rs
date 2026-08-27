@@ -17,8 +17,9 @@ use chordrift::{
         OnboardingProviderReader, OnboardingReadSelection, OnboardingSessionBoundary,
     },
     onboarding_audit::{
-        AuditEvidenceBasis, AuditLimitation, InventoryOnlyAuditBoundary, StarterCollectionBasis,
-        StarterProposalConfidence,
+        AuditEvidenceBasis, AuditLimitation, EnrichedAuditBoundary, EnrichedAuditEvidenceBasis,
+        EnrichedAuditLimitation, InventoryOnlyAuditBoundary, StarterCollectionBasis,
+        StarterProposalConfidence, StrengthenedConclusionKind,
     },
 };
 use serde_json::json;
@@ -49,7 +50,7 @@ impl OnboardingProviderReader for FakeOnboardingReader {
                     capability: EvidenceCapability::ExtendedPlaybackHistory,
                     content_fingerprint: ContentFingerprint::new("e".repeat(64))
                         .expect("fixture fingerprint is valid"),
-                    record_count: 42,
+                    record_count: 7,
                 }]
             } else {
                 Vec::new()
@@ -234,6 +235,69 @@ async fn seed_inventory_checkpoint(
     .execute(database.pool())
     .await?;
     Ok(checkpoint_id)
+}
+
+async fn seed_extended_history(
+    database: &Database,
+    provider_account_id: Uuid,
+) -> chordrift::Result<()> {
+    let import_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO listening_evidence_imports
+         (provider_account_id, provider, archive_kind, archive_sha256,
+          parser_version, source_filename, source_file_count, event_count,
+          first_event_at, last_event_at)
+         VALUES ($1, 'spotify', 'extended_streaming_history', $2,
+                 'v02008-fixture', 'fixture.zip', 1, 7,
+                 TIMESTAMPTZ '2019-01-01 00:00:00Z',
+                 TIMESTAMPTZ '2022-01-01 00:00:00Z')
+         RETURNING id",
+    )
+    .bind(provider_account_id)
+    .bind("e".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    let mut identities = Vec::new();
+    for provider_track_id in ["track-a", "track-b", "track-d", "track-z"] {
+        let identity_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO historical_provider_track_identities
+             (provider, provider_track_id, track_name, artist_name,
+              first_observed_at, last_observed_at)
+             VALUES ('spotify', $1, $1, 'Fixture Artist',
+                     TIMESTAMPTZ '2019-01-01 00:00:00Z',
+                     TIMESTAMPTZ '2022-01-01 00:00:00Z')
+             RETURNING id",
+        )
+        .bind(provider_track_id)
+        .fetch_one(database.pool())
+        .await?;
+        identities.push(identity_id);
+    }
+    for (identity, played_at, completed, skipped) in [
+        (0_usize, "2020-01-01T00:00:00Z", Some(true), Some(false)),
+        (0, "2020-06-01T00:00:00Z", Some(true), Some(false)),
+        (0, "2021-02-01T00:00:00Z", Some(true), Some(false)),
+        (1, "2021-03-01T00:00:00Z", Some(false), Some(true)),
+        (2, "2022-01-01T00:00:00Z", Some(true), Some(false)),
+        (3, "2019-01-01T00:00:00Z", None, None),
+        (3, "2019-02-01T00:00:00Z", Some(false), Some(false)),
+    ] {
+        sqlx::query(
+            "INSERT INTO normalized_listening_events
+             (id, provider_account_id, historical_identity_id, source_import_id,
+              source_kind, played_at, ms_played, completed, skipped)
+             VALUES ($1, $2, $3, $4, 'archive', $5::timestamptz, 180000, $6, $7)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(provider_account_id)
+        .bind(identities[identity])
+        .bind(import_id)
+        .bind(played_at)
+        .bind(completed)
+        .bind(skipped)
+        .execute(database.pool())
+        .await?;
+    }
+    Ok(())
 }
 
 #[tokio::test]
@@ -535,6 +599,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     .execute(database.pool())
     .await?;
     let checkpoint_id = seed_inventory_checkpoint(&database, audit_provider_account_id).await?;
+    seed_extended_history(&database, audit_provider_account_id).await?;
     let provider_connection = ProviderConnectionIdentity {
         connection_id: ProviderConnectionId::from_uuid(audit_provider_account_id),
         account_id: ChordriftAccountId::from_uuid(chordrift_account_id),
@@ -793,6 +858,129 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         chordrift::contract::ErrorCode::StateConflict
     );
 
+    let enriched_boundary = EnrichedAuditBoundary::new(&database);
+    let inventory_on_enriched_error = ApplicationFacade::new()
+        .invoke(enriched_boundary.invocation(&onboarding_context, &audit_request))
+        .await?
+        .expect_err("enriched path requires explicitly selected history");
+    assert_eq!(
+        inventory_on_enriched_error.client_error().code,
+        chordrift::contract::ErrorCode::StateConflict
+    );
+    let enriched_audit_request = onboarding_audit_request(enriched.id.as_uuid());
+    let enriched_audit = ApplicationFacade::new()
+        .invoke(enriched_boundary.invocation(&onboarding_context, &enriched_audit_request))
+        .await?
+        .expect("enriched audit succeeds");
+    assert_eq!(
+        enriched_audit.value.evidence_basis,
+        EnrichedAuditEvidenceBasis::CurrentInventoryAndExtendedHistory
+    );
+    assert_eq!(
+        enriched_audit.value.inventory_baseline.library,
+        audit.value.library
+    );
+    assert_eq!(
+        enriched_audit.value.inventory_baseline.playlists,
+        audit.value.playlists
+    );
+    assert_eq!(
+        enriched_audit.value.inventory_baseline.overlap,
+        audit.value.overlap
+    );
+    assert_eq!(
+        enriched_audit.value.inventory_baseline.uncertainty,
+        audit.value.uncertainty
+    );
+    assert_eq!(
+        enriched_audit.value.inventory_baseline.starter_organization,
+        audit.value.starter_organization
+    );
+    assert_eq!(enriched_audit.value.history.declared_records, 7);
+    assert_eq!(enriched_audit.value.history.readable_records, 7);
+    assert_eq!(enriched_audit.value.history.usable_records, 7);
+    assert_eq!(enriched_audit.value.history.superseded_records, 0);
+    assert_eq!(enriched_audit.value.history.distinct_historical_tracks, 4);
+    assert_eq!(enriched_audit.value.history.current_tracks_with_history, 3);
+    assert_eq!(enriched_audit.value.history.history_only_tracks, 1);
+    assert_eq!(enriched_audit.value.history.repeatedly_played_tracks, 2);
+    assert_eq!(enriched_audit.value.history.repeated_track_records, 5);
+    assert_eq!(enriched_audit.value.history.long_term_observed_tracks, 1);
+    assert_eq!(enriched_audit.value.history.long_term_observed_records, 3);
+    assert_eq!(enriched_audit.value.history.history_only_records, 2);
+    assert_eq!(enriched_audit.value.history.maximum_track_plays, 3);
+    assert_eq!(enriched_audit.value.history.completed_records, 4);
+    assert_eq!(enriched_audit.value.history.completed_tracks, 2);
+    assert_eq!(enriched_audit.value.history.skipped_records, 1);
+    assert_eq!(enriched_audit.value.history.skipped_tracks, 1);
+    assert_eq!(enriched_audit.value.strengthened_conclusions.len(), 6);
+    assert_eq!(
+        enriched_audit.value.strengthened_conclusions[0].conclusion,
+        StrengthenedConclusionKind::ListeningObserved
+    );
+    assert_eq!(
+        enriched_audit.value.strengthened_conclusions[0].supporting_records,
+        7
+    );
+    assert_eq!(
+        enriched_audit.value.strengthened_conclusions[1].conclusion,
+        StrengthenedConclusionKind::RepeatedListeningObserved
+    );
+    assert_eq!(
+        enriched_audit.value.strengthened_conclusions[1].supporting_tracks,
+        2
+    );
+    assert!(
+        enriched_audit
+            .value
+            .remaining_limitations
+            .contains(&EnrichedAuditLimitation::PreferenceNotInferred)
+    );
+    let replayed_enriched_audit = ApplicationFacade::new()
+        .invoke(enriched_boundary.invocation(&onboarding_context, &enriched_audit_request))
+        .await?
+        .expect("enriched audit replay succeeds");
+    assert_eq!(replayed_enriched_audit.value, enriched_audit.value);
+    assert_eq!(fake_reader.reads.get(), provider_reads_before_audit);
+    sqlx::query(
+        "UPDATE listening_evidence_imports SET event_count = 8
+          WHERE provider_account_id = $1 AND archive_sha256 = $2",
+    )
+    .bind(audit_provider_account_id)
+    .bind("e".repeat(64))
+    .execute(database.pool())
+    .await?;
+    let changed_evidence_error = ApplicationFacade::new()
+        .invoke(enriched_boundary.invocation(&onboarding_context, &enriched_audit_request))
+        .await?
+        .expect_err("captured and current evidence counts must match");
+    assert_eq!(
+        changed_evidence_error.client_error().code,
+        chordrift::contract::ErrorCode::StateConflict
+    );
+    sqlx::query(
+        "UPDATE listening_evidence_imports SET event_count = 7
+          WHERE provider_account_id = $1 AND archive_sha256 = $2",
+    )
+    .bind(audit_provider_account_id)
+    .bind("e".repeat(64))
+    .execute(database.pool())
+    .await?;
+    let session_after_enriched_audit: (String, serde_json::Value) =
+        sqlx::query_as("SELECT status, output_provenance FROM onboarding_sessions WHERE id = $1")
+            .bind(enriched.id.as_uuid())
+            .fetch_one(database.pool())
+            .await?;
+    assert_eq!(session_after_enriched_audit.0, "created");
+    assert_eq!(session_after_enriched_audit.1, enriched.output_provenance);
+    let intent_after_enriched_audit: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM library_collections WHERE chordrift_account_id = $1",
+    )
+    .bind(chordrift_account_id)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(intent_after_enriched_audit, intent_before_audit);
+
     let captured_rows: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM onboarding_sessions
           WHERE chordrift_account_id = $1 AND provider_account_id = $2
@@ -850,6 +1038,14 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         .expect_err("another account cannot read the onboarding audit");
     assert_eq!(
         cross_account_audit_error.client_error().code,
+        chordrift::contract::ErrorCode::PermissionDenied
+    );
+    let cross_account_enriched_error = ApplicationFacade::new()
+        .invoke(enriched_boundary.invocation(&wrong_owner_context, &enriched_audit_request))
+        .await?
+        .expect_err("another account cannot read the enriched audit");
+    assert_eq!(
+        cross_account_enriched_error.client_error().code,
         chordrift::contract::ErrorCode::PermissionDenied
     );
 

@@ -86,9 +86,10 @@ V020-07 adds no CLI command, production configuration, credential handling,
 live-provider access, provider mutation, production Neon migration, approved
 collection intent, recipe execution, Spin, or publication behavior.
 
-## Next slice
+## Enriched counterpart
 
-`V020-08 — Enriched new-account audit` should run the same acceptance path with
-explicitly selected extended listening evidence and explain exactly which
-conclusions become stronger. The inventory-only path must remain independently
-usable and honest.
+`V020-08 — Enriched new-account audit` now runs the same inventory baseline
+with explicitly selected extended listening evidence and explains exactly
+which conclusions become stronger. This inventory-only path remains
+independently usable and unchanged. See the
+[enriched audit record](ENRICHED_ONBOARDING_AUDIT_V020_08.md).

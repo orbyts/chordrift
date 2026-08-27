@@ -8,22 +8,37 @@ archive contents.
 
 Last updated: 2026-08-27.
 
-## Start the next task here: v0.2.0 slice V020-08
+## Start the next task here: v0.2.0 slice V020-09
 
-Implement only `V020-08 — Enriched new-account audit` from the authoritative
-execution map at the top of `ROADMAP.md`. Run the same audit acceptance path
-with a V020-06 session that explicitly selected extended listening evidence,
-then explain exactly which conclusions become stronger because of that
-evidence. The V020-07 inventory-only result must remain independently usable
-and must not silently gain history-dependent claims.
+Implement only `V020-09 — Discovery + Rediscovery recipe v1` from the
+authoritative execution map at the top of `ROADMAP.md`. Add a provider-neutral,
+deterministic recipe execution boundary for immutable source lanes, allocation,
+familiarity cadence, eligibility, hard collection boundaries, repetition and
+artist budgets, and simple narrative sections. Use the implemented domain
+recipe values and audit evidence honestly; unavailable evidence must disable or
+degrade dependent behavior visibly.
 
-Use only the deterministic fake provider/evidence and isolated PostgreSQL.
-Do not add or change released CLI commands/output, production configuration,
-credential handling, live-provider access, or provider mutation. Do not apply
-migration 0046 to production Neon. Do not begin V020-09 recipe execution,
-create approved collection intent, generate a Spin, or add publication behavior.
+Do not persist or present the exact ordered Spin assigned to V020-10, add or
+change released CLI commands/output, create approved collection intent, publish
+to a provider, access a live provider, change credentials/configuration, or
+apply migration 0046 to production Neon. Keep proofs provider-free/fake and use
+isolated PostgreSQL only if persistence is genuinely required by this slice.
 
-V020-01 through V020-07 are complete. V020-07 adds the public
+V020-01 through V020-08 are complete. V020-08 adds
+`EnrichedAuditBoundary` beside the unchanged inventory-only boundary. It runs
+the same inventory baseline, then resolves exactly one selected
+`extended_streaming_history` import by provider account, archive SHA-256, and
+record count. The deterministic report exposes usable/superseded records,
+history coverage, current/history-only identities, repetition, 180-day
+long-span observations, maximum plays, and explicit completion/skip facts.
+Only supported categories appear in `strengthened_conclusions`, with exact
+record and track counts; preference, collection membership, and intent remain
+explicitly uninferred. Side-by-side fake-input/PostgreSQL tests prove unchanged
+inventory findings, replay, mode separation, account isolation, no extra
+provider read, no intent write, and unchanged session state. See
+`docs/design/ENRICHED_ONBOARDING_AUDIT_V020_08.md`.
+
+V020-07 adds the public
 `onboarding_audit` query boundary behind `ApplicationFacade`. It validates the
 V020-06 owner, provider connection, current-inventory-only manifest, capability
 snapshot, and content fingerprints, then reads only immutable checkpoint
