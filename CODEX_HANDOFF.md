@@ -1664,3 +1664,34 @@ implementation gate is to freeze the provider-neutral IDs, capability contract,
 surface axes, collection membership strengths, and recipe-v1 Rust types with
 unit tests; then prove isolation with a fake provider before designing an
 additive migration.
+
+## Portable-core and native-client decision (2026-08-26)
+
+The user confirmed that the CLI is only the first client. Future macOS SwiftUI,
+Windows-native, and possible Linux clients are thin platform presentations over
+one Rust-owned product. The useful layered ideas from Photara are adopted—
+portable core, typed client boundary, native clients, explicit capabilities,
+and cross-cutting contracts—without importing its node packages, proxy graph,
+or general runtime registry.
+
+`docs/design/client-core-platform-architecture.svg` records the approved high-
+level shape. The shippable authority is a hosted Rust service. It owns the Neon
+connection and encrypted provider authorization; shipped clients hold only a
+Chordrift session credential and never access SQL or provider refresh tokens.
+The CLI may use an in-process development transport, but all clients consume
+the same versioned command/query/event application contract. That contract
+includes progress, cancellation, structured failures, recovery, idempotency,
+and API/schema/provider/evidence capability negotiation. It—not UniFFI, HTTP,
+or another transport—is the stable boundary.
+
+The earliest acceptance goal remains UI-free: create an isolated onboarding
+session that treats the current personal inventory and optional history as
+new-account evidence, ignores existing Chordrift intent by default, emits an
+honest audit and starter organization, and produces deterministic provider-free
+Spin previews. Run it with inventory-only and enriched evidence. It must make
+no Spotify write; later publication still crosses plan/apply/verify.
+
+Before schema changes, route the existing CLI through an application facade,
+freeze provider-neutral/domain/contract types, and add fake-provider account-
+isolation, idempotency, and cancellation tests. Then design one additive
+ownership/collection/surface/recipe/Spin/onboarding migration and rehearse it.

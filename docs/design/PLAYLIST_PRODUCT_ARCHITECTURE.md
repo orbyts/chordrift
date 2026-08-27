@@ -2,9 +2,12 @@
 
 The zoomable [product architecture overview](playlist-product-architecture.svg)
 shows the first-run journey, the intended database boundaries, and the matching
-Rust domain types. It is deliberately conceptual: existing database-v2 names
-remain unchanged, while the recipe and collection names describe the next
-additive foundation rather than an already-applied migration.
+Rust domain types. The companion
+[portable core and native clients overview](client-core-platform-architecture.svg)
+shows how the CLI and future native applications consume the same Rust-owned
+behavior. Both are deliberately conceptual: existing database-v2 names remain
+unchanged, while the recipe and collection names describe the next additive
+foundation rather than an already-applied migration.
 
 Status: proposed foundation, 2026-08-26. This is a design contract, not
 authorization to apply a migration or write to a provider.
@@ -53,6 +56,100 @@ Generated names and artwork are proposals attached to a playlist surface.
 They are optional, revisioned, and approved independently from the recipe.
 An LLM may propose language and art direction, but it never owns collection
 membership, eligibility, ordering, or publication authority.
+
+## Portable core and native clients
+
+Chordrift adopts the useful layers from Photara's architecture without its
+node packages, proxy graph, or exact third-party runtime registry. Chordrift
+has one product domain and a small set of controlled infrastructure adapters,
+so a plugin runtime would add complexity without solving a current problem.
+
+The architectural rule is **one portable Rust product, several thin clients**:
+
+- the CLI is the first client, not the product core;
+- the macOS client uses native SwiftUI and the current native Apple design
+  language, including Liquid Glass where the running OS supports it;
+- the Windows client uses its own native Windows presentation and integration;
+- a future Linux client may use a separate native shell without changing
+  recipes, persistence rules, or provider behavior;
+- native clients own presentation, accessibility, navigation, platform window
+  behavior, OAuth handoff, notifications, and secure storage of their Chordrift
+  session credential;
+- Rust owns accounts, identity, inventory, evidence, collections, recipes,
+  Spins, publication safety, migrations, background work, and diagnostics.
+
+The shippable authority is a hosted Rust service. It owns the Neon connection
+and encrypted provider authorization; neither is distributed in a desktop
+binary. Native applications and the installed CLI authenticate to that service.
+During development, the CLI may invoke the same application service through an
+in-process transport, but it receives no separate business path.
+
+### Client contract
+
+Clients consume a versioned command/query/event contract rather than SQL,
+provider payloads, terminal output, or internal domain structs:
+
+```text
+Commands   request work: connect, observe, create session, preview Spin,
+           approve publication, cancel work
+
+Queries    return immutable views: onboarding audit, collections, recipe,
+           Spin preview, operation history, diagnostics
+
+Events     report lifecycle: queued, running, progress, waiting for consent,
+           completed, failed, cancelled, recoverable
+```
+
+Every connection negotiates API version, database schema version, provider
+capabilities, evidence capabilities, and feature availability. This is the
+small useful analogue of Photara's exact-runtime declaration: it prevents a
+client from displaying or invoking a feature its service, provider, or evidence
+cannot support. It is not a general plugin system.
+
+The contract should be transport-neutral. The Rust CLI can call it in process;
+native applications can use an authenticated service protocol. A generated
+Swift or Windows binding may wrap that protocol, but UniFFI or any one binding
+tool must not become the domain boundary. The contract—not the transport—is
+authoritative.
+
+### Rust crate direction
+
+The eventual workspace should separate these responsibilities without a
+big-bang rewrite:
+
+```text
+chordrift-domain       pure IDs, invariants, collections, recipes, Spins
+chordrift-application  commands, queries, transactions, authorization policy
+chordrift-contract     versioned client DTOs, events, errors, compatibility
+chordrift-storage      repository ports and PostgreSQL/Neon implementation
+chordrift-providers    provider ports and Spotify implementation
+chordrift-service      auth, API transport, jobs, scheduling, migrations
+chordrift-client       reusable Rust client used by CLI and binding generators
+chordrift-cli          terminal presentation only
+```
+
+Cross-cutting contracts cover account isolation, secret handling, structured
+diagnostics, tracing, cancellation, idempotency, deterministic generation,
+schema/API compatibility, performance budgets, backup, and recovery.
+
+### Native client boundary
+
+The platform shells do not decide which tracks qualify, calculate weights,
+order a Spin, interpret a provider deletion, or generate a provider mutation.
+They render Rust-supplied views and issue Rust-defined commands. Platform-only
+code is expected for:
+
+- SwiftUI/AppKit presentation and Liquid Glass availability on macOS;
+- Windows-native presentation and lifecycle integration;
+- OAuth browser launch and callback routing;
+- application session storage in Keychain, Windows Credential Manager, or a
+  future Linux secret service;
+- provider deep links, file pickers, notifications, accessibility, and updater
+  integration.
+
+The service stores provider refresh credentials in its encrypted server-side
+vault. The client credential store contains only the user's Chordrift session;
+clients never receive the Neon owner URL.
 
 ## Core concepts
 
@@ -214,9 +311,10 @@ interface/
   dto.rs            stable UI/CLI query and command shapes
 ```
 
-This is a target dependency direction, not a requirement for a disruptive
-directory rewrite. Existing modules should move behind these seams
-incrementally with compiling tests at every step.
+This earlier module sketch maps into the crate boundaries above. It is a target
+dependency direction, not a requirement for a disruptive directory rewrite.
+Existing modules should move behind these seams incrementally with compiling
+tests at every step.
 
 ## Invariants for the next foundation
 
@@ -240,20 +338,50 @@ incrementally with compiling tests at every step.
   statistics, embeddings, and unreferenced candidate generations remain
   rebuildable.
 - Unsupported provider capabilities degrade visibly and safely.
+- CLI and native clients receive identical decisions through the same versioned
+  application contract.
+- No shipped client contains a Neon connection or provider refresh credential.
+- Client disconnect, retry, or duplicate submission cannot duplicate a Spin or
+  provider apply; commands are idempotent and resumable.
+- A client can display progress, cancellation, recovery, and capability gaps
+  without parsing logs or terminal prose.
+
+## CLI-first new-account rehearsal
+
+The earliest product acceptance goal is intentionally UI-free. An onboarding
+session will treat the current personal provider inventory and optional history
+as if they had just been supplied by a new account. It may read that evidence
+but must ignore existing Chordrift collection, recipe, and publication intent
+unless explicitly selected as comparison data.
+
+The session produces a read-only audit, evidence/capability report, proposed
+starter collections, default playlist surfaces, and one or more provider-free
+Spin previews. It writes no Spotify state. Accepting a starter organization or
+publishing a Spin remains a later explicit plan/apply/verify action.
+
+The same acceptance suite runs twice: inventory-only and inventory plus
+extended history. Results may improve with history, but both paths must produce
+an honest usable experience.
 
 ## Recommended implementation sequence
 
-1. Freeze provider-neutral IDs, `ProviderCapabilities`, playlist-surface axes,
+1. Establish the workspace seams and versioned command/query/event contract;
+   route the existing CLI through the application facade without changing
+   behavior.
+2. Freeze provider-neutral IDs, `ProviderCapabilities`, playlist-surface axes,
    collection membership strength, and recipe-v1 types in Rust with unit tests.
-2. Add the account/provider isolation test harness and a fake provider adapter;
-   prove two accounts and two provider namespaces cannot cross.
-3. Design and rehearse one additive migration for collections, surfaces,
-   recipes, Spins, and publication links. Do not publish provider changes.
-4. Implement a read-only onboarding audit and provider-free starter-plan/Spin
-   preview against the existing personal account.
-5. Implement the initial **Discovery + Rediscovery** recipe with allocation,
+3. Add account/provider isolation, idempotency, cancellation, and fake-provider
+   tests; prove two accounts and provider namespaces cannot cross.
+4. Design and rehearse additive ownership, collection, surface, recipe, Spin,
+   onboarding-session, and publication-link migrations. Do not publish provider
+   changes.
+5. Implement the CLI-first new-account rehearsal and provider-free starter
+   preview against the existing personal evidence.
+6. Implement the initial **Discovery + Rediscovery** recipe with allocation,
    cadence, and simple ordering sections.
-6. Connect approved Spins to the existing immutable sync plan/apply/verify
+7. Connect approved Spins to the existing immutable sync plan/apply/verify
    boundary.
-7. Build the thin native UI over stable query/command DTOs only after those
-   contracts pass the account-isolation and deterministic-preview tests.
+8. Introduce the hosted Rust service and authenticated client transport without
+   distributing Neon or provider refresh credentials.
+9. Build native clients over the stable contract only after isolation,
+   compatibility, and deterministic-preview tests pass.

@@ -6,6 +6,29 @@ of truth throughout, while Spotify and Apple Music remain provider adapters.
 The Spotify downloadable history archive is an optional, independently
 importable enrichment source. No other milestone is blocked on receiving it.
 
+## Portable core and native clients
+
+Chordrift is one portable Rust product with several thin clients. The CLI is
+the first client. The macOS client will use native SwiftUI and current Apple
+platform materials, including Liquid Glass where supported; Windows will have
+its own native client, and Linux may gain a separate native shell later. Client
+code owns presentation and OS integration only. Accounts, provider inventory,
+evidence, collections, recipes, Spins, publication safety, persistence,
+background work, and diagnostics remain Rust-owned.
+
+The shippable authority is a hosted Rust service. Native clients and the CLI
+consume one versioned command/query/event contract and never connect directly
+to Neon or hold provider refresh credentials. A development CLI may use an
+in-process transport for the same application service, but it must not gain a
+separate business path. Protocol negotiation reports API/schema compatibility,
+provider capabilities, evidence capabilities, and feature availability.
+
+This direction borrows Photara's portable-core, typed-bridge, native-client,
+and cross-cutting-contract layers. Chordrift does not need Photara's node
+packages, proxy graph, or general runtime registry. The detailed boundary and
+zoomable overview live in
+[`docs/design/PLAYLIST_PRODUCT_ARCHITECTURE.md`](docs/design/PLAYLIST_PRODUCT_ARCHITECTURE.md).
+
 ## Discovery and orchestration model
 
 The proposed playlist-product foundation is documented in
@@ -608,6 +631,24 @@ alternative. The default policies for both albums and Liked Songs remain
 preserve.
 
 ## v0.2.0 — Recipe foundation and native review UI
+
+The first acceptance target is CLI-first rather than UI-first. Treat the
+existing personal Spotify inventory and enrichment history as newly supplied
+account evidence, while ignoring prior Chordrift intent inside an isolated
+onboarding session. Produce a read-only library audit, capability report,
+starter collection proposal, and deterministic provider-free Spin previews.
+Run the same flow with inventory only and with extended history. Neither path
+may write to Spotify; accepted publication still uses plan, approval, apply,
+and verification.
+
+Before that rehearsal, route the CLI through a versioned Rust application
+facade; establish command, query, progress/event, cancellation, idempotency,
+and compatibility contracts; and prove account/provider isolation with a fake
+adapter. Then add only the ownership, collection, playlist-surface, recipe,
+Spin, onboarding-session, and publication-link schema required by the typed
+domain. Introduce the hosted service transport after the same core workflow is
+proven locally; native UI follows the stable contract rather than driving its
+shape.
 
 Before recipe or UI implementation, complete the database-v2 foundation in
 `docs/design/DATABASE_ARCHITECTURE_V2.md`. The v0.1.2 database is logically

@@ -1,0 +1,197 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1280" viewBox="0 0 1800 1280" role="img" aria-labelledby="title desc">
+  <title id="title">Chordrift portable core and native client architecture</title>
+  <desc id="desc">A layered architecture with native clients, a versioned client contract, portable Rust domain and application layers, an authoritative Rust service host, infrastructure adapters, and cross-cutting concerns.</desc>
+  <defs>
+    <style>
+      text { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17202a; }
+      .title { font-size: 34px; font-weight: 700; }
+      .subtitle { font-size: 17px; fill: #52606d; }
+      .section { font-size: 19px; font-weight: 700; }
+      .label { font-size: 16px; font-weight: 700; }
+      .body { font-size: 14px; fill: #334155; }
+      .small { font-size: 12px; fill: #52606d; }
+      .layer-label { font-size: 15px; font-weight: 700; text-anchor: middle; }
+      .panel { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; rx: 18; }
+      .node { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; rx: 12; }
+      .client { fill: #f4f0ff; stroke: #9277c8; }
+      .contract { fill: #eef7ff; stroke: #70a9d8; }
+      .core { fill: #edf9f2; stroke: #69a981; }
+      .service { fill: #eef5ff; stroke: #5684cf; }
+      .adapter { fill: #fff7e8; stroke: #d5a34f; }
+      .cross { fill: #f3f4f6; stroke: #9ca3af; }
+      .arrow { fill: none; stroke: #64748b; stroke-width: 2; marker-end: url(#arrow); }
+      .both { fill: none; stroke: #64748b; stroke-width: 2; marker-start: url(#arrow); marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect width="1800" height="1280" fill="#f7f9fc"/>
+  <text x="70" y="60" class="title">Chordrift Architecture</text>
+  <text x="70" y="90" class="subtitle">Portable Rust product · versioned client contract · native experiences · hosted authority</text>
+
+  <rect x="65" y="125" width="150" height="185" class="node client"/>
+  <text x="140" y="175" class="layer-label">NATIVE</text>
+  <text x="140" y="198" class="layer-label">CLIENTS</text>
+  <text x="140" y="232" class="small" text-anchor="middle">Platform presentation</text>
+  <text x="140" y="251" class="small" text-anchor="middle">and OS integration</text>
+
+  <rect x="245" y="125" width="330" height="185" class="node client"/>
+  <text x="267" y="157" class="label">CLI · first client</text>
+  <text x="267" y="184" class="body">Terminal rendering and scripting</text>
+  <text x="267" y="207" class="body">Same commands, queries, events</text>
+  <text x="267" y="230" class="body">Local in-process transport during development</text>
+  <text x="267" y="262" class="small">No separate playlist or provider policy</text>
+
+  <rect x="600" y="125" width="330" height="185" class="node client"/>
+  <text x="622" y="157" class="label">macOS · SwiftUI</text>
+  <text x="622" y="184" class="body">Native navigation and accessibility</text>
+  <text x="622" y="207" class="body">Liquid Glass where OS-supported</text>
+  <text x="622" y="230" class="body">OAuth handoff · deep links · notifications</text>
+  <text x="622" y="262" class="small">Chordrift session stored in Keychain</text>
+
+  <rect x="955" y="125" width="330" height="185" class="node client"/>
+  <text x="977" y="157" class="label">Windows · native client</text>
+  <text x="977" y="184" class="body">Windows-native design and lifecycle</text>
+  <text x="977" y="207" class="body">Accessibility · links · notifications</text>
+  <text x="977" y="230" class="body">No shared cross-platform UI toolkit</text>
+  <text x="977" y="262" class="small">Chordrift session in Credential Manager</text>
+
+  <rect x="1310" y="125" width="280" height="185" class="node client"/>
+  <text x="1332" y="157" class="label">Future clients</text>
+  <text x="1332" y="184" class="body">Linux native shell</text>
+  <text x="1332" y="207" class="body">Web or mobile if justified</text>
+  <text x="1332" y="230" class="body">Same versioned contract</text>
+  <text x="1332" y="262" class="small">New presentation, unchanged policy</text>
+
+  <path d="M900 310 V345" class="both"/>
+
+  <rect x="65" y="345" width="150" height="155" class="node contract"/>
+  <text x="140" y="395" class="layer-label">CLIENT</text>
+  <text x="140" y="418" class="layer-label">CONTRACT</text>
+  <text x="140" y="451" class="small" text-anchor="middle">Transport-neutral</text>
+  <text x="140" y="470" class="small" text-anchor="middle">versioned boundary</text>
+
+  <rect x="245" y="345" width="1345" height="155" class="panel contract"/>
+  <text x="270" y="378" class="section">Chordrift client API</text>
+  <text x="270" y="408" class="body">Commands · immutable query views · lifecycle events · structured errors · progress · cancellation · recovery</text>
+  <text x="270" y="435" class="body">Negotiates API version · schema version · provider capabilities · evidence capabilities · feature availability</text>
+  <text x="270" y="468" class="small">CLI may call in process; shipped clients use authenticated service transport. Clients never parse terminal output or access SQL.</text>
+
+  <path d="M900 500 V535" class="both"/>
+
+  <rect x="65" y="535" width="150" height="300" class="node core"/>
+  <text x="140" y="585" class="layer-label">PORTABLE</text>
+  <text x="140" y="608" class="layer-label">RUST CORE</text>
+  <text x="140" y="641" class="small" text-anchor="middle">Domain + application</text>
+  <text x="140" y="660" class="small" text-anchor="middle">No UI or OS policy</text>
+
+  <rect x="245" y="535" width="1345" height="300" class="panel core"/>
+  <text x="270" y="570" class="section">Chordrift domain</text>
+
+  <rect x="270" y="595" width="235" height="102" class="node core"/>
+  <text x="288" y="623" class="label">Accounts + identity</text>
+  <text x="288" y="650" class="body">Ownership · provider IDs</text>
+  <text x="288" y="673" class="small">Tenant and music identity</text>
+
+  <rect x="525" y="595" width="235" height="102" class="node core"/>
+  <text x="543" y="623" class="label">Inventory + evidence</text>
+  <text x="543" y="650" class="body">Current state · history</text>
+  <text x="543" y="673" class="small">Capability-aware facts</text>
+
+  <rect x="780" y="595" width="235" height="102" class="node core"/>
+  <text x="798" y="623" class="label">Collections + surfaces</text>
+  <text x="798" y="650" class="body">Belonging · ownership</text>
+  <text x="798" y="673" class="small">Rules and directives</text>
+
+  <rect x="1035" y="595" width="235" height="102" class="node core"/>
+  <text x="1053" y="623" class="label">Recipes + Spins</text>
+  <text x="1053" y="650" class="body">Select · order · explain</text>
+  <text x="1053" y="673" class="small">Deterministic previews</text>
+
+  <rect x="1290" y="595" width="275" height="102" class="node core"/>
+  <text x="1308" y="623" class="label">Publication safety</text>
+  <text x="1308" y="650" class="body">Plan · approve · apply · verify</text>
+  <text x="1308" y="673" class="small">Idempotent and resumable</text>
+
+  <text x="270" y="737" class="section">Application services</text>
+  <text x="270" y="769" class="body">Onboarding · observe/sync · collection review · Spin preview · publication · history · diagnostics</text>
+  <text x="270" y="800" class="small">All clients receive the same decisions through commands, queries, and events.</text>
+
+  <path d="M900 835 V870" class="both"/>
+
+  <rect x="65" y="870" width="150" height="165" class="node service"/>
+  <text x="140" y="920" class="layer-label">RUST</text>
+  <text x="140" y="943" class="layer-label">SERVICE HOST</text>
+  <text x="140" y="976" class="small" text-anchor="middle">Authoritative runtime</text>
+  <text x="140" y="995" class="small" text-anchor="middle">and background work</text>
+
+  <rect x="245" y="870" width="1345" height="165" class="panel service"/>
+  <text x="270" y="904" class="section">Chordrift service</text>
+  <text x="270" y="934" class="body">Authentication + sessions · authorization · API transport · jobs + scheduling · migrations · health</text>
+  <text x="270" y="961" class="body">Owns Neon connection and encrypted provider authorization · coordinates retries, cancellation, and durable operation state</text>
+  <text x="270" y="999" class="small">Desktop clients contain neither a Neon owner URL nor provider refresh credentials.</text>
+
+  <path d="M900 1035 V1070" class="both"/>
+
+  <rect x="65" y="1070" width="150" height="145" class="node adapter"/>
+  <text x="140" y="1120" class="layer-label">PORTS +</text>
+  <text x="140" y="1143" class="layer-label">ADAPTERS</text>
+  <text x="140" y="1176" class="small" text-anchor="middle">Replaceable edges</text>
+
+  <rect x="245" y="1070" width="315" height="145" class="node adapter"/>
+  <text x="267" y="1102" class="label">PostgreSQL / Neon</text>
+  <text x="267" y="1129" class="body">Repository implementation</text>
+  <text x="267" y="1152" class="body">Migrations · invariants · recovery</text>
+  <text x="267" y="1184" class="small">No client database access</text>
+
+  <rect x="585" y="1070" width="315" height="145" class="node adapter"/>
+  <text x="607" y="1102" class="label">Music providers</text>
+  <text x="607" y="1129" class="body">Spotify first · others later</text>
+  <text x="607" y="1152" class="body">OAuth · observe · publish · verify</text>
+  <text x="607" y="1184" class="small">Explicit capability contract</text>
+
+  <rect x="925" y="1070" width="315" height="145" class="node adapter"/>
+  <text x="947" y="1102" class="label">Secrets + identity</text>
+  <text x="947" y="1129" class="body">Encrypted provider vault</text>
+  <text x="947" y="1152" class="body">Product authentication</text>
+  <text x="947" y="1184" class="small">Rotation and revocation</text>
+
+  <rect x="1265" y="1070" width="325" height="145" class="node adapter"/>
+  <text x="1287" y="1102" class="label">Optional services</text>
+  <text x="1287" y="1129" class="body">Names · artwork · enrichment</text>
+  <text x="1287" y="1152" class="body">Clock · randomness · notifications</text>
+  <text x="1287" y="1184" class="small">Degrade safely when unavailable</text>
+
+  <rect x="1620" y="125" width="130" height="1090" class="node cross"/>
+  <text x="1685" y="165" class="layer-label">CROSS-</text>
+  <text x="1685" y="188" class="layer-label">CUTTING</text>
+  <text x="1640" y="245" class="label">Security</text>
+  <text x="1640" y="270" class="small">Tenancy</text>
+  <text x="1640" y="291" class="small">Permissions</text>
+  <text x="1640" y="312" class="small">Secret safety</text>
+  <text x="1640" y="380" class="label">Reliability</text>
+  <text x="1640" y="405" class="small">Idempotency</text>
+  <text x="1640" y="426" class="small">Cancellation</text>
+  <text x="1640" y="447" class="small">Recovery</text>
+  <text x="1640" y="515" class="label">Versions</text>
+  <text x="1640" y="540" class="small">API + schema</text>
+  <text x="1640" y="561" class="small">Capabilities</text>
+  <text x="1640" y="582" class="small">Determinism</text>
+  <text x="1640" y="650" class="label">Visibility</text>
+  <text x="1640" y="675" class="small">Progress</text>
+  <text x="1640" y="696" class="small">Diagnostics</text>
+  <text x="1640" y="717" class="small">Tracing</text>
+  <text x="1640" y="785" class="label">Privacy</text>
+  <text x="1640" y="810" class="small">Retention</text>
+  <text x="1640" y="831" class="small">Export/delete</text>
+  <text x="1640" y="852" class="small">Backups</text>
+  <text x="1640" y="920" class="label">Performance</text>
+  <text x="1640" y="945" class="small">Cheap sync</text>
+  <text x="1640" y="966" class="small">Caching</text>
+  <text x="1640" y="987" class="small">Budgets</text>
+
+  <text x="70" y="1252" class="label">Invariant:</text>
+  <text x="150" y="1252" class="body">new clients add native experience, never a second implementation of Chordrift policy</text>
+</svg>
