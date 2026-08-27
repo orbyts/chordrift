@@ -1,5 +1,9 @@
 # Delete or exclude a track safely
 
+Applies to the released v0.1.4 plan/readiness/apply workflow. V0.2 preserves
+this safety boundary and will expose the same lifecycle through structured
+application events.
+
 Use this workflow when a resurfaced track is something you no longer want in
 active Chordrift listening playlists. In Chordrift terminology this is an
 **exclusion**, not historical erasure.
@@ -63,7 +67,7 @@ The report should show an active exclusion and retain its earlier history.
 | Action | Meaning Chordrift can safely infer |
 | --- | --- |
 | Remove only from Liked Songs | The track is no longer saved. It may still belong in playlists. |
-| Remove from a `Route — …` playlist | The corrective inbox changed; this is not a global rejection. |
+| Remove from `Re-evaluate` | The corrective queue changed; this is not a global rejection by itself. |
 | Remove from a protected user playlist | Provider-wins membership edit for that playlist. |
 | Remove from one canonical and add to another | Likely move or destination preference; stage for review. |
 | Delete an entire playlist | Ambiguous and potentially destructive; use explicit retirement policy. |
@@ -73,5 +77,6 @@ pull that state. Unsaving and excluding are independent decisions.
 
 ## When you mean “wrong playlist,” not “delete”
 
-Do not remove the track as an exclusion. Add it to an appropriate
-`Route — …` playlist and follow [Route and reclassify a track](ROUTING_AND_RECLASSIFYING.md).
+Do not remove the track as an exclusion. Add it to `Re-evaluate`, remove it from
+the wrong destination, and follow
+[Re-evaluate and reclassify a track](ROUTING_AND_RECLASSIFYING.md).

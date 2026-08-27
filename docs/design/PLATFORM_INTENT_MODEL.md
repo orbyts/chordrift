@@ -5,6 +5,11 @@ Chordrift operates as a preservation-first assistant behind the scenes. Neon is
 the durable interpretation ledger; provider changes are observations, not
 unquestioned commands.
 
+Status: active v0.2 interaction policy, updated 2026-08-27. The lifecycle,
+progress, cancellation, structured-error, and capability shapes needed to
+present this policy are implemented in V020-01; existing v0.1.4 CLI handlers
+are not yet routed through them.
+
 ## Confidence policy
 
 Chordrift should automate only high-confidence, reversible interpretations.
@@ -14,7 +19,7 @@ Destructive or history-erasing interpretations are never inferred silently.
 | Observed provider change | Plausible intent | Product behavior |
 | --- | --- | --- |
 | Add to a named intake | New discovery with explicit provenance | Capture automatically and later propose placement. |
-| Add to `Route — …` | Keep track; reject current destination | Capture automatically as zero-signal corrective intent. |
+| Add to `Re-evaluate` and remove from the wrong destination | Keep track; reject current destination | Capture automatically as zero-signal corrective intent. |
 | Remove from one verified canonical playlist | Exclude, refile, or temporary edit | Stage interpretation; use surrounding actions to disambiguate. |
 | Remove from canonical and add to another | Deliberate move or destination preference | Propose a move and learn only after confirmation. |
 | Add directly to a canonical playlist | Destination preference or one-off manual choice | Stage a preference; ask whether it should become a lock. |
@@ -27,16 +32,17 @@ Destructive or history-erasing interpretations are never inferred silently.
 
 Intent should be inferred from a short sequence, not one isolated mutation. For
 example, removing a track from `Tidal Hush` and immediately adding it to
-`Route — South Indian` is strong reclassification evidence. Removing it with no
+`Re-evaluate` is strong reclassification evidence. Removing it with no
 other action is ambiguous between exclusion and wrong placement. Removing it
 from every active playlist and unsaving it is stronger rejection evidence, but
 Chordrift should still retain the historical record.
 
-## Consumer interaction
+## Hosted and native-client interaction
 
 The eventual UI should appear only when useful:
 
-- a passive “captured” acknowledgment for high-confidence intake and routes;
+- a passive “captured” acknowledgment for high-confidence intake and
+  Re-evaluate transitions;
 - a compact confirmation for ambiguous delete/move/order changes;
 - an exact preview when a new poetic playlist, name, or artwork is proposed;
 - a reversible history view explaining why a track moved or disappeared;

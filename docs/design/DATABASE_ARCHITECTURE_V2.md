@@ -1,22 +1,44 @@
 # Chordrift database architecture v2
 
 The zoomable [schema overview](database-v2-schema-overview.svg) maps the
-implemented table groups, their main relationships, the retained compatibility
-layer, and the lifecycle of a manual Spotify playlist removal.
+implemented table groups, their main relationships, the clean runtime
+staging/recovery boundary, and the lifecycle of a manual Spotify playlist
+removal.
 
-The proposed post-v0.1.4 product layer is documented separately in
+The v0.2 product layer now under development is documented separately in
 [Playlist product architecture](PLAYLIST_PRODUCT_ARCHITECTURE.md). It builds
 account ownership, overlapping collections, versioned recipes, and reproducible
 Spins additively on this clean v2 foundation; it is not yet a migration.
 
-Status: approved direction, 2026-08-26. This document defines the storage
-redesign that precedes recipe work and the native UI. It is not authorization
-to delete the current Neon database.
+Status: database-v2 foundation complete in the released v0.1.4 runtime, updated
+2026-08-27. The live project uses content-addressed current provider state,
+normalized evidence, compact checkpoints, and the clean runtime schema. The
+legacy physical tables and former rollback project were retired only after the
+recorded exact-confirmed gates passed. This document preserves that chronology;
+it is not authorization to replay a migration, delete a database, or write to a
+provider.
 
-## Why this redesign exists
+Sections below are a dated execution record. Statements such as “next gate” or
+“remains unapproved” describe the boundary at that historical checkpoint; they
+are not current instructions. For routine v0.1.4 operation use the
+[task-oriented guide](../HOW_TO_CHORDRIFT.md). V0.2 extends this completed
+foundation additively and does not reopen the migration.
 
-The v0.1.2 personal database is healthy and fully migrated, but its physical
-representation is unnecessarily expensive. A read-only audit measured about
+## Current state at a glance
+
+| Boundary | Current status |
+| --- | --- |
+| Released runtime | v0.1.4 reads and writes only the database-v2 current-state and normalized-evidence surfaces. |
+| Schema | Production is healthy at 45/45 migrations; migration 0045 repairs the last stored function that referenced removed v1 relations. |
+| Legacy storage | Database-v1 physical tables and the former rollback project are gone after independently verified exact-confirmed cleanup. |
+| Recovery | The verified pre-compaction logical dump and immutable Spotify archives remain the external recovery sources. |
+| Routine operation | Use `sync pull` and the normal plan/readiness/apply workflow; do not replay migration or cleanup applies. |
+| v0.2 relationship | V020-01 changes no schema. Later product tables must extend this foundation additively through their own rehearsed slice. |
+
+## Why this redesign existed
+
+The v0.1.2 personal database was healthy and fully migrated, but its physical
+representation was unnecessarily expensive. A read-only audit measured about
 391 MB of PostgreSQL data while Neon reported about 0.43 GB of project storage.
 The project has one branch and a six-hour restore window, so extra branches are
 not the cause.
@@ -105,9 +127,10 @@ references them.
   successful restore/rebuild rehearsal.
 - Derived caches and unreferenced generations: expire automatically.
 
-## Approved migration strategy
+## Executed migration strategy
 
-Do not mutate or discard the v0.1.2 database in place as the first step.
+The migration deliberately did not mutate or discard the v0.1.2 database in
+place as its first step. The executed sequence was:
 
 1. Preserve a custom-format logical dump, schema, restore catalog, and checksum
    outside Neon.
@@ -128,7 +151,7 @@ Do not mutate or discard the v0.1.2 database in place as the first step.
 The initial physical target is approximately 100–150 MB without sacrificing
 meaningful history. This is a target to verify, not a guaranteed result.
 
-## Workstream boundaries
+## Workstream boundaries and outcome
 
 The work should be split into sequential Codex tasks, not concurrent branches
 editing the same schema:
@@ -144,21 +167,21 @@ editing the same schema:
 5. **Native UI:** build on stable v2 query/command DTOs and background-operation
    contracts rather than coupling UI code to legacy tables.
 
-Tasks 1–4 are causally dependent. UI design may proceed separately, but UI
-implementation should not bind to the database until the v2 bridge contracts
-are stable.
+Tasks 1–4 were completed sequentially through v0.1.3 and hardened in v0.1.4.
+V0.2 now builds its application/domain contracts above the clean storage
+boundary. UI implementation still must not bind directly to SQL.
 
-## Existing backup baseline
+## Historical recovery baseline
 
 The pre-compaction backup is stored at:
 
 `$DROPBOX/Music/Chordrift/Backups/2026-08-26-pre-compaction/`
 
 It contains the custom-format dump, schema-only SQL, `pg_restore` catalog, and
-SHA-256 checksum. The catalog has been parsed successfully. A complete restore
-rehearsal remains the first task.
+SHA-256 checksum. The catalog was parsed and the complete restore rehearsal
+passed; the dump remains the durable recovery artifact.
 
-## Safe cleanup foundation measurements
+## Historical safe-cleanup measurements
 
 Measured on 2026-08-26 from commit `65b4c98`, without changing production:
 
@@ -215,7 +238,7 @@ baseline is:
 for every ordinary table. Both reports are read-only and make no provider
 requests.
 
-## Provider snapshot protection and compaction plan
+## Historical snapshot-protection and compaction plan
 
 `chordrift db compact plan --account personal` starts a read-only transaction,
 classifies effects, and rolls it back. It has no provider adapter path and no
@@ -273,7 +296,7 @@ only in a later apply after v2 stores normalized completion/context evidence,
 identity metadata is materialized once, archive hashes/import manifests remain
 intact, and an archive-to-normalized rebuild comparison passes.
 
-## Additive v2 schema foundation
+## Implemented v2 schema foundation
 
 Migration `0040_database_v2_foundation.sql` implements workstream 2 without
 deleting or rewriting any legacy row. It introduces four explicit storage
@@ -305,7 +328,7 @@ The provider adapter supplies data but does not define v2 retention. The
 materializer accepts an account and imported snapshot, uses provider-qualified
 identities, and performs no provider request or write.
 
-### Rehearsal result
+### Historical schema rehearsal result
 
 Migration 0040 was applied only to a clone of the restored PostgreSQL 18.6
 rehearsal database. It completed in 153 ms with 40/40 migrations successful.
@@ -332,7 +355,7 @@ managed verifications have not yet been migrated. This is the required safe
 boundary between schema workstream 2 and migration/cutover workstream 3.
 Production migration, connection cutover, and cleanup remain unapproved.
 
-## Normalized evidence and checkpoint migration rehearsal
+## Historical normalized-evidence and checkpoint rehearsal
 
 Migrations `0041_database_v2_rehearsal_migration.sql`,
 `0042_database_v2_listening_dual_write.sql`, and
@@ -436,7 +459,7 @@ may advance and therefore emit different hashes. Production migrations,
 data apply, read cutover, observation-window start, legacy cleanup, and any
 connection change remain unapproved and require separate explicit authority.
 
-### Read-only production preflight
+### Historical checkpoint: read-only production preflight
 
 The production preflight on 2026-08-26 used only read-only reports. The backup
 checksum was reverified, Neon reported PostgreSQL 18.6 and 39/43 migrations,
@@ -473,7 +496,7 @@ production data-plan hash. Normalized-evidence migration, read cutover,
 observation-window start, and legacy cleanup each remain separate approval
 gates.
 
-### Additive production schema gate
+### Historical checkpoint: additive production schema gate
 
 With explicit approval, migrations 0040 through 0043 were applied to production
 on 2026-08-26. They completed in 3.964 seconds; Neon is healthy at 43/43
@@ -499,7 +522,7 @@ exact-confirmed data apply using the production-emitted hash above, followed by
 read-only verification and another stop. It does not authorize read cutover or
 legacy cleanup.
 
-### First production data-migration attempt
+### Historical checkpoint: first production data-migration attempt
 
 The exact-confirmed apply for production plan
 `a850fb15603f82c934daa127cfb768084938bc8ac601b6f30643ebc3a84e2ae8`
@@ -526,7 +549,7 @@ or Spotify operation followed the failure. The next safe gate requires added
 Neon storage headroom or a separately reviewed maintenance/reuse plan, followed
 by fresh read-only checks and explicit retry authority.
 
-### No-cost replacement candidate
+### Historical checkpoint: no-cost replacement candidate
 
 Rather than buying storage or destructively compacting the current project, an
 isolated free Neon PostgreSQL 18 candidate was created in the same region. The
@@ -567,7 +590,7 @@ the candidate rehearsal. Connection cutover requires a separate approval and
 must be followed immediately by read-only verification and an observation
 window. Old-project deletion remains a later destructive gate.
 
-### Replacement-project connection cutover
+### Historical checkpoint: replacement-project connection cutover
 
 With separate explicit approval, Chordrift's private Apogee
 `CHORDRIFT_DATABASE_URL` value was switched to the verified candidate. The
@@ -595,7 +618,7 @@ the former project `mute-recipe-86719846` was relabeled
 project identities, connection configuration, and database contents were
 unchanged.
 
-### v0.1.3 clean-runtime rehearsal
+### Implemented clean-runtime rehearsal and production completion
 
 Migration 0044 establishes the application boundary used by v0.1.3. Current
 provider reads are reconstructed from `provider_current_inventories`, current

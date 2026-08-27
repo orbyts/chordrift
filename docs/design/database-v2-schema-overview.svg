@@ -18,7 +18,7 @@
 
   <rect class="bg" width="2600" height="2000"/>
   <text class="heading" x="70" y="65">Chordrift database v2 — conceptual Neon table map</text>
-  <text class="sub" x="70" y="102">Implemented after migrations 0040–0043. Neon may list tables alphabetically; this diagram groups them by responsibility.</text>
+  <text class="sub" x="70" y="102">Clean v0.1.4 runtime after migration 0044 cleanup and 0045 hardening. Tables are grouped by responsibility, not alphabetically.</text>
 
   <!-- Main relationships, behind panels -->
   <path class="edge" d="M430 370H490"/><text class="label" x="438" y="350">identifies</text>
@@ -27,8 +27,8 @@
   <path class="edgeBlue" d="M800 700V750"/><text class="label" x="815" y="735">baseline</text>
   <path class="edge" d="M1480 700V750"/><text class="label" x="1495" y="735">receipts</text>
   <path class="edge" d="M2170 700V750"/><text class="label" x="2185" y="735">rebuild</text>
-  <path class="dash" d="M800 1235V1135"/><text class="label" x="815" y="1195">compatibility source</text>
-  <path class="dash" d="M2050 1235L2170 1135"/><text class="label" x="2060" y="1195">dual-write source</text>
+  <path class="dash" d="M800 1235V1135"/><text class="label" x="815" y="1195">transient import</text>
+  <path class="dash" d="M2050 1235L2170 1135"/><text class="label" x="2060" y="1195">recovery inputs</text>
 
   <!-- 1 Identity -->
   <rect class="panel" x="70" y="145" width="360" height="990" fill="#f1ecff" stroke="#9678d0"/>
@@ -91,13 +91,13 @@
   <g transform="translate(1880 985)"><rect class="card" width="300" height="100" stroke="#8592a4"/><text class="name" x="17" y="31">signal_generations</text><text class="name" x="17" y="57">account_track_signals</text><text class="purpose" x="17" y="82">Preference features</text></g>
   <g transform="translate(2200 985)"><rect class="card" width="300" height="100" stroke="#8592a4"/><text class="name" x="17" y="31">cluster_generations</text><text class="name" x="17" y="57">clusters · cluster_tracks</text><text class="purpose" x="17" y="82">Rebuildable grouping</text></g>
 
-  <!-- Legacy compatibility -->
+  <!-- Clean runtime and external recovery boundary -->
   <rect x="70" y="1235" width="2460" height="235" rx="24" fill="#f3f4f6" stroke="#808c9d" stroke-width="2" stroke-dasharray="12 9"/>
-  <text class="panelTitle" x="100" y="1278">7 · Legacy compatibility layer — still visible immediately after migration</text>
-  <text class="panelNote" x="100" y="1307">Retained for rollback and observation. Retirement later requires a separate plan → apply → verify approval.</text>
-  <g transform="translate(100 1340)"><rect class="card" width="760" height="90" stroke="#808c9d" stroke-dasharray="7 5"/><text class="name" x="17" y="22">provider_library_snapshots · provider_playlist_snapshots</text><text class="name" x="17" y="43">provider_playlist_tracks · provider_saved_tracks</text><text class="name" x="17" y="64">provider_saved_albums · provider_saved_album_tracks</text><text class="purpose" x="17" y="84">Complete historical inventory copies</text></g>
-  <g transform="translate(885 1340)"><rect class="card" width="640" height="90" stroke="#808c9d" stroke-dasharray="7 5"/><text class="name" x="17" y="30">listening_events · spotify_archive_imports</text><text class="purpose" x="17" y="57">Original event and archive rows during dual-write</text><text class="purpose" x="17" y="79">Rollback source until v2 reads are proven</text></g>
-  <g transform="translate(1550 1340)"><rect class="card" width="950" height="90" stroke="#808c9d" stroke-dasharray="7 5"/><text class="name" x="17" y="30">external_playlist_bookmark_snapshots · embedding/signal snapshot references</text><text class="purpose" x="17" y="57">Bookmark observations remain durable audit; generations are rebuildable</text><text class="purpose" x="17" y="79">This is why legacy retirement is a later workstream</text></g>
+  <text class="panelTitle" x="100" y="1278">7 · Clean runtime staging and external recovery boundary</text>
+  <text class="panelNote" x="100" y="1307">Legacy physical tables are gone. Transient imports empty at commit; verified dumps and raw provider archives remain outside Neon.</text>
+  <g transform="translate(100 1340)"><rect class="card" width="760" height="90" stroke="#808c9d" stroke-dasharray="7 5"/><text class="name" x="17" y="22">provider_inventory_import_playlists · …_playlist_tracks</text><text class="name" x="17" y="43">…_saved_tracks · …_saved_albums · …_saved_album_tracks</text><text class="purpose" x="17" y="72">Transaction-local staging; verified empty after every committed pull</text></g>
+  <g transform="translate(885 1340)"><rect class="card" width="640" height="90" stroke="#808c9d" stroke-dasharray="7 5"/><text class="name" x="17" y="30">verified logical dump · immutable Spotify ZIPs</text><text class="purpose" x="17" y="57">Content-hashed recovery sources outside PostgreSQL</text><text class="purpose" x="17" y="79">Never embedded in a shipped client</text></g>
+  <g transform="translate(1550 1340)"><rect class="card" width="950" height="90" stroke="#808c9d" stroke-dasharray="7 5"/><text class="name" x="17" y="30">provider_inventory_observations · external playlist bookmark history</text><text class="purpose" x="17" y="57">Lightweight pull receipts and durable provider-external audit remain in Neon</text><text class="purpose" x="17" y="79">V0.2 product tables extend this clean foundation additively</text></g>
 
   <!-- Manual deletion flow -->
   <text class="panelTitle" x="70" y="1535">Example · you manually remove a song from a managed Spotify playlist</text>
@@ -115,6 +115,6 @@
   <rect x="415" y="1920" width="22" height="22" rx="5" fill="#e9f8ef" stroke="#4fa473"/><text class="legend" x="447" y="1937">Permanent evidence</text>
   <rect x="620" y="1920" width="22" height="22" rx="5" fill="#fcecf2" stroke="#c67594"/><text class="legend" x="652" y="1937">Audit/checkpoints</text>
   <rect x="830" y="1920" width="22" height="22" rx="5" fill="#eef1f5" stroke="#8592a4"/><text class="legend" x="862" y="1937">Rebuildable</text>
-  <rect x="995" y="1920" width="22" height="22" rx="5" fill="#f3f4f6" stroke="#808c9d" stroke-dasharray="5 4"/><text class="legend" x="1027" y="1937">Legacy compatibility / later retirement</text>
-  <text class="panelNote" x="70" y="1975">Arrows show major ownership/dataflow links, not every foreign key. Immediately after migration, v2 and legacy tables coexist; raw Spotify ZIPs remain outside Neon.</text>
+  <rect x="995" y="1920" width="22" height="22" rx="5" fill="#f3f4f6" stroke="#808c9d" stroke-dasharray="5 4"/><text class="legend" x="1027" y="1937">Staging / external recovery boundary</text>
+  <text class="panelNote" x="70" y="1975">Arrows show major ownership/dataflow links, not every foreign key. The v0.1.4 runtime is v2-only; raw Spotify ZIPs and the verified recovery dump remain outside Neon.</text>
 </svg>

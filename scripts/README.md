@@ -2,7 +2,9 @@
 
 This directory contains operator and development conveniences around the
 installed Chordrift application. These scripts are not part of the Rust CLI's
-public product surface, and the future UI does not depend on them.
+public product surface, and the future UI does not depend on them. The workflow
+wrapper remains a supported operator convenience for the installed v0.1.4
+daily driver while `main` advances through the v0.2 application-facade work.
 
 ## Safe synchronization workflow
 

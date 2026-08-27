@@ -34,6 +34,14 @@ errors. Focused serialization, compatibility, lifecycle, progress, and error-
 safety tests pass. Existing CLI, database, configuration, and provider modules
 do not consume the contract yet.
 
+Documentation on `main` now uses one explicit status convention. `README.md`,
+`docs/HOW_TO_CHORDRIFT.md`, the focused how-to pages, and the CLI reference
+document the working v0.1.4 daily driver. V0.2 design documents state which
+foundation is implemented, which slice is next, and which parts remain planned.
+The database-v2 design is labeled as a completed foundation plus chronological
+historical execution record; intermediate migration gates are not current
+operator instructions. Preserve this distinction as later slices land.
+
 The user continues normal cleanup and listening with released v0.1.4 while
 v0.2.0 is built. Treat any real v0.1.4 defect as event-driven `release/0.1`
 maintenance; do not retrofit v0.2 features into that line. Experimental v0.2

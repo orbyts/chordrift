@@ -16,6 +16,26 @@ archaeology, curation, and orchestration: explain where music came from,
 preserve what mattered, separate external bookmarks from personal intent, and
 make the active library enjoyable again without silently losing history.
 
+## Development status
+
+The released daily-use application is **v0.1.4**. Its CLI commands, Spotify
+workflow, Neon schema, configuration, and plan/readiness/apply safety model
+remain supported and are documented in the task-oriented and command-reference
+guides linked below.
+
+The `main` branch is now the **v0.2.0 development line**. V020-01 established a
+public, transport-neutral Rust application contract for commands, queries,
+immutable views, lifecycle events, progress, cancellation, structured errors,
+and compatibility/capability negotiation. V020-02 is next: route the existing
+CLI through one application facade with exact behavioral and output parity.
+Neither slice changes how an installed v0.1.4 binary is used. Provider-neutral
+domain types, account-isolation proofs, additive product schema, onboarding,
+recipes, Spins, hosted transport, and native clients remain later v0.2.x work.
+
+Documentation on `main` follows the same split: how-to and CLI-reference pages
+describe the working v0.1.4 surface unless marked otherwise, while design pages
+describe the implemented v0.2 foundation and the architecture being built.
+
 Its longer-term form is a personal listening-system designer. Chordrift should
 inspect a library, propose a coherent organization, explain every
 recommendation, and—only after approval—carry out an exact, auditable plan. It
@@ -90,13 +110,15 @@ resumes safely after interruption.
 
 Existing immutable plans, readiness assessments, resumable apply history,
 post-write pulls, and zero-operation convergence remain the execution
-foundation for the future UI and background agent.
+foundation for the v0.2 application facade and later hosted/native clients.
 
-Neon PostgreSQL will be the canonical source of truth. Spotify and Apple Music
-will be provider adapters rather than competing authorities. Future releases
-will use playlist history, personal listening context, and versioned embeddings
-to organize tracks, and will support Spatial Audio-aware playlist variants in
-Apple Music.
+Neon PostgreSQL is the canonical ledger for the released CLI. In the shippable
+architecture, a hosted Rust service owns that connection and exposes the same
+versioned application contract to every client; Spotify is the first provider
+adapter, with Apple Music and other providers added only through explicit
+capability boundaries. Later releases will use playlist history, personal
+listening context, and versioned embeddings to organize tracks, and may support
+Spatial Audio-aware playlist variants in Apple Music.
 
 Spotify's downloadable listening-history export will be optional enrichment.
 Library import, canonical identity, playlist analysis, matching, organization,
@@ -108,7 +130,7 @@ signals such as play counts, listening duration, first play, and last play.
 > mutation only through exact, audited, resumable phase confirmations. Never
 > run an apply command without inspecting its immutable plan and readiness ID.
 
-## Current foundation (v0.1.4)
+## Released CLI foundation (v0.1.4)
 
 - Storexa-backed Neon PostgreSQL connection management
 - an application-owned canonical music-library schema
@@ -122,7 +144,7 @@ signals such as play counts, listening duration, first play, and last play.
   complete unchanged membership on every pull
 - normalized permanent listening evidence with display metadata stored once per
   historical provider identity
-- provider metadata and stable Spotify identities for later canonical matching
+- provider metadata and stable Spotify identities linked to canonical records
 - a one-command incremental pull that leaves Neon current with Spotify edits
 - concurrent Spotify probes, batched Neon persistence, incremental statistics,
   API request counts, and per-phase timings for routine pulls
@@ -244,7 +266,7 @@ but is marked absent.
 Imported user playlists begin protected as `user_managed`, `observed`, and
 `provider-wins`. Chordrift does not retire them unless the user explicitly
 changes retirement intent. Discovery surfaces can be marked as `inbox`, and
-future Chordrift outputs as `managed`:
+Chordrift outputs as `managed`:
 
 ```console
 $ chordrift playlists configure --name "Discovery" --role inbox
@@ -261,8 +283,8 @@ confirmation, resumable operation receipts, a post-write pull, and convergence
 verification.
 
 Spotify Platform content is retained as provider inventory and provenance. It
-will not be used to train an ML or AI model. Later personal embeddings will use
-Chordrift's canonical and user-supplied signals within provider-policy limits.
+is not used to train an ML or AI model. Personal embeddings use Chordrift's
+canonical and user-supplied signals within provider-policy limits.
 
 The downloadable listening-history archive remains optional. When available,
 `chordrift history ingest` enriches the library with account-scoped play counts,
@@ -270,10 +292,13 @@ duration, skips, completions, and recency without changing or replacing Web API
 inventory snapshots. Neon remains authoritative; unchanged local ZIPs are
 retained only for recovery and future reprocessing.
 
-See [docs/HOW_TO_CHORDRIFT.md](docs/HOW_TO_CHORDRIFT.md) for the task-oriented
-guide and table of contents, the linked CLI reference for every command,
+See [docs/HOW_TO_CHORDRIFT.md](docs/HOW_TO_CHORDRIFT.md) for the current
+task-oriented v0.1.4 guide and table of contents, the linked CLI reference for
+every released command,
 [scripts/README.md](scripts/README.md) for operator and development helper
 scripts,
+[docs/design/PLAYLIST_PRODUCT_ARCHITECTURE.md](docs/design/PLAYLIST_PRODUCT_ARCHITECTURE.md)
+for the v0.2 product and client direction,
 [ROADMAP.md](ROADMAP.md) for planned milestones, and
 [CHANGELOG.md](CHANGELOG.md) for release history. New focused development tasks
 should begin with [CODEX_HANDOFF.md](CODEX_HANDOFF.md) for current decisions and

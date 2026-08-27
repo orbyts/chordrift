@@ -1,5 +1,8 @@
 # Classify tracks with user dimensions
 
+Applies to the released v0.1.4 CLI. These revisioned facts remain durable input
+to the provider-neutral collection and recipe model planned for v0.2.
+
 Chordrift keeps three kinds of knowledge separate:
 
 1. the base acoustic model describes how a recording sounds;
@@ -147,7 +150,7 @@ $ chordrift classify import --file REVIEW.csv
 $ chordrift classify approve --batch BATCH_ID --confirm BATCH_ID
 ```
 
-## Future UI token model
+## v0.2 native-client token direction
 
 The UI should render each dimension as a namespaced token. A user can drag a
 token onto a track or album cover, but the action must stage a preview rather

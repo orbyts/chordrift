@@ -9,8 +9,24 @@ behavior. Both are deliberately conceptual: existing database-v2 names remain
 unchanged, while the recipe and collection names describe the next additive
 foundation rather than an already-applied migration.
 
-Status: proposed foundation, 2026-08-26. This is a design contract, not
-authorization to apply a migration or write to a provider.
+Status: active v0.2 architecture, updated 2026-08-27. V020-01 is implemented;
+V020-02 is next. This document is a design contract, not authorization to apply
+a migration or write to a provider.
+
+## Current implementation status
+
+- **Implemented — V020-01:** the public Rust `contract` module defines semantic
+  contract/schema compatibility, capability negotiation, provider-neutral
+  command and query envelopes, immutable receipts and generic views,
+  request/operation/idempotency/cancellation identities, structured progress,
+  complete operation lifecycle states, and fixed-message client-safe errors.
+- **Next — V020-02:** route every existing CLI handler through one Rust
+  application facade while preserving commands, redirected output, interactive
+  presentation, database behavior, and provider behavior exactly.
+- **Not implemented yet:** provider-neutral product domain types, isolation and
+  fake-provider proofs, product schema, onboarding sessions, collections,
+  recipes, Spins, hosted transport, and native clients. Those remain separate
+  roadmap slices and must not be inferred from the existence of contract DTOs.
 
 ## Product boundary
 
@@ -106,7 +122,8 @@ small useful analogue of Photara's exact-runtime declaration: it prevents a
 client from displaying or invoking a feature its service, provider, or evidence
 cannot support. It is not a general plugin system.
 
-The contract should be transport-neutral. The Rust CLI can call it in process;
+The implemented contract foundation is transport-neutral. The Rust CLI can
+eventually call it in process;
 native applications can use an authenticated service protocol. A generated
 Swift or Windows binding may wrap that protocol, but UniFFI or any one binding
 tool must not become the domain boundary. The contract—not the transport—is
@@ -115,7 +132,9 @@ authoritative.
 ### Rust crate direction
 
 The eventual workspace should separate these responsibilities without a
-big-bang rewrite:
+big-bang rewrite. V020-01 begins as a public module in the existing crate; the
+names below are logical dependency boundaries, not claims that these workspace
+crates already exist:
 
 ```text
 chordrift-domain       pure IDs, invariants, collections, recipes, Spins
@@ -316,7 +335,7 @@ dependency direction, not a requirement for a disruptive directory rewrite.
 Existing modules should move behind these seams incrementally with compiling
 tests at every step.
 
-## Invariants for the next foundation
+## v0.2 product invariants
 
 - Basic onboarding works from OAuth plus current inventory alone.
 - Optional archives enrich results but never become a hidden prerequisite.
@@ -365,23 +384,24 @@ an honest usable experience.
 
 ## Recommended implementation sequence
 
-1. Establish the workspace seams and versioned command/query/event contract;
-   route the existing CLI through the application facade without changing
-   behavior.
-2. Freeze provider-neutral IDs, `ProviderCapabilities`, playlist-surface axes,
+1. **Complete:** establish the versioned command/query/event, compatibility,
+   progress, cancellation, and structured-error contract.
+2. **Next:** route the existing CLI through the application facade without
+   changing behavior.
+3. Freeze provider-neutral IDs, `ProviderCapabilities`, playlist-surface axes,
    collection membership strength, and recipe-v1 types in Rust with unit tests.
-3. Add account/provider isolation, idempotency, cancellation, and fake-provider
+4. Add account/provider isolation, idempotency, cancellation, and fake-provider
    tests; prove two accounts and provider namespaces cannot cross.
-4. Design and rehearse additive ownership, collection, surface, recipe, Spin,
+5. Design and rehearse additive ownership, collection, surface, recipe, Spin,
    onboarding-session, and publication-link migrations. Do not publish provider
    changes.
-5. Implement the CLI-first new-account rehearsal and provider-free starter
+6. Implement the CLI-first new-account rehearsal and provider-free starter
    preview against the existing personal evidence.
-6. Implement the initial **Discovery + Rediscovery** recipe with allocation,
+7. Implement the initial **Discovery + Rediscovery** recipe with allocation,
    cadence, and simple ordering sections.
-7. Connect approved Spins to the existing immutable sync plan/apply/verify
+8. Connect approved Spins to the existing immutable sync plan/apply/verify
    boundary.
-8. Introduce the hosted Rust service and authenticated client transport without
+9. Introduce the hosted Rust service and authenticated client transport without
    distributing Neon or provider refresh credentials.
-9. Build native clients over the stable contract only after isolation,
+10. Build native clients over the stable contract only after isolation,
    compatibility, and deterministic-preview tests pass.

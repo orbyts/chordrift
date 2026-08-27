@@ -1,5 +1,8 @@
 # Add songs and preserve discovery context
 
+Applies to the released v0.1.4 workflow. V0.2 keeps these capture semantics and
+will expose them through the shared application contract and later recipes.
+
 Use this workflow when you find a song you want Chordrift to remember and
 eventually place into the right listening playlist.
 
@@ -58,8 +61,8 @@ $ chordrift spotify library-policy --account personal \
 The safe product default is `preserve`; changing policy does not immediately
 write to Spotify.
 
-The consumer product should perform steps 2–7 in the background and surface
-only an understandable proposal when confidence or intent is ambiguous.
+The later hosted/native product should perform steps 2–7 in the background and
+surface only an understandable proposal when confidence or intent is ambiguous.
 
 ## What not to do
 

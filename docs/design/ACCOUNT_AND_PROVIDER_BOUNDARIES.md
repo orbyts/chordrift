@@ -5,6 +5,26 @@ before Chordrift is presented to additional users or gains another live music
 provider. It is not a claim that the current Spotify implementation is already
 provider-neutral.
 
+Status: active v0.2 boundary, updated 2026-08-27. V020-01 has implemented the
+provider-neutral application-contract vocabulary and capability-negotiation
+foundation. Existing handlers, domain IDs, storage queries, and the Spotify
+adapter remain on the v0.1.4 path until their later roadmap slices.
+
+## Implemented application boundary
+
+The public Rust `contract` module now gives every future client the same
+transport-neutral shapes for commands, queries, immutable views, lifecycle
+events, progress, cooperative cancellation, structured client-safe errors,
+request/operation/idempotency identity, and contract/schema/capability
+negotiation. It contains no SQL rows, Spotify payloads, terminal presentation,
+platform APIs, or execution engine.
+
+This is a client boundary, not proof that the current implementation is already
+multi-account or multi-provider. V020-02 routes the existing CLI through one
+application facade without behavioral change; V020-03 adds typed ownership and
+provider-neutral domain values; V020-04 supplies the adversarial isolation and
+fake-provider proof.
+
 ## Current account model
 
 - `provider_accounts` is the root of account-specific operational state.
@@ -39,13 +59,13 @@ The domain is not yet fully platform-neutral:
 - Apple Music exists as a deferred branch/foundation and has not been validated
   with live credentials.
 
-## Required modularity audit
+## Remaining modularity and isolation work
 
 Before a UI or second live provider, perform a full code and schema audit:
 
-1. Define a provider capability contract for authentication, inventory,
-   playback observations, playlist writes, artwork, saved-library mutation, and
-   unsupported operations.
+1. Map each provider adapter's authentication, inventory, playback, playlist,
+   artwork, and saved-library behavior into the implemented capability-report
+   foundation without pretending unsupported operations exist.
 2. Keep canonical music identity and account intent in provider-independent
    domain modules. Provider payloads must stop at adapter boundaries.
 3. Replace Spotify-named read models with provider-qualified generic views or
@@ -54,12 +74,12 @@ Before a UI or second live provider, perform a full code and schema audit:
    convenience, not an ownership boundary.
 5. Add two-account adversarial tests proving that imports, classifications,
    exclusions, proposals, plans, credentials, and applies cannot cross accounts.
-6. Add a provider capability matrix so unsupported Apple/Spotify behavior is
-   visible and safely deferred rather than emulated.
+6. Populate a provider capability matrix so unsupported Apple/Spotify behavior
+   is visible and safely deferred rather than emulated.
 7. Keep IDs namespaced by provider and resolve cross-provider recordings through
    canonical identity evidence, never string coincidence.
 
-## Future UI implication
+## v0.2 client implication
 
 Every token, playlist, correction, and review batch belongs to an explicit
 account. A future UI may make account switching feel lightweight, but it must

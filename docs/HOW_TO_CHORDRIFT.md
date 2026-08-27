@@ -4,6 +4,27 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
+These workflows describe the released **v0.1.4** daily driver and remain valid
+while `main` develops v0.2.0. The v0.2 application contract now exists, but the
+released CLI has not been rerouted and no command or output has changed. Design
+pages are forward-looking and identify which v0.2 foundations are implemented.
+
+## Documentation map
+
+| Need | Authoritative document | Status |
+| --- | --- | --- |
+| Perform daily library work | This guide and the linked `how-to/` pages | Released v0.1.4 behavior; preserved during current v0.2 work. |
+| Look up a command | [CLI command reference](reference/CLI_COMMANDS.md) | Complete v0.1.4 command surface; historical operator-only leaves are labeled. |
+| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 implemented; V020-02 next; later foundations explicitly listed. |
+| Review intent interpretation | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Active v0.2 product policy, grounded in the existing explicit CLI loop. |
+| Review account/provider isolation | [Account and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Contract foundation implemented; isolation/domain proofs still pending. |
+| Review database-v2 decisions | [Database architecture v2](design/DATABASE_ARCHITECTURE_V2.md) | Completed v0.1.4 foundation and labeled historical execution record. |
+| Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
+
+If a historical release detail is needed, use the corresponding Git tag. The
+documents on `main` prioritize unambiguous current v0.1.4 operation and ongoing
+v0.2 review.
+
 Chordrift treats Neon as the durable ledger and Spotify as the familiar
 listening surface. A normal pull observes Spotify changes, but ambiguous intent
 is staged for inspection rather than silently guessed.
@@ -18,7 +39,7 @@ is staged for inspection rather than silently guessed.
 | Keep a song but reject its current vibe | [Re-evaluate and reclassify a track](how-to/ROUTING_AND_RECLASSIFYING.md) | Move it to `Re-evaluate` and remove the wrong destination. |
 | Add private region, tradition, language, or cohort facts | [Classify tracks with user dimensions](how-to/CLASSIFICATION_DIMENSIONS.md) | Review one track/a small group directly, or approve a CSV batch. |
 | Bring Neon up to date | [Synchronize and prove convergence](how-to/SYNC_AND_CONVERGENCE.md) | Run a pull after provider changes. |
-| Understand how a future product infers intent | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Keep using Spotify; Chordrift interprets bounded changes. |
+| Understand how the product interprets provider intent | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Keep using Spotify; Chordrift interprets bounded changes. |
 | Understand account isolation and provider-neutrality work | [Account isolation and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Current personal facts are account-scoped; a full adapter audit precedes another live provider. |
 
 ## The short everyday loop
@@ -102,7 +123,7 @@ Spotify's Like button is the primary lightweight intake action. It means
 named intakes carry source provenance. For Suhail's opt-in policy, Liked Songs
 is cleared only after verified Chordrift placement, just like an intake queue.
 
-Future recipe playlists are a separate layer from both intake and canonical
+V0.2 recipe playlists are a separate layer from both intake and canonical
 collections. They will turn recent discoveries, rotation, rediscovery,
 favorites, and explicit collections into renewable listening experiences while
 preserving why each track belongs in the library. The same engine will support
@@ -129,50 +150,26 @@ For installation, OAuth, archive recovery, embeddings, clustering, proposal
 generation, artwork, retirement, bookmarks, enrichment, and every CLI leaf
 command, see the [CLI command reference](reference/CLI_COMMANDS.md).
 
-The roadmap and current implementation state are recorded in
+The v0.2 roadmap and current implementation state are recorded in
 [ROADMAP.md](../ROADMAP.md) and [CODEX_HANDOFF.md](../CODEX_HANDOFF.md).
 
-Database-v2 migration operators can capture repeatable, provider-free baselines
-with `chordrift db invariant-report`, `chordrift db storage-report`, and the
-strictly non-mutating `chordrift db compact plan`. After installing the
-additive schema, `chordrift db v2 status` compares current-state parity and
-lists every still-blocked cutover gate. See the CLI reference and
-[database-v2 design](design/DATABASE_ARCHITECTURE_V2.md) for the measured
-restore rehearsal and retention boundaries.
+Database v2 migration, cutover, cleanup, and old-project retirement are already
+complete for the released runtime. Their exact-confirmed commands remain in the
+binary for audit and recovery, but they are not part of everyday use and must
+not be replayed as a new production procedure. Read-only diagnostics such as
+`chordrift db status`, `db invariant-report`, `db storage-report`, `db v2
+status`, and `db compact cleanup verify` remain useful. The chronological
+[database-v2 design](design/DATABASE_ARCHITECTURE_V2.md) preserves the measured
+rehearsal and production record and clearly marks its intermediate gates as
+historical.
 
-The rehearsal migration itself has explicit provider-free phases:
+## v0.2 development direction
 
-```console
-chordrift db v2 migration plan --account personal
-chordrift db v2 migration apply --account personal --confirm <PLAN_SHA256>
-chordrift db v2 migration verify --account personal
-chordrift db v2 cutover-plan --account personal
-```
-
-Only `migration apply` moves database rows, and only after an exact hash match.
-The other commands are read-only. A rehearsal cutover plan is evidence, not
-production approval: do not reuse its hash after production state changes, do
-not change the production connection, and do not delete legacy rows without a
-new explicit plan/apply/verify approval.
-
-Treat production as separate gates. First apply only additive schema/current-
-state migrations 0040-0043, rerun the read-only reports, and stop to review the
-production-emitted migration plan hash. Do not combine that schema gate with
-`migration apply`, read cutover, observation-window start, or legacy cleanup.
-
-After v0.1.3 runtime migration and a fresh invariant report, database-v1
-storage cleanup has its own exact-confirmed provider-free phases:
-
-```console
-chordrift db compact cleanup plan --account personal
-chordrift db compact cleanup apply --account personal --confirm <PLAN_SHA256>
-chordrift db compact cleanup verify --account personal
-```
-
-`cleanup plan` is read-only. `cleanup apply` removes the superseded physical
-provider bodies and legacy event/archive tables, so its hash is database-specific
-and requires separate production approval. `cleanup verify` proves that the v2
-invariant fingerprint is unchanged, normalized evidence counts match the
-receipt, legacy table names are absent, and transient provider-import tables are
-empty. Never copy a rehearsal cleanup hash to production without comparing the
-production-emitted plan and obtaining explicit approval.
+V020-01 is implemented in the public Rust `contract` module. It supplies the
+provider- and transport-neutral shapes that the CLI, hosted service, and future
+native clients will share, but it does not execute existing commands. V020-02
+will introduce one application facade and route current CLI handlers through it
+without changing commands, redirected output, interactive presentation,
+database behavior, or provider behavior. See the
+[playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) for
+the complete staged direction.

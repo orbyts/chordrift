@@ -3,6 +3,12 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
+Command status: this page documents the released **v0.1.4** CLI. The `main`
+branch is developing v0.2.0, but V020-01 added only a Rust application-contract
+module and no user-facing command. V020-02 must preserve this command surface,
+redirected output, interactive presentation, database behavior, and provider
+behavior exactly while routing handlers through one application facade.
+
 Chordrift reads Spotify state into Neon and changes Spotify only through an
 exact inspected plan, readiness assessment, and explicitly confirmed apply
 phase.
@@ -105,16 +111,27 @@ Chordrift reads its Neon URL from `CHORDRIFT_DATABASE_URL` and its public
 Spotify application ID from `CHORDRIFT_SPOTIFY_CLIENT_ID`. With Apogee, expose
 those variables through Apogee rather than editing shell initialization files.
 
-Database-v2 foundation diagnostics are provider-free and read-only:
+### Database-v2 diagnostics and historical operator commands
+
+Database-v2 migration, cutover, cleanup, and former-project retirement are
+complete for the released v0.1.4 runtime. Do not rerun their mutating commands
+as routine maintenance. These read-only diagnostics remain useful:
 
 ```console
 $ chordrift db invariant-report --account personal
 $ chordrift db storage-report
 $ chordrift db compact plan --account personal
+$ chordrift db v2 status --account personal
+$ chordrift db compact cleanup verify --account personal
+```
+
+The following exact-confirmed surfaces remain documented because they are
+still CLI leaves and preserve the migration audit/recovery interface. They are
+historical operator tools, not a current production procedure:
+
+```console
 $ chordrift db compact cleanup plan --account personal
 $ chordrift db compact cleanup apply --account personal --confirm <PLAN_SHA256>
-$ chordrift db compact cleanup verify --account personal
-$ chordrift db v2 status --account personal
 $ chordrift db v2 migration plan --account personal
 $ chordrift db v2 migration apply --account personal --confirm <PLAN_SHA256>
 $ chordrift db v2 migration verify --account personal
@@ -125,10 +142,12 @@ The invariant report fingerprints exact provider playlist order and canonical
 assignment order, preserves archive/apply/convergence checkpoints, and reports
 listening totals. The storage report emits table, heap, index, and total bytes.
 The compaction plan runs in a read-only transaction and only describes current,
-durably protected, and redundant routine snapshots; it cannot apply cleanup.
-The v2 status command compares exact current order and saved surfaces, then
-shows normalized-evidence and compact-checkpoint gates that must reach parity
-before cutover. It is also read-only.
+durably protected, and redundant routine observations; it cannot apply cleanup.
+The v2 status command compares exact current order, saved surfaces, normalized
+evidence, and compact checkpoints. On the released clean runtime those parity
+gates are complete. The
+[database-v2 design](../design/DATABASE_ARCHITECTURE_V2.md) retains the dated
+execution record; intermediate “next gate” statements there are historical.
 
 ## Spotify data archives
 
@@ -312,10 +331,10 @@ identity, and all playlist roles are scoped to that account.
 
 Spotify consent is a single PKCE authorization covering inventory, Recently
 Played, reserved top-item access, playlist publication, library cleanup, and artwork.
-Normal commands do not rewrite an unchanged Keychain credential. For a friend
-test, install one stable build rather than repeatedly running changing debug
-binaries; a future consumer build must be signed so macOS recognizes the same
-application at each launch.
+Normal commands do not rewrite an unchanged Keychain credential. The personal
+CLI is not yet a supported multi-user trial surface; v0.2 must pass its
+two-account isolation and fake-provider suite first. A future consumer build
+must be signed so macOS recognizes the same application at each launch.
 
 ## Playlists
 
@@ -370,7 +389,9 @@ Then use `chordrift classify import` and `chordrift classify approve`.
 
 `reevaluate retire-legacy` is an exact-confirmed Neon-only transition. It
 requires the replacement queue and complete proposal-or-exclusion coverage;
-Spotify retirement remains a later reviewed plan operation.
+Spotify retirement remains a separate reviewed plan operation. The personal
+v0.1.4 migration is already complete; this command is retained for historical
+CLI completeness, not ordinary use.
 
 An intentional removal from both a verified destination and Re-evaluate is
 normally inferred after a pull and reviewed plan. A provider-unavailable track
@@ -393,8 +414,9 @@ $ chordrift proposals retire-empty --playlist playlist-STABLE_KEY \
     --confirm playlist-STABLE_KEY
 ```
 
-The former multi-route commands remain temporarily available only for
-migration and retirement auditing:
+The former multi-route commands remain available only for historical migration
+and retirement auditing. The personal system has completed that retirement;
+do not create or populate Route playlists during normal v0.1.4 use:
 
 ```console
 $ chordrift routes list --account personal
@@ -416,10 +438,9 @@ $ chordrift sync apply --account personal --assessment ASSESSMENT_ID \
 $ chordrift sync pull --account personal
 ```
 
-The initial review routes are `Route — South Indian`, `Route — North Indian`,
-and `Route — Decide Later`. Spotify folders are visual organization only and
-are unavailable through the Web API; move the three published routes into a
-folder manually if desired.
+The retired review routes were `Route — South Indian`, `Route — North Indian`,
+and `Route — Decide Later`. They are historical evidence, not current intake or
+correction surfaces. Use `Re-evaluate` for a live correction.
 
 ### User-created playlists and retirement
 
@@ -449,7 +470,7 @@ other users, or organizations merely because they were followed, added, or
 shared collaboratively. Chordrift will classify these as internal **External
 Playlist Bookmarks**, not active library playlists.
 
-Before a future cleanup removes one from Spotify or Apple Music, Chordrift will
+Before an approved cleanup removes one from Spotify, Chordrift will
 retain the provider ID, owner, link, relationship, metadata, and last-known
 contents when the provider makes them readable. An inaccessible playlist will
 be marked incomplete. The retained bookmark remains queryable in Neon, but it
@@ -533,8 +554,9 @@ After approval, rebuild the dry-run with `chordrift sync plan`. It will contain
 one `remove_external_playlist` cleanup operation per approved bookmark and
 report them separately as `external_cleanups`. These operations only remove
 your follow/library relationship; they cannot edit or delete the source
-owner's playlist. They remain deferred and non-executable throughout v0.0.9.
-An approval remains usable across identical pulls, but any changed signature,
+owner's playlist. They execute only through the destructive `cleanup` phase
+after readiness and exact confirmation. An approval remains usable across
+identical pulls, but any changed signature,
 added bookmark, or missing bookmark requires a new review batch.
 
 ### Which playlist should receive a new song?
@@ -558,25 +580,17 @@ playlists are signal sources that Spotify manages. Never add to, rename, empty,
 or recreate them for Chordrift. Chordrift reads their meaning without treating
 their tracks as a shared musical vibe.
 
-Chordrift-managed canonical playlists will use approved, generated vibe names.
-Those names are deliberately not fixed before clustering. Do not manually add
-tracks to those playlists; Chordrift will own their membership, while Spotify
-is the only live output provider for the first canonical release. A future
+Chordrift-managed canonical playlists use approved, generated vibe names. Do
+not manually add tracks to those playlists; Chordrift owns their membership,
+while Spotify is the only live output provider for the current release. A future
 Apple Music adapter will use the same approved names. The temporary Spatial
 Audio companion is named `Chordrift Spatial Audio`.
 
-Legacy vibe playlists must remain until the dry-run proves that every track has
-an approved canonical destination. After that verification and separate user
-approval, all old user-created vibe and utility playlists are intended to be
-retired. This includes `Melodi(es)` and `Ambient Music Therapy – Indian Lounge
-- Relaxing Music for your Six Senses`, which remain semantic evidence until
-retirement. The utility playlists `Two Way Sync`, `My top tracks playlist`, and
-`All my saved songs` are not intake names and are also retired from the design.
-`Collaboration Jessica` is explicitly ignored and must not contribute
-recommendation or similarity evidence. Retirement removes the obsolete
-playlist container, not its tracks from the saved library or verified canonical
-destinations. Deleting any existing playlist is still a manual Spotify action
-in v0.0.5; Chordrift will not do it remotely.
+For a newly observed legacy playlist, keep it until the dry-run proves every
+track has an approved canonical destination or durable exclusion. Retirement
+removes the obsolete playlist container, not its tracks from the preserved
+library or verified canonical destinations, and is available only through the
+separately approved destructive retirement phase.
 
 The target Spotify surface is therefore:
 
@@ -589,8 +603,10 @@ The target Spotify surface is therefore:
 4. `Chordrift Spatial Audio` as a temporary companion until native Apple Music
    integration replaces the workaround.
 
-Spotify Liked Songs remains a provider library surface and is not a playlist
-retirement candidate.
+For the personal v0.1.4 account this legacy reconciliation and retirement is
+complete. The preservation-first rules above remain the default for any newly
+observed user playlist. Spotify Liked Songs remains a provider library surface
+and is not a playlist retirement candidate.
 
 List only playlists present in Spotify's latest successfully imported snapshot,
 using their current Spotify names, item count, role, drift policy, and stable
@@ -618,7 +634,7 @@ Configure a personal discovery playlist as an inbox:
 $ chordrift playlists configure --name "Inbox" --role inbox
 ```
 
-Configure a future Chordrift-owned output playlist:
+Configure a Chordrift-owned output playlist:
 
 ```console
 $ chordrift playlists configure --spotify-id SPOTIFY_ID --role managed
@@ -638,8 +654,8 @@ $ chordrift playlists configure --name "Review Together" --role managed --drift-
 ```
 
 The available policies are `provider-wins`, `neon-wins`, and `manual`. They are
-durable metadata in the current pull-only release; remote repair will arrive in
-the later dry-run/apply workflow.
+durable metadata. Managed remote publication and reconciliation use the
+existing immutable plan/readiness/apply/verify workflow.
 
 ## Embeddings
 
@@ -689,8 +705,8 @@ of its tracks share a vibe:
 $ chordrift playlists signals --name "On Repeat" --class provider-curated --behavior rotation
 ```
 
-Configure a friend-recommendation intake. Intake clearing remains disabled
-until the later apply workflow can verify canonical placement:
+Configure a friend-recommendation intake. Intake clearing remains blocked until
+the apply workflow has published and verified canonical placement:
 
 ```console
 $ chordrift playlists signals --name "From Friends" --class intake --behavior recommendation
@@ -762,10 +778,9 @@ Machine labels are temporary
 content-derived identifiers, not playlist names, and no Spotify playlist is
 created or modified.
 
-After proposed playlists have stable identities, Chordrift will support the
-listening correction workflow: reject a track's current assignment, optionally
-choose or lock a different destination, then regenerate so the track moves.
-That account-specific decision will be an auditable constraint while the
+Chordrift supports an auditable correction workflow through `Re-evaluate`,
+`proposals assign`, `proposals review`, classifications, and reversible
+exclusions. A later generation replays account-specific decisions while the
 original score and assignment remain preserved.
 
 ## Proposed playlist library
@@ -905,24 +920,24 @@ named and retirement coverage is complete:
 $ chordrift proposals approve --account personal --confirm PROPOSAL_GENERATION_UUID
 ```
 
-Approval records the account-owner decision in Neon. It still performs no
-Spotify writes; publishing belongs to the later dry-run/apply milestones.
+Approval records the account-owner decision in Neon and performs no Spotify
+write. Publishing is a separate, already implemented immutable
+plan/readiness/apply/verify workflow.
 
 Every approved canonical playlist and Chordrift intake has original Drift Atlas
-artwork. v3 preserves the approved backgrounds and adds four intake
-backgrounds; exact names are overlaid locally with Helvetica Neue Bold rather
-than generated as image text. Label-free masters live under
-`artwork/canonical/drift-atlas-v3/backgrounds` so Apple Music can later render
+artwork. v4 is the current complete set; exact names are overlaid locally with
+Helvetica Neue Bold rather than generated as image text. Label-free masters live under
+`artwork/canonical/drift-atlas-v4/backgrounds` so Apple Music can later render
 the same artwork with provider-appropriate typography.
 
-The v3 files live under `artwork/canonical/drift-atlas-v3`. Validate the strict
+The v4 files live under `artwork/canonical/drift-atlas-v4`. Validate the strict
 manifest, inspect its contact sheet and hashes, and approve the
 exact immutable batch:
 
 ```console
 $ chordrift db migrate
 $ chordrift artwork import --account personal \
-    --manifest artwork/canonical/drift-atlas-v3/manifest.json
+    --manifest artwork/canonical/drift-atlas-v4/manifest.json
 $ chordrift artwork status --account personal
 $ chordrift artwork list --account personal
 $ chordrift artwork approve --account personal --confirm ARTWORK_BATCH_UUID
@@ -1003,7 +1018,7 @@ Operations run through ordered safety phases: publish approved destinations,
 reconcile managed drift, consume eligible inbox entries, then retire legacy
 containers. Inbox removals and legacy retirement remain deferred until every
 destination has been published and verified. Retirement also requires a
-separate future approval; a dry-run plan is never permission to delete.
+separate exact-plan approval; a dry-run plan is never permission to delete.
 
 The publish phase also proposes any missing stable intake containers named
 `Inbox`, `From Friends`, `Liked from Radio`, and `From Prompts`. Existing intake containers are
@@ -1036,8 +1051,8 @@ approved proposal and complete approved artwork, ordered and uniquely keyed
 operations, destructive-operation gates, the approved external-cleanup batch,
 five simulated interruption/resume points, bounded Spotify 429 handling, and
 zero changes on an idempotent operation replay. The provider probe refreshes
-the existing credential and calls Spotify's current-user endpoint only. For
-v0.1.0 it requires the read scopes plus `playlist-modify-private`,
+the existing credential and calls Spotify's current-user endpoint only. In
+v0.1.4 it requires the read scopes plus `playlist-modify-private`,
 `playlist-modify-public`, `user-library-modify`, and `ugc-image-upload`. Re-run
 `chordrift spotify auth --account personal` once to approve those scopes; the
 refresh token remains in Passwords/Keychain.
@@ -1048,8 +1063,8 @@ ready. Readiness itself never writes to Spotify.
 
 ## Applying an approved plan
 
-v0.1.1 executes one safety phase at a time. Every execution requires a current
-v8 plan, a ready assessment, and the assessment UUID repeated exactly. A
+V0.1.4 executes one safety phase at a time. Every execution requires a current
+v10 plan, a ready assessment, and the assessment UUID repeated exactly. A
 successful phase stops at `awaiting_pull`; always pull and verify before
 planning or applying another phase.
 
@@ -1151,7 +1166,8 @@ remains unknown, while a transient error becomes eligible for a bounded retry
 after its cache delay. MusicBrainz defines this value as the area with which
 the artist is primarily identified. Chordrift does not relabel it as
 birthplace, formation country, nationality, recording location, or a track's
-language. Pretrained mood/sound inference is a later v0.0.6 step.
+language. Optional pretrained mood/sound inference is imported separately from
+authorized local-audio artifacts as described below.
 
 ### Pretrained audio-model artifacts
 
@@ -1181,8 +1197,8 @@ metadata, semantic-playlist, relationship, and manual-feedback fallbacks.
 
 ## Excluded tracks
 
-The planned apply workflow will expose an internal **Excluded Tracks** view,
-not a Spotify playlist. After a Chordrift-managed playlist has been published
+Chordrift exposes exclusions as an internal **Excluded Tracks** view, not a
+Spotify playlist. After a Chordrift-managed playlist has been published
 and verified, removing one of its tracks in Spotify will record a reversible
 account-level exclusion during the next pull. Chordrift retains the track,
 history, source provider, removal time, and previous assignment, but will not

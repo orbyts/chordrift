@@ -78,6 +78,7 @@
   <text x="270" y="408" class="body">Commands · immutable query views · lifecycle events · structured errors · progress · cancellation · recovery</text>
   <text x="270" y="435" class="body">Negotiates API version · schema version · provider capabilities · evidence capabilities · feature availability</text>
   <text x="270" y="468" class="small">CLI may call in process; shipped clients use authenticated service transport. Clients never parse terminal output or access SQL.</text>
+  <text x="270" y="489" class="small">Status: V020-01 contract types implemented · V020-02 facade routing next · domain, service transport, and native clients later</text>
 
   <path d="M900 500 V535" class="both"/>
 

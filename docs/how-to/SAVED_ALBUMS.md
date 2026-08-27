@@ -1,5 +1,9 @@
 # Saved albums and album cleanup
 
+Applies to the released v0.1.4 plan/readiness/apply workflow. V0.2 retains
+saved-album evidence and preservation policy behind the shared application
+boundary.
+
 Spotify saved albums are distinct from playlists and Liked Songs. Chordrift
 inventories them as a separate immutable surface, including the ordered tracks
 inside every album. Album-only tracks do not automatically enter a canonical

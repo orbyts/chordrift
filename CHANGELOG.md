@@ -4,6 +4,15 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Begin the v0.2.0 development line with a public, transport-neutral Rust
+  application contract covering versioned commands, queries, immutable views,
+  lifecycle events, progress, cooperative cancellation, structured client-safe
+  errors, identity, and compatibility/capability negotiation without changing
+  the released CLI, SQL, configuration, Neon behavior, or Spotify behavior.
+- Reconcile current documentation around one explicit boundary: v0.1.4 remains
+  the released daily-use CLI, while `main` documents implemented and planned
+  v0.2 work without presenting completed database/legacy gates as current
+  operator instructions.
 - Let the operator wrapper retry a zero-operation plan when Spotify has not yet
   exposed a just-edited playlist snapshot, with optional bounded polling.
 
@@ -317,7 +326,10 @@ All notable changes to Chordrift are documented here.
 
 - Reserve the Chordrift crate and repository namespaces.
 
-[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/orbyts/chordrift/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/orbyts/chordrift/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/orbyts/chordrift/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/orbyts/chordrift/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/orbyts/chordrift/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/orbyts/chordrift/compare/v0.0.9...v0.1.0
 [0.0.9]: https://github.com/orbyts/chordrift/compare/v0.0.5...v0.0.9

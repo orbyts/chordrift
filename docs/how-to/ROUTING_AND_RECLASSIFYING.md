@@ -1,5 +1,8 @@
 # Re-evaluate and reclassify a track
 
+Applies to the released v0.1.4 workflow. The former multi-route workflow has
+already been retired; `Re-evaluate` is the one current correction surface.
+
 Use the single `Re-evaluate` playlist when you want to keep a track but reject
 its current Chordrift destination. It is a temporary holding queue, not a final
 playlist and not a preference signal.
@@ -69,25 +72,11 @@ assignment revision newer than the queue-entry event and a destination that is
 different from the rejected source. Merely regenerating a proposal cannot
 silently clear the queue.
 
-## Retire the old multi-route workflow
-
-After `Re-evaluate` exists and every old route track is represented in the
-current proposal or explicitly excluded, retire the legacy queues in Neon:
-
-```console
-$ chordrift reevaluate retire-legacy \
-    --account personal \
-    --confirm "RETIRE LEGACY ROUTES"
-```
-
-This command performs no Spotify write. It marks only the old routing surfaces
-inactive. The next immutable sync plan archives their Spotify containers in the
-retirement phase after the replacement destinations are published.
-
 ## Add a private classification dimension
 
-The complete column glossary, recommended vocabulary, examples, and future UI
-token behavior live in [Classify tracks with user dimensions](CLASSIFICATION_DIMENSIONS.md).
+The complete column glossary, recommended vocabulary, examples, and v0.2
+native-client token direction live in
+[Classify tracks with user dimensions](CLASSIFICATION_DIMENSIONS.md).
 
 Use explicit classification when provider/public metadata is missing or your
 own cultural grouping should outrank sound similarity. These facts are private,
@@ -130,13 +119,13 @@ $ chordrift classify clear --spotify-id SPOTIFY_TRACK_ID \
     --reason "classification replaced after listening review"
 ```
 
-For a larger review, export one or more playlists into one deduplicated CSV:
+For a larger review, export one or more current playlists into one deduplicated
+CSV:
 
 ```console
 $ chordrift classify export \
-    --playlist "Monsoon Cinema" \
-    --playlist "Route — South Indian" \
-    --playlist "Route — North Indian" \
+    --playlist "Dakshina Pulse" \
+    --playlist "Uttara Glow" \
     --file data/review/south-asian-classification.csv
 ```
 
