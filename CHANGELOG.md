@@ -18,6 +18,10 @@ All notable changes to Chordrift are documented here.
 - Prove two-account and two-provider-namespace isolation with a deterministic
   test-only fake-provider harness covering idempotent acceptance, cooperative
   cancellation, bounded retry, and visible unsupported-capability failure.
+- Add migration 0046's provider-neutral ownership, capability, collection,
+  surface, recipe, onboarding, Spin, and publication-link foundation; verify a
+  fresh chain and migration-45 upgrade on isolated PostgreSQL 18 without
+  applying it to production Neon.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

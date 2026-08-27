@@ -33,7 +33,12 @@ foundation additively and does not reopen the migration.
 | Legacy storage | Database-v1 physical tables and the former rollback project are gone after independently verified exact-confirmed cleanup. |
 | Recovery | The verified pre-compaction logical dump and immutable Spotify archives remain the external recovery sources. |
 | Routine operation | Use `sync pull` and the normal plan/readiness/apply workflow; do not replay migration or cleanup applies. |
-| v0.2 relationship | V020-01 through V020-04 change no schema. V020-05 must extend this foundation additively and only through an isolated PostgreSQL 18 rehearsal. |
+| v0.2 relationship | Migration 0046 now extends this foundation additively with the provider-neutral product schema. It passed fresh and migration-45 upgrade rehearsals on isolated PostgreSQL 18 and is not applied to production Neon. |
+
+The exact migration-0046 reconciliation and ownership model is documented in
+the [V020-05 product schema foundation](PRODUCT_SCHEMA_V020_05.md). It adds
+product intent beside database-v2; it does not reopen, rename, or replace the
+current-state and normalized-evidence foundation shown below.
 
 ## Why this redesign existed
 

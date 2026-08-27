@@ -32,9 +32,12 @@ Neither slice changes how an installed v0.1.4 binary is used. V020-03 adds
 provider-neutral ownership, identity, capability, collection, surface, recipe-
 v1, and Spin value types. V020-04 now proves account/provider isolation,
 deterministic fake generation, idempotency, cancellation, bounded retry, and
-visible capability failure entirely in tests. The additive schema plan and
-isolated PostgreSQL rehearsal are next in V020-05; onboarding, production
-generation, hosted transport, and native clients remain later work.
+visible capability failure entirely in tests. V020-05 adds migration 0046's
+provider-neutral ownership, collection, surface, recipe, onboarding, Spin, and
+publication-link schema after fresh and migration-45 PostgreSQL 18 rehearsals.
+It remains unapplied to production Neon. The provider-read-only onboarding
+session boundary is next in V020-06; generation, hosted transport, and native
+clients remain later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages

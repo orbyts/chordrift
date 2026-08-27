@@ -8,7 +8,8 @@ use crate::Result;
 /// Chordrift's strictly ordered, application-owned, embedded schema and
 /// rehearsal-migration support migrations.
 ///
-/// The catalog includes the provider-native Re-evaluate queue and its event ledger.
+/// The catalog includes the provider-native Re-evaluate queue, database-v2
+/// storage, and the additive provider-neutral product-domain foundation.
 pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 /// Read-only diagnostics for the canonical database.

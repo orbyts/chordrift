@@ -11,8 +11,9 @@ foundation; V020-02 routes every existing CLI handler through the shared
 application facade without behavioral change; V020-03 adds account-owned and
 provider-qualified domain IDs plus typed capability reports; V020-04 proves the
 pure boundary with two-account/two-provider adversarial tests and a deterministic
-fake-provider harness. Storage queries and the Spotify adapter remain on the
-v0.1.4 path until later roadmap slices.
+fake-provider harness; V020-05 adds composite account-owned foreign keys across
+the additive product schema and rehearses them on isolated PostgreSQL 18.
+Production storage queries and the Spotify adapter remain on the v0.1.4 path.
 
 ## Implemented application boundary
 
@@ -27,11 +28,15 @@ This is a client boundary, not a claim that the current production implementatio
 is already multi-account or multi-provider. V020-02 routes the existing CLI
 through one application facade without behavioral change; V020-03 supplies typed
 ownership and provider-neutral domain values; V020-04 proves those boundaries in
-an isolated harness without changing the production storage or Spotify paths.
+an isolated harness; V020-05 implements the matching product-schema ownership
+constraints without changing the production storage or Spotify paths. See the
+[exact schema reconciliation](PRODUCT_SCHEMA_V020_05.md).
 
 ## Current account model
 
-- `provider_accounts` is the root of account-specific operational state.
+- In production v0.1.4, `provider_accounts` remains the root of account-specific
+  operational state. Development migration 0046 adds `chordrift_accounts` above
+  it as the provider-neutral product owner.
 - Provider snapshots, playlist policy, listening statistics, signals,
   proposals, plans, apply runs, exclusions, classifications, and review batches
   carry a `provider_account_id` directly or inherit it through an immutable

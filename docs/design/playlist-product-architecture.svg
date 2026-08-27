@@ -30,7 +30,7 @@
   <rect width="1800" height="1220" fill="#f7f9fc"/>
   <text x="70" y="62" class="title">Chordrift: from provider library to renewable listening experiences</text>
   <text x="70" y="92" class="subtitle">Spotify first · provider-neutral core · useful without an archive · every Spin previewed, approved, published, and verified</text>
-  <text x="70" y="116" class="small">v0.2 target · contract, facade, and domain foundation implemented · isolation, onboarding, generation, and publication follow</text>
+  <text x="70" y="116" class="small">v0.2 target · contract, facade, domain, isolation, and additive schema implemented · onboarding and generation follow</text>
 
   <text x="70" y="142" class="section">1 · First-run and everyday loop</text>
   <g>
@@ -87,7 +87,7 @@
 
     <rect x="100" y="455" width="290" height="150" class="node provider"/>
     <text x="120" y="484" class="label">Account + provider links</text>
-    <text x="120" y="510" class="body">chordrift_accounts (new root)</text>
+    <text x="120" y="510" class="body">chordrift_accounts (0046 root)</text>
     <text x="120" y="532" class="body">provider_accounts + capabilities</text>
     <text x="120" y="561" class="small">Connection identity; secrets stay</text>
     <text x="120" y="579" class="small">outside PostgreSQL</text>

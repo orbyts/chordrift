@@ -8,25 +8,37 @@ archive contents.
 
 Last updated: 2026-08-27.
 
-## Start the next task here: v0.2.0 slice V020-05
+## Start the next task here: v0.2.0 slice V020-06
 
-Implement only `V020-05 — Additive schema plan and local rehearsal` from the
-authoritative execution map at the top of `ROADMAP.md`. Reconcile proposed
-ownership, collection, surface, recipe, Spin, onboarding-session, and
-publication-link tables with every existing equivalent before adding anything.
-Implement and verify one additive migration only against isolated PostgreSQL 18.
-Do not begin the V020-06 onboarding-session runtime or production recipe/Spin
-generation assigned to later slices.
+Implement only `V020-06 — Onboarding session boundary` from the authoritative
+execution map at the top of `ROADMAP.md`. Add an application boundary that can
+read one selected provider inventory and selected evidence, ignores all existing
+Chordrift collection/recipe/publication intent by default, and persists the
+session's immutable inputs and output provenance through migration 0046. Build
+on the public `contract`, `application`, and `domain` modules. Do not begin the
+V020-07 inventory-only audit or later recipe/Spin generation.
 
-The exact safety boundary is schema design, migration code, and isolated local
-PostgreSQL rehearsal only: do not change CLI commands or output, configuration,
-production account behavior, Spotify behavior, publication safety, or credential
-handling. Do not make a production Neon request or any Spotify request or write.
-Preserve all v0.1.4 tables, data, migrations, invariants, and runtime behavior;
-the migration must be additive, replay-safe, ownership-scoped, and compatible
-with a fresh database plus the complete existing migration chain.
+The exact safety boundary is provider-read-only application behavior exercised
+with the fake provider and isolated PostgreSQL: do not add or change CLI commands
+or output, production configuration, provider mutation, publication behavior,
+or credential handling. Do not apply migration 0046 to production Neon and do
+not make a live Spotify request or any Spotify write. A default onboarding
+session must not read existing Chordrift intent, and cancellation/idempotency/
+account ownership must remain visible through the existing contract.
 
-V020-01 through V020-04 are complete. V020-04 adds a test-only deterministic
+V020-01 through V020-05 are complete. V020-05 adds one additive migration,
+`0046_product_domain_foundation.sql`, containing 16 tables for Chordrift account
+ownership, capability observations, overlapping collections, playlist surfaces,
+recipe revisions/dependencies, onboarding sessions, deterministic Spins, and
+links into the existing publication ledger. Composite foreign keys enforce
+account ownership. Existing v0.1.4 provider-account upserts receive or reuse a
+stable compatibility owner without changing their SQL. The complete 46-file
+chain, idempotent migrator replay, and a migration-45 upgrade with preexisting
+provider/playlist-concept rows pass on isolated PostgreSQL 18. Migration 0046
+has not been applied to production Neon; production remains healthy at 45/45.
+See `docs/design/PRODUCT_SCHEMA_V020_05.md` for the exact reconciliation.
+
+V020-04 adds a test-only deterministic
 fake-provider/application harness built on the public `contract`, `application`,
 and `domain` modules. Six adversarial tests prove that two Chordrift accounts
 and two provider namespaces cannot cross; equal opaque IDs remain distinct;

@@ -5,12 +5,12 @@ shows the first-run journey, the intended database boundaries, and the matching
 Rust domain types. The companion
 [portable core and native clients overview](client-core-platform-architecture.svg)
 shows how the CLI and future native applications consume the same Rust-owned
-behavior. Both are deliberately conceptual: existing database-v2 names remain
-unchanged, while the recipe and collection names describe the next additive
-foundation rather than an already-applied migration.
+behavior. Existing database-v2 names remain unchanged. Migration 0046 now
+implements the additive recipe, collection, surface, onboarding, and Spin table
+names shown here, but remains isolated from production Neon.
 
-Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-04
-are implemented; V020-05 is next. This document is a design contract, not
+Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-05
+are implemented; V020-06 is next. This document is a design contract, not
 authorization to apply a migration or write to a provider.
 
 ## Current implementation status
@@ -32,10 +32,14 @@ authorization to apply a migration or write to a provider.
   harness proves two-account and two-provider-namespace isolation, idempotent
   acceptance, cooperative cancellation, bounded retry, stable fake generation,
   and visible unsupported-capability failure without production provider calls.
-- **Next — V020-05:** reconcile the proposed product schema with existing tables
-  and rehearse one additive migration only on isolated PostgreSQL 18.
-- **Not implemented yet:** product schema, onboarding sessions, collection and
-  recipe execution, Spin generation, hosted transport, and native clients.
+- **Implemented — V020-05:** migration 0046 reconciles and adds 16 product-
+  domain tables with composite account ownership, v0.1.4 provider-account
+  compatibility, and links to existing inventory/publication history. Fresh and
+  migration-45 upgrade rehearsals pass on isolated PostgreSQL 18 only.
+- **Next — V020-06:** implement the provider-read-only onboarding session
+  boundary while ignoring existing Chordrift intent by default.
+- **Not implemented yet:** onboarding behavior, collection and recipe execution,
+  Spin generation, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the
   existence of contract or domain types.
 
@@ -54,9 +58,9 @@ The product must state which evidence is live, accumulating, imported, or
 unavailable rather than pretending that all providers expose the same facts.
 
 One `chordrift_account` is the product ownership boundary and may eventually
-connect several `provider_accounts`. The current personal schema starts at a
-provider account, so the product schema needs this small parent boundary before
-multi-user onboarding. The first implementation supports Spotify only, but
+connect several `provider_accounts`. Migration 0046 adds this parent while a
+compatibility trigger preserves unchanged v0.1.4 provider-account upserts. The
+first implementation supports Spotify only, but
 Spotify payloads stop at the adapter boundary. Provider-qualified identities
 map to provider-neutral music identities using explicit evidence; IDs from
 different providers are never matched by string coincidence.
@@ -246,8 +250,9 @@ regenerates the remaining seats.
 ## Database organization
 
 The existing database-v2 current-state, evidence, canonical identity, and audit
-tables remain the foundation. The next schema work should add account-scoped
-intent and generation tables rather than replace the clean v2 schema.
+tables remain the foundation. Migration 0046 adds account-scoped intent and
+generation tables beside them rather than replacing the clean v2 schema. The
+[physical reconciliation](PRODUCT_SCHEMA_V020_05.md) records every distinction.
 
 | Boundary | Representative tables | Purpose |
 | --- | --- | --- |
@@ -261,13 +266,11 @@ intent and generation tables rather than replace the clean v2 schema.
 | Publication audit | existing sync plans/apply receipts/verifications plus `playlist_spin_publications` | Connect an approved Spin to the existing plan/apply/verify safety boundary. |
 | Rebuildable intelligence | statistics, signals, embeddings, recommendation generations | Versioned caches derived from permanent evidence and durable intent; eligible for retention. |
 
-These are the target names for the proposed boundaries. Migration design must
-first reconcile them with equivalent existing tables so it extends rather than
-duplicates a concept; the overview must be updated to the exact physical names
-before migration approval. Their ownership and relationships should not
-change. Recipe documents may use versioned JSON for evolvable composition
-details, while queryable identity, revision, dependency, order, provenance,
-and audit fields stay typed and normalized.
+These are now the physical migration-0046 names. Their ownership and
+relationships match the Rust domain. Recipe documents use versioned JSON for
+evolvable composition details, while queryable identity, revision, dependency,
+order, provenance, and audit fields stay typed and normalized. Existing
+provider observation and publication tables retain their v0.1.4 meanings.
 
 ## Rust domain boundary
 
@@ -404,9 +407,9 @@ an honest usable experience.
    with unit tests.
 4. **Complete:** add account/provider isolation, idempotency, cancellation, and
    fake-provider tests; prove two accounts and provider namespaces cannot cross.
-5. Design and rehearse additive ownership, collection, surface, recipe, Spin,
-   onboarding-session, and publication-link migrations. Do not publish provider
-   changes.
+5. **Complete:** design and rehearse additive ownership, collection, surface,
+   recipe, Spin, onboarding-session, and publication-link migration 0046. No
+   production migration or provider change occurred.
 6. Implement the CLI-first new-account rehearsal and provider-free starter
    preview against the existing personal evidence.
 7. Implement the initial **Discovery + Rediscovery** recipe with allocation,

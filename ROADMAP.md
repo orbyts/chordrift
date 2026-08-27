@@ -60,7 +60,7 @@ deterministic provider-free Spins.
 - [x] **V020-04 — Isolation and fake-provider proof.** Add two-account and two-
   provider-namespace adversarial tests plus deterministic generation,
   idempotency, cancellation, retry, and unsupported-capability coverage.
-- [ ] **V020-05 — Additive schema plan and local rehearsal.** Reconcile proposed
+- [x] **V020-05 — Additive schema plan and local rehearsal.** Reconcile proposed
   ownership, collection, surface, recipe, Spin, onboarding-session, and
   publication-link tables with existing equivalents. Implement and verify an
   additive migration only on isolated PostgreSQL 18.
@@ -174,7 +174,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-05 — Additive schema plan and local rehearsal`.
+**Next slice:** `V020-06 — Onboarding session boundary`.
 
 ## Portable core and native clients
 

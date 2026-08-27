@@ -13,7 +13,9 @@ V020-03 adds typed provider/evidence capabilities and independent playlist-
 surface authority, purpose, and refresh values. V020-04 proves cancellation,
 retry, idempotency, isolation, and visible capability gaps in a test-only fake
 application/provider harness; automated interpretation and learning remain
-later work.
+later work. V020-05 adds the account-owned storage foundation for future
+onboarding inputs, collection intent, surface directives, recipes, and Spins;
+it does not yet automate or persist an interpretation through application code.
 
 ## Confidence policy
 
