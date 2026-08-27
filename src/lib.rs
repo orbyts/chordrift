@@ -52,6 +52,8 @@ pub mod history;
 pub mod model_inference;
 /// Provider-read-only onboarding input capture and durable provenance.
 pub mod onboarding;
+/// Read-only current-inventory audit for a captured onboarding session.
+pub mod onboarding_audit;
 /// Account-scoped playlist roles and drift policy.
 pub mod playlists;
 mod presentation;

@@ -28,6 +28,11 @@ All notable changes to Chordrift are documented here.
   provenance, returns idempotent retries before another provider read, and
   enforces capability and account ownership through a fake provider plus
   isolated PostgreSQL 18.
+- Add a read-only inventory audit query over V020-06's immutable checkpoint. It
+  returns deterministic library, overlap, capability, uncertainty, and
+  preserve-first starter-organization values; exposes unreadable data and
+  inference limits; creates no approved intent; and is proven against fake
+  inventory plus fresh and migration-45 PostgreSQL 18 rehearsals.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

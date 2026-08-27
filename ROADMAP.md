@@ -68,7 +68,7 @@ deterministic provider-free Spins.
   provider inventory and selected evidence while ignoring existing Chordrift
   intent by default. Persist session inputs and output provenance without any
   provider write.
-- [ ] **V020-07 — Inventory-only new-account audit.** Produce an honest library,
+- [x] **V020-07 — Inventory-only new-account audit.** Produce an honest library,
   overlap, uncertainty, and capability report plus a starter organization using
   OAuth/current-inventory evidence alone.
 - [ ] **V020-08 — Enriched new-account audit.** Run the same acceptance path
@@ -174,7 +174,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-07 — Inventory-only new-account audit`.
+**Next slice:** `V020-08 — Enriched new-account audit`.
 
 ## Portable core and native clients
 

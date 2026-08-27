@@ -50,10 +50,11 @@ cancellation stops work at the next checkpoint without an extra provider call.
 
 ## Durable record
 
-The migration-0046 `onboarding_sessions` row remains in `created` status because
-V020-07 has not produced an audit yet. It records the immutable checkpoint,
+The migration-0046 `onboarding_sessions` row records the immutable checkpoint,
 capability observation, extended-history selection, input fingerprint, input
-manifest, and output provenance.
+manifest, and output provenance. V020-07 subsequently added a fully read-only
+audit query, so the row deliberately remains in `created` status: audit replay
+does not invent persisted lifecycle state or alter this capture record.
 
 `ignore_existing_intent` is always true. The implementation does not query
 `library_collections`, collection membership, playlist surfaces, recipes,
@@ -82,15 +83,15 @@ same-key conflict, visible capability failure, and cross-account rejection
 before provider access. The existing fresh 46-migration path and `45 → 46`
 upgrade rehearsal remain green.
 
-V020-06 intentionally adds no audit findings, starter collections, recipes,
+V020-06 itself adds no audit findings, starter collections, recipes,
 Spins, publication plans, CLI commands, production configuration, credential
 handling, live Spotify request, provider write, or production Neon migration.
 Those boundaries remain separately reviewable.
 
-## Next slice
+## Subsequent consumer
 
-`V020-07 — Inventory-only new-account audit` may consume only the captured
+`V020-07 — Inventory-only new-account audit` now consumes only the captured
 current-inventory inputs and capability snapshot to produce an honest library,
-overlap, uncertainty, and starter-organization proposal. It must remain
-read-only and must not begin the enriched-history comparison assigned to
-V020-08.
+overlap, uncertainty, and starter-organization proposal. It remains read-only
+and does not begin the enriched-history comparison assigned to V020-08. See the
+[inventory-only audit record](ONBOARDING_AUDIT_V020_07.md).

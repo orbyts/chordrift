@@ -3,7 +3,9 @@ use std::{cell::Cell, collections::BTreeMap, future};
 use chordrift::{
     application::ApplicationFacade,
     config,
-    contract::{CONTRACT_VERSION, Command, CommandRequest, IdempotencyKey, ResourceId},
+    contract::{
+        CONTRACT_VERSION, Command, CommandRequest, IdempotencyKey, Query, QueryRequest, ResourceId,
+    },
     db, db_reports,
     domain::{
         AccountContext, CapabilityStatus, ChordriftAccountId, EvidenceCapabilities,
@@ -14,9 +16,13 @@ use chordrift::{
         ContentFingerprint, OnboardingEvidence, OnboardingInputs, OnboardingInventory,
         OnboardingProviderReader, OnboardingReadSelection, OnboardingSessionBoundary,
     },
+    onboarding_audit::{
+        AuditEvidenceBasis, AuditLimitation, InventoryOnlyAuditBoundary, StarterCollectionBasis,
+        StarterProposalConfidence,
+    },
 };
 use serde_json::json;
-use storexa::{DatabaseConfig, PostgresProvider};
+use storexa::{Database, DatabaseConfig, PostgresProvider};
 use uuid::Uuid;
 
 struct FakeOnboardingReader {
@@ -53,7 +59,7 @@ impl OnboardingProviderReader for FakeOnboardingReader {
                     checkpoint_id: ResourceId::from_uuid(self.checkpoint_id),
                     state_fingerprint: ContentFingerprint::new("d".repeat(64))
                         .expect("fixture fingerprint is valid"),
-                    item_count: 3,
+                    item_count: 4,
                 },
                 evidence,
             )
@@ -73,6 +79,161 @@ fn onboarding_request(account_id: Uuid, include_extended_history: bool) -> Comma
             include_extended_history,
         },
     }
+}
+
+fn onboarding_audit_request(session_id: Uuid) -> QueryRequest {
+    QueryRequest {
+        contract_version: CONTRACT_VERSION,
+        request_id: Default::default(),
+        query: Query::OnboardingAudit {
+            session_id: ResourceId::from_uuid(session_id),
+        },
+    }
+}
+
+async fn seed_inventory_checkpoint(
+    database: &Database,
+    provider_account_id: Uuid,
+) -> chordrift::Result<Uuid> {
+    let mut provider_track_ids = Vec::new();
+    for (provider_track_id, title) in [
+        ("track-a", "Track A"),
+        ("track-b", "Track B"),
+        ("track-c", "Track C"),
+        ("track-d", "Track D"),
+    ] {
+        let track_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO tracks (title, normalized_title) VALUES ($1, lower($1)) RETURNING id",
+        )
+        .bind(title)
+        .fetch_one(database.pool())
+        .await?;
+        let id: Uuid = sqlx::query_scalar(
+            "INSERT INTO provider_tracks (track_id, provider, provider_track_id)
+             VALUES ($1, 'spotify', $2) RETURNING id",
+        )
+        .bind(track_id)
+        .bind(provider_track_id)
+        .fetch_one(database.pool())
+        .await?;
+        provider_track_ids.push(id);
+    }
+
+    let mut provider_playlists = Vec::new();
+    for (index, name, reported, membership) in [
+        (0_u8, "Alpha", 3_i32, vec![0_usize, 1, 1]),
+        (1_u8, "Beta", 3_i32, vec![1_usize, 2]),
+    ] {
+        let playlist_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO playlists (name, kind) VALUES ($1, 'historical') RETURNING id",
+        )
+        .bind(name)
+        .fetch_one(database.pool())
+        .await?;
+        let provider_playlist_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO provider_playlists
+             (playlist_id, provider, provider_playlist_id)
+             VALUES ($1, 'spotify', $2) RETURNING id",
+        )
+        .bind(playlist_id)
+        .bind(format!("playlist-{index}"))
+        .fetch_one(database.pool())
+        .await?;
+        let revision_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO provider_playlist_revisions
+             (provider_playlist_id, content_sha256, item_count)
+             VALUES ($1, $2, $3) RETURNING id",
+        )
+        .bind(provider_playlist_id)
+        .bind(if index == 0 {
+            "1".repeat(64)
+        } else {
+            "2".repeat(64)
+        })
+        .bind(reported)
+        .fetch_one(database.pool())
+        .await?;
+        for (position, track_index) in membership.into_iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO provider_playlist_revision_tracks
+                 (revision_id, provider_track_id, position)
+                 VALUES ($1, $2, $3)",
+            )
+            .bind(revision_id)
+            .bind(provider_track_ids[track_index])
+            .bind(i32::try_from(position).expect("fixture position fits i32"))
+            .execute(database.pool())
+            .await?;
+        }
+        provider_playlists.push((provider_playlist_id, revision_id, name));
+    }
+
+    let saved_track_revision_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_saved_track_revisions
+         (provider_account_id, content_sha256, item_count)
+         VALUES ($1, $2, 2) RETURNING id",
+    )
+    .bind(provider_account_id)
+    .bind("3".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    for (position, track_index) in [0_usize, 3].into_iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO provider_saved_track_revision_tracks
+             (revision_id, provider_track_id, position)
+             VALUES ($1, $2, $3)",
+        )
+        .bind(saved_track_revision_id)
+        .bind(provider_track_ids[track_index])
+        .bind(i32::try_from(position).expect("fixture position fits i32"))
+        .execute(database.pool())
+        .await?;
+    }
+    let saved_album_revision_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_saved_album_revisions
+         (provider_account_id, content_sha256, album_count, track_count)
+         VALUES ($1, $2, 0, 0) RETURNING id",
+    )
+    .bind(provider_account_id)
+    .bind("4".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+
+    let checkpoint_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_inventory_checkpoints
+         (provider_account_id, provider, checkpoint_kind, label, state_sha256, captured_at)
+         VALUES ($1, 'spotify', 'named_baseline', 'V020-07 fixture', $2, now())
+         RETURNING id",
+    )
+    .bind(provider_account_id)
+    .bind("d".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    for (provider_playlist_id, revision_id, name) in provider_playlists {
+        sqlx::query(
+            "INSERT INTO provider_inventory_checkpoint_playlists
+             (checkpoint_id, provider_playlist_id, revision_id, name,
+              public, collaborative)
+             VALUES ($1, $2, $3, $4, FALSE, FALSE)",
+        )
+        .bind(checkpoint_id)
+        .bind(provider_playlist_id)
+        .bind(revision_id)
+        .bind(name)
+        .execute(database.pool())
+        .await?;
+    }
+    sqlx::query(
+        "INSERT INTO provider_inventory_checkpoint_saved_surfaces
+         (checkpoint_id, saved_track_revision_id, saved_album_revision_id)
+         VALUES ($1, $2, $3)",
+    )
+    .bind(checkpoint_id)
+    .bind(saved_track_revision_id)
+    .bind(saved_album_revision_id)
+    .execute(database.pool())
+    .await?;
+    Ok(checkpoint_id)
 }
 
 #[tokio::test]
@@ -359,16 +520,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     .await;
     assert!(cross_account_capability.is_err());
 
-    let checkpoint_id: Uuid = sqlx::query_scalar(
-        "INSERT INTO provider_inventory_checkpoints
-         (provider_account_id, provider, checkpoint_kind, label, state_sha256, captured_at)
-         VALUES ($1, 'spotify', 'named_baseline', 'V020-06 fixture', $2, now())
-         RETURNING id",
-    )
-    .bind(account_id)
-    .bind("d".repeat(64))
-    .fetch_one(database.pool())
-    .await?;
+    let checkpoint_id = seed_inventory_checkpoint(&database, account_id).await?;
     let provider_connection = ProviderConnectionIdentity {
         connection_id: ProviderConnectionId::from_uuid(account_id),
         account_id: ChordriftAccountId::from_uuid(chordrift_account_id),
@@ -383,10 +535,24 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         provider_connection.clone(),
         ProviderCapabilities::new(
             provider_connection.connection_id,
-            BTreeMap::from([(
-                ProviderCapability::LibraryInventoryRead,
-                CapabilityStatus::Available,
-            )]),
+            BTreeMap::from([
+                (
+                    ProviderCapability::LibraryInventoryRead,
+                    CapabilityStatus::Available,
+                ),
+                (
+                    ProviderCapability::PlaylistRead,
+                    CapabilityStatus::Available,
+                ),
+                (
+                    ProviderCapability::SavedTracksRead,
+                    CapabilityStatus::Available,
+                ),
+                (
+                    ProviderCapability::SavedAlbumsRead,
+                    CapabilityStatus::Degraded,
+                ),
+            ]),
         ),
         EvidenceCapabilities::new(BTreeMap::from([
             (
@@ -509,6 +675,110 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     );
     assert_eq!(fake_reader.reads.get(), 2);
 
+    let audit_boundary = InventoryOnlyAuditBoundary::new(&database);
+    let audit_request = onboarding_audit_request(inventory_only.id.as_uuid());
+    let session_before_audit: (String, serde_json::Value) =
+        sqlx::query_as("SELECT status, output_provenance FROM onboarding_sessions WHERE id = $1")
+            .bind(inventory_only.id.as_uuid())
+            .fetch_one(database.pool())
+            .await?;
+    let intent_before_audit: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM library_collections WHERE chordrift_account_id = $1",
+    )
+    .bind(chordrift_account_id)
+    .fetch_one(database.pool())
+    .await?;
+    let provider_reads_before_audit = fake_reader.reads.get();
+    let audit = ApplicationFacade::new()
+        .invoke(audit_boundary.invocation(&onboarding_context, &audit_request))
+        .await?
+        .expect("inventory-only audit succeeds");
+    assert_eq!(
+        audit.value.evidence_basis,
+        AuditEvidenceBasis::CurrentInventoryOnly
+    );
+    assert!(!audit.value.capabilities.extended_history_used);
+    assert_eq!(
+        audit.value.capabilities.saved_albums_read,
+        CapabilityStatus::Degraded
+    );
+    assert_eq!(audit.value.library.playlists, 2);
+    assert_eq!(audit.value.library.reported_playlist_entries, 6);
+    assert_eq!(audit.value.library.readable_playlist_entries, 5);
+    assert_eq!(audit.value.library.saved_tracks, 2);
+    assert_eq!(audit.value.library.saved_albums, 0);
+    assert_eq!(audit.value.library.unique_tracks, 4);
+    assert_eq!(audit.value.overlap.tracks_in_multiple_playlists, 1);
+    assert_eq!(audit.value.overlap.maximum_playlist_occurrences, 2);
+    assert_eq!(audit.value.overlap.saved_and_playlisted_tracks, 1);
+    assert_eq!(audit.value.overlap.saved_outside_playlists, 1);
+    assert_eq!(audit.value.overlap.playlist_only_tracks, 2);
+    assert_eq!(audit.value.overlap.duplicate_playlist_entries, 1);
+    assert_eq!(audit.value.uncertainty.unreadable_item_references, 1);
+    assert_eq!(audit.value.uncertainty.capability_gaps.len(), 1);
+    assert!(
+        audit
+            .value
+            .uncertainty
+            .limitations
+            .contains(&AuditLimitation::UserIntentNotInferred)
+    );
+    assert!(
+        audit
+            .value
+            .uncertainty
+            .limitations
+            .contains(&AuditLimitation::ExtendedHistoryNotUsed)
+    );
+    assert_eq!(audit.value.starter_organization.collections.len(), 5);
+    assert_eq!(
+        audit.value.starter_organization.collections[0].basis,
+        StarterCollectionBasis::AllObservedInventory
+    );
+    assert_eq!(
+        audit.value.starter_organization.collections[1].name,
+        "Alpha"
+    );
+    assert_eq!(audit.value.starter_organization.collections[2].name, "Beta");
+    assert_eq!(
+        audit.value.starter_organization.collections[4].confidence,
+        StarterProposalConfidence::ReviewRequired
+    );
+    assert!(audit.value.starter_organization.preserve_existing_playlists);
+    assert!(!audit.value.starter_organization.approved);
+
+    let replayed_audit = ApplicationFacade::new()
+        .invoke(audit_boundary.invocation(&onboarding_context, &audit_request))
+        .await?
+        .expect("inventory-only audit replay succeeds");
+    assert_eq!(replayed_audit.value, audit.value);
+    assert_eq!(fake_reader.reads.get(), provider_reads_before_audit);
+    let session_after_audit: (String, serde_json::Value) =
+        sqlx::query_as("SELECT status, output_provenance FROM onboarding_sessions WHERE id = $1")
+            .bind(inventory_only.id.as_uuid())
+            .fetch_one(database.pool())
+            .await?;
+    assert_eq!(session_after_audit, session_before_audit);
+    let intent_after_audit: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM library_collections WHERE chordrift_account_id = $1",
+    )
+    .bind(chordrift_account_id)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(intent_after_audit, intent_before_audit);
+
+    let enriched_audit_error = ApplicationFacade::new()
+        .invoke(audit_boundary.invocation(
+            &onboarding_context,
+            &onboarding_audit_request(enriched.id.as_uuid()),
+        ))
+        .await?
+        .expect_err("inventory-only path refuses extended-history inputs");
+    assert_eq!(
+        enriched_audit_error.client_error().code,
+        chordrift::contract::ErrorCode::StateConflict
+    );
+
     let captured_rows: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM onboarding_sessions
           WHERE chordrift_account_id = $1 AND provider_account_id = $2
@@ -560,6 +830,14 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         chordrift::contract::ErrorCode::PermissionDenied
     );
     assert_eq!(fake_reader.reads.get(), reads_before_cross_account);
+    let cross_account_audit_error = ApplicationFacade::new()
+        .invoke(audit_boundary.invocation(&wrong_owner_context, &audit_request))
+        .await?
+        .expect_err("another account cannot read the onboarding audit");
+    assert_eq!(
+        cross_account_audit_error.client_error().code,
+        chordrift::contract::ErrorCode::PermissionDenied
+    );
 
     let onboarding_session_id: Uuid = sqlx::query_scalar(
         "INSERT INTO onboarding_sessions

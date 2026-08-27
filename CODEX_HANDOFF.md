@@ -8,24 +8,36 @@ archive contents.
 
 Last updated: 2026-08-27.
 
-## Start the next task here: v0.2.0 slice V020-07
+## Start the next task here: v0.2.0 slice V020-08
 
-Implement only `V020-07 — Inventory-only new-account audit` from the
-authoritative execution map at the top of `ROADMAP.md`. Consume a V020-06
-session's captured current-inventory input and capability snapshot to produce an
-honest library, overlap, uncertainty, and capability report plus a read-only
-starter-organization proposal. The basic path must use current inventory alone.
-Do not read optional extended-history evidence, begin the V020-08 comparison,
-execute collection/recipe intent, generate a Spin, or add publication behavior.
+Implement only `V020-08 — Enriched new-account audit` from the authoritative
+execution map at the top of `ROADMAP.md`. Run the same audit acceptance path
+with a V020-06 session that explicitly selected extended listening evidence,
+then explain exactly which conclusions become stronger because of that
+evidence. The V020-07 inventory-only result must remain independently usable
+and must not silently gain history-dependent claims.
 
-Keep the exact V020-06 safety boundary: use the fake provider and isolated
-PostgreSQL only; do not add or change released CLI commands/output, production
-configuration, provider mutation, credential handling, or live-provider access.
-Do not apply migration 0046 to production Neon. The audit may update the local
-session's audit result/provenance only if the design remains immutable and
-idempotent; it must not create approved intent or authorize a provider write.
+Use only the deterministic fake provider/evidence and isolated PostgreSQL.
+Do not add or change released CLI commands/output, production configuration,
+credential handling, live-provider access, or provider mutation. Do not apply
+migration 0046 to production Neon. Do not begin V020-09 recipe execution,
+create approved collection intent, generate a Spin, or add publication behavior.
 
-V020-01 through V020-06 are complete. V020-06 adds the public `onboarding`
+V020-01 through V020-07 are complete. V020-07 adds the public
+`onboarding_audit` query boundary behind `ApplicationFacade`. It validates the
+V020-06 owner, provider connection, current-inventory-only manifest, capability
+snapshot, and content fingerprints, then reads only immutable checkpoint
+playlist/saved-track/saved-album revisions. Its deterministic value reports
+library shape, playlist duplicates and unreadable positions, cross-surface
+overlap, capability gaps, explicit inference limitations, and an unapproved
+preserve-first starter organization. It performs no database write or provider
+call; replay keeps the same audit fingerprint and leaves the session in
+`created` status. The fake-provider/PostgreSQL proof rejects enriched sessions
+on this path and cross-account reads, observes no additional provider access or
+collection-intent rows, and passes both fresh and migration-45 PostgreSQL 18
+rehearsals. See `docs/design/ONBOARDING_AUDIT_V020_07.md`.
+
+V020-06 adds the public `onboarding`
 module and routes its invocation through `ApplicationFacade`. Its read-only
 provider port returns one immutable inventory checkpoint and only explicitly
 selected extended evidence. The PostgreSQL boundary validates the stored

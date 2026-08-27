@@ -9,8 +9,9 @@ The v0.2 product layer now under development is documented separately in
 [Playlist product architecture](PLAYLIST_PRODUCT_ARCHITECTURE.md). It builds
 account ownership, overlapping collections, versioned recipes, and reproducible
 Spins additively on this clean v2 foundation. Development migration 0046 now
-implements that product-schema foundation, and V020-06 uses its onboarding
-tables in isolated tests; neither is applied to production Neon.
+implements that product-schema foundation, V020-06 uses its onboarding tables,
+and V020-07 reads the referenced immutable inventory revisions in isolated
+tests; migration 0046 is not applied to production Neon.
 
 Status: database-v2 foundation complete in the released v0.1.4 runtime, updated
 2026-08-27. The live project uses content-addressed current provider state,
@@ -42,7 +43,9 @@ the [V020-05 product schema foundation](PRODUCT_SCHEMA_V020_05.md). It adds
 product intent beside database-v2; it does not reopen, rename, or replace the
 current-state and normalized-evidence foundation shown below. The first runtime
 consumer is the provider-read-only
-[V020-06 onboarding boundary](ONBOARDING_SESSION_V020_06.md).
+[V020-06 onboarding boundary](ONBOARDING_SESSION_V020_06.md); its first
+read-only result consumer is the
+[V020-07 inventory audit](ONBOARDING_AUDIT_V020_07.md).
 
 ## Why this redesign existed
 

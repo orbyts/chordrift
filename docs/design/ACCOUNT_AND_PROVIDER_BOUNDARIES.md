@@ -14,8 +14,10 @@ pure boundary with two-account/two-provider adversarial tests and a deterministi
 fake-provider harness; V020-05 adds composite account-owned foreign keys across
 the additive product schema and rehearses them on isolated PostgreSQL 18;
 V020-06 checks the persisted provider owner before a fake-provider onboarding
-read and stores one account-owned immutable session. Production Spotify and the
-released CLI remain on the v0.1.4 path.
+read and stores one account-owned immutable session. V020-07 revalidates that
+owner and selected connection before reading the session's immutable revisions;
+its PostgreSQL proof rejects cross-account audit access. Production Spotify and
+the released CLI remain on the v0.1.4 path.
 
 ## Implemented application boundary
 
@@ -44,6 +46,13 @@ true, and its provenance records both `chordrift_intent_read: false` and
 `provider_write_requested: false`. The isolated PostgreSQL test proves a second
 account cannot reach the fake provider through the first account's connection.
 See the [onboarding boundary record](ONBOARDING_SESSION_V020_06.md).
+
+V020-07's `InventoryOnlyAuditBoundary` adds no provider port at all. It reads
+only the checkpoint revisions selected by that session, rejects enriched
+sessions on the inventory-only path, and creates neither collection intent nor
+provider work. Its cross-account rejection, unchanged session state, and zero
+additional fake-provider reads are covered by the isolated PostgreSQL proof.
+See the [inventory-only audit record](ONBOARDING_AUDIT_V020_07.md).
 
 ## Current account model
 

@@ -125,3 +125,6 @@ No production Neon request, provider request, provider write, credential change,
 or CLI/runtime behavior is part of V020-05. V020-06 subsequently added the
 provider-read-only onboarding application boundary against these tables without
 changing migration 0046; see [its focused design record](ONBOARDING_SESSION_V020_06.md).
+V020-07 then reads the checkpoint's existing immutable revisions without a
+schema change or write; see the
+[inventory-only audit record](ONBOARDING_AUDIT_V020_07.md).

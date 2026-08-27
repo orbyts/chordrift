@@ -15,9 +15,11 @@ retry, idempotency, isolation, and visible capability gaps in a test-only fake
 application/provider harness; automated interpretation and learning remain
 later work. V020-05 adds the account-owned storage foundation for future
 onboarding inputs, collection intent, surface directives, recipes, and Spins;
-V020-06 now captures selected onboarding inventory/evidence and explicit
-no-intent/no-write provenance through application code. It does not yet infer
-an audit finding, starter organization, collection membership, or recipe.
+V020-06 captures selected onboarding inventory/evidence and explicit
+no-intent/no-write provenance through application code. V020-07 now reports
+observable current-library shape and a conservative starter organization while
+explicitly labeling user intent, listening behavior, and collection membership
+as not inferred. The proposal is unapproved and writes no intent or recipe.
 
 ## Confidence policy
 

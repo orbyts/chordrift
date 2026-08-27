@@ -39,8 +39,13 @@ It remains unapplied to production Neon. V020-06 now adds the provider-read-only
 onboarding boundary: one selected immutable inventory and optional extended
 evidence are content-addressed through the shared facade, while account
 ownership, capability failure, idempotent replay, ignored existing intent, and
-zero provider writes are explicit. The inventory-only audit is next in V020-07;
-generation, hosted transport, and native clients remain later work.
+zero provider writes are explicit. V020-07 now reads only that immutable current
+inventory to return a deterministic library, overlap, uncertainty, capability,
+and preserve-first starter-organization report. It performs no provider or
+database writes, treats the proposal as unapproved, and explicitly refuses to
+infer listening behavior, user intent, or collection membership. The enriched
+audit is next in V020-08; generation, hosted transport, and native clients
+remain later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages
