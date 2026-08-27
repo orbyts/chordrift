@@ -143,6 +143,31 @@ v0.2.0 is built. Treat any real v0.1.4 defect as event-driven `release/0.1`
 maintenance; do not retrofit v0.2 features into that line. Experimental v0.2
 database work remains local until the separately approved candidate gate.
 
+The repository also includes `scripts/chordrift-intake-move.sh` for the current
+daily-driver transition. It uses the installed binary to record one or more
+reviewed, unresolved Inbox tracks in an editable proposal destination. It
+resolves display names to stable playlist keys and refuses active exclusions,
+non-Inbox tracks, and already-resolved tracks before changing Neon. It never
+approves the proposal, creates or applies a plan, removes Inbox membership, or
+writes to Spotify; those remain separate whole-proposal and synchronization
+decisions. When the latest proposal is approved, explicit `--prepare` may clone
+its structure through the strict 1.0 extension path only if the supplied IDs
+cover the entire pre-extension unresolved set. The extension still replays all
+durable manual decisions and may therefore expose older needs-review items; the
+helper reports rather than classifies them. This maintenance helper does not
+change V020-11's scope or status.
+
+On 2026-08-27 the helper was exercised against the live `personal` account for
+one explicitly reviewed Inbox discovery destined for `Dakshina Pulse`. The
+previous proposal was approved, so the guarded preparation created editable
+proposal `61ce404d-83bf-47ce-bee0-84663db72fd6` and recorded the manual
+placement. Read-only inspection proves the track remains in Inbox until a later
+apply, has one manual `Dakshina Pulse` placement, and has no active exclusion.
+No proposal approval, synchronization plan, cleanup, or Spotify write occurred.
+Durable-decision replay exposed 10 older unresolved canonical/transport items;
+the proposal is therefore intentionally incomplete at 1,628 of 1,638 required
+tracks. Review those items rather than approving or applying the proposal as-is.
+
 ## Released v0.1.4 operational state
 
 Chordrift v0.1.4 is released from commit

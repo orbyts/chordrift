@@ -64,6 +64,50 @@ Redirected Chordrift output remains the stable plain key/value and tabular
 format used internally by the wrapper. Interactive plan, readiness, apply, and
 pull reports still use Chordrift's normal formatted terminal presentation.
 
+## Reviewed Inbox placement
+
+`chordrift-intake-move.sh` records one or more reviewed Inbox discoveries in an
+existing editable proposal using the installed `chordrift` binary. Resolve the
+destination by its exact display name:
+
+```console
+$ scripts/chordrift-intake-move.sh \
+    --account personal \
+    --to "Dakshina Pulse" \
+    --spotify-id SPOTIFY_TRACK_ID \
+    --reason "Reviewed A. R. Rahman discovery"
+```
+
+Repeat `--spotify-id` for a reviewed batch. `--playlist STABLE_KEY` is also
+available when you prefer the durable proposal identity over its display name.
+
+If the latest proposal is already approved, it is immutable. The helper stops
+and asks you to repeat the reviewed command with `--prepare`. That option is
+accepted only when the supplied IDs are the complete unresolved set. It then
+uses Chordrift's strict `proposals extend --min-similarity 1` path to preserve
+the approved playlist structure in a new editable proposal before recording
+the explicit destinations. This guard prevents an unrelated unresolved track
+from receiving a new centroid placement as a side effect. Chordrift also
+replays all durable manual decisions into the editable copy; that can expose
+older needs-review decisions that were masked by the previously approved
+generation. The helper lists any such unresolved tracks after recording the
+requested Inbox placement and does not classify them automatically. Any
+exact-match automatic placement among the supplied set is replaced by the
+explicit destination you selected.
+
+Before recording an assignment, the helper resolves one unambiguous
+destination and verifies that every track is currently in Inbox, is unresolved,
+and has no active exclusion. It records only manual assignment intent. It does
+not approve the proposal, create or apply a synchronization plan, remove the
+source item from Inbox, or write to Spotify. Afterward it shows the proposal
+UUID and coverage state so the entire proposal can receive its normal separate
+review and approval.
+
+This distinction matters: approving a proposal approves all of its current
+contents, not only the tracks supplied to this helper. Once the complete
+proposal is reviewed and approved, use `chordrift-workflow.sh` for the ordinary
+plan/readiness/confirm/apply/verify sequence.
+
 ## Artwork label renderer
 
 `render_artwork_label.swift` is an internal macOS development helper for

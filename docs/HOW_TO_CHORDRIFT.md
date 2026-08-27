@@ -108,6 +108,21 @@ manual retry before accepting convergence.
 The complete operator/developer reference is in
 [`scripts/README.md`](../scripts/README.md).
 
+To record a reviewed discovery from `Inbox` in a proposed canonical destination
+without writing to Spotify, use the separate installed-binary helper:
+
+```console
+$ scripts/chordrift-intake-move.sh --account personal \
+    --to "Dakshina Pulse" --spotify-id SPOTIFY_TRACK_ID \
+    --reason "Reviewed South Indian discovery"
+```
+
+It refuses active exclusions, non-Inbox tracks, and tracks that already have a
+proposal disposition. It changes only editable Neon proposal intent and stops
+before proposal approval, planning, source cleanup, or any provider write. See
+[`scripts/README.md`](../scripts/README.md) for batching, stable-key usage, and
+the guarded `--prepare` path when the previous proposal is already approved.
+
 ## Semantic playlists used for capture
 
 Use these playlists to tell Chordrift why a newly encountered track matters:

@@ -54,6 +54,10 @@ All notable changes to Chordrift are documented here.
   operator instructions.
 - Let the operator wrapper retry a zero-operation plan when Spotify has not yet
   exposed a just-edited playlist snapshot, with optional bounded polling.
+- Add an installed-binary Inbox placement helper that resolves stable proposal
+  destinations, rejects active exclusions and non-Inbox/already-resolved
+  tracks, records only reviewed Neon intent, and stops before approval or any
+  Spotify write.
 
 ## [0.1.4] - 2026-08-26
 
