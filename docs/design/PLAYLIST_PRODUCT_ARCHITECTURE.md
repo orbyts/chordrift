@@ -9,9 +9,9 @@ behavior. Both are deliberately conceptual: existing database-v2 names remain
 unchanged, while the recipe and collection names describe the next additive
 foundation rather than an already-applied migration.
 
-Status: active v0.2 architecture, updated 2026-08-27. V020-01 is implemented;
-V020-02 is next. This document is a design contract, not authorization to apply
-a migration or write to a provider.
+Status: active v0.2 architecture, updated 2026-08-27. V020-01 and V020-02 are
+implemented; V020-03 is next. This document is a design contract, not
+authorization to apply a migration or write to a provider.
 
 ## Current implementation status
 
@@ -20,10 +20,12 @@ a migration or write to a provider.
   command and query envelopes, immutable receipts and generic views,
   request/operation/idempotency/cancellation identities, structured progress,
   complete operation lifecycle states, and fixed-message client-safe errors.
-- **Next — V020-02:** route every existing CLI handler through one Rust
+- **Implemented — V020-02:** every existing CLI handler passes through one Rust
   application facade while preserving commands, redirected output, interactive
-  presentation, database behavior, and provider behavior exactly.
-- **Not implemented yet:** provider-neutral product domain types, isolation and
+  presentation, errors, database behavior, and provider behavior exactly.
+- **Next — V020-03:** add provider-neutral product domain types without SQL,
+  provider payload, or terminal dependencies.
+- **Not implemented yet:** isolation and
   fake-provider proofs, product schema, onboarding sessions, collections,
   recipes, Spins, hosted transport, and native clients. Those remain separate
   roadmap slices and must not be inferred from the existence of contract DTOs.
@@ -386,7 +388,7 @@ an honest usable experience.
 
 1. **Complete:** establish the versioned command/query/event, compatibility,
    progress, cancellation, and structured-error contract.
-2. **Next:** route the existing CLI through the application facade without
+2. **Complete:** route the existing CLI through the application facade without
    changing behavior.
 3. Freeze provider-neutral IDs, `ProviderCapabilities`, playlist-surface axes,
    collection membership strength, and recipe-v1 types in Rust with unit tests.

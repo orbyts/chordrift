@@ -10,6 +10,8 @@
 pub mod albums;
 /// Account-scoped canonical library analysis.
 pub mod analysis;
+/// Shared application invocation boundary used by every client.
+pub mod application;
 /// Gated, resumable execution of approved Spotify synchronization plans.
 pub mod apply;
 /// Read-only proof that an immutable sync plan is safe for a future apply engine.

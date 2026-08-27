@@ -5,10 +5,11 @@ before Chordrift is presented to additional users or gains another live music
 provider. It is not a claim that the current Spotify implementation is already
 provider-neutral.
 
-Status: active v0.2 boundary, updated 2026-08-27. V020-01 has implemented the
+Status: active v0.2 boundary, updated 2026-08-27. V020-01 implemented the
 provider-neutral application-contract vocabulary and capability-negotiation
-foundation. Existing handlers, domain IDs, storage queries, and the Spotify
-adapter remain on the v0.1.4 path until their later roadmap slices.
+foundation; V020-02 routes every existing CLI handler through the shared
+application facade without behavioral change. Domain IDs, storage queries, and
+the Spotify adapter remain on the v0.1.4 path until their later roadmap slices.
 
 ## Implemented application boundary
 
@@ -21,9 +22,9 @@ platform APIs, or execution engine.
 
 This is a client boundary, not proof that the current implementation is already
 multi-account or multi-provider. V020-02 routes the existing CLI through one
-application facade without behavioral change; V020-03 adds typed ownership and
-provider-neutral domain values; V020-04 supplies the adversarial isolation and
-fake-provider proof.
+application facade without behavioral change; V020-03 next adds typed ownership
+and provider-neutral domain values; V020-04 supplies the adversarial isolation
+and fake-provider proof.
 
 ## Current account model
 

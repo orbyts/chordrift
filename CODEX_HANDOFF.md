@@ -8,31 +8,33 @@ archive contents.
 
 Last updated: 2026-08-27.
 
-## Start the next task here: v0.2.0 slice V020-02
+## Start the next task here: v0.2.0 slice V020-03
 
-Implement only `V020-02 — CLI application-facade parity` from the authoritative
-execution map at the top of `ROADMAP.md`. Route the existing CLI handlers
-through one Rust application facade while preserving every command, redirected
-output, interactive presentation, and provider/database behavior. Reuse the
-public `contract` foundation; do not redefine it around terminal output or
-begin the provider-neutral domain work assigned to V020-03.
+Implement only `V020-03 — Provider-neutral domain foundation` from the
+authoritative execution map at the top of `ROADMAP.md`. Add typed ownership and
+provider IDs, capability reports, collection membership strength, playlist-
+surface axes, recipe-v1 values, and Spin identities without leaking SQL record
+types, Spotify payloads, terminal presentation, macOS APIs, or a transport.
+Build on the public `contract` and `application` modules; do not begin the
+isolation/fake-provider proof assigned to V020-04 or any schema work assigned to
+V020-05.
 
-The exact safety boundary is parity-only: do not change CLI commands or output,
-SQL or schema, configuration, account scoping, provider behavior, publication
-safety, or credential handling. Do not make a production Neon request or any
-Spotify request or write. Use tests and local fakes/fixtures only; route code
-without executing live handlers. If facade parity would require changing an
-existing observable behavior or expanding the contract/domain, stop and request
-direction rather than absorbing V020-03 or a later slice.
+The exact safety boundary is types and focused tests only: do not change CLI
+commands or output, SQL or schema, configuration, account scoping, provider
+behavior, publication safety, or credential handling. Do not make a production
+Neon request or any Spotify request or write. If the domain model would require
+a persistence decision, migration, execution engine, or observable CLI change,
+stop and leave that work to its assigned later slice.
 
-V020-01 is complete. The public, transport-neutral `contract` module now
-defines semantic contract/schema compatibility, capability negotiation,
-provider-neutral command and query envelopes, immutable command receipts and
-generic views, request/operation/idempotency/cancellation identities,
-structured progress and lifecycle events, and fixed-message client-safe
-errors. Focused serialization, compatibility, lifecycle, progress, and error-
-safety tests pass. Existing CLI, database, configuration, and provider modules
-do not consume the contract yet.
+V020-01 and V020-02 are complete. The public, transport-neutral `contract`
+module defines semantic compatibility, client-safe requests/results, operation
+lifecycle, progress, cancellation, errors, and capabilities. The public
+`application` module now supplies the single invocation facade and advertises
+that shared contract version. Every existing CLI handler passes through it;
+CLI parsing and interactive/redirected presentation remain client-owned, and
+the unchanged legacy handler body preserves all v0.1.4 behavior. Focused facade
+tests prove one execution, unchanged results, unchanged errors, and contract-
+version linkage. No production handler was executed while validating V020-02.
 
 Documentation on `main` now uses one explicit status convention. `README.md`,
 `docs/HOW_TO_CHORDRIFT.md`, the focused how-to pages, and the CLI reference

@@ -1,4 +1,5 @@
 use std::{
+    future::Future,
     io::{self, Write},
     path::PathBuf,
     time::{Duration, Instant},
@@ -7,9 +8,12 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::{
-    ChordriftError, Result, albums, analysis, apply, apply_readiness, artwork, bookmarks,
-    classifications, clusters, config, db, db_cleanup, db_reports, db_v2_migration, embeddings,
-    enrichment, history, model_inference, playlists, presentation, proposals, providers::spotify,
+    ChordriftError, Result, albums, analysis,
+    application::{ApplicationFacade, ApplicationInvocation},
+    apply, apply_readiness, artwork, bookmarks, classifications, clusters, config, db, db_cleanup,
+    db_reports, db_v2_migration, embeddings, enrichment, history, model_inference, playlists,
+    presentation, proposals,
+    providers::spotify,
     routes, signals, sync_plan, terminal, tracks,
 };
 
@@ -1504,6 +1508,28 @@ pub async fn run(cli: Cli) -> Result<()> {
 }
 
 async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
+    ApplicationFacade::new()
+        .invoke(CliInvocation { cli, output })
+        .await
+}
+
+struct CliInvocation<'a, W> {
+    cli: Cli,
+    output: &'a mut W,
+}
+
+impl<W> ApplicationInvocation for CliInvocation<'_, W>
+where
+    W: Write,
+{
+    type Output = ();
+
+    fn execute(self) -> impl Future<Output = Result<Self::Output>> {
+        execute_cli_handlers(self.cli, self.output)
+    }
+}
+
+async fn execute_cli_handlers(cli: Cli, output: &mut impl Write) -> Result<()> {
     match cli.command {
         Command::Db { command } => {
             let config = config::database_config_from_env()?;

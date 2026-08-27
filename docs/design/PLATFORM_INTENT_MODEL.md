@@ -8,7 +8,7 @@ unquestioned commands.
 Status: active v0.2 interaction policy, updated 2026-08-27. The lifecycle,
 progress, cancellation, structured-error, and capability shapes needed to
 present this policy are implemented in V020-01; existing v0.1.4 CLI handlers
-are not yet routed through them.
+now pass through the V020-02 application facade without behavioral change.
 
 ## Confidence policy
 

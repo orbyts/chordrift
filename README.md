@@ -26,11 +26,12 @@ guides linked below.
 The `main` branch is now the **v0.2.0 development line**. V020-01 established a
 public, transport-neutral Rust application contract for commands, queries,
 immutable views, lifecycle events, progress, cancellation, structured errors,
-and compatibility/capability negotiation. V020-02 is next: route the existing
-CLI through one application facade with exact behavioral and output parity.
+and compatibility/capability negotiation. V020-02 now routes the existing CLI
+through one application facade with exact behavioral and output parity.
 Neither slice changes how an installed v0.1.4 binary is used. Provider-neutral
-domain types, account-isolation proofs, additive product schema, onboarding,
-recipes, Spins, hosted transport, and native clients remain later v0.2.x work.
+domain types are next in V020-03; account-isolation proofs, additive product
+schema, onboarding, recipes, Spins, hosted transport, and native clients remain
+later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages

@@ -9,6 +9,9 @@ All notable changes to Chordrift are documented here.
   lifecycle events, progress, cooperative cancellation, structured client-safe
   errors, identity, and compatibility/capability negotiation without changing
   the released CLI, SQL, configuration, Neon behavior, or Spotify behavior.
+- Route every existing CLI handler through one Rust application facade while
+  preserving command parsing, redirected bytes, interactive presentation,
+  errors, database/provider behavior, and the v0.1.4 safety model.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

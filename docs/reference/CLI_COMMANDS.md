@@ -4,10 +4,10 @@ This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
 Command status: this page documents the released **v0.1.4** CLI. The `main`
-branch is developing v0.2.0, but V020-01 added only a Rust application-contract
-module and no user-facing command. V020-02 must preserve this command surface,
-redirected output, interactive presentation, database behavior, and provider
-behavior exactly while routing handlers through one application facade.
+branch is developing v0.2.0. V020-01 added the Rust application-contract module,
+and V020-02 routed this complete command surface through one application facade.
+Both preserve redirected bytes, interactive presentation, database behavior,
+provider behavior, and every user-facing command exactly.
 
 Chordrift reads Spotify state into Neon and changes Spotify only through an
 exact inspected plan, readiness assessment, and explicitly confirmed apply

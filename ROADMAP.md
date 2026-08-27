@@ -50,7 +50,7 @@ deterministic provider-free Spins.
   query, event, progress, cancellation, structured-error, and compatibility
   types. Add contract tests. Do not change CLI behavior, SQL, configuration,
   Neon, or Spotify.
-- [ ] **V020-02 — CLI application-facade parity.** Route existing CLI handlers
+- [x] **V020-02 — CLI application-facade parity.** Route existing CLI handlers
   through one Rust application facade while preserving commands, redirected
   output, interactive presentation, and provider/database behavior.
 - [ ] **V020-03 — Provider-neutral domain foundation.** Add typed ownership and
@@ -174,7 +174,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-02 — CLI application-facade parity`.
+**Next slice:** `V020-03 — Provider-neutral domain foundation`.
 
 ## Portable core and native clients
 
