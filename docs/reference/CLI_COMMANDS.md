@@ -5,7 +5,8 @@ instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
 Chordrift reads Spotify state into Neon and changes Spotify only through an
 exact inspected plan, readiness assessment, and explicitly confirmed apply
-phase.
+phase. For a visual explanation of every identifier and the Neon/Spotify write
+boundary, see [From intent to verified execution](../how-to/INTENT_TO_EXECUTION.md).
 
 ## Everyday workflow
 

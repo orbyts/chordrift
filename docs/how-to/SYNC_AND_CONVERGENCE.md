@@ -3,6 +3,10 @@
 Use this workflow after provider edits or whenever Chordrift needs to publish an
 approved Neon change.
 
+For a visual lifecycle and plain-language definitions of `proposal_generation_id`,
+`batch_id`, `plan_id`, `assessment_id`, `apply_run_id`, and `snapshot_id`, read
+[From intent to verified execution](INTENT_TO_EXECUTION.md) first.
+
 ## Observe Spotify
 
 ```console
@@ -57,6 +61,32 @@ use `reconcile` for a reviewed managed-state interpretation such as exclusion.
 Cleanup and retirement are destructive phases and require their additional
 explicit gates. Never substitute a plan ID for `--confirm`: it must repeat the
 assessment ID.
+
+## Combined plans
+
+One plan may describe publish, reconcile, cleanup, and retirement work together
+so the complete intended transition is visible. It does not authorize applying
+all phases against one old provider snapshot. Use this order:
+
+1. apply only `publish`;
+2. pull and verify its exact `apply_run_id`;
+3. create and assess the next plan from the new snapshot;
+4. apply only `reconcile`;
+5. pull and verify again;
+6. review separately gated cleanup or retirement only when it is no longer
+   deferred.
+
+The single-phase convenience wrapper performs those checks while retaining the
+interactive exact-assessment confirmation:
+
+```console
+$ scripts/chordrift-plan-phase.sh \
+    --account personal --plan PLAN_ID --phase publish
+```
+
+Run it again only with the **new** plan printed after verification. It refuses
+reconcile if the supplied plan still contains publish, and refuses cleanup and
+retirement entirely.
 
 ## Prove the provider accepted it
 

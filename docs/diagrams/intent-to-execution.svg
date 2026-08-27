@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Chordrift intent-to-execution lifecycle</title>
+  <desc id="desc">A two-lane flow showing Spotify observation, Neon proposal and batch approvals, immutable planning, readiness assessment, one-phase apply, and post-write verification.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#405468"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#17212b" flood-opacity="0.14"/>
+    </filter>
+    <style>
+      .title { font: 700 36px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17212b; }
+      .subtitle { font: 400 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #566575; }
+      .lane { font: 700 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 1px; }
+      .node-title { font: 700 19px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17212b; }
+      .node-id { font: 700 16px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #2459a9; }
+      .node-copy { font: 400 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #435160; }
+      .edge { fill: none; stroke: #405468; stroke-width: 3; marker-end: url(#arrow); }
+      .edge-read { fill: none; stroke: #2d7f6f; stroke-width: 3; stroke-dasharray: 9 7; marker-end: url(#arrow); }
+      .edge-write { fill: none; stroke: #b44c3b; stroke-width: 4; marker-end: url(#arrow); }
+      .gate { font: 700 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #8b3b30; }
+      .small { font: 400 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #5e6b78; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1080" rx="24" fill="#f7f9fb"/>
+  <text x="70" y="62" class="title">From a listening decision to a verified provider change</text>
+  <text x="70" y="94" class="subtitle">Every identifier names immutable evidence; only one ready, exactly confirmed apply phase writes Spotify.</text>
+
+  <rect x="45" y="130" width="1510" height="240" rx="22" fill="#eef5ff" stroke="#b9d0ee" stroke-width="2"/>
+  <text x="75" y="170" class="lane" fill="#2459a9">SPOTIFY · OBSERVED LISTENING SURFACE</text>
+  <rect x="45" y="400" width="1510" height="610" rx="22" fill="#eff8f3" stroke="#b7d9c4" stroke-width="2"/>
+  <text x="75" y="440" class="lane" fill="#26704c">NEON · DURABLE INTENT, APPROVALS, PLANS, AND RECEIPTS</text>
+
+  <g filter="url(#shadow)">
+    <rect x="80" y="205" width="245" height="112" rx="16" fill="#ffffff" stroke="#7da8dc" stroke-width="2"/>
+    <text x="102" y="239" class="node-title">Provider gesture</text>
+    <text x="102" y="267" class="node-copy">Like, Inbox, Re-evaluate,</text>
+    <text x="102" y="290" class="node-copy">remove, or manual edit</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="390" y="205" width="240" height="112" rx="16" fill="#ffffff" stroke="#7da8dc" stroke-width="2"/>
+    <text x="412" y="239" class="node-title">Read-only pull</text>
+    <text x="412" y="267" class="node-copy">Observe exact provider state</text>
+    <text x="412" y="292" class="node-id">snapshot_id</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="1300" y="205" width="220" height="112" rx="16" fill="#ffffff" stroke="#d87665" stroke-width="3"/>
+    <text x="1322" y="239" class="node-title">Provider mutation</text>
+    <text x="1322" y="267" class="node-copy">Only the selected phase</text>
+    <text x="1322" y="290" class="node-copy">changes Spotify</text>
+  </g>
+
+  <path d="M 325 261 L 390 261" class="edge-read"/>
+
+  <g filter="url(#shadow)">
+    <rect x="110" y="500" width="270" height="130" rx="16" fill="#ffffff" stroke="#77b48e" stroke-width="2"/>
+    <text x="132" y="535" class="node-title">Desired library intent</text>
+    <text x="132" y="564" class="node-id">proposal_generation_id</text>
+    <text x="132" y="592" class="node-copy">Exact membership + order</text>
+    <text x="132" y="613" class="node-copy">State: proposed → approved</text>
+  </g>
+
+  <path d="M 510 317 C 510 420, 245 410, 245 500" class="edge"/>
+
+  <g filter="url(#shadow)">
+    <rect x="435" y="500" width="255" height="130" rx="16" fill="#ffffff" stroke="#77b48e" stroke-width="2"/>
+    <text x="457" y="535" class="node-title">Reviewed artifacts</text>
+    <text x="457" y="564" class="node-id">batch_id</text>
+    <text x="457" y="592" class="node-copy">Artwork, classifications,</text>
+    <text x="457" y="613" class="node-copy">when the plan requires one</text>
+  </g>
+
+  <path d="M 380 565 L 435 565" class="edge"/>
+
+  <g filter="url(#shadow)">
+    <rect x="750" y="500" width="250" height="130" rx="16" fill="#ffffff" stroke="#77b48e" stroke-width="2"/>
+    <text x="772" y="535" class="node-title">Immutable dry run</text>
+    <text x="772" y="564" class="node-id">plan_id</text>
+    <text x="772" y="592" class="node-copy">Approved intent − snapshot</text>
+    <text x="772" y="613" class="node-copy">No Spotify request or write</text>
+  </g>
+
+  <path d="M 690 565 L 750 565" class="edge"/>
+  <path d="M 630 261 C 760 261, 730 430, 820 500" class="edge"/>
+
+  <g filter="url(#shadow)">
+    <rect x="1060" y="500" width="285" height="130" rx="16" fill="#ffffff" stroke="#d2a65a" stroke-width="2"/>
+    <text x="1082" y="535" class="node-title">Readiness gate</text>
+    <text x="1082" y="564" class="node-id">assessment_id</text>
+    <text x="1082" y="592" class="node-copy">Current snapshot + approvals</text>
+    <text x="1082" y="613" class="node-copy">Result: ready or blocked</text>
+  </g>
+
+  <path d="M 1000 565 L 1060 565" class="edge"/>
+  <path d="M 1202 500 C 1202 410, 965 405, 965 317" class="edge-read"/>
+  <text x="1040" y="388" class="small">optional read-only identity/scope probe</text>
+
+  <g filter="url(#shadow)">
+    <rect x="1060" y="710" width="285" height="145" rx="16" fill="#ffffff" stroke="#d87665" stroke-width="3"/>
+    <text x="1082" y="745" class="node-title">Apply exactly one phase</text>
+    <text x="1082" y="774" class="node-id">apply_run_id</text>
+    <text x="1082" y="802" class="node-copy">Repeat assessment_id</text>
+    <text x="1082" y="825" class="node-copy">publish · reconcile · gated destructive</text>
+  </g>
+
+  <path d="M 1202 630 L 1202 710" class="edge"/>
+  <rect x="1140" y="654" width="125" height="34" rx="17" fill="#fff0ed" stroke="#d87665"/>
+  <text x="1202" y="676" text-anchor="middle" class="gate">EXACT CONFIRM</text>
+
+  <path d="M 1345 782 C 1465 782, 1470 350, 1410 317" class="edge-write"/>
+  <text x="1370" y="670" class="gate">ONLY PROVIDER-WRITE EDGE</text>
+
+  <g filter="url(#shadow)">
+    <rect x="750" y="710" width="250" height="145" rx="16" fill="#ffffff" stroke="#77b48e" stroke-width="2"/>
+    <text x="772" y="745" class="node-title">Pull + verify</text>
+    <text x="772" y="774" class="node-id">new snapshot_id</text>
+    <text x="772" y="802" class="node-copy">Compare Spotify result</text>
+    <text x="772" y="825" class="node-copy">with apply receipt</text>
+  </g>
+
+  <path d="M 1060 782 L 1000 782" class="edge-read"/>
+  <path d="M 875 710 C 875 650, 510 650, 510 317" class="edge-read"/>
+
+  <g filter="url(#shadow)">
+    <rect x="435" y="710" width="255" height="145" rx="16" fill="#ffffff" stroke="#77b48e" stroke-width="2"/>
+    <text x="457" y="745" class="node-title">Convergence decision</text>
+    <text x="457" y="774" class="node-copy">Create the next plan</text>
+    <text x="457" y="802" class="node-copy">0 operations = complete</text>
+    <text x="457" y="825" class="node-copy">More phases = review again</text>
+  </g>
+
+  <path d="M 750 782 L 690 782" class="edge"/>
+  <path d="M 562 710 C 562 670, 875 670, 875 630" class="edge"/>
+
+  <rect x="110" y="910" width="1380" height="62" rx="16" fill="#ffffff" stroke="#cbd4dd" stroke-width="2"/>
+  <circle cx="145" cy="941" r="7" fill="#2d7f6f"/>
+  <text x="165" y="947" class="small">Dashed green = Spotify read only</text>
+  <circle cx="420" cy="941" r="7" fill="#b44c3b"/>
+  <text x="440" y="947" class="small">Red = Spotify write</text>
+  <circle cx="630" cy="941" r="7" fill="#405468"/>
+  <text x="650" y="947" class="small">Gray = durable Neon evidence or control flow</text>
+  <text x="1080" y="947" class="small">Blocked or stale? Stop and create new evidence—never swap IDs.</text>
+</svg>

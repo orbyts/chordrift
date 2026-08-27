@@ -61,6 +61,104 @@ write to Spotify.
 The consumer product should perform steps 2–7 in the background and surface
 only an understandable proposal when confidence or intent is ambiguous.
 
+## Review a mixed intake batch
+
+After adding a group of tracks to Liked Songs, Inbox, or Re-evaluate, pull once
+and inspect the complete unresolved set:
+
+```console
+$ chordrift sync pull --account personal
+$ chordrift proposals status --account personal
+$ chordrift proposals unresolved --account personal --limit 1000
+```
+
+An approved proposal is immutable. Prepare a new editable copy before changing
+placements:
+
+```console
+$ chordrift proposals extend --account personal --min-similarity 1
+```
+
+The strict `1` threshold preserves the approved structure without broadly
+classifying new tracks. It also replays durable exclusions, manual assignments,
+and needs-review decisions, so inspect `proposals unresolved` again afterward.
+
+### Assign private cultural intent first
+
+Spotify metadata does not reliably identify language, region, tradition, or an
+A. R. Rahman cohort. Assign tracks you recognize before running general sound
+clustering:
+
+```console
+$ chordrift proposals list --account personal
+$ chordrift proposals assign --account personal \
+    --spotify-id FIRST_ID --spotify-id SECOND_ID \
+    --playlist PLAYLIST_STABLE_KEY \
+    --reason "Reviewed Telugu and A. R. Rahman discoveries"
+```
+
+The convenience helper resolves an exact destination display name to its stable
+key and also supports moving an existing proposal placement:
+
+```console
+$ scripts/chordrift-manual-place.sh --account personal \
+    --to "Dakshina Pulse" \
+    --spotify-id FIRST_ID --spotify-id SECOND_ID \
+    --reason "Reviewed Telugu and A. R. Rahman discoveries"
+```
+
+For unresolved tracks that are currently in Inbox, the stricter
+`chordrift-intake-move.sh` additionally proves Inbox membership and refuses an
+already-resolved track.
+
+### Cluster the reviewed remainder
+
+The established automatic sequence uses direct destination-centroid similarity
+of at least `0.05`, then analytical-group consensus of at least 55% with 10
+known placed tracks. First run the read-only audit:
+
+```console
+$ chordrift proposals placement-audit --account personal
+```
+
+If its destination fits and fallback groups look reasonable, run the two
+proposal-mutating steps:
+
+```console
+$ chordrift proposals centroid-assign --account personal --min-similarity 0.05
+$ chordrift proposals consensus-assign --account personal \
+    --min-dominance 0.55 --min-evidence 10
+```
+
+Those commands update only the editable Neon proposal. When an older durable
+`needs_review` decision exists, a later proposal can replay it; converting the
+reviewed generated destination into a new explicit assignment supersedes that
+older decision. The helper performs the same Rust-owned centroid/consensus
+commands and persists their exact destinations for the starting unresolved
+set:
+
+```console
+$ scripts/chordrift-cluster-unresolved.sh --account personal
+```
+
+Default mode is read-only and prints the exact proposal UUID. Apply only after
+reviewing that output:
+
+```console
+$ scripts/chordrift-cluster-unresolved.sh --account personal \
+    --apply --confirm PROPOSAL_GENERATION_UUID
+```
+
+The helper reserves unresolved intake, saved/liked, Inbox, and Re-evaluate
+tracks by default so private cultural intent is not overwritten. After manually
+assigning every special case and reviewing the remaining intake population,
+add `--include-intake` to permit ordinary clustering of that remainder.
+
+Finally require zero unresolved inventory, review the entire proposal, approve
+its exact generation, bind/approve its artwork batch, and follow the phased
+plan/readiness/apply/verify workflow. Approval covers the whole proposal—not
+only the tracks handled in the latest command.
+
 ## What not to do
 
 - Do not create an arbitrary permanent playlist merely to make Chordrift see a
