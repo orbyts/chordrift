@@ -8,33 +8,35 @@ archive contents.
 
 Last updated: 2026-08-27.
 
-## Start the next task here: v0.2.0 slice V020-03
+## Start the next task here: v0.2.0 slice V020-04
 
-Implement only `V020-03 — Provider-neutral domain foundation` from the
-authoritative execution map at the top of `ROADMAP.md`. Add typed ownership and
-provider IDs, capability reports, collection membership strength, playlist-
-surface axes, recipe-v1 values, and Spin identities without leaking SQL record
-types, Spotify payloads, terminal presentation, macOS APIs, or a transport.
-Build on the public `contract` and `application` modules; do not begin the
-isolation/fake-provider proof assigned to V020-04 or any schema work assigned to
-V020-05.
+Implement only `V020-04 — Isolation and fake-provider proof` from the
+authoritative execution map at the top of `ROADMAP.md`. Add adversarial tests
+covering two Chordrift accounts and two provider namespaces, plus a deterministic
+fake-provider harness that proves idempotency, cooperative cancellation, bounded
+retry, and visible unsupported-capability behavior. Build on the public
+`contract`, `application`, and `domain` modules. Do not begin the additive schema
+plan assigned to V020-05 or production recipe/Spin generation assigned to later
+slices.
 
-The exact safety boundary is types and focused tests only: do not change CLI
-commands or output, SQL or schema, configuration, account scoping, provider
-behavior, publication safety, or credential handling. Do not make a production
-Neon request or any Spotify request or write. If the domain model would require
-a persistence decision, migration, execution engine, or observable CLI change,
-stop and leave that work to its assigned later slice.
+The exact safety boundary is isolated fakes and tests only: do not change CLI
+commands or output, SQL or schema, configuration, production account scoping,
+Spotify behavior, publication safety, or credential handling. Do not make a
+production Neon request or any Spotify request or write. Provider namespaces
+with equal opaque IDs must remain distinct, account-owned resources must never
+cross ownership boundaries, retries must not duplicate accepted work, and an
+unsupported capability must fail visibly rather than be emulated.
 
-V020-01 and V020-02 are complete. The public, transport-neutral `contract`
-module defines semantic compatibility, client-safe requests/results, operation
-lifecycle, progress, cancellation, errors, and capabilities. The public
-`application` module now supplies the single invocation facade and advertises
-that shared contract version. Every existing CLI handler passes through it;
-CLI parsing and interactive/redirected presentation remain client-owned, and
-the unchanged legacy handler body preserves all v0.1.4 behavior. Focused facade
-tests prove one execution, unchanged results, unchanged errors, and contract-
-version linkage. No production handler was executed while validating V020-02.
+V020-01 through V020-03 are complete. The public `domain` module now provides
+validated account-owned UUID identities; provider-qualified account, track, and
+playlist IDs; provider and evidence capability reports; collection membership
+strength, provenance, and bounded confidence; independent surface authority,
+purpose, and refresh axes; recipe-v1 lanes, allocations, cadence, ordering,
+sections, and guardrail categories; and account-bound recipe revision and Spin
+identities. Zero allocation weight is valid for an individual source, while an
+all-zero recipe is rejected. Validated deserialization cannot bypass provider-
+namespace, confidence, recipe, membership, or Spin ownership invariants. The
+module contains no SQL, provider payload, terminal, platform, or transport type.
 
 Documentation on `main` now uses one explicit status convention. `README.md`,
 `docs/HOW_TO_CHORDRIFT.md`, the focused how-to pages, and the CLI reference

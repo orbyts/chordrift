@@ -15,9 +15,9 @@ pages are forward-looking and identify which v0.2 foundations are implemented.
 | --- | --- | --- |
 | Perform daily library work | This guide and the linked `how-to/` pages | Released v0.1.4 behavior; preserved during current v0.2 work. |
 | Look up a command | [CLI command reference](reference/CLI_COMMANDS.md) | Complete v0.1.4 command surface; historical operator-only leaves are labeled. |
-| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 and V020-02 implemented; V020-03 next; later foundations explicitly listed. |
+| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 through V020-03 implemented; V020-04 next; later foundations explicitly listed. |
 | Review intent interpretation | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Active v0.2 product policy, grounded in the existing explicit CLI loop. |
-| Review account/provider isolation | [Account and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Contract foundation implemented; isolation/domain proofs still pending. |
+| Review account/provider isolation | [Account and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Contract and domain foundations implemented; adversarial isolation proof next. |
 | Review database-v2 decisions | [Database architecture v2](design/DATABASE_ARCHITECTURE_V2.md) | Completed v0.1.4 foundation and labeled historical execution record. |
 | Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
 
@@ -170,6 +170,8 @@ provider- and transport-neutral shapes that the CLI, hosted service, and future
 native clients will share. V020-02 adds one public application facade and
 routes current CLI handlers through it without changing commands, redirected
 output, interactive presentation, database behavior, or provider behavior.
-Provider-neutral domain types begin next in V020-03. See the
+V020-03 adds the provider-neutral ownership, identity, capability, collection,
+surface, recipe-v1, and Spin value vocabulary without changing the CLI. The
+isolation and fake-provider proof is next in V020-04. See the
 [playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) for
 the complete staged direction.

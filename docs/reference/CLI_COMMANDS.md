@@ -7,7 +7,8 @@ Command status: this page documents the released **v0.1.4** CLI. The `main`
 branch is developing v0.2.0. V020-01 added the Rust application-contract module,
 and V020-02 routed this complete command surface through one application facade.
 Both preserve redirected bytes, interactive presentation, database behavior,
-provider behavior, and every user-facing command exactly.
+provider behavior, and every user-facing command exactly. V020-03 adds only
+provider-neutral Rust domain values and likewise introduces no CLI command.
 
 Chordrift reads Spotify state into Neon and changes Spotify only through an
 exact inspected plan, readiness assessment, and explicitly confirmed apply

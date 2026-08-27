@@ -9,8 +9,8 @@ behavior. Both are deliberately conceptual: existing database-v2 names remain
 unchanged, while the recipe and collection names describe the next additive
 foundation rather than an already-applied migration.
 
-Status: active v0.2 architecture, updated 2026-08-27. V020-01 and V020-02 are
-implemented; V020-03 is next. This document is a design contract, not
+Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-03
+are implemented; V020-04 is next. This document is a design contract, not
 authorization to apply a migration or write to a provider.
 
 ## Current implementation status
@@ -23,12 +23,18 @@ authorization to apply a migration or write to a provider.
 - **Implemented — V020-02:** every existing CLI handler passes through one Rust
   application facade while preserving commands, redirected output, interactive
   presentation, errors, database behavior, and provider behavior exactly.
-- **Next — V020-03:** add provider-neutral product domain types without SQL,
-  provider payload, or terminal dependencies.
-- **Not implemented yet:** isolation and
-  fake-provider proofs, product schema, onboarding sessions, collections,
-  recipes, Spins, hosted transport, and native clients. Those remain separate
-  roadmap slices and must not be inferred from the existence of contract DTOs.
+- **Implemented — V020-03:** the public `domain` module defines account-owned
+  and provider-qualified IDs, typed provider/evidence capability reports,
+  collection membership strength/provenance/confidence, independent playlist-
+  surface axes, recipe-v1 values, and account-bound Spin identities. Validated
+  deserialization cannot bypass ownership or value invariants.
+- **Next — V020-04:** prove two-account and two-provider isolation plus fake-
+  provider behavior under deterministic, retry, cancellation, idempotency, and
+  unsupported-capability cases.
+- **Not implemented yet:** product schema, onboarding sessions, collection and
+  recipe execution, Spin generation, hosted transport, and native clients.
+  Those remain separate roadmap slices and must not be inferred from the
+  existence of contract or domain types.
 
 ## Product boundary
 
@@ -390,8 +396,9 @@ an honest usable experience.
    progress, cancellation, and structured-error contract.
 2. **Complete:** route the existing CLI through the application facade without
    changing behavior.
-3. Freeze provider-neutral IDs, `ProviderCapabilities`, playlist-surface axes,
-   collection membership strength, and recipe-v1 types in Rust with unit tests.
+3. **Complete:** freeze provider-neutral IDs, `ProviderCapabilities`, playlist-
+   surface axes, collection membership strength, and recipe-v1 types in Rust
+   with unit tests.
 4. Add account/provider isolation, idempotency, cancellation, and fake-provider
    tests; prove two accounts and provider namespaces cannot cross.
 5. Design and rehearse additive ownership, collection, surface, recipe, Spin,

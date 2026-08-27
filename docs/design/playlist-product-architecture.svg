@@ -30,7 +30,7 @@
   <rect width="1800" height="1220" fill="#f7f9fc"/>
   <text x="70" y="62" class="title">Chordrift: from provider library to renewable listening experiences</text>
   <text x="70" y="92" class="subtitle">Spotify first · provider-neutral core · useful without an archive · every Spin previewed, approved, published, and verified</text>
-  <text x="70" y="116" class="small">v0.2 target · V020-01 contract and V020-02 facade implemented · domain, onboarding, recipes, and Spins follow in separate slices</text>
+  <text x="70" y="116" class="small">v0.2 target · contract, facade, and domain foundation implemented · isolation, onboarding, generation, and publication follow</text>
 
   <text x="70" y="142" class="section">1 · First-run and everyday loop</text>
   <g>

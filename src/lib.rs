@@ -40,6 +40,8 @@ pub mod db_cleanup;
 pub mod db_reports;
 /// Exact-confirmed database-v2 evidence and checkpoint migration.
 pub mod db_v2_migration;
+/// Provider-neutral product-domain identities, values, and invariants.
+pub mod domain;
 /// Deterministic, versioned semantic track embeddings.
 pub mod embeddings;
 /// Cache-first, provenance-aware semantic metadata enrichment.

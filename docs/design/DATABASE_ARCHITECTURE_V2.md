@@ -33,7 +33,7 @@ foundation additively and does not reopen the migration.
 | Legacy storage | Database-v1 physical tables and the former rollback project are gone after independently verified exact-confirmed cleanup. |
 | Recovery | The verified pre-compaction logical dump and immutable Spotify archives remain the external recovery sources. |
 | Routine operation | Use `sync pull` and the normal plan/readiness/apply workflow; do not replay migration or cleanup applies. |
-| v0.2 relationship | V020-01 and V020-02 change no schema. Later product tables must extend this foundation additively through their own rehearsed slice. |
+| v0.2 relationship | V020-01 through V020-03 change no schema. Later product tables must extend this foundation additively through their own rehearsed slice. |
 
 ## Why this redesign existed
 

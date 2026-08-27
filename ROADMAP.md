@@ -53,7 +53,7 @@ deterministic provider-free Spins.
 - [x] **V020-02 — CLI application-facade parity.** Route existing CLI handlers
   through one Rust application facade while preserving commands, redirected
   output, interactive presentation, and provider/database behavior.
-- [ ] **V020-03 — Provider-neutral domain foundation.** Add typed ownership and
+- [x] **V020-03 — Provider-neutral domain foundation.** Add typed ownership and
   provider IDs, capability reports, collection membership strength, playlist-
   surface axes, recipe-v1 values, and Spin identities without leaking SQL or
   Spotify payload types.
@@ -174,7 +174,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-03 — Provider-neutral domain foundation`.
+**Next slice:** `V020-04 — Isolation and fake-provider proof`.
 
 ## Portable core and native clients
 

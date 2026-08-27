@@ -8,8 +8,9 @@ provider-neutral.
 Status: active v0.2 boundary, updated 2026-08-27. V020-01 implemented the
 provider-neutral application-contract vocabulary and capability-negotiation
 foundation; V020-02 routes every existing CLI handler through the shared
-application facade without behavioral change. Domain IDs, storage queries, and
-the Spotify adapter remain on the v0.1.4 path until their later roadmap slices.
+application facade without behavioral change; V020-03 adds account-owned and
+provider-qualified domain IDs plus typed capability reports. Storage queries
+and the Spotify adapter remain on the v0.1.4 path until later roadmap slices.
 
 ## Implemented application boundary
 
@@ -22,9 +23,9 @@ platform APIs, or execution engine.
 
 This is a client boundary, not proof that the current implementation is already
 multi-account or multi-provider. V020-02 routes the existing CLI through one
-application facade without behavioral change; V020-03 next adds typed ownership
-and provider-neutral domain values; V020-04 supplies the adversarial isolation
-and fake-provider proof.
+application facade without behavioral change; V020-03 supplies typed ownership
+and provider-neutral domain values; V020-04 next supplies the adversarial
+isolation and fake-provider proof.
 
 ## Current account model
 
