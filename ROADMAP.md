@@ -57,7 +57,7 @@ deterministic provider-free Spins.
   provider IDs, capability reports, collection membership strength, playlist-
   surface axes, recipe-v1 values, and Spin identities without leaking SQL or
   Spotify payload types.
-- [ ] **V020-04 — Isolation and fake-provider proof.** Add two-account and two-
+- [x] **V020-04 — Isolation and fake-provider proof.** Add two-account and two-
   provider-namespace adversarial tests plus deterministic generation,
   idempotency, cancellation, retry, and unsupported-capability coverage.
 - [ ] **V020-05 — Additive schema plan and local rehearsal.** Reconcile proposed
@@ -174,7 +174,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-04 — Isolation and fake-provider proof`.
+**Next slice:** `V020-05 — Additive schema plan and local rehearsal`.
 
 ## Portable core and native clients
 

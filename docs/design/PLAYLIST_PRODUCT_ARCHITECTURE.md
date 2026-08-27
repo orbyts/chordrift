@@ -9,8 +9,8 @@ behavior. Both are deliberately conceptual: existing database-v2 names remain
 unchanged, while the recipe and collection names describe the next additive
 foundation rather than an already-applied migration.
 
-Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-03
-are implemented; V020-04 is next. This document is a design contract, not
+Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-04
+are implemented; V020-05 is next. This document is a design contract, not
 authorization to apply a migration or write to a provider.
 
 ## Current implementation status
@@ -28,9 +28,12 @@ authorization to apply a migration or write to a provider.
   collection membership strength/provenance/confidence, independent playlist-
   surface axes, recipe-v1 values, and account-bound Spin identities. Validated
   deserialization cannot bypass ownership or value invariants.
-- **Next — V020-04:** prove two-account and two-provider isolation plus fake-
-  provider behavior under deterministic, retry, cancellation, idempotency, and
-  unsupported-capability cases.
+- **Implemented — V020-04:** a deterministic test-only fake application/provider
+  harness proves two-account and two-provider-namespace isolation, idempotent
+  acceptance, cooperative cancellation, bounded retry, stable fake generation,
+  and visible unsupported-capability failure without production provider calls.
+- **Next — V020-05:** reconcile the proposed product schema with existing tables
+  and rehearse one additive migration only on isolated PostgreSQL 18.
 - **Not implemented yet:** product schema, onboarding sessions, collection and
   recipe execution, Spin generation, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the
@@ -399,8 +402,8 @@ an honest usable experience.
 3. **Complete:** freeze provider-neutral IDs, `ProviderCapabilities`, playlist-
    surface axes, collection membership strength, and recipe-v1 types in Rust
    with unit tests.
-4. Add account/provider isolation, idempotency, cancellation, and fake-provider
-   tests; prove two accounts and provider namespaces cannot cross.
+4. **Complete:** add account/provider isolation, idempotency, cancellation, and
+   fake-provider tests; prove two accounts and provider namespaces cannot cross.
 5. Design and rehearse additive ownership, collection, surface, recipe, Spin,
    onboarding-session, and publication-link migrations. Do not publish provider
    changes.

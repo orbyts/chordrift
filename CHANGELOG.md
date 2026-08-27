@@ -15,6 +15,9 @@ All notable changes to Chordrift are documented here.
 - Add provider-neutral domain values for account ownership, provider-qualified
   IDs, provider/evidence capabilities, overlapping collection membership,
   independent playlist-surface axes, recipe v1, and account-bound Spin identity.
+- Prove two-account and two-provider-namespace isolation with a deterministic
+  test-only fake-provider harness covering idempotent acceptance, cooperative
+  cancellation, bounded retry, and visible unsupported-capability failure.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

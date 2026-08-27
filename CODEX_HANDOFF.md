@@ -8,26 +8,35 @@ archive contents.
 
 Last updated: 2026-08-27.
 
-## Start the next task here: v0.2.0 slice V020-04
+## Start the next task here: v0.2.0 slice V020-05
 
-Implement only `V020-04 — Isolation and fake-provider proof` from the
-authoritative execution map at the top of `ROADMAP.md`. Add adversarial tests
-covering two Chordrift accounts and two provider namespaces, plus a deterministic
-fake-provider harness that proves idempotency, cooperative cancellation, bounded
-retry, and visible unsupported-capability behavior. Build on the public
-`contract`, `application`, and `domain` modules. Do not begin the additive schema
-plan assigned to V020-05 or production recipe/Spin generation assigned to later
-slices.
+Implement only `V020-05 — Additive schema plan and local rehearsal` from the
+authoritative execution map at the top of `ROADMAP.md`. Reconcile proposed
+ownership, collection, surface, recipe, Spin, onboarding-session, and
+publication-link tables with every existing equivalent before adding anything.
+Implement and verify one additive migration only against isolated PostgreSQL 18.
+Do not begin the V020-06 onboarding-session runtime or production recipe/Spin
+generation assigned to later slices.
 
-The exact safety boundary is isolated fakes and tests only: do not change CLI
-commands or output, SQL or schema, configuration, production account scoping,
-Spotify behavior, publication safety, or credential handling. Do not make a
-production Neon request or any Spotify request or write. Provider namespaces
-with equal opaque IDs must remain distinct, account-owned resources must never
-cross ownership boundaries, retries must not duplicate accepted work, and an
-unsupported capability must fail visibly rather than be emulated.
+The exact safety boundary is schema design, migration code, and isolated local
+PostgreSQL rehearsal only: do not change CLI commands or output, configuration,
+production account behavior, Spotify behavior, publication safety, or credential
+handling. Do not make a production Neon request or any Spotify request or write.
+Preserve all v0.1.4 tables, data, migrations, invariants, and runtime behavior;
+the migration must be additive, replay-safe, ownership-scoped, and compatible
+with a fresh database plus the complete existing migration chain.
 
-V020-01 through V020-03 are complete. The public `domain` module now provides
+V020-01 through V020-04 are complete. V020-04 adds a test-only deterministic
+fake-provider/application harness built on the public `contract`, `application`,
+and `domain` modules. Six adversarial tests prove that two Chordrift accounts
+and two provider namespaces cannot cross; equal opaque IDs remain distinct;
+equal idempotency keys are account-scoped; accepted work is not duplicated by
+replay or retry; cancellation stops at the next checkpoint; transient retries
+stop at their configured bound; and an unsupported inventory capability fails
+visibly without making a provider call. This proof does not make the production
+Spotify adapter, storage path, or CLI multi-account/multi-provider.
+
+The public `domain` module provides
 validated account-owned UUID identities; provider-qualified account, track, and
 playlist IDs; provider and evidence capability reports; collection membership
 strength, provenance, and bounded confidence; independent surface authority,

@@ -28,11 +28,13 @@ public, transport-neutral Rust application contract for commands, queries,
 immutable views, lifecycle events, progress, cancellation, structured errors,
 and compatibility/capability negotiation. V020-02 now routes the existing CLI
 through one application facade with exact behavioral and output parity.
-Neither slice changes how an installed v0.1.4 binary is used. V020-03 now adds
+Neither slice changes how an installed v0.1.4 binary is used. V020-03 adds
 provider-neutral ownership, identity, capability, collection, surface, recipe-
-v1, and Spin value types. Account/provider isolation and fake-provider proofs
-are next in V020-04; additive product schema, onboarding, generation, hosted
-transport, and native clients remain later work.
+v1, and Spin value types. V020-04 now proves account/provider isolation,
+deterministic fake generation, idempotency, cancellation, bounded retry, and
+visible capability failure entirely in tests. The additive schema plan and
+isolated PostgreSQL rehearsal are next in V020-05; onboarding, production
+generation, hosted transport, and native clients remain later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages

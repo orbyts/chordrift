@@ -10,8 +10,10 @@ progress, cancellation, structured-error, and capability shapes needed to
 present this policy are implemented in V020-01; existing v0.1.4 CLI handlers
 now pass through the V020-02 application facade without behavioral change.
 V020-03 adds typed provider/evidence capabilities and independent playlist-
-surface authority, purpose, and refresh values; automated interpretation and
-learning remain later work.
+surface authority, purpose, and refresh values. V020-04 proves cancellation,
+retry, idempotency, isolation, and visible capability gaps in a test-only fake
+application/provider harness; automated interpretation and learning remain
+later work.
 
 ## Confidence policy
 

@@ -8,7 +8,8 @@ branch is developing v0.2.0. V020-01 added the Rust application-contract module,
 and V020-02 routed this complete command surface through one application facade.
 Both preserve redirected bytes, interactive presentation, database behavior,
 provider behavior, and every user-facing command exactly. V020-03 adds only
-provider-neutral Rust domain values and likewise introduces no CLI command.
+provider-neutral Rust domain values, and V020-04 adds only an isolated fake-
+provider test suite. Neither introduces a CLI command or runtime behavior.
 
 Chordrift reads Spotify state into Neon and changes Spotify only through an
 exact inspected plan, readiness assessment, and explicitly confirmed apply
@@ -332,10 +333,10 @@ identity, and all playlist roles are scoped to that account.
 
 Spotify consent is a single PKCE authorization covering inventory, Recently
 Played, reserved top-item access, playlist publication, library cleanup, and artwork.
-Normal commands do not rewrite an unchanged Keychain credential. The personal
-CLI is not yet a supported multi-user trial surface; v0.2 must pass its
-two-account isolation and fake-provider suite first. A future consumer build
-must be signed so macOS recognizes the same application at each launch.
+Normal commands do not rewrite an unchanged Keychain credential. The v0.2 test-
+only two-account and fake-provider proof now passes, but the personal v0.1.4
+runtime is not yet a supported multi-user trial surface. A future consumer
+build must be signed so macOS recognizes the same application at each launch.
 
 ## Playlists
 

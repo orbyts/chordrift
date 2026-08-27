@@ -5,9 +5,9 @@ to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMA
 only when you need every option or an internal diagnostic command.
 
 These workflows describe the released **v0.1.4** daily driver and remain valid
-while `main` develops v0.2.0. The v0.2 application contract now exists, but the
-released CLI has not been rerouted and no command or output has changed. Design
-pages are forward-looking and identify which v0.2 foundations are implemented.
+while `main` develops v0.2.0. The v0.2 application facade now carries the same
+CLI behavior, but the released binary and every command/output remain unchanged.
+Design pages identify which v0.2 foundations are implemented or still planned.
 
 ## Documentation map
 
@@ -15,9 +15,9 @@ pages are forward-looking and identify which v0.2 foundations are implemented.
 | --- | --- | --- |
 | Perform daily library work | This guide and the linked `how-to/` pages | Released v0.1.4 behavior; preserved during current v0.2 work. |
 | Look up a command | [CLI command reference](reference/CLI_COMMANDS.md) | Complete v0.1.4 command surface; historical operator-only leaves are labeled. |
-| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 through V020-03 implemented; V020-04 next; later foundations explicitly listed. |
+| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 through V020-04 implemented; V020-05 next; later foundations explicitly listed. |
 | Review intent interpretation | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Active v0.2 product policy, grounded in the existing explicit CLI loop. |
-| Review account/provider isolation | [Account and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Contract and domain foundations implemented; adversarial isolation proof next. |
+| Review account/provider isolation | [Account and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Test-only adversarial proof implemented; production adapters remain v0.1.4. |
 | Review database-v2 decisions | [Database architecture v2](design/DATABASE_ARCHITECTURE_V2.md) | Completed v0.1.4 foundation and labeled historical execution record. |
 | Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
 
@@ -171,7 +171,9 @@ native clients will share. V020-02 adds one public application facade and
 routes current CLI handlers through it without changing commands, redirected
 output, interactive presentation, database behavior, or provider behavior.
 V020-03 adds the provider-neutral ownership, identity, capability, collection,
-surface, recipe-v1, and Spin value vocabulary without changing the CLI. The
-isolation and fake-provider proof is next in V020-04. See the
+surface, recipe-v1, and Spin value vocabulary without changing the CLI. V020-04
+adds the deterministic test-only isolation and fake-provider proof without
+changing runtime behavior. The additive schema plan and isolated rehearsal are
+next in V020-05. See the
 [playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) for
 the complete staged direction.
