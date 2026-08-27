@@ -46,7 +46,7 @@ Goal: prove the new product model end to end through the CLI, migrate the
 latest personal state without interrupting v0.1.x use, and generate the first
 deterministic provider-free Spins.
 
-- [ ] **V020-01 — Application contract foundation.** Define versioned command,
+- [x] **V020-01 — Application contract foundation.** Define versioned command,
   query, event, progress, cancellation, structured-error, and compatibility
   types. Add contract tests. Do not change CLI behavior, SQL, configuration,
   Neon, or Spotify.
@@ -174,7 +174,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-01 — Application contract foundation`.
+**Next slice:** `V020-02 — CLI application-facade parity`.
 
 ## Portable core and native clients
 

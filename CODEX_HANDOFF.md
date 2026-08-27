@@ -6,24 +6,33 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-08-26.
+Last updated: 2026-08-27.
 
-## Start the next task here: v0.2.0 slice V020-01
+## Start the next task here: v0.2.0 slice V020-02
 
-Implement only `V020-01 — Application contract foundation` from the
-authoritative execution map at the top of `ROADMAP.md`. Define versioned Rust
-command, query, lifecycle-event, progress, cancellation, structured-error, and
-compatibility types with focused contract tests. Establish boundaries that the
-CLI, hosted service, and future native clients can share, but do not yet route
-existing CLI handlers through them; that is V020-02.
+Implement only `V020-02 — CLI application-facade parity` from the authoritative
+execution map at the top of `ROADMAP.md`. Route the existing CLI handlers
+through one Rust application facade while preserving every command, redirected
+output, interactive presentation, and provider/database behavior. Reuse the
+public `contract` foundation; do not redefine it around terminal output or
+begin the provider-neutral domain work assigned to V020-03.
 
-This slice must not change CLI behavior or output, database schema or queries,
-configuration, the production Neon database, or Spotify. It requires no
-production credentials. Run formatting, strict Clippy, and relevant unit/doc
-tests; update the execution checkbox and this handoff; commit and push. If the
-work reveals a decision that would materially change the command/query/event
-contract, stop and request user direction instead of absorbing V020-02 or later
-work.
+The exact safety boundary is parity-only: do not change CLI commands or output,
+SQL or schema, configuration, account scoping, provider behavior, publication
+safety, or credential handling. Do not make a production Neon request or any
+Spotify request or write. Use tests and local fakes/fixtures only; route code
+without executing live handlers. If facade parity would require changing an
+existing observable behavior or expanding the contract/domain, stop and request
+direction rather than absorbing V020-03 or a later slice.
+
+V020-01 is complete. The public, transport-neutral `contract` module now
+defines semantic contract/schema compatibility, capability negotiation,
+provider-neutral command and query envelopes, immutable command receipts and
+generic views, request/operation/idempotency/cancellation identities,
+structured progress and lifecycle events, and fixed-message client-safe
+errors. Focused serialization, compatibility, lifecycle, progress, and error-
+safety tests pass. Existing CLI, database, configuration, and provider modules
+do not consume the contract yet.
 
 The user continues normal cleanup and listening with released v0.1.4 while
 v0.2.0 is built. Treat any real v0.1.4 defect as event-driven `release/0.1`

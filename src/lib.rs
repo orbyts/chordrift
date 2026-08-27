@@ -26,6 +26,8 @@ pub mod cli;
 pub mod clusters;
 /// Application-owned database configuration.
 pub mod config;
+/// Versioned, provider-neutral application contract shared by every client.
+pub mod contract;
 /// System credential storage with provider and account isolation.
 pub mod credentials;
 /// Storexa-backed database lifecycle and migration inspection.
