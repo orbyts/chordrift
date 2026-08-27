@@ -9,8 +9,8 @@ behavior. Existing database-v2 names remain unchanged. Migration 0046 now
 implements the additive recipe, collection, surface, onboarding, and Spin table
 names shown here, but remains isolated from production Neon.
 
-Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-05
-are implemented; V020-06 is next. This document is a design contract, not
+Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-06
+are implemented; V020-07 is next. This document is a design contract, not
 authorization to apply a migration or write to a provider.
 
 ## Current implementation status
@@ -36,10 +36,15 @@ authorization to apply a migration or write to a provider.
   domain tables with composite account ownership, v0.1.4 provider-account
   compatibility, and links to existing inventory/publication history. Fresh and
   migration-45 upgrade rehearsals pass on isolated PostgreSQL 18 only.
-- **Next — V020-06:** implement the provider-read-only onboarding session
-  boundary while ignoring existing Chordrift intent by default.
-- **Not implemented yet:** onboarding behavior, collection and recipe execution,
-  Spin generation, hosted transport, and native clients.
+- **Implemented — V020-06:** the public onboarding application boundary reads
+  one selected immutable inventory and optional extended evidence through a
+  mutation-free provider port, persists content-addressed migration-0046 inputs
+  and provenance, returns idempotent retries without another provider read, and
+  rejects capability/account violations before provider access.
+- **Next — V020-07:** produce the inventory-only new-account audit and starter
+  organization from the captured inputs.
+- **Not implemented yet:** onboarding audit conclusions, collection and recipe
+  execution, Spin generation, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the
   existence of contract or domain types.
 

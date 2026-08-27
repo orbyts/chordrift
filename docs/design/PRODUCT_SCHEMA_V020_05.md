@@ -122,6 +122,6 @@ surface, provider link, sync plan, and Spin publication. Deliberate cross-accoun
 collection, capability, and Spin inserts are rejected by PostgreSQL.
 
 No production Neon request, provider request, provider write, credential change,
-or CLI/runtime behavior is part of V020-05. The next slice, V020-06, may add the
-onboarding-session application boundary against this schema while remaining
-provider-read-only.
+or CLI/runtime behavior is part of V020-05. V020-06 subsequently added the
+provider-read-only onboarding application boundary against these tables without
+changing migration 0046; see [its focused design record](ONBOARDING_SESSION_V020_06.md).

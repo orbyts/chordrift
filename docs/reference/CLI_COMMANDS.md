@@ -10,8 +10,10 @@ Both preserve redirected bytes, interactive presentation, database behavior,
 provider behavior, and every user-facing command exactly. V020-03 adds only
 provider-neutral Rust domain values, and V020-04 adds only an isolated fake-
 provider test suite. V020-05 adds a development-line migration rehearsed only
-on isolated PostgreSQL 18. None introduces a CLI command or changes the released
-v0.1.4 runtime; migration 0046 is not applied to production Neon.
+on isolated PostgreSQL 18. V020-06 adds a provider-read-only onboarding
+application boundary exercised only through a fake provider and isolated
+PostgreSQL. None introduces a CLI command or changes the released v0.1.4
+runtime; migration 0046 is not applied to production Neon.
 
 Chordrift reads Spotify state into Neon and changes Spotify only through an
 exact inspected plan, readiness assessment, and explicitly confirmed apply

@@ -50,6 +50,8 @@ pub mod enrichment;
 pub mod history;
 /// Versioned pretrained audio-model inference artifacts.
 pub mod model_inference;
+/// Provider-read-only onboarding input capture and durable provenance.
+pub mod onboarding;
 /// Account-scoped playlist roles and drift policy.
 pub mod playlists;
 mod presentation;

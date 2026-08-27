@@ -64,7 +64,7 @@ deterministic provider-free Spins.
   ownership, collection, surface, recipe, Spin, onboarding-session, and
   publication-link tables with existing equivalents. Implement and verify an
   additive migration only on isolated PostgreSQL 18.
-- [ ] **V020-06 — Onboarding session boundary.** Allow a session to read a
+- [x] **V020-06 — Onboarding session boundary.** Allow a session to read a
   provider inventory and selected evidence while ignoring existing Chordrift
   intent by default. Persist session inputs and output provenance without any
   provider write.
@@ -174,7 +174,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-06 — Onboarding session boundary`.
+**Next slice:** `V020-07 — Inventory-only new-account audit`.
 
 ## Portable core and native clients
 

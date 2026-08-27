@@ -35,9 +35,12 @@ deterministic fake generation, idempotency, cancellation, bounded retry, and
 visible capability failure entirely in tests. V020-05 adds migration 0046's
 provider-neutral ownership, collection, surface, recipe, onboarding, Spin, and
 publication-link schema after fresh and migration-45 PostgreSQL 18 rehearsals.
-It remains unapplied to production Neon. The provider-read-only onboarding
-session boundary is next in V020-06; generation, hosted transport, and native
-clients remain later work.
+It remains unapplied to production Neon. V020-06 now adds the provider-read-only
+onboarding boundary: one selected immutable inventory and optional extended
+evidence are content-addressed through the shared facade, while account
+ownership, capability failure, idempotent replay, ignored existing intent, and
+zero provider writes are explicit. The inventory-only audit is next in V020-07;
+generation, hosted transport, and native clients remain later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages
@@ -306,6 +309,8 @@ every released command,
 scripts,
 [docs/design/PLAYLIST_PRODUCT_ARCHITECTURE.md](docs/design/PLAYLIST_PRODUCT_ARCHITECTURE.md)
 for the v0.2 product and client direction,
+[docs/design/ONBOARDING_SESSION_V020_06.md](docs/design/ONBOARDING_SESSION_V020_06.md)
+for the implemented provider-read-only onboarding boundary,
 [ROADMAP.md](ROADMAP.md) for planned milestones, and
 [CHANGELOG.md](CHANGELOG.md) for release history. New focused development tasks
 should begin with [CODEX_HANDOFF.md](CODEX_HANDOFF.md) for current decisions and

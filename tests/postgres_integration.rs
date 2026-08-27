@@ -1,7 +1,79 @@
-use chordrift::{config, db, db_reports};
+use std::{cell::Cell, collections::BTreeMap, future};
+
+use chordrift::{
+    application::ApplicationFacade,
+    config,
+    contract::{CONTRACT_VERSION, Command, CommandRequest, IdempotencyKey, ResourceId},
+    db, db_reports,
+    domain::{
+        AccountContext, CapabilityStatus, ChordriftAccountId, EvidenceCapabilities,
+        EvidenceCapability, ProviderAccountId, ProviderCapabilities, ProviderCapability,
+        ProviderConnectionId, ProviderConnectionIdentity, ProviderNamespace,
+    },
+    onboarding::{
+        ContentFingerprint, OnboardingEvidence, OnboardingInputs, OnboardingInventory,
+        OnboardingProviderReader, OnboardingReadSelection, OnboardingSessionBoundary,
+    },
+};
 use serde_json::json;
 use storexa::{DatabaseConfig, PostgresProvider};
 use uuid::Uuid;
+
+struct FakeOnboardingReader {
+    connection: ProviderConnectionIdentity,
+    checkpoint_id: Uuid,
+    reads: Cell<u8>,
+}
+
+impl OnboardingProviderReader for FakeOnboardingReader {
+    fn read_onboarding_inputs(
+        &self,
+        context: &AccountContext,
+        selection: OnboardingReadSelection,
+    ) -> impl Future<Output = Result<OnboardingInputs, chordrift::contract::ClientError>> {
+        let result = if context.provider_connection() != &self.connection {
+            Err(chordrift::contract::ClientError::new(
+                chordrift::contract::ErrorCode::PermissionDenied,
+                false,
+            ))
+        } else {
+            self.reads.set(self.reads.get() + 1);
+            let evidence = if selection.include_extended_history {
+                vec![OnboardingEvidence {
+                    capability: EvidenceCapability::ExtendedPlaybackHistory,
+                    content_fingerprint: ContentFingerprint::new("e".repeat(64))
+                        .expect("fixture fingerprint is valid"),
+                    record_count: 42,
+                }]
+            } else {
+                Vec::new()
+            };
+            Ok(OnboardingInputs::new(
+                OnboardingInventory {
+                    checkpoint_id: ResourceId::from_uuid(self.checkpoint_id),
+                    state_fingerprint: ContentFingerprint::new("d".repeat(64))
+                        .expect("fixture fingerprint is valid"),
+                    item_count: 3,
+                },
+                evidence,
+            )
+            .expect("fixture evidence is canonical"))
+        };
+        future::ready(result)
+    }
+}
+
+fn onboarding_request(account_id: Uuid, include_extended_history: bool) -> CommandRequest {
+    CommandRequest {
+        contract_version: CONTRACT_VERSION,
+        request_id: Default::default(),
+        idempotency_key: IdempotencyKey::new(),
+        command: Command::CreateOnboardingSession {
+            account_id: ResourceId::from_uuid(account_id),
+            include_extended_history,
+        },
+    }
+}
 
 #[tokio::test]
 #[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for a disposable PostgreSQL database"]
@@ -286,6 +358,208 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     .execute(database.pool())
     .await;
     assert!(cross_account_capability.is_err());
+
+    let checkpoint_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_inventory_checkpoints
+         (provider_account_id, provider, checkpoint_kind, label, state_sha256, captured_at)
+         VALUES ($1, 'spotify', 'named_baseline', 'V020-06 fixture', $2, now())
+         RETURNING id",
+    )
+    .bind(account_id)
+    .bind("d".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    let provider_connection = ProviderConnectionIdentity {
+        connection_id: ProviderConnectionId::from_uuid(account_id),
+        account_id: ChordriftAccountId::from_uuid(chordrift_account_id),
+        provider_account_id: ProviderAccountId::new(
+            ProviderNamespace::new("spotify").expect("namespace is valid"),
+            "fixture-user",
+        )
+        .expect("provider account is valid"),
+    };
+    let onboarding_context = AccountContext::new(
+        provider_connection.account_id,
+        provider_connection.clone(),
+        ProviderCapabilities::new(
+            provider_connection.connection_id,
+            BTreeMap::from([(
+                ProviderCapability::LibraryInventoryRead,
+                CapabilityStatus::Available,
+            )]),
+        ),
+        EvidenceCapabilities::new(BTreeMap::from([
+            (
+                EvidenceCapability::CurrentInventory,
+                CapabilityStatus::Available,
+            ),
+            (
+                EvidenceCapability::ExtendedPlaybackHistory,
+                CapabilityStatus::Available,
+            ),
+        ])),
+    )
+    .expect("onboarding account context is valid");
+    let fake_reader = FakeOnboardingReader {
+        connection: provider_connection.clone(),
+        checkpoint_id,
+        reads: Cell::new(0),
+    };
+    let onboarding = OnboardingSessionBoundary::new(&database);
+    let inventory_only_request = onboarding_request(chordrift_account_id, false);
+    let inventory_only = ApplicationFacade::new()
+        .invoke(onboarding.invocation(&onboarding_context, &inventory_only_request, &fake_reader))
+        .await?
+        .expect("inventory-only input capture succeeds");
+    assert!(inventory_only.ignored_existing_intent);
+    assert!(!inventory_only.include_extended_history);
+    assert_eq!(
+        inventory_only.input_manifest["ignore_existing_intent"],
+        true
+    );
+    assert_eq!(inventory_only.input_manifest["evidence"], json!([]));
+    assert_eq!(
+        inventory_only.output_provenance["chordrift_intent_read"],
+        false
+    );
+    assert_eq!(
+        inventory_only.output_provenance["provider_write_requested"],
+        false
+    );
+
+    sqlx::query(
+        "INSERT INTO library_collections
+         (chordrift_account_id, stable_key, name)
+         VALUES ($1, 'added-after-input-capture', 'Added After Input Capture')",
+    )
+    .bind(chordrift_account_id)
+    .execute(database.pool())
+    .await?;
+    let intent_count_before_replay: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM library_collections WHERE chordrift_account_id = $1",
+    )
+    .bind(chordrift_account_id)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(intent_count_before_replay, 2);
+    let replay = ApplicationFacade::new()
+        .invoke(onboarding.invocation(&onboarding_context, &inventory_only_request, &fake_reader))
+        .await?
+        .expect("identical input capture is idempotent");
+    assert_eq!(replay.id, inventory_only.id);
+    assert_eq!(replay.input_fingerprint, inventory_only.input_fingerprint);
+    assert_eq!(fake_reader.reads.get(), 1);
+
+    let mut conflicting_replay = inventory_only_request.clone();
+    conflicting_replay.command = Command::CreateOnboardingSession {
+        account_id: ResourceId::from_uuid(chordrift_account_id),
+        include_extended_history: true,
+    };
+    let conflict = ApplicationFacade::new()
+        .invoke(onboarding.invocation(&onboarding_context, &conflicting_replay, &fake_reader))
+        .await?
+        .expect_err("one idempotency key cannot select different onboarding inputs");
+    assert_eq!(
+        conflict.client_error().code,
+        chordrift::contract::ErrorCode::StateConflict
+    );
+    assert_eq!(fake_reader.reads.get(), 1);
+
+    let unavailable_context = AccountContext::new(
+        provider_connection.account_id,
+        provider_connection.clone(),
+        ProviderCapabilities::new(
+            provider_connection.connection_id,
+            BTreeMap::from([(
+                ProviderCapability::LibraryInventoryRead,
+                CapabilityStatus::Unavailable,
+            )]),
+        ),
+        EvidenceCapabilities::new(BTreeMap::from([(
+            EvidenceCapability::CurrentInventory,
+            CapabilityStatus::Available,
+        )])),
+    )
+    .expect("unavailable capability fixture is internally valid");
+    let reads_before_capability_failure = fake_reader.reads.get();
+    let capability_error = ApplicationFacade::new()
+        .invoke(onboarding.invocation(
+            &unavailable_context,
+            &onboarding_request(chordrift_account_id, false),
+            &fake_reader,
+        ))
+        .await?
+        .expect_err("unavailable inventory capability fails visibly");
+    assert_eq!(
+        capability_error.client_error().code,
+        chordrift::contract::ErrorCode::CapabilityUnavailable
+    );
+    assert_eq!(fake_reader.reads.get(), reads_before_capability_failure);
+
+    let enriched_request = onboarding_request(chordrift_account_id, true);
+    let enriched = ApplicationFacade::new()
+        .invoke(onboarding.invocation(&onboarding_context, &enriched_request, &fake_reader))
+        .await?
+        .expect("selected extended evidence is captured");
+    assert_ne!(enriched.id, inventory_only.id);
+    assert!(enriched.include_extended_history);
+    assert_eq!(
+        enriched.input_manifest["evidence"][0]["capability"],
+        "extended_playback_history"
+    );
+    assert_eq!(fake_reader.reads.get(), 2);
+
+    let captured_rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM onboarding_sessions
+          WHERE chordrift_account_id = $1 AND provider_account_id = $2
+            AND input_fingerprint IS NOT NULL",
+    )
+    .bind(chordrift_account_id)
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(captured_rows, 2);
+    let publication_rows: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM playlist_spin_publications")
+            .fetch_one(database.pool())
+            .await?;
+    assert_eq!(publication_rows, 0);
+
+    let wrong_owner_connection = ProviderConnectionIdentity {
+        connection_id: ProviderConnectionId::from_uuid(account_id),
+        account_id: ChordriftAccountId::from_uuid(other_chordrift_account_id),
+        provider_account_id: provider_connection.provider_account_id.clone(),
+    };
+    let wrong_owner_context = AccountContext::new(
+        wrong_owner_connection.account_id,
+        wrong_owner_connection.clone(),
+        ProviderCapabilities::new(
+            wrong_owner_connection.connection_id,
+            BTreeMap::from([(
+                ProviderCapability::LibraryInventoryRead,
+                CapabilityStatus::Available,
+            )]),
+        ),
+        EvidenceCapabilities::new(BTreeMap::from([(
+            EvidenceCapability::CurrentInventory,
+            CapabilityStatus::Available,
+        )])),
+    )
+    .expect("internally consistent cross-account fixture");
+    let reads_before_cross_account = fake_reader.reads.get();
+    let cross_account_error = ApplicationFacade::new()
+        .invoke(onboarding.invocation(
+            &wrong_owner_context,
+            &onboarding_request(other_chordrift_account_id, false),
+            &fake_reader,
+        ))
+        .await?
+        .expect_err("database ownership rejects another account's connection");
+    assert_eq!(
+        cross_account_error.client_error().code,
+        chordrift::contract::ErrorCode::PermissionDenied
+    );
+    assert_eq!(fake_reader.reads.get(), reads_before_cross_account);
 
     let onboarding_session_id: Uuid = sqlx::query_scalar(
         "INSERT INTO onboarding_sessions

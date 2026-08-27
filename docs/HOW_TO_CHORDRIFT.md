@@ -15,10 +15,11 @@ Design pages identify which v0.2 foundations are implemented or still planned.
 | --- | --- | --- |
 | Perform daily library work | This guide and the linked `how-to/` pages | Released v0.1.4 behavior; preserved during current v0.2 work. |
 | Look up a command | [CLI command reference](reference/CLI_COMMANDS.md) | Complete v0.1.4 command surface; historical operator-only leaves are labeled. |
-| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 through V020-05 implemented; V020-06 next; later foundations explicitly listed. |
+| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 through V020-06 implemented; V020-07 next; later behavior explicitly listed. |
 | Review intent interpretation | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Active v0.2 product policy, grounded in the existing explicit CLI loop. |
 | Review account/provider isolation | [Account and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Test-only adversarial proof implemented; production adapters remain v0.1.4. |
 | Review the additive v0.2 schema | [Product schema foundation](design/PRODUCT_SCHEMA_V020_05.md) | Migration 0046 implemented and rehearsed only on isolated PostgreSQL 18; not on production Neon. |
+| Review onboarding input capture | [Onboarding session boundary](design/ONBOARDING_SESSION_V020_06.md) | Provider-read-only application boundary implemented with a fake provider and isolated PostgreSQL 18; no released CLI command. |
 | Review database-v2 decisions | [Database architecture v2](design/DATABASE_ARCHITECTURE_V2.md) | Completed v0.1.4 foundation and labeled historical execution record. |
 | Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
 
@@ -175,7 +176,10 @@ V020-03 adds the provider-neutral ownership, identity, capability, collection,
 surface, recipe-v1, and Spin value vocabulary without changing the CLI. V020-04
 adds the deterministic test-only isolation and fake-provider proof without
 changing runtime behavior. V020-05 adds and locally rehearses the additive
-product schema without applying it to production Neon. The provider-read-only
-onboarding session boundary is next in V020-06. See the
+product schema without applying it to production Neon. V020-06 captures a
+selected immutable provider inventory and optional extended evidence through a
+read-only provider port, persists exact input/provenance manifests, ignores
+current Chordrift intent, and does not add a CLI surface. The inventory-only
+new-account audit is next in V020-07. See the
 [playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) for
 the complete staged direction.

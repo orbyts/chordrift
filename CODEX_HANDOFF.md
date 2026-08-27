@@ -8,35 +8,43 @@ archive contents.
 
 Last updated: 2026-08-27.
 
-## Start the next task here: v0.2.0 slice V020-06
+## Start the next task here: v0.2.0 slice V020-07
 
-Implement only `V020-06 — Onboarding session boundary` from the authoritative
-execution map at the top of `ROADMAP.md`. Add an application boundary that can
-read one selected provider inventory and selected evidence, ignores all existing
-Chordrift collection/recipe/publication intent by default, and persists the
-session's immutable inputs and output provenance through migration 0046. Build
-on the public `contract`, `application`, and `domain` modules. Do not begin the
-V020-07 inventory-only audit or later recipe/Spin generation.
+Implement only `V020-07 — Inventory-only new-account audit` from the
+authoritative execution map at the top of `ROADMAP.md`. Consume a V020-06
+session's captured current-inventory input and capability snapshot to produce an
+honest library, overlap, uncertainty, and capability report plus a read-only
+starter-organization proposal. The basic path must use current inventory alone.
+Do not read optional extended-history evidence, begin the V020-08 comparison,
+execute collection/recipe intent, generate a Spin, or add publication behavior.
 
-The exact safety boundary is provider-read-only application behavior exercised
-with the fake provider and isolated PostgreSQL: do not add or change CLI commands
-or output, production configuration, provider mutation, publication behavior,
-or credential handling. Do not apply migration 0046 to production Neon and do
-not make a live Spotify request or any Spotify write. A default onboarding
-session must not read existing Chordrift intent, and cancellation/idempotency/
-account ownership must remain visible through the existing contract.
+Keep the exact V020-06 safety boundary: use the fake provider and isolated
+PostgreSQL only; do not add or change released CLI commands/output, production
+configuration, provider mutation, credential handling, or live-provider access.
+Do not apply migration 0046 to production Neon. The audit may update the local
+session's audit result/provenance only if the design remains immutable and
+idempotent; it must not create approved intent or authorize a provider write.
 
-V020-01 through V020-05 are complete. V020-05 adds one additive migration,
-`0046_product_domain_foundation.sql`, containing 16 tables for Chordrift account
-ownership, capability observations, overlapping collections, playlist surfaces,
-recipe revisions/dependencies, onboarding sessions, deterministic Spins, and
-links into the existing publication ledger. Composite foreign keys enforce
-account ownership. Existing v0.1.4 provider-account upserts receive or reuse a
-stable compatibility owner without changing their SQL. The complete 46-file
-chain, idempotent migrator replay, and a migration-45 upgrade with preexisting
-provider/playlist-concept rows pass on isolated PostgreSQL 18. Migration 0046
-has not been applied to production Neon; production remains healthy at 45/45.
-See `docs/design/PRODUCT_SCHEMA_V020_05.md` for the exact reconciliation.
+V020-01 through V020-06 are complete. V020-06 adds the public `onboarding`
+module and routes its invocation through `ApplicationFacade`. Its read-only
+provider port returns one immutable inventory checkpoint and only explicitly
+selected extended evidence. The PostgreSQL boundary validates the stored
+Chordrift owner, provider namespace/account identity, capability availability,
+and checkpoint fingerprint; persists the capability observation, exact input
+manifest, content fingerprint, and output provenance through migration 0046;
+and fixes `ignore_existing_intent` to true. Idempotent command replay returns
+the existing session before another provider read, while the same key with a
+different evidence selection fails visibly. The fake-provider/PostgreSQL 18
+proof changes collection intent between capture and replay without changing the
+session, rejects unavailable capability without a provider call, and rejects a
+cross-account connection before provider access. See
+`docs/design/ONBOARDING_SESSION_V020_06.md` for the exact boundary.
+
+V020-05's one additive migration, `0046_product_domain_foundation.sql`, remains
+unchanged and unapplied to production Neon. The complete 46-file fresh chain,
+idempotent migrator replay, and migration-45 upgrade pass on isolated
+PostgreSQL 18. Production remains healthy at 45/45. See
+`docs/design/PRODUCT_SCHEMA_V020_05.md` for the exact reconciliation.
 
 V020-04 adds a test-only deterministic
 fake-provider/application harness built on the public `contract`, `application`,

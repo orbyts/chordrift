@@ -72,6 +72,10 @@ uuid_id!(
     "Identity of one immutable playlist-recipe revision."
 );
 uuid_id!(SpinId, "Identity of one immutable generated Spin.");
+uuid_id!(
+    OnboardingSessionId,
+    "Identity of one provider-read-only onboarding input capture."
+);
 
 /// A typed resource identity paired with its Chordrift owner.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]

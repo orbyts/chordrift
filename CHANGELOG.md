@@ -22,6 +22,12 @@ All notable changes to Chordrift are documented here.
   surface, recipe, onboarding, Spin, and publication-link foundation; verify a
   fresh chain and migration-45 upgrade on isolated PostgreSQL 18 without
   applying it to production Neon.
+- Add a provider-read-only onboarding application boundary that captures one
+  immutable inventory checkpoint and optional extended-history evidence,
+  persists content-addressed inputs and explicit no-intent/no-provider-write
+  provenance, returns idempotent retries before another provider read, and
+  enforces capability and account ownership through a fake provider plus
+  isolated PostgreSQL 18.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

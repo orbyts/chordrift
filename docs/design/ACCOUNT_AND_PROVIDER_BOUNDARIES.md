@@ -12,8 +12,10 @@ application facade without behavioral change; V020-03 adds account-owned and
 provider-qualified domain IDs plus typed capability reports; V020-04 proves the
 pure boundary with two-account/two-provider adversarial tests and a deterministic
 fake-provider harness; V020-05 adds composite account-owned foreign keys across
-the additive product schema and rehearses them on isolated PostgreSQL 18.
-Production storage queries and the Spotify adapter remain on the v0.1.4 path.
+the additive product schema and rehearses them on isolated PostgreSQL 18;
+V020-06 checks the persisted provider owner before a fake-provider onboarding
+read and stores one account-owned immutable session. Production Spotify and the
+released CLI remain on the v0.1.4 path.
 
 ## Implemented application boundary
 
@@ -31,6 +33,17 @@ ownership and provider-neutral domain values; V020-04 proves those boundaries in
 an isolated harness; V020-05 implements the matching product-schema ownership
 constraints without changing the production storage or Spotify paths. See the
 [exact schema reconciliation](PRODUCT_SCHEMA_V020_05.md).
+
+V020-06 adds the first production-shaped application/storage seam over that
+foundation. `OnboardingProviderReader` exposes only an inventory/evidence read;
+the boundary validates the account, provider namespace, provider-owned account
+identity, capability report, inventory checkpoint fingerprint, and selected
+evidence before persisting. An idempotent retry returns its existing session
+without another provider read. Its manifest fixes `ignore_existing_intent` to
+true, and its provenance records both `chordrift_intent_read: false` and
+`provider_write_requested: false`. The isolated PostgreSQL test proves a second
+account cannot reach the fake provider through the first account's connection.
+See the [onboarding boundary record](ONBOARDING_SESSION_V020_06.md).
 
 ## Current account model
 
