@@ -12,10 +12,11 @@ provider-neutral Rust domain values, and V020-04 adds only an isolated fake-
 provider test suite. V020-05 adds a development-line migration rehearsed only
 on isolated PostgreSQL 18. V020-06 adds a provider-read-only onboarding
 application boundary, V020-07 adds its read-only inventory-audit query, and
-V020-08 adds the explicitly selected extended-history comparison; all are
-exercised only through fake inputs and isolated PostgreSQL. None
-introduces a CLI command or changes the released v0.1.4 runtime; migration 0046
-is not applied to production Neon.
+V020-08 adds the explicitly selected extended-history comparison. V020-09 adds
+provider-neutral deterministic recipe selection as an unordered Rust value;
+exact Spin order and persistence remain V020-10. These development boundaries
+introduce no CLI command and do not change the released v0.1.4 runtime;
+migration 0046 is not applied to production Neon.
 
 Chordrift reads Spotify state into Neon and changes Spotify only through an
 exact inspected plan, readiness assessment, and explicitly confirmed apply

@@ -21,9 +21,10 @@ pub use collections::{
     CollectionMembership, MembershipConfidence, MembershipProvenance, MembershipStrength,
 };
 pub use ids::{
-    AccountOwnedId, CanonicalTrackId, ChordriftAccountId, CollectionId, OnboardingSessionId,
-    ProviderAccountId, ProviderConnectionId, ProviderConnectionIdentity, ProviderNamespace,
-    ProviderPlaylistId, ProviderTrackId, RecipeId, RecipeRevisionId, SpinId, SurfaceId,
+    AccountOwnedId, CanonicalArtistId, CanonicalTrackId, ChordriftAccountId, CollectionId,
+    OnboardingSessionId, ProviderAccountId, ProviderConnectionId, ProviderConnectionIdentity,
+    ProviderNamespace, ProviderPlaylistId, ProviderTrackId, RecipeId, RecipeRevisionId, SpinId,
+    SurfaceId,
 };
 pub use recipes::{
     AllocationWeight, FamiliarityCadence, GuardrailKind, OrderingNarrative, RecipeRevisionIdentity,

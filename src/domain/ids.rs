@@ -62,6 +62,10 @@ uuid_id!(
     "Provider-neutral identity of one recording."
 );
 uuid_id!(
+    CanonicalArtistId,
+    "Provider-neutral identity of one recording artist."
+);
+uuid_id!(
     CollectionId,
     "Identity of one overlapping library collection."
 );

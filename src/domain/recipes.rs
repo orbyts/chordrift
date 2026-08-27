@@ -34,7 +34,7 @@ pub enum SourceLane {
 }
 
 /// Relative allocation weight; zero deliberately disables one source.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct AllocationWeight(u16);
 
@@ -59,7 +59,7 @@ impl AllocationWeight {
 }
 
 /// Provider-neutral source used to populate a lifecycle lane.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum RecipeSource {
     /// Draw from an overlapping library collection.
@@ -69,7 +69,7 @@ pub enum RecipeSource {
 }
 
 /// One weighted source assigned to a lifecycle lane.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct SourceAllocation {
     /// Lifecycle role used during selection.
     pub lane: SourceLane,

@@ -24,6 +24,11 @@ V020-08 adds directly observed listening, repetition, long-span, completion,
 skip, and history-only facts from one selected import, but explicitly does not
 translate those observations into preference, favorite status, collection
 membership, or approved intent.
+V020-09 consumes only explicit recipe inputs and prepared candidate facts. Its
+deterministic selection draft enforces explicit exclusion and hard collection
+boundaries, reports unavailable evidence instead of guessing, and creates no
+approved collection intent or provider change. Exact ordered Spin presentation
+remains V020-10.
 
 ## Confidence policy
 

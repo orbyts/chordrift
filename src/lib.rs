@@ -61,6 +61,8 @@ mod presentation;
 pub mod proposals;
 /// Streaming-provider adapters.
 pub mod providers;
+/// Provider-neutral Discovery + Rediscovery recipe execution draft.
+pub mod recipe_execution;
 /// Durable zero-signal routing playlists for ongoing listening review.
 pub mod routes;
 /// Versioned account-specific preference and lifecycle signals.

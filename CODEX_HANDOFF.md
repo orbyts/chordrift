@@ -8,23 +8,41 @@ archive contents.
 
 Last updated: 2026-08-27.
 
-## Start the next task here: v0.2.0 slice V020-09
+## Start the next task here: v0.2.0 slice V020-10
 
-Implement only `V020-09 — Discovery + Rediscovery recipe v1` from the
-authoritative execution map at the top of `ROADMAP.md`. Add a provider-neutral,
-deterministic recipe execution boundary for immutable source lanes, allocation,
-familiarity cadence, eligibility, hard collection boundaries, repetition and
-artist budgets, and simple narrative sections. Use the implemented domain
-recipe values and audit evidence honestly; unavailable evidence must disable or
-degrade dependent behavior visibly.
+Implement only `V020-10 — Deterministic Spin preview` from the authoritative
+execution map at the top of `ROADMAP.md`. Consume V020-09's deterministic
+unordered selection draft, assign the exact playback order, and persist/display
+the preview with concise selection and ordering reasons for every track. Bind
+the Spin to its account-owned recipe revision, capability snapshot, canonical
+input fingerprint, and deterministic seed. Replaying identical inputs must
+produce identical selected tracks, order, reasons, and identity.
 
-Do not persist or present the exact ordered Spin assigned to V020-10, add or
-change released CLI commands/output, create approved collection intent, publish
-to a provider, access a live provider, change credentials/configuration, or
-apply migration 0046 to production Neon. Keep proofs provider-free/fake and use
-isolated PostgreSQL only if persistence is genuinely required by this slice.
+Do not add or change released CLI commands/output (CLI rehearsal is V020-11),
+approve collection intent, publish or write to a provider, access a live
+provider, change credentials/configuration, or apply migration 0046 to
+production Neon. Keep provider behavior fake/provider-free and use only an
+isolated PostgreSQL 18 database for the required Spin persistence proof.
 
-V020-01 through V020-08 are complete. V020-08 adds
+V020-01 through V020-09 are complete. V020-09 adds the public
+`recipe_execution` boundary behind `ApplicationFacade`. It canonicalizes one
+account-owned immutable recipe revision and its prepared candidates, allocates
+positive source weights deterministically, reserves familiar-anchor and
+narrative-section capacity, and enforces current-inventory/playability/explicit-
+exclusion eligibility, all required collection boundaries, per-track repetition,
+and per-artist budgets. Unavailable evidence sources are disabled visibly,
+degraded sources remain labeled and usable, all-unavailable execution fails with
+a capability error, ambiguous multi-lane/source assignment of one track is
+rejected, and unfillable seats remain explicit. Both inputs and the result
+receive stable fingerprints. The output is canonically serialized but
+explicitly unordered (`playback_order_assigned: false`); it performs no provider
+or database access and adds no migration or CLI command. Provider-free tests
+prove shuffled-input replay, capability degradation, every eligibility/budget
+boundary, ownership rejection, cadence/section capacity, and guardrail
+enforcement/deferment. See
+`docs/design/DISCOVERY_REDISCOVERY_RECIPE_V020_09.md`.
+
+V020-08 adds
 `EnrichedAuditBoundary` beside the unchanged inventory-only boundary. It runs
 the same inventory baseline, then resolves exactly one selected
 `extended_streaming_history` import by provider account, archive SHA-256, and

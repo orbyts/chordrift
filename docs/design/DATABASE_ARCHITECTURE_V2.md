@@ -12,7 +12,9 @@ Spins additively on this clean v2 foundation. Development migration 0046 now
 implements that product-schema foundation, V020-06 uses its onboarding tables,
 V020-07 reads the referenced immutable inventory revisions, and V020-08 reads
 one explicitly fingerprinted database-v2 listening import in isolated tests;
-migration 0046 is not applied to production Neon.
+V020-09 consumes prepared provider-neutral candidate facts entirely in memory
+and adds no schema or database access. Migration 0046 is not applied to
+production Neon.
 
 Status: database-v2 foundation complete in the released v0.1.4 runtime, updated
 2026-08-27. The live project uses content-addressed current provider state,
@@ -49,7 +51,10 @@ read-only result consumer is the
 [V020-07 inventory audit](ONBOARDING_AUDIT_V020_07.md).
 The [V020-08 enriched audit](ENRICHED_ONBOARDING_AUDIT_V020_08.md) reuses the
 existing `listening_evidence_imports`, historical identities, and normalized
-events without another schema change.
+events without another schema change. The
+[V020-09 recipe executor](DISCOVERY_REDISCOVERY_RECIPE_V020_09.md) is a pure
+Rust selection boundary and likewise leaves database-v2 and migration 0046
+unchanged.
 
 ## Why this redesign existed
 

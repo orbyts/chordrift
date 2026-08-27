@@ -79,8 +79,10 @@ V020-08 adds no migration, CLI command, production configuration, credential
 handling, live-provider request, provider mutation, approved collection intent,
 recipe execution, Spin, or publication behavior.
 
-## Next slice
+## Subsequent recipe boundary
 
-`V020-09 — Discovery + Rediscovery recipe v1` may consume provider-neutral
-inventory and evidence facts through an immutable recipe boundary. It must not
-begin the persisted Spin preview assigned to V020-10 or provider publication.
+`V020-09 — Discovery + Rediscovery recipe v1` now consumes prepared provider-
+neutral inventory and evidence facts through an immutable, deterministic
+selection boundary. It does not infer preference from this audit and does not
+begin the persisted ordered Spin preview assigned to V020-10 or provider
+publication. See [the focused record](DISCOVERY_REDISCOVERY_RECIPE_V020_09.md).

@@ -9,8 +9,8 @@ behavior. Existing database-v2 names remain unchanged. Migration 0046 now
 implements the additive recipe, collection, surface, onboarding, and Spin table
 names shown here, but remains isolated from production Neon.
 
-Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-08
-are implemented; V020-09 is next. This document is a design contract, not
+Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-09
+are implemented; V020-10 is next. This document is a design contract, not
 authorization to apply a migration or write to a provider.
 
 ## Current implementation status
@@ -49,10 +49,15 @@ authorization to apply a migration or write to a provider.
   baseline, binds one selected history import by account, fingerprint, kind, and
   record count, and returns only directly supported listening conclusions with
   exact support counts and remaining inference limits.
-- **Next — V020-09:** implement the provider-neutral Discovery + Rediscovery
-  recipe-v1 execution boundary without generating or publishing a Spin.
-- **Not implemented yet:** collection and recipe execution, Spin generation,
-  hosted transport, and native clients.
+- **Implemented — V020-09:** the provider-neutral recipe executor canonicalizes
+  immutable inputs, allocates source seats, reserves cadence/section capacity,
+  enforces eligibility and repetition/artist budgets, and reports capability
+  degradation as a deterministic unordered draft without provider or database
+  access.
+- **Next — V020-10:** assign and persist the exact deterministic Spin order and
+  its selection/ordering explanations from the V020-09 draft.
+- **Not implemented yet:** collection authoring/approval, ordered Spin preview,
+  CLI rehearsal, publication integration, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the
   existence of contract or domain types.
 
@@ -423,13 +428,14 @@ an honest usable experience.
 5. **Complete:** design and rehearse additive ownership, collection, surface,
    recipe, Spin, onboarding-session, and publication-link migration 0046. No
    production migration or provider change occurred.
-6. Implement the CLI-first new-account rehearsal and provider-free starter
-   preview against the existing personal evidence.
-7. Implement the initial **Discovery + Rediscovery** recipe with allocation,
-   cadence, and simple ordering sections.
-8. Connect approved Spins to the existing immutable sync plan/apply/verify
+6. **Complete:** capture immutable onboarding inputs and produce inventory-only
+   and enriched provider-free audit results. CLI exposure remains V020-11.
+7. **Complete:** implement initial **Discovery + Rediscovery** selection with
+   allocation, cadence capacity, eligibility, budgets, and section capacity.
+8. Persist and display the deterministic exact Spin order and explanations.
+9. Connect approved Spins to the existing immutable sync plan/apply/verify
    boundary.
-9. Introduce the hosted Rust service and authenticated client transport without
+10. Introduce the hosted Rust service and authenticated client transport without
    distributing Neon or provider refresh credentials.
-10. Build native clients over the stable contract only after isolation,
+11. Build native clients over the stable contract only after isolation,
    compatibility, and deterministic-preview tests pass.

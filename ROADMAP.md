@@ -74,7 +74,7 @@ deterministic provider-free Spins.
 - [x] **V020-08 — Enriched new-account audit.** Run the same acceptance path
   with extended listening evidence and explain exactly which conclusions became
   stronger. The inventory-only path must remain usable.
-- [ ] **V020-09 — Discovery + Rediscovery recipe v1.** Implement immutable source
+- [x] **V020-09 — Discovery + Rediscovery recipe v1.** Implement immutable source
   lanes, allocation, familiarity cadence, eligibility, hard boundaries,
   repetition/artist budgets, and simple narrative sections.
 - [ ] **V020-10 — Deterministic Spin preview.** Persist and display the exact
@@ -174,7 +174,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-09 — Discovery + Rediscovery recipe v1`.
+**Next slice:** `V020-10 — Deterministic Spin preview`.
 
 ## Portable core and native clients
 

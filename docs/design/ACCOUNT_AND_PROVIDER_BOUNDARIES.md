@@ -19,7 +19,9 @@ owner and selected connection before reading the session's immutable revisions;
 its PostgreSQL proof rejects cross-account audit access. Production Spotify and
 the released CLI remain on the v0.1.4 path. V020-08 applies the same ownership
 check before resolving the selected history import by provider account and
-content fingerprint.
+content fingerprint. V020-09 then accepts only account-owned recipe/candidate
+values and rejects cross-account collection sources or boundaries before its
+pure in-memory selection; it has no provider port.
 
 ## Implemented application boundary
 
@@ -62,6 +64,13 @@ captured manifest. It reads only events linked to that import, rejects the
 inventory-only session mode and cross-account contexts, and still exposes no
 provider or intent mutation. See the
 [enriched audit record](ENRICHED_ONBOARDING_AUDIT_V020_08.md).
+
+V020-09's `RecipeExecutor` validates the recipe owner against every candidate,
+collection source, candidate membership, and required hard boundary. Evidence
+sources participate only when the supplied capability snapshot is available or
+degraded; unavailable sources are disabled visibly, not emulated through a
+different provider. The executor is provider-free and storage-free. See the
+[recipe execution record](DISCOVERY_REDISCOVERY_RECIPE_V020_09.md).
 
 ## Current account model
 

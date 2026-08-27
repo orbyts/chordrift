@@ -48,8 +48,13 @@ V020-08 now runs that same inventory baseline with one explicitly selected,
 content-addressed extended-history import. It reports only directly supported
 gains—observed, repeated, long-term, history-only, completion, and skip
 evidence—with exact supporting record/track counts, while still refusing to
-infer preference or intent. Discovery + Rediscovery recipe v1 is next in
-V020-09; generation, hosted transport, and native clients remain later work.
+infer preference or intent. V020-09 now executes immutable Discovery +
+Rediscovery recipe revisions as deterministic, unordered selection drafts. It
+allocates source seats, reserves familiarity cadence and narrative-section
+capacity, enforces eligibility and repetition/artist budgets, and reports
+capability degradation and unfilled seats without provider or database access.
+V020-10's exact ordered, persisted Spin preview is next; hosted transport and
+native clients remain later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages

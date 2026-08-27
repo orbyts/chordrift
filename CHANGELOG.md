@@ -38,6 +38,11 @@ All notable changes to Chordrift are documented here.
   history coverage and only directly supported strengthened conclusions, keep
   preference and intent visibly uninferred, and prove both modes side by side
   without provider or database mutation.
+- Add provider-neutral Discovery + Rediscovery recipe execution. Canonicalized
+  inputs deterministically allocate source seats, reserve familiar cadence and
+  narrative-section capacity, enforce eligibility plus track/artist budgets,
+  expose unavailable or degraded evidence and unfilled seats, and return an
+  explicitly unordered fingerprinted draft for the later Spin preview.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

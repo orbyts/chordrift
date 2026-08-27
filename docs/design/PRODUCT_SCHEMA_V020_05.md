@@ -131,3 +131,7 @@ schema change or write; see the
 V020-08 likewise adds no migration: it binds the captured archive fingerprint
 to the existing database-v2 listening import and normalized-event ledger; see
 the [enriched audit record](ENRICHED_ONBOARDING_AUDIT_V020_08.md).
+V020-09 also adds no migration or persistence call. Its deterministic recipe
+executor returns an unordered selection draft in memory; the existing Spin
+tables remain reserved for V020-10. See the
+[recipe execution record](DISCOVERY_REDISCOVERY_RECIPE_V020_09.md).
