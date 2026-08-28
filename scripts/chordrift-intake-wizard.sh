@@ -399,9 +399,25 @@ if [ "$KNOWN_FROM_HISTORY" -gt 0 ] || [ "$GENUINELY_NEW" -gt 0 ] ||
         run_chordrift proposals status --account "$ACCOUNT" >"$STATUS_FILE"
         PROPOSAL_ID=$(field generation_id "$STATUS_FILE")
         require_exact "proposal generation ID" "$PROPOSAL_ID"
-        "$SCRIPT_DIR/chordrift-cluster-unresolved.sh" \
+        if "$SCRIPT_DIR/chordrift-cluster-unresolved.sh" \
             --account "$ACCOUNT" --include-intake \
-            --apply --confirm "$PROPOSAL_ID"
+            --apply --confirm "$PROPOSAL_ID"; then
+            AUTO_RESULT=0
+        else
+            AUTO_RESULT=$?
+        fi
+        case "$AUTO_RESULT" in
+            0) ;;
+            3)
+                printf '\nAutomatic placement left one or more reviewed intake tracks without an accepted fit.\n'
+                printf 'The wizard will ask for manual placement, exclusion, or deferral now.\n'
+                ;;
+            *)
+                printf 'Automatic placement failed unexpectedly with status %s. Stop and inspect.\n' \
+                    "$AUTO_RESULT" >&2
+                exit "$AUTO_RESULT"
+                ;;
+        esac
         cat "$AUTO_FILE" >>"$DRAFT_REVIEW_FILE"
     fi
 
@@ -415,11 +431,41 @@ if [ "$KNOWN_FROM_HISTORY" -gt 0 ] || [ "$GENUINELY_NEW" -gt 0 ] ||
             title=$(printf '%s\n' "$row" | cut -f2)
             artists=$(printf '%s\n' "$row" | cut -f3)
             destination=$(printf '%s\n' "$row" | cut -f6)
-            [ -n "$destination" ] || {
-                printf 'No existing-playlist suggestion was available for %s — %s.\n' "$title" "$artists" >&2
-                printf 'Use manual placement or a separate new-playlist/artwork workflow.\n' >&2
-                exit 3
-            }
+            if [ -z "$destination" ]; then
+                printf '\nNo accepted automatic fit: %s — %s\n' "$title" "$artists"
+                printf 'Choose [m]anual destination, [x] exclude, [d]efer for later review, [q] stop: ' >/dev/tty
+                IFS= read -r choice </dev/tty
+                case "$choice" in
+                    m|M)
+                        replacement=$(ask_value 'Exact destination display name: ')
+                        [ -n "$replacement" ] || { printf 'Destination is required.\n' >&2; exit 2; }
+                        reason=$(ask_value 'Reason for this placement: ')
+                        [ -n "$reason" ] || reason="Manual placement after no accepted automatic fit"
+                        "$SCRIPT_DIR/chordrift-manual-place.sh" \
+                            --account "$ACCOUNT" --to "$replacement" \
+                            --spotify-id "$spotify_id" --reason "$reason"
+                        ;;
+                    x|X)
+                        reason=$(ask_value 'Reason for excluding this track: ')
+                        [ -n "$reason" ] || reason="Rejected after no accepted automatic fit"
+                        run_chordrift tracks exclude \
+                            --account "$ACCOUNT" --spotify-id "$spotify_id" \
+                            --reason "$reason" --confirm "$spotify_id"
+                        ;;
+                    d|D)
+                        run_chordrift proposals review \
+                            --account "$ACCOUNT" --spotify-id "$spotify_id" \
+                            --reason "No accepted automatic fit; deferred during intake review"
+                        printf 'Deferred for later review. Spotify remains unchanged.\n'
+                        exit 0
+                        ;;
+                    *)
+                        printf 'Stopped with the proposal editable and Spotify unchanged.\n'
+                        exit 0
+                        ;;
+                esac
+                continue
+            fi
             printf '\nSuggested: %s — %s → %s\n' "$title" "$artists" "$destination"
             printf 'Choose [k]eep, [m]anual correction, [r]eturn to review, [q] stop: ' >/dev/tty
             IFS= read -r choice </dev/tty
@@ -437,6 +483,8 @@ if [ "$KNOWN_FROM_HISTORY" -gt 0 ] || [ "$GENUINELY_NEW" -gt 0 ] ||
                     run_chordrift proposals review \
                         --account "$ACCOUNT" --spotify-id "$spotify_id" \
                         --reason "Suggestion deferred during intake review"
+                    printf 'Deferred for later review. Spotify remains unchanged.\n'
+                    exit 0
                     ;;
                 *)
                     printf 'Stopped with draft suggestions in Neon and Spotify unchanged.\n'

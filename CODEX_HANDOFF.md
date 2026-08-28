@@ -28,6 +28,9 @@ Song made global proposal coverage incomplete. The wizard now treats
 publish operations until intake coverage is complete, and then executes
 publish/reconcile/cleanup in verified phase order. It matches unresolved tracks
 to the current audit by exact Spotify ID instead of source-display text.
+Automatic placement can legitimately return no fit for an unembedded track;
+the wizard now retains the editable proposal and offers manual placement,
+exclusion, deferral, or a safe stop in the same session.
 
 ## Start the next task here: observe the released v0.1.4 workflow
 

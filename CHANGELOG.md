@@ -12,6 +12,9 @@ All notable changes to Chordrift are documented here.
   user removals as reversible Neon intent, defer routine duplicate convergence
   until intake coverage is complete, and match unresolved tracks to the fresh
   audit by exact provider identity rather than display text.
+- Treat “no accepted automatic fit” as an interactive review outcome, falling
+  back to manual placement, exclusion, or explicit deferral without losing the
+  editable proposal or reporting a false workflow failure.
 
 ## [0.1.4] - 2026-08-26
 

@@ -87,7 +87,10 @@ For every active exclusion, choose whether the new intake gesture means
 “restore and reconsider” or “keep excluded.” For unresolved tracks, choose a
 manual existing destination, an automatic existing-playlist suggestion, or an
 explicit exclusion. Automatic placements remain in an editable proposal until
-you review the exact destination and approve the complete generation.
+you review the exact destination and approve the complete generation. When a
+track has no embedding or no accepted existing-playlist fit, the wizard stays
+in the same session and offers manual placement, exclusion, or explicit
+deferral; this is a review outcome, not an apply failure.
 
 The wizard can reuse the existing reviewed artwork files only when Chordrift
 validates them unchanged against the new proposal. It stops when a new playlist

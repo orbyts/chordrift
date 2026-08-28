@@ -204,6 +204,11 @@ exact-confirmed destructive intake cleanup. Unresolved items are matched to the
 fresh intake audit by exact Spotify identity, never inferred from display text.
 `--review-only` stops after the joined classification report.
 
+An automatic-placement audit may legitimately find no accepted fit, especially
+for a genuinely new track without an embedding. The wizard catches that
+review result and immediately offers manual destination, exclusion, deferral,
+or a safe stop instead of terminating as though the workflow failed.
+
 The wizard intentionally stops when it encounters unrelated unresolved tracks,
 a missing existing-playlist suggestion, a new playlist, retirement, or artwork
 that cannot be reused unchanged. Those are separate creative or destructive
