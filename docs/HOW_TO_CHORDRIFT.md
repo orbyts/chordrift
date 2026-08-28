@@ -77,9 +77,9 @@ you have just completed and inspected a pull. `CHORDRIFT_BIN` may point to an
 alternate installed executable; the wrapper never invokes `cargo run`.
 
 For the complete common intake workflow, including a mandatory fresh provider
-pull, pending-exclusion isolation, exact intake audit, reviewed existing-
-playlist suggestions, verified publication, and separately confirmed intake
-cleanup, use:
+pull, reversible exclusion intent, deferred routine duplicate convergence,
+exact intake audit, reviewed existing-playlist suggestions, verified
+publication, and separately confirmed intake cleanup, use:
 
 ```console
 $ scripts/chordrift-intake-wizard.sh --account personal

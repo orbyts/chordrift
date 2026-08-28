@@ -21,9 +21,10 @@ usage() {
         "       [--artwork-manifest PATH]" \
         "" \
         "Walks through two isolated stages:" \
-        "  1. reconcile pending removals from verified managed playlists;" \
+        "  1. record verified user removals as reversible exclusion intent and" \
+        "     hold routine provider convergence until coverage is complete;" \
         "  2. review current Liked Songs and named intake tracks, place them in" \
-        "     existing playlists, publish, verify, and explicitly clean intake." \
+        "     existing playlists, publish, reconcile, verify, and clean intake." \
         "" \
         "The wizard stops for unrelated publish/retirement work, incomplete" \
         "proposal coverage, a missing existing-playlist suggestion, or artwork" \
@@ -99,6 +100,7 @@ WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chordrift-intake-wizard.XXXXXX")
 PLAN_FILE=$WORK_DIR/plan.txt
 PLAN_DETAILS_FILE=$WORK_DIR/plan-details.tsv
 AUDIT_FILE=$WORK_DIR/intake-audit.tsv
+CURRENT_INTAKE_IDS_FILE=$WORK_DIR/current-intake-ids.txt
 STATUS_FILE=$WORK_DIR/proposal-status.txt
 UNRESOLVED_FILE=$WORK_DIR/unresolved.tsv
 RESTORE_FILE=$WORK_DIR/restore-ids.txt
@@ -195,21 +197,20 @@ audit_intake() {
         printf 'Build/install the branch containing `chordrift intake audit`; the wizard will not query Neon or Spotify directly.\n' >&2
         exit 1
     }
+    awk -F '\t' '
+        $1 == "state" { rows = 1; next }
+        rows && $11 != "" { print $11 }
+    ' "$AUDIT_FILE" | sort -u >"$CURRENT_INTAKE_IDS_FILE"
     run_chordrift intake audit --account "$ACCOUNT"
 }
 
 unresolved_is_intake_only() {
     awk -F '\t' '
-        NR == 1 { next }
-        {
-            evidence = tolower($3 " " $4)
-            if (evidence !~ /intake/ && evidence !~ /saved/ && evidence !~ /liked songs/ &&
-                evidence !~ /inbox/ && evidence !~ /from friends/ &&
-                evidence !~ /liked from radio/ && evidence !~ /from prompts/) {
-                print
-            }
-        }
-    ' "$UNRESOLVED_FILE" >"$WORK_DIR/unrelated-unresolved.tsv"
+        FILENAME == ARGV[1] { intake[$1] = 1; next }
+        FNR == 1 { next }
+        !($5 in intake) { print }
+    ' "$CURRENT_INTAKE_IDS_FILE" "$UNRESOLVED_FILE" \
+        >"$WORK_DIR/unrelated-unresolved.tsv"
     [ ! -s "$WORK_DIR/unrelated-unresolved.tsv" ]
 }
 
@@ -243,48 +244,69 @@ else
     stage "Observe" "using the operator-confirmed current snapshot"
 fi
 
-stage "Separate changes" "look for managed-playlist removals before intake"
+stage "Separate changes" "classify existing work before changing intake intent"
 create_plan
 PENDING_EXCLUSIONS=$(operation_count exclude_track)
 PUBLISH_COUNT=$(phase_count publish)
+RECONCILE_COUNT=$(phase_count reconcile)
 RETIREMENT_COUNT=$(phase_count retirement)
-if [ "$PENDING_EXCLUSIONS" -gt 0 ]; then
-    printf '%s pending managed-playlist removal(s) must be reviewed before intake.\n' \
-        "$PENDING_EXCLUSIONS"
-    show_operation exclude_track
-    if [ "$PUBLISH_COUNT" -gt 0 ] || [ "$RETIREMENT_COUNT" -gt 0 ]; then
-        printf '\nThis plan also contains publish or retirement work. The wizard will not mix it with exclusions.\n' >&2
-        run_chordrift sync plan-show --account "$ACCOUNT" --plan "$PLAN_ID" --details
-        exit 3
-    fi
-    ask_yes "Reconcile these exact exclusions first, then re-pull and continue?" || {
-        printf 'Stopped before intake so the two kinds of intent remain separate.\n'
-        exit 0
-    }
-    "$SCRIPT_DIR/chordrift-plan-phase.sh" \
-        --account "$ACCOUNT" --plan "$PLAN_ID" --phase reconcile
-    stage "Observe again" "exclusions are verified; refresh exact intake state"
-    run_chordrift sync pull --account "$ACCOUNT"
-    create_plan
-fi
+CREATE_COUNT=$(operation_count create_playlist)
 
-if [ "$(phase_count publish)" -gt 0 ] ||
-   [ "$(phase_count reconcile)" -gt 0 ] ||
-   [ "$(phase_count retirement)" -gt 0 ]; then
-    printf 'Unrelated publish, reconcile, or retirement work remains. Review it separately before intake.\n' >&2
+if [ "$RETIREMENT_COUNT" -gt 0 ] || [ "$CREATE_COUNT" -gt 0 ]; then
+    printf 'The current plan contains retirement or new-playlist work. That requires its separate creative/destructive workflow.\n' >&2
     run_chordrift sync plan-show --account "$ACCOUNT" --plan "$PLAN_ID" --details
     exit 3
+fi
+
+if [ "$PENDING_EXCLUSIONS" -gt 0 ]; then
+    printf '%s verified user removal(s) can be recorded as reversible exclusions before intake.\n' \
+        "$PENDING_EXCLUSIONS"
+    show_operation exclude_track
+fi
+
+if [ "$PUBLISH_COUNT" -gt 0 ] || [ "$RECONCILE_COUNT" -gt 0 ]; then
+    printf '%s publish and %s reconciliation operation(s) are being held until intake coverage is complete.\n' \
+        "$PUBLISH_COUNT" "$RECONCILE_COUNT"
 fi
 
 stage "Intake audit" "join the exact current intake snapshot with Neon intent and history"
 audit_intake
 ITEMS=$(field items "$AUDIT_FILE")
-[ "$ITEMS" -gt 0 ] || {
-    printf 'No current Liked Songs or named intake tracks need review.\n'
-    exit 0
-}
 if [ "$REVIEW_ONLY" = true ]; then
-    printf '\nRead-only review complete. No intent, approval, or Spotify write was attempted.\n'
+    printf '\nReview complete. The fresh pull persisted current observation only; no intent, approval, or Spotify write was attempted.\n'
+    exit 0
+fi
+
+if [ "$PENDING_EXCLUSIONS" -gt 0 ]; then
+    stage "Record exclusions" "separate reversible Neon intent from later provider convergence"
+    ask_yes "Record all $PENDING_EXCLUSIONS exact managed-playlist removals as reversible exclusions?" || {
+        printf 'Stopped before intake placement; no exclusion intent was recorded.\n'
+        exit 0
+    }
+    require_exact "baseline plan ID" "$PLAN_ID"
+    awk -F '\t' '
+        $1 ~ /^[0-9]+$/ && $3 == "exclude_track" { print $4 "\t" $6 }
+    ' "$PLAN_DETAILS_FILE" >"$WORK_DIR/pending-exclusions.tsv"
+    while IFS="$(printf '\t')" read -r playlist spotify_id; do
+        run_chordrift tracks exclude \
+            --account "$ACCOUNT" \
+            --spotify-id "$spotify_id" \
+            --reason "Removed from verified managed playlist: $playlist" \
+            --confirm "$spotify_id"
+    done <"$WORK_DIR/pending-exclusions.tsv"
+    create_plan
+    [ "$(operation_count exclude_track)" -eq 0 ] || {
+        printf 'One or more exact exclusions remain in the new plan. Stop and inspect manually.\n' >&2
+        exit 3
+    }
+    stage "Intake audit refreshed" "include newly recorded exclusion intent"
+    audit_intake
+    ITEMS=$(field items "$AUDIT_FILE")
+fi
+
+CURRENT_OPERATIONS=$(field operations "$PLAN_FILE")
+if [ "$ITEMS" -eq 0 ] && [ "$CURRENT_OPERATIONS" -eq 0 ]; then
+    printf 'No current intake decisions or provider convergence work remain.\n'
     exit 0
 fi
 

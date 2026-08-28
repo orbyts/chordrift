@@ -21,6 +21,14 @@ the v0.2 development build cannot overwrite this operator binary. Do not run a
 database migration for this maintenance workflow; production is correctly
 current at 45/45.
 
+The first live review exposed a whole-library readiness deadlock: ten
+already-reviewed duplicate removals were safe to reconcile, but one new Liked
+Song made global proposal coverage incomplete. The wizard now treats
+`exclude_track` as reversible Neon intent, holds routine `remove_track` and
+publish operations until intake coverage is complete, and then executes
+publish/reconcile/cleanup in verified phase order. It matches unresolved tracks
+to the current audit by exact Spotify ID instead of source-display text.
+
 ## Start the next task here: observe the released v0.1.4 workflow
 
 The v0.1.4 implementation makes a routine pull proportional to change: saved

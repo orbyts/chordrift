@@ -70,13 +70,14 @@ and From Prompts—run:
 $ scripts/chordrift-intake-wizard.sh --account personal
 ```
 
-The wizard deliberately handles two independent kinds of intent in order:
+The wizard deliberately handles independent kinds of work in a safe order:
 
 1. It performs a fresh `sync pull`, creates an immutable baseline plan, and
-   checks for removals from verified Chordrift-managed playlists. If those
-   would become exclusions, it displays and reconciles them first, then pulls
-   again. It stops when unrelated publication or retirement work would make
-   that phase ambiguous.
+   separates actual removals from verified Chordrift-managed playlists from
+   routine duplicate/provider-drift cleanup. With one exact baseline-plan
+   confirmation it records actual removals as reversible Neon exclusions;
+   this does not write to Spotify. Routine duplicate removals and existing
+   publication work wait until intake coverage is complete.
 2. It runs the read-only Rust intake audit over that exact snapshot. The report
    separates tracks already covered by a current managed playlist, active past
    exclusions, approved-but-unpublished assignments, draft suggestions, tracks
@@ -92,7 +93,8 @@ The wizard can reuse the existing reviewed artwork files only when Chordrift
 validates them unchanged against the new proposal. It stops when a new playlist
 or genuinely new artwork is required so that naming/artwork design remains a
 separate explicit workflow. Provider execution remains phase-separated:
-publish, pull/verify, then exact-confirmed destructive intake cleanup.
+publish, pull/verify, reconcile routine duplicates, pull/verify, then
+exact-confirmed destructive intake cleanup.
 
 Use the read-only form when you only want the classification report:
 
@@ -113,17 +115,22 @@ $ chordrift sync plan --account personal
 $ chordrift sync plan-show --account personal --details
 ```
 
-Before changing intake intent, inspect any `exclude_track` operation in the
-`reconcile` phase. If present, assess/apply only reconcile, pull, and create a
-new plan. Do not combine an old assessment with the later intake state:
+Before changing intake placement, inspect any `exclude_track` operation in the
+`reconcile` phase. That operation represents durable exclusion intent, not a
+provider removal—the track is already absent from the verified managed
+playlist. Record each exact identity reversibly in Neon:
 
 ```console
-$ chordrift sync readiness --account personal --plan PLAN_ID --probe
-$ chordrift sync apply --account personal \
-    --assessment ASSESSMENT_ID --phase reconcile \
-    --confirm ASSESSMENT_ID
-$ chordrift sync pull --account personal
+$ chordrift tracks exclude --account personal \
+    --spotify-id SPOTIFY_TRACK_ID \
+    --reason "Removed from verified managed playlist: PLAYLIST" \
+    --confirm SPOTIFY_TRACK_ID
 ```
+
+Do not apply routine `remove_track` reconciliation yet when the same fresh
+inventory contains unresolved intake. Complete the proposal first; readiness
+is intentionally whole-library scoped. After coverage is complete, apply
+provider phases in order—publish before reconcile—and pull/verify after each.
 
 Now ask Rust to join the fresh intake inventory with Neon intent and history:
 

@@ -188,17 +188,21 @@ across Liked Songs, Inbox, From Friends, Liked from Radio, and From Prompts:
 $ scripts/chordrift-intake-wizard.sh --account personal
 ```
 
-It starts with a fresh pull. Before intake review it creates an immutable plan
-and isolates any pending `exclude_track` operations caused by removals from
-verified managed playlists. Those must be reconciled and pulled first; the
-wizard refuses to mix them with unrelated publish or retirement work.
+It starts with a fresh pull. Before intake placement it creates an immutable
+plan and distinguishes `exclude_track` intent caused by verified user removals
+from routine provider-drift duplicate removals. With one exact plan
+confirmation it records the former as reversible Neon exclusions without a
+Spotify write. It holds the latter, plus existing publication work, until
+intake coverage is complete; this avoids whole-library readiness deadlocks.
 
 The second stage calls `chordrift intake audit`, a read-only Rust query over the
 exact current provider snapshot plus Neon intent, exclusions, and normalized
 history. It walks through active exclusions, private/manual placements, normal
 existing-playlist suggestions, complete-proposal approval, unchanged artwork
-reuse, phased publication, verification, and exact-confirmed destructive intake
-cleanup. `--review-only` stops after the joined classification report.
+reuse, phased publication, routine reconciliation, verification, and
+exact-confirmed destructive intake cleanup. Unresolved items are matched to the
+fresh intake audit by exact Spotify identity, never inferred from display text.
+`--review-only` stops after the joined classification report.
 
 The wizard intentionally stops when it encounters unrelated unresolved tracks,
 a missing existing-playlist suggestion, a new playlist, retirement, or artwork

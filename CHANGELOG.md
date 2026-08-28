@@ -8,6 +8,10 @@ All notable changes to Chordrift are documented here.
   that starts from a fresh provider pull, isolates pending managed removals,
   joins current intake with durable intent/history, and preserves all existing
   plan, readiness, apply, verification, and cleanup gates.
+- Keep whole-library readiness from deadlocking mixed intake: record verified
+  user removals as reversible Neon intent, defer routine duplicate convergence
+  until intake coverage is complete, and match unresolved tracks to the fresh
+  audit by exact provider identity rather than display text.
 
 ## [0.1.4] - 2026-08-26
 
