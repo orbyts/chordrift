@@ -21,6 +21,8 @@ All notable changes to Chordrift are documented here.
 - Retry bounded provider observation after a successful Spotify phase, and
   re-prove exact canonical state against the cleanup plan's current snapshot
   when an unchanged pull advanced the observation identity.
+- Parse the redirected human-readable `spotify apply` receipt label during
+  bounded verification retries instead of misreporting it as an unknown state.
 
 ## [0.1.4] - 2026-08-26
 

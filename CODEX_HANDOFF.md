@@ -40,6 +40,9 @@ The phase helper now waits through at most four provider pulls for a successful
 receipt. The destructive Rust gate also recomputes full canonical verification
 for its exact current snapshot when an unchanged pull advanced the observation
 ID, preserving the guard while allowing the same wizard run to reach cleanup.
+The live retry path exposed a redirected-label mismatch (`spotify apply` versus
+`spotify_apply`); the helper now accepts the stable human label and the legacy
+underscore spelling before deciding whether to retry or advance.
 
 ## Start the next task here: observe the released v0.1.4 workflow
 

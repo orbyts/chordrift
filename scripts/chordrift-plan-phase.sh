@@ -182,7 +182,10 @@ while [ "$VERIFY_ATTEMPT" -le "$MAX_VERIFY_ATTEMPTS" ]; do
     run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID" \
         >"$VERIFY_FILE"
     run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID"
-    APPLY_STATUS=$(field spotify_apply "$VERIFY_FILE" | sed 's/ (already current)$//')
+    APPLY_STATUS=$(sed -n \
+        -e 's/^spotify apply: //p' \
+        -e 's/^spotify_apply: //p' \
+        "$VERIFY_FILE" | tail -n 1 | sed 's/ (already current)$//')
     case "$APPLY_STATUS" in
         succeeded)
             break
