@@ -81,9 +81,17 @@ deterministic provider-free Spins.
   ordered tracks, selection and ordering reasons, recipe revision, capability
   snapshot, input fingerprint, and seed. Replaying identical inputs must produce
   identical output.
-- [ ] **V020-11 — CLI-first product rehearsal.** Add consistent onboarding,
+- [x] **V020-11 — CLI-first product rehearsal.** Add consistent onboarding,
   collection, recipe, and Spin preview commands plus an installed-binary helper
   workflow. Compare inventory-only and enriched results without provider writes.
+- [ ] **V020-11R — Recovered-intake compatibility reconciliation.** Before
+  publication planning, selectively reconcile the v0.1.x 92-track incident
+  fixes with current main: enumerated ordinary playlist writes, the complete
+  operator intake workflow, a binary capability handshake, fake-binary shell
+  compatibility, and explicit separation of maintenance versus future Spin
+  publication plans. Preserve safety invariants and operator outcomes through
+  adapters; do not force legacy command shapes into the v0.2 Rust architecture
+  when they conflict. Do not merge the maintenance branches wholesale.
 - [ ] **V020-12 — Publication-plan integration.** Convert an approved Spin into
   the existing immutable plan/readiness/apply/verify model. Exercise planning
   and verification with a fake provider; stop before a real Spotify write.
@@ -174,7 +182,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-11 — CLI-first product rehearsal`.
+**Next slice:** `V020-11R — Recovered-intake compatibility reconciliation`.
 
 ## Portable core and native clients
 

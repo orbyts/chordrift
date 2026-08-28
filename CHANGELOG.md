@@ -48,6 +48,10 @@ All notable changes to Chordrift are documented here.
   fingerprints, one-based ordered views, per-track selection/ordering reasons,
   narrative sections, and honest constraint warnings in migration 0046's
   existing Spin tables, with idempotent replay and account-isolated reads.
+- Add the opt-in `chordrift product` development CLI over the existing
+  onboarding, collection-review, recipe-execution, and Spin-preview application
+  boundaries. Add an installed-binary helper that compares inventory-only and
+  enriched audits and proves persisted Spin replay without any provider command.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

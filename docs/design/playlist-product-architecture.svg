@@ -188,7 +188,7 @@
     <text x="1470" y="855" class="body">EvidenceCapabilities</text>
     <text x="1470" y="877" class="body">SpinTrack + reasons</text>
     <text x="1470" y="899" class="body">seed + input fingerprint</text>
-    <text x="1470" y="927" class="small">V020-10 reproducible selection + exact order</text>
+    <text x="1470" y="927" class="small">V020-10 exact order · V020-11 CLI replay</text>
 
     <rect x="1250" y="990" width="350" height="95" class="node audit"/>
     <text x="1270" y="1019" class="label">Publication workflow</text>

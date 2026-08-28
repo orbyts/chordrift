@@ -6,26 +6,49 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-08-27.
+Last updated: 2026-08-28.
 
-## Start the next task here: v0.2.0 slice V020-11
+## Start the next task here: V020-11R compatibility reconciliation
 
-Implement only `V020-11 — CLI-first product rehearsal` from the authoritative
-execution map at the top of `ROADMAP.md`. Add one consistent development-line
-CLI surface for onboarding input capture/audit, collection and immutable recipe
-review, recipe execution, and exact Spin preview creation/display. Add an
-installed-binary helper workflow that can compare inventory-only and explicitly
-enriched results and reach the same Rust-owned preview without reimplementing
-domain behavior in CLI parsing or presentation.
+Before beginning V020-12, perform `V020-11R — Recovered-intake compatibility
+reconciliation` from the authoritative execution map. Review commits `9a078f3`
+and `4b7d876`, but do not merge either older branch wholesale. Selectively port
+the enumerated playlist-write correction and add regression tests proving an
+ordinary addition cannot replace complete playlist membership or restore a
+manually removed track. Port the complete operator intake wizard and supporting
+scripts with current documentation, add a machine-readable installed-binary
+capability handshake, and add fake-binary shell compatibility tests.
 
-Do not alter the released v0.1.4 command meanings or its normal daily workflow,
-approve inferred collection intent, publish/approve a Spin, write to a provider,
-change credentials/configuration, access production Neon, or apply migration
-0046 there. Keep the rehearsal provider-write-free and use fake inputs plus an
-isolated PostgreSQL 18 database unless a separately reviewed read-only personal
-comparison is explicitly approved. Do not begin V020-12 publication planning.
+Future Spin publication plans must be explicitly distinguishable from ordinary
+intake/maintenance plans, or the intake wizard must reject every non-maintenance
+plan origin. Update V020-12 through V020-14 acceptance criteria with the
+recovered incident's compatibility requirements. Do not access production
+Neon, write to Spotify, apply migration 0046, begin publication implementation,
+or change the installed v0.1.4 daily driver. Use fake binaries/providers and an
+isolated PostgreSQL 18 database only.
 
-V020-01 through V020-10 are complete. V020-10 adds the public `spin_preview`
+Compatibility is subordinate to the approved v0.2 architecture. Preserve the
+enumerated-write safety invariant, understandable operator workflow, and
+ability to detect an incompatible installed binary; do not preserve a legacy
+command spelling or internal path when doing so would weaken provider-neutral
+ownership, deterministic Rust-owned decisions, plan-origin separation, or
+publication safety. Prefer explicit compatibility adapters and a capability
+handshake, and reject unsupported legacy behavior visibly.
+
+V020-01 through V020-11 are complete. V020-11 adds the opt-in development-line
+`chordrift product` namespace for fixture-backed onboarding capture/audit,
+account-scoped collection and immutable recipe review, provider-neutral recipe
+execution, and exact Spin preview creation/display. Every leaf passes through
+`ApplicationFacade` and emits the same stable contract/provider-write-disabled
+envelope plus the complete serialized Rust value. Database-backed commands
+require `CHORDRIFT_PRODUCT_REHEARSAL=1` and an already migrated isolated
+database; no command applies migration 0046. The installed-binary
+`scripts/chordrift-product-rehearsal.sh` compares inventory-only with enriched
+results and proves exact Spin replay. A fake-binary test proves that it invokes
+only `product` commands and never invokes Spotify, apply, migration, approval,
+or publication. See `docs/design/CLI_FIRST_PRODUCT_REHEARSAL_V020_11.md`.
+
+V020-10 adds the public `spin_preview`
 boundary behind `ApplicationFacade`. It verifies V020-09's unordered draft and
 capability snapshot, derives a stable account/input/seed Spin identity, assigns
 exact one-based playback order from cadence, lifecycle narrative, section
@@ -154,8 +177,8 @@ decisions. When the latest proposal is approved, explicit `--prepare` may clone
 its structure through the strict 1.0 extension path only if the supplied IDs
 cover the entire pre-extension unresolved set. The extension still replays all
 durable manual decisions and may therefore expose older needs-review items; the
-helper reports rather than classifies them. This maintenance helper does not
-change V020-11's scope or status.
+helper reports rather than classifies them. Reconcile this narrow helper with
+the recovered complete wizard during V020-11R; do not treat it as a substitute.
 
 On 2026-08-27 the helper was exercised against the live `personal` account for
 one explicitly reviewed Inbox discovery destined for `Dakshina Pulse`. The

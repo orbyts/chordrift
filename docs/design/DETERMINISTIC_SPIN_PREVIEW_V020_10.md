@@ -100,10 +100,11 @@ handling, live-provider request, publication approval, or provider write.
 Migration 0046 remains unapplied to production Neon, and installed v0.1.4 use
 is unchanged.
 
-## Boundary for V020-11
+## Implemented V020-11 consumer
 
-`V020-11 — CLI-first product rehearsal` may expose consistent development-line
+`V020-11 — CLI-first product rehearsal` now exposes consistent development-line
 commands for onboarding, collections, recipe review, and Spin preview, plus an
-installed-binary helper workflow. It must use these Rust-owned values rather
-than reimplement ordering in the CLI, compare inventory-only and enriched
-inputs honestly, and remain provider-write-free.
+installed-binary helper workflow. It uses these Rust-owned values rather than
+reimplementing ordering in the CLI, compares inventory-only and enriched inputs
+honestly, and remains provider-write-free. See
+`CLI_FIRST_PRODUCT_REHEARSAL_V020_11.md`.

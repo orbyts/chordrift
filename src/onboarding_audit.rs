@@ -363,6 +363,39 @@ pub struct OnboardingAudit {
     pub starter_organization: StarterOrganizationProposal,
 }
 
+/// Fingerprints only the comparable inventory findings, excluding session identity.
+///
+/// Inventory-only and enriched sessions intentionally have different session and
+/// input fingerprints. This projection lets clients prove that enrichment kept
+/// the same inventory analysis without pretending the complete audits are equal.
+pub fn inventory_findings_fingerprint(
+    audit: &OnboardingAudit,
+) -> Result<ContentFingerprint, OnboardingAuditError> {
+    #[derive(Serialize)]
+    struct ComparableInventoryFindings<'audit> {
+        capabilities: &'audit InventoryCapabilityReport,
+        library: &'audit LibraryAuditSummary,
+        playlists: &'audit [AuditedPlaylist],
+        overlap: &'audit InventoryOverlapReport,
+        uncertainty: &'audit InventoryUncertaintyReport,
+        starter_organization: &'audit StarterOrganizationProposal,
+    }
+
+    let payload = ComparableInventoryFindings {
+        capabilities: &audit.capabilities,
+        library: &audit.library,
+        playlists: &audit.playlists,
+        overlap: &audit.overlap,
+        uncertainty: &audit.uncertainty,
+        starter_organization: &audit.starter_organization,
+    };
+    ContentFingerprint::new(format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&payload).map_err(ChordriftError::from)?)
+    ))
+    .map_err(|_| client_error(ErrorCode::Internal))
+}
+
 /// Failure from the inventory-only audit boundary.
 #[derive(Debug)]
 pub enum OnboardingAuditError {

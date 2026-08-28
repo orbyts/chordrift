@@ -57,6 +57,8 @@ pub mod onboarding_audit;
 /// Account-scoped playlist roles and drift policy.
 pub mod playlists;
 mod presentation;
+/// Provider-write-free application values used by the CLI-first product rehearsal.
+pub mod product_rehearsal;
 /// Non-destructive, account-scoped proposed playlist libraries.
 pub mod proposals;
 /// Streaming-provider adapters.

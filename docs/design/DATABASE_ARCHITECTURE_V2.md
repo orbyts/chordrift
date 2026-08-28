@@ -16,10 +16,11 @@ V020-09 consumes prepared provider-neutral candidate facts entirely in memory
 and adds no schema or database access. V020-10 persists exact ordered previews
 in migration 0046's existing `playlist_spins` and `playlist_spin_tracks` tables
 without changing database-v2 or the migration. Migration 0046 is not applied to
-production Neon.
+production Neon. V020-11 exposes these isolated consumers through an explicit
+development CLI opt-in; it adds no schema change and applies no migration.
 
 Status: database-v2 foundation complete in the released v0.1.4 runtime, updated
-2026-08-27. The live project uses content-addressed current provider state,
+2026-08-28. The live project uses content-addressed current provider state,
 normalized evidence, compact checkpoints, and the clean runtime schema. The
 legacy physical tables and former rollback project were retired only after the
 recorded exact-confirmed gates passed. This document preserves that chronology;
@@ -58,7 +59,9 @@ events without another schema change. The
 Rust selection boundary and likewise leaves database-v2 and migration 0046
 unchanged. The [V020-10 Spin preview](DETERMINISTIC_SPIN_PREVIEW_V020_10.md)
 is the first runtime consumer of the existing Spin tables; it adds no migration
-and performs no provider operation.
+and performs no provider operation. The
+[V020-11 CLI rehearsal](CLI_FIRST_PRODUCT_REHEARSAL_V020_11.md) composes these
+consumers only against an operator-selected isolated migration-0046 database.
 
 ## Why this redesign existed
 

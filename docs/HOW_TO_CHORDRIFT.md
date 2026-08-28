@@ -15,7 +15,7 @@ Design pages identify which v0.2 foundations are implemented or still planned.
 | --- | --- | --- |
 | Perform daily library work | This guide and the linked `how-to/` pages | Released v0.1.4 behavior; preserved during current v0.2 work. |
 | Look up a command | [CLI command reference](reference/CLI_COMMANDS.md) | Complete v0.1.4 command surface; historical operator-only leaves are labeled. |
-| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 through V020-10 implemented; V020-11 next; later behavior explicitly listed. |
+| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 through V020-11 implemented; recovered-intake reconciliation next; later behavior explicitly listed. |
 | Review intent interpretation | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Active v0.2 product policy, grounded in the existing explicit CLI loop. |
 | Review account/provider isolation | [Account and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Test-only adversarial proof implemented; production adapters remain v0.1.4. |
 | Review the additive v0.2 schema | [Product schema foundation](design/PRODUCT_SCHEMA_V020_05.md) | Migration 0046 implemented and rehearsed only on isolated PostgreSQL 18; not on production Neon. |
@@ -24,6 +24,7 @@ Design pages identify which v0.2 foundations are implemented or still planned.
 | Compare the extended-history onboarding result | [Enriched onboarding audit](design/ENRICHED_ONBOARDING_AUDIT_V020_08.md) | Same read-only inventory baseline plus one explicitly selected history import; strengthened claims carry exact support counts. |
 | Review Discovery + Rediscovery selection | [Recipe execution](design/DISCOVERY_REDISCOVERY_RECIPE_V020_09.md) | Provider-neutral deterministic unordered draft consumed by the implemented V020-10 Spin orderer. |
 | Review exact Spin ordering and replay | [Deterministic Spin preview](design/DETERMINISTIC_SPIN_PREVIEW_V020_10.md) | Exact ordered and persisted Rust value; provider-free and not yet a released CLI command. |
+| Rehearse the v0.2 product through the CLI | [CLI-first product rehearsal](design/CLI_FIRST_PRODUCT_REHEARSAL_V020_11.md) | Opt-in development-line commands and installed-binary helper; fake/captured inputs and isolated migration-0046 database only. |
 | Review database-v2 decisions | [Database architecture v2](design/DATABASE_ARCHITECTURE_V2.md) | Completed v0.1.4 foundation and labeled historical execution record. |
 | Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
 
@@ -211,7 +212,9 @@ track/artist budgets, familiarity capacity, section capacity, and visible
 capability degradation. It performs no provider/database write and adds no CLI
 surface. V020-10 now deterministically orders and persists that draft with exact
 reasons, seed, fingerprints, capability snapshot, sections, warnings, and an
-account-scoped query view. It still adds no CLI or provider action. The CLI-first
-product rehearsal is next in V020-11. See the
+account-scoped query view. V020-11 now exposes these boundaries through the
+opt-in, fixture-backed `product` CLI and installed-binary helper without adding
+a provider action. Recovered-intake compatibility reconciliation is the next
+gate before publication planning. See the
 [playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) for
 the complete staged direction.

@@ -23,8 +23,9 @@ use chordrift::{
     onboarding_audit::{
         AuditEvidenceBasis, AuditLimitation, EnrichedAuditBoundary, EnrichedAuditEvidenceBasis,
         EnrichedAuditLimitation, InventoryOnlyAuditBoundary, StarterCollectionBasis,
-        StarterProposalConfidence, StrengthenedConclusionKind,
+        StarterProposalConfidence, StrengthenedConclusionKind, inventory_findings_fingerprint,
     },
+    product_rehearsal::{CollectionReviewBoundary, RecipeReviewBoundary},
     recipe_execution::{
         CandidateEligibility, RecipeCandidate, RecipeExecutionRequest, RecipeExecutor,
         SelectionBudgets,
@@ -905,6 +906,17 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         enriched_audit.value.inventory_baseline.starter_organization,
         audit.value.starter_organization
     );
+    assert_ne!(
+        enriched_audit.value.inventory_baseline.audit_fingerprint, audit.value.audit_fingerprint,
+        "session-owned complete audit identities intentionally differ"
+    );
+    assert_eq!(
+        inventory_findings_fingerprint(&enriched_audit.value.inventory_baseline)
+            .expect("comparable enriched inventory findings fingerprint"),
+        inventory_findings_fingerprint(&audit.value)
+            .expect("comparable inventory-only findings fingerprint"),
+        "enrichment must preserve the comparable inventory findings"
+    );
     assert_eq!(enriched_audit.value.history.declared_records, 7);
     assert_eq!(enriched_audit.value.history.readable_records, 7);
     assert_eq!(enriched_audit.value.history.usable_records, 7);
@@ -1138,6 +1150,65 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         .bind(recipe_revision_id)
         .execute(database.pool())
         .await?;
+
+    let collections_request = QueryRequest {
+        contract_version: CONTRACT_VERSION,
+        request_id: Default::default(),
+        query: Query::Collections {
+            account_id: ResourceId::from_uuid(chordrift_account_id),
+        },
+    };
+    let collections = ApplicationFacade::new()
+        .invoke(
+            CollectionReviewBoundary::new(&database)
+                .invocation(product_account, &collections_request),
+        )
+        .await??;
+    assert_eq!(collections.value.account_id, product_account);
+    assert!(
+        collections
+            .value
+            .collections
+            .iter()
+            .any(|collection| collection.collection_id.as_uuid() == first_collection_id)
+    );
+    assert!(
+        ApplicationFacade::new()
+            .invoke(CollectionReviewBoundary::new(&database).invocation(
+                ChordriftAccountId::from_uuid(other_chordrift_account_id),
+                &collections_request,
+            ))
+            .await?
+            .is_err(),
+        "collection review cannot cross account ownership"
+    );
+
+    let recipe_request = QueryRequest {
+        contract_version: CONTRACT_VERSION,
+        request_id: Default::default(),
+        query: Query::Recipe {
+            recipe_revision_id: ResourceId::from_uuid(recipe_revision_id),
+        },
+    };
+    let reviewed_recipe = ApplicationFacade::new()
+        .invoke(RecipeReviewBoundary::new(&database).invocation(product_account, &recipe_request))
+        .await??;
+    assert_eq!(
+        reviewed_recipe.value.recipe_revision_id.as_uuid(),
+        recipe_revision_id
+    );
+    assert_eq!(reviewed_recipe.value.recipe, spin_recipe);
+    assert!(
+        ApplicationFacade::new()
+            .invoke(RecipeReviewBoundary::new(&database).invocation(
+                ChordriftAccountId::from_uuid(other_chordrift_account_id),
+                &recipe_request,
+            ))
+            .await?
+            .is_err(),
+        "recipe review cannot cross account ownership"
+    );
+
     sqlx::query(
         "INSERT INTO playlist_recipe_dependencies
          (chordrift_account_id, recipe_revision_id, lane, dependency_kind,

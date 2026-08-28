@@ -11,10 +11,10 @@ use crate::{
     ChordriftError, Result, albums, analysis,
     application::{ApplicationFacade, ApplicationInvocation},
     apply, apply_readiness, artwork, bookmarks, classifications, clusters, config, db, db_cleanup,
-    db_reports, db_v2_migration, embeddings, enrichment, history, model_inference, playlists,
-    presentation, proposals,
+    db_reports, db_v2_migration, embeddings, enrichment, history, model_inference, onboarding,
+    onboarding_audit, playlists, presentation, product_rehearsal, proposals,
     providers::spotify,
-    routes, signals, sync_plan, terminal, tracks,
+    recipe_execution, routes, signals, spin_preview, sync_plan, terminal, tracks,
 };
 
 /// Chordrift command-line interface.
@@ -29,6 +29,12 @@ pub struct Cli {
 /// Top-level Chordrift commands.
 #[derive(Clone, Debug, Subcommand)]
 pub enum Command {
+    /// Rehearse the provider-neutral v0.2 product through the local CLI.
+    Product {
+        /// Product operation to perform.
+        #[command(subcommand)]
+        command: ProductCommand,
+    },
     /// Inspect or migrate the canonical database.
     Db {
         /// Database operation to perform.
@@ -137,6 +143,124 @@ pub enum Command {
         /// Enrichment operation to perform.
         #[command(subcommand)]
         command: EnrichmentCommand,
+    },
+}
+
+/// Provider-write-free v0.2 product rehearsal commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ProductCommand {
+    /// Capture or audit fixture-backed onboarding inputs.
+    Onboarding {
+        /// Onboarding operation to perform.
+        #[command(subcommand)]
+        command: ProductOnboardingCommand,
+    },
+    /// Review account-owned overlapping collections.
+    Collections {
+        /// Collection operation to perform.
+        #[command(subcommand)]
+        command: ProductCollectionCommand,
+    },
+    /// Review or execute an immutable recipe revision.
+    Recipes {
+        /// Recipe operation to perform.
+        #[command(subcommand)]
+        command: ProductRecipeCommand,
+    },
+    /// Create or display an exact deterministic Spin preview.
+    Spins {
+        /// Spin operation to perform.
+        #[command(subcommand)]
+        command: ProductSpinCommand,
+    },
+}
+
+/// Fixture-backed onboarding commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ProductOnboardingCommand {
+    /// Persist one provider-read-only fixture capture.
+    Capture {
+        /// JSON fixture containing account context plus baseline and enriched inputs.
+        #[arg(long)]
+        fixture: PathBuf,
+        /// Evidence path to capture.
+        #[arg(long, value_enum, default_value_t = ProductAuditMode::InventoryOnly)]
+        mode: ProductAuditMode,
+        /// Optional stable retry identity; generated when omitted.
+        #[arg(long)]
+        idempotency_key: Option<uuid::Uuid>,
+    },
+    /// Read one persisted inventory-only or enriched onboarding audit.
+    Audit {
+        /// JSON fixture supplying the validated account context.
+        #[arg(long)]
+        fixture: PathBuf,
+        /// Captured onboarding session UUID.
+        #[arg(long)]
+        session: uuid::Uuid,
+        /// Evidence path represented by the session.
+        #[arg(long, value_enum, default_value_t = ProductAuditMode::InventoryOnly)]
+        mode: ProductAuditMode,
+    },
+}
+
+/// Evidence path used by onboarding capture and audit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum ProductAuditMode {
+    /// Current provider inventory only.
+    InventoryOnly,
+    /// Current inventory plus explicitly selected extended history.
+    Enriched,
+}
+
+/// Collection review commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ProductCollectionCommand {
+    /// List account-owned collections and current membership counts.
+    List {
+        /// Chordrift account UUID.
+        #[arg(long)]
+        account: uuid::Uuid,
+    },
+}
+
+/// Immutable recipe review and execution commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ProductRecipeCommand {
+    /// Show one persisted immutable recipe revision.
+    Show {
+        /// Chordrift account UUID.
+        #[arg(long)]
+        account: uuid::Uuid,
+        /// Recipe revision UUID.
+        #[arg(long)]
+        revision: uuid::Uuid,
+    },
+    /// Execute fixture candidates into the exact unordered V020-09 draft.
+    Execute {
+        /// JSON fixture containing validated recipe candidates and Spin seed.
+        #[arg(long)]
+        fixture: PathBuf,
+    },
+}
+
+/// Deterministic Spin preview commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ProductSpinCommand {
+    /// Execute a fixture recipe and persist its exact ordered preview.
+    Preview {
+        /// JSON fixture containing validated recipe candidates and Spin seed.
+        #[arg(long)]
+        fixture: PathBuf,
+    },
+    /// Display one persisted account-owned Spin preview.
+    Show {
+        /// Chordrift account UUID.
+        #[arg(long)]
+        account: uuid::Uuid,
+        /// Spin UUID.
+        #[arg(long)]
+        spin: uuid::Uuid,
     },
 }
 
@@ -1531,6 +1655,7 @@ where
 
 async fn execute_cli_handlers(cli: Cli, output: &mut impl Write) -> Result<()> {
     match cli.command {
+        Command::Product { command } => run_product_command(command, output).await?,
         Command::Db { command } => {
             let config = config::database_config_from_env()?;
             let database = db::connect(config).await?;
@@ -2405,6 +2530,337 @@ async fn connect_current_database() -> Result<storexa::Database> {
         ));
     }
     Ok(database)
+}
+
+async fn run_product_command(command: ProductCommand, output: &mut impl Write) -> Result<()> {
+    use crate::contract::{
+        CONTRACT_VERSION, Command as ContractCommand, CommandRequest, IdempotencyKey, Query,
+        QueryRequest, RequestId, ResourceId,
+    };
+    use crate::domain::ChordriftAccountId;
+
+    match command {
+        ProductCommand::Onboarding { command } => {
+            require_product_rehearsal_opt_in()?;
+            let fixture_path = match &command {
+                ProductOnboardingCommand::Capture { fixture, .. }
+                | ProductOnboardingCommand::Audit { fixture, .. } => fixture,
+            };
+            let fixture: product_rehearsal::OnboardingRehearsalFixture =
+                read_product_fixture(fixture_path)?;
+            let database = connect_current_database().await?;
+            let result: Result<()> = async {
+                match command {
+                    ProductOnboardingCommand::Capture {
+                        mode,
+                        idempotency_key,
+                        ..
+                    } => {
+                        let include_extended_history = mode == ProductAuditMode::Enriched;
+                        let request = CommandRequest {
+                            contract_version: CONTRACT_VERSION,
+                            request_id: RequestId::new(),
+                            idempotency_key: idempotency_key
+                                .map_or_else(IdempotencyKey::new, IdempotencyKey::from_uuid),
+                            command: ContractCommand::CreateOnboardingSession {
+                                account_id: ResourceId::from_uuid(
+                                    fixture.context.account_id().as_uuid(),
+                                ),
+                                include_extended_history,
+                            },
+                        };
+                        let boundary = onboarding::OnboardingSessionBoundary::new(&database);
+                        let session = ApplicationFacade::new()
+                            .invoke(boundary.invocation(&fixture.context, &request, &fixture))
+                            .await?
+                            .map_err(product_boundary_error)?;
+                        write_product_header(output, "onboarding_session")?;
+                        writeln!(output, "session_id: {}", session.id)?;
+                        writeln!(output, "mode: {}", audit_mode_name(mode))?;
+                        writeln!(output, "input_fingerprint: {}", session.input_fingerprint)?;
+                        write_product_json(output, &session)
+                    }
+                    ProductOnboardingCommand::Audit { session, mode, .. } => {
+                        let request = QueryRequest {
+                            contract_version: CONTRACT_VERSION,
+                            request_id: RequestId::new(),
+                            query: Query::OnboardingAudit {
+                                session_id: ResourceId::from_uuid(session),
+                            },
+                        };
+                        match mode {
+                            ProductAuditMode::InventoryOnly => {
+                                let boundary =
+                                    onboarding_audit::InventoryOnlyAuditBoundary::new(&database);
+                                let view = ApplicationFacade::new()
+                                    .invoke(boundary.invocation(&fixture.context, &request))
+                                    .await?
+                                    .map_err(product_boundary_error)?;
+                                write_product_header(output, "onboarding_audit")?;
+                                writeln!(output, "session_id: {session}")?;
+                                writeln!(output, "mode: inventory_only")?;
+                                writeln!(
+                                    output,
+                                    "audit_fingerprint: {}",
+                                    view.value.audit_fingerprint
+                                )?;
+                                writeln!(
+                                    output,
+                                    "inventory_findings_fingerprint: {}",
+                                    onboarding_audit::inventory_findings_fingerprint(&view.value)
+                                        .map_err(product_boundary_error)?
+                                )?;
+                                writeln!(output, "strengthened_conclusions: 0")?;
+                                write_product_json(output, &view)
+                            }
+                            ProductAuditMode::Enriched => {
+                                let boundary =
+                                    onboarding_audit::EnrichedAuditBoundary::new(&database);
+                                let view = ApplicationFacade::new()
+                                    .invoke(boundary.invocation(&fixture.context, &request))
+                                    .await?
+                                    .map_err(product_boundary_error)?;
+                                write_product_header(output, "onboarding_audit")?;
+                                writeln!(output, "session_id: {session}")?;
+                                writeln!(output, "mode: enriched")?;
+                                writeln!(
+                                    output,
+                                    "audit_fingerprint: {}",
+                                    view.value.audit_fingerprint
+                                )?;
+                                writeln!(
+                                    output,
+                                    "inventory_findings_fingerprint: {}",
+                                    onboarding_audit::inventory_findings_fingerprint(
+                                        &view.value.inventory_baseline,
+                                    )
+                                    .map_err(product_boundary_error)?
+                                )?;
+                                writeln!(
+                                    output,
+                                    "strengthened_conclusions: {}",
+                                    view.value.strengthened_conclusions.len()
+                                )?;
+                                write_product_json(output, &view)
+                            }
+                        }
+                    }
+                }
+            }
+            .await;
+            database.close().await;
+            result?;
+        }
+        ProductCommand::Collections {
+            command: ProductCollectionCommand::List { account },
+        } => {
+            require_product_rehearsal_opt_in()?;
+            let database = connect_current_database().await?;
+            let result: Result<()> = async {
+                let account_id = ChordriftAccountId::from_uuid(account);
+                let request = QueryRequest {
+                    contract_version: CONTRACT_VERSION,
+                    request_id: RequestId::new(),
+                    query: Query::Collections {
+                        account_id: ResourceId::from_uuid(account),
+                    },
+                };
+                let boundary = product_rehearsal::CollectionReviewBoundary::new(&database);
+                let view = ApplicationFacade::new()
+                    .invoke(boundary.invocation(account_id, &request))
+                    .await??;
+                write_product_header(output, "collections")?;
+                writeln!(output, "account_id: {account}")?;
+                writeln!(output, "collections: {}", view.value.collections.len())?;
+                write_product_json(output, &view)
+            }
+            .await;
+            database.close().await;
+            result?;
+        }
+        ProductCommand::Recipes { command } => match command {
+            ProductRecipeCommand::Show { account, revision } => {
+                require_product_rehearsal_opt_in()?;
+                let database = connect_current_database().await?;
+                let result: Result<()> = async {
+                    let request = QueryRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        query: Query::Recipe {
+                            recipe_revision_id: ResourceId::from_uuid(revision),
+                        },
+                    };
+                    let boundary = product_rehearsal::RecipeReviewBoundary::new(&database);
+                    let view = ApplicationFacade::new()
+                        .invoke(
+                            boundary.invocation(ChordriftAccountId::from_uuid(account), &request),
+                        )
+                        .await??;
+                    write_product_header(output, "recipe_revision")?;
+                    writeln!(output, "account_id: {account}")?;
+                    writeln!(output, "recipe_revision_id: {revision}")?;
+                    write_product_json(output, &view)
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            ProductRecipeCommand::Execute { fixture } => {
+                let fixture: product_rehearsal::SpinRehearsalFixture =
+                    read_product_fixture(&fixture)?;
+                let executor = recipe_execution::RecipeExecutor::new();
+                let draft = ApplicationFacade::new()
+                    .invoke(executor.invocation(&fixture.recipe_execution))
+                    .await?
+                    .map_err(product_boundary_error)?;
+                if draft.recipe_revision.recipe_id.account_id() != fixture.account_id {
+                    return Err(product_boundary_error(
+                        "Spin fixture account does not own its recipe execution",
+                    ));
+                }
+                write_product_header(output, "recipe_execution")?;
+                writeln!(output, "account_id: {}", fixture.account_id)?;
+                writeln!(
+                    output,
+                    "draft_fingerprint: {}",
+                    draft.draft_fingerprint.as_str()
+                )?;
+                writeln!(output, "selected_tracks: {}", draft.selections.len())?;
+                writeln!(output, "unfilled_seats: {}", draft.unfilled_seats)?;
+                write_product_json(output, &draft)?;
+            }
+        },
+        ProductCommand::Spins { command } => {
+            require_product_rehearsal_opt_in()?;
+            let database = connect_current_database().await?;
+            let result: Result<()> = async {
+                match command {
+                    ProductSpinCommand::Preview { fixture } => {
+                        let fixture: product_rehearsal::SpinRehearsalFixture =
+                            read_product_fixture(&fixture)?;
+                        let executor = recipe_execution::RecipeExecutor::new();
+                        let draft = ApplicationFacade::new()
+                            .invoke(executor.invocation(&fixture.recipe_execution))
+                            .await?
+                            .map_err(product_boundary_error)?;
+                        let recipe_revision = draft.recipe_revision.revision_id.as_uuid();
+                        let request = CommandRequest {
+                            contract_version: CONTRACT_VERSION,
+                            request_id: RequestId::new(),
+                            idempotency_key: IdempotencyKey::new(),
+                            command: ContractCommand::PreviewSpin {
+                                recipe_revision_id: ResourceId::from_uuid(recipe_revision),
+                            },
+                        };
+                        let input = spin_preview::SpinPreviewInput {
+                            draft,
+                            capability_snapshot: fixture.capability_snapshot,
+                            seed: fixture.seed,
+                        };
+                        let boundary = spin_preview::SpinPreviewBoundary::new(&database);
+                        let preview = ApplicationFacade::new()
+                            .invoke(boundary.create_invocation(
+                                fixture.account_id,
+                                &request,
+                                &input,
+                            ))
+                            .await?
+                            .map_err(product_boundary_error)?;
+                        write_product_header(output, "spin_preview")?;
+                        writeln!(
+                            output,
+                            "spin_id: {}",
+                            preview.identity.spin_id().into_resource_id()
+                        )?;
+                        writeln!(
+                            output,
+                            "preview_fingerprint: {}",
+                            preview.preview_fingerprint
+                        )?;
+                        writeln!(output, "tracks: {}", preview.tracks.len())?;
+                        write_product_json(output, &preview)
+                    }
+                    ProductSpinCommand::Show { account, spin } => {
+                        let request = QueryRequest {
+                            contract_version: CONTRACT_VERSION,
+                            request_id: RequestId::new(),
+                            query: Query::SpinPreview {
+                                spin_id: ResourceId::from_uuid(spin),
+                            },
+                        };
+                        let boundary = spin_preview::SpinPreviewBoundary::new(&database);
+                        let view =
+                            ApplicationFacade::new()
+                                .invoke(boundary.read_invocation(
+                                    ChordriftAccountId::from_uuid(account),
+                                    &request,
+                                ))
+                                .await?
+                                .map_err(product_boundary_error)?;
+                        write_product_header(output, "spin_preview")?;
+                        writeln!(output, "spin_id: {spin}")?;
+                        writeln!(
+                            output,
+                            "preview_fingerprint: {}",
+                            view.value.preview_fingerprint
+                        )?;
+                        writeln!(output, "tracks: {}", view.value.tracks.len())?;
+                        write_product_json(output, &view)
+                    }
+                }
+            }
+            .await;
+            database.close().await;
+            result?;
+        }
+    }
+    Ok(())
+}
+
+fn require_product_rehearsal_opt_in() -> Result<()> {
+    if std::env::var("CHORDRIFT_PRODUCT_REHEARSAL").as_deref() == Ok("1") {
+        Ok(())
+    } else {
+        Err(ChordriftError::Configuration(
+            "v0.2 product commands require CHORDRIFT_PRODUCT_REHEARSAL=1 and an isolated migration-0046 database"
+                .to_owned(),
+        ))
+    }
+}
+
+fn read_product_fixture<T>(path: &std::path::Path) -> Result<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let bytes = std::fs::read(path)?;
+    serde_json::from_slice(&bytes).map_err(ChordriftError::from)
+}
+
+fn write_product_header(output: &mut impl Write, product: &str) -> Result<()> {
+    writeln!(output, "product_view: {product}")?;
+    writeln!(
+        output,
+        "contract_version: {}",
+        crate::contract::CONTRACT_VERSION
+    )?;
+    writeln!(output, "provider_writes: disabled")?;
+    Ok(())
+}
+
+fn write_product_json(output: &mut impl Write, value: &impl serde::Serialize) -> Result<()> {
+    writeln!(output, "value_json: {}", serde_json::to_string(value)?)?;
+    Ok(())
+}
+
+fn audit_mode_name(mode: ProductAuditMode) -> &'static str {
+    match mode {
+        ProductAuditMode::InventoryOnly => "inventory_only",
+        ProductAuditMode::Enriched => "enriched",
+    }
+}
+
+fn product_boundary_error(error: impl std::fmt::Display) -> ChordriftError {
+    ChordriftError::Configuration(error.to_string())
 }
 
 async fn run_analyze_command(
@@ -5983,9 +6439,10 @@ mod tests {
         ClassificationCommand, Cli, ClusterCommand, Command, DbCleanupCommand, DbCommand,
         DbCompactCommand, DbV2Command, DbV2MigrationCommand, EmbeddingCommand, EnrichmentCommand,
         HistoryCommand, LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg,
-        PlaylistSignalClassArg, ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg,
-        SignalCommand, SpotifyCommand, SyncCommand, TrackCommand, format_count, format_elapsed,
-        write_status,
+        PlaylistSignalClassArg, ProductAuditMode, ProductCollectionCommand, ProductCommand,
+        ProductOnboardingCommand, ProductRecipeCommand, ProductSpinCommand, ReevaluateCommand,
+        RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand, SyncCommand,
+        TrackCommand, format_count, format_elapsed, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -5996,6 +6453,88 @@ mod tests {
             cli.command,
             Command::Db {
                 command: DbCommand::Status
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_the_consistent_product_rehearsal_surface() {
+        let capture = Cli::try_parse_from([
+            "chordrift",
+            "product",
+            "onboarding",
+            "capture",
+            "--fixture",
+            "onboarding.json",
+            "--mode",
+            "enriched",
+        ])
+        .expect("valid capture command");
+        assert!(matches!(
+            capture.command,
+            Command::Product {
+                command: ProductCommand::Onboarding {
+                    command: ProductOnboardingCommand::Capture {
+                        mode: ProductAuditMode::Enriched,
+                        ..
+                    }
+                }
+            }
+        ));
+
+        let collections = Cli::try_parse_from([
+            "chordrift",
+            "product",
+            "collections",
+            "list",
+            "--account",
+            "00000000-0000-0000-0000-000000000001",
+        ])
+        .expect("valid collection command");
+        assert!(matches!(
+            collections.command,
+            Command::Product {
+                command: ProductCommand::Collections {
+                    command: ProductCollectionCommand::List { .. }
+                }
+            }
+        ));
+
+        let recipe = Cli::try_parse_from([
+            "chordrift",
+            "product",
+            "recipes",
+            "execute",
+            "--fixture",
+            "spin.json",
+        ])
+        .expect("valid recipe command");
+        assert!(matches!(
+            recipe.command,
+            Command::Product {
+                command: ProductCommand::Recipes {
+                    command: ProductRecipeCommand::Execute { .. }
+                }
+            }
+        ));
+
+        let spin = Cli::try_parse_from([
+            "chordrift",
+            "product",
+            "spins",
+            "show",
+            "--account",
+            "00000000-0000-0000-0000-000000000001",
+            "--spin",
+            "00000000-0000-0000-0000-000000000002",
+        ])
+        .expect("valid Spin command");
+        assert!(matches!(
+            spin.command,
+            Command::Product {
+                command: ProductCommand::Spins {
+                    command: ProductSpinCommand::Show { .. }
+                }
             }
         ));
     }

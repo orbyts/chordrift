@@ -64,6 +64,32 @@ Redirected Chordrift output remains the stable plain key/value and tabular
 format used internally by the wrapper. Interactive plan, readiness, apply, and
 pull reports still use Chordrift's normal formatted terminal presentation.
 
+## Provider-free v0.2 product rehearsal
+
+`chordrift-product-rehearsal.sh` uses an installed development-line binary to
+exercise the V020-06 through V020-10 application boundaries as one workflow:
+
+```console
+$ CHORDRIFT_PRODUCT_REHEARSAL=1 \
+  CHORDRIFT_BIN=/path/to/development/chordrift \
+  scripts/chordrift-product-rehearsal.sh \
+    --account CHORDRIFT_ACCOUNT_UUID \
+    --recipe-revision RECIPE_REVISION_UUID \
+    --onboarding-fixture onboarding.json \
+    --spin-fixture spin.json
+```
+
+Use only an isolated database where migration 0046 was already applied. The
+helper never runs a migration. It captures and compares inventory-only and
+explicitly enriched onboarding audits, reviews collections and the immutable
+recipe, executes selection, creates the exact ordered Spin, and proves that a
+reload retains its fingerprint. It invokes only `chordrift product` commands;
+there is no provider command, publication approval, or provider write.
+
+This is a v0.2 development proof, not a v0.1.4 daily-driver workflow. See
+[`CLI_FIRST_PRODUCT_REHEARSAL_V020_11.md`](../docs/design/CLI_FIRST_PRODUCT_REHEARSAL_V020_11.md)
+for fixture and safety boundaries.
+
 ## Reviewed Inbox placement
 
 `chordrift-intake-move.sh` records one or more reviewed Inbox discoveries in an

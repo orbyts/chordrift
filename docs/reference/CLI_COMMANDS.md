@@ -15,9 +15,10 @@ application boundary, V020-07 adds its read-only inventory-audit query, and
 V020-08 adds the explicitly selected extended-history comparison. V020-09 adds
 provider-neutral deterministic recipe selection as an unordered Rust value;
 V020-10 now assigns and persists the exact provider-free Spin order with typed
-reasons and an application query view. These development boundaries introduce
-no CLI command and do not change the released v0.1.4 runtime. CLI rehearsal is
-V020-11; migration 0046 is not applied to production Neon.
+reasons and an application query view. V020-11 exposes those development
+boundaries under the opt-in `product` namespace described below. It does not
+change the released v0.1.4 runtime; migration 0046 is not applied to production
+Neon.
 
 Chordrift reads Spotify state into Neon and changes Spotify only through an
 exact inspected plan, readiness assessment, and explicitly confirmed apply
@@ -32,6 +33,69 @@ Chordrift has three deliberately separate synchronization paths:
 | `chordrift sync pull` | Spotify's live Web API plus history already in Neon | Update current playlists/saved tracks and relink already-imported history; never scan local ZIPs. |
 | `chordrift history ingest` | Newly downloaded ZIPs in the local account inbox | Add only previously unknown historical events, then retain the ZIPs in the local archive. |
 | `chordrift history restore` | ZIPs already retained in the local archive | Rebuild enrichment after database recovery; not part of normal synchronization. |
+
+## Development-line product rehearsal
+
+These commands exist on `main` after V020-11; they are not available in the
+released v0.1.4 binary. Database-backed commands refuse to run unless
+`CHORDRIFT_PRODUCT_REHEARSAL=1` is set. That opt-in must be paired with an
+isolated `CHORDRIFT_DATABASE_URL` whose schema already includes migration 0046.
+The commands never run a migration or call a provider.
+
+Capture fixture-backed onboarding inputs and read the corresponding audit:
+
+```console
+$ chordrift product onboarding capture --fixture onboarding.json --mode inventory-only
+$ chordrift product onboarding audit --fixture onboarding.json \
+    --session SESSION_UUID --mode inventory-only
+$ chordrift product onboarding capture --fixture onboarding.json --mode enriched
+$ chordrift product onboarding audit --fixture onboarding.json \
+    --session SESSION_UUID --mode enriched
+```
+
+The fixture contains one validated account/capability context plus separate
+inventory-only and explicitly enriched `OnboardingInputs` values. The fake
+fixture reader implements no provider mutation method.
+
+Review account-owned collections and an immutable recipe revision, then execute
+prepared provider-neutral candidates:
+
+```console
+$ chordrift product collections list --account CHORDRIFT_ACCOUNT_UUID
+$ chordrift product recipes show --account CHORDRIFT_ACCOUNT_UUID \
+    --revision RECIPE_REVISION_UUID
+$ chordrift product recipes execute --fixture spin.json
+```
+
+Create and display the exact deterministic Spin preview:
+
+```console
+$ chordrift product spins preview --fixture spin.json
+$ chordrift product spins show --account CHORDRIFT_ACCOUNT_UUID --spin SPIN_UUID
+```
+
+The Spin fixture contains the account owner, validated
+`RecipeExecutionRequest`, exact evidence-capability snapshot, and unsigned seed.
+Selection and ordering remain in the V020-09/V020-10 Rust boundaries. Every
+product leaf emits `product_view`, contract version, `provider_writes:
+disabled`, important identities/fingerprints, and the complete `value_json`.
+
+Run the entire installed-binary comparison/replay workflow with:
+
+```console
+$ CHORDRIFT_PRODUCT_REHEARSAL=1 \
+  CHORDRIFT_BIN=/path/to/development/chordrift \
+  scripts/chordrift-product-rehearsal.sh \
+    --account CHORDRIFT_ACCOUNT_UUID \
+    --recipe-revision RECIPE_REVISION_UUID \
+    --onboarding-fixture onboarding.json \
+    --spin-fixture spin.json
+```
+
+The helper proves the enriched audit retained the exact comparable inventory
+findings while complete session-bound audit fingerprints remain distinct, and
+that persisted Spin replay retained the preview fingerprint. It never
+invokes `cargo run`, `db migrate`, Spotify, publication approval, or apply.
 
 After changing one or more playlists in Spotify, pull those changes into Neon:
 

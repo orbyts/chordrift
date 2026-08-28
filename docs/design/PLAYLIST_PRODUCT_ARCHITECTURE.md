@@ -9,9 +9,10 @@ behavior. Existing database-v2 names remain unchanged. Migration 0046 now
 implements the additive recipe, collection, surface, onboarding, and Spin table
 names shown here, but remains isolated from production Neon.
 
-Status: active v0.2 architecture, updated 2026-08-27. V020-01 through V020-10
-are implemented; V020-11 is next. This document is a design contract, not
-authorization to apply a migration or write to a provider.
+Status: active v0.2 architecture, updated 2026-08-28. V020-01 through V020-11
+are implemented; recovered-intake compatibility reconciliation is next. This
+document is a design contract, not authorization to apply a migration or write
+to a provider.
 
 ## Current implementation status
 
@@ -59,9 +60,13 @@ authorization to apply a migration or write to a provider.
   persists full seeds and structured selection/ordering reasons in migration
   0046, and returns the same account-scoped view on replay without a provider
   action.
-- **Next — V020-11:** expose the implemented onboarding, collection, recipe, and
-  Spin-preview path through a consistent development CLI rehearsal.
-- **Not implemented yet:** approved collection authoring, CLI rehearsal,
+- **Implemented — V020-11:** the opt-in `product` CLI and installed-binary helper
+  expose the existing onboarding, collection-review, recipe, and Spin-preview
+  boundaries, compare both audit modes, and prove exact Spin replay using only
+  fake/captured inputs and isolated migration-0046 persistence.
+- **Next — V020-11R:** reconcile the recovered v0.1.x intake/apply safety work
+  before defining Spin publication-plan integration.
+- **Not implemented yet:** approved collection authoring,
   publication integration, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the
   existence of contract or domain types.
@@ -434,15 +439,17 @@ an honest usable experience.
    recipe, Spin, onboarding-session, and publication-link migration 0046. No
    production migration or provider change occurred.
 6. **Complete:** capture immutable onboarding inputs and produce inventory-only
-   and enriched provider-free audit results. CLI exposure remains V020-11.
+   and enriched provider-free audit results.
 7. **Complete:** implement initial **Discovery + Rediscovery** selection with
    allocation, cadence capacity, eligibility, budgets, and section capacity.
 8. **Complete:** persist and display the deterministic exact Spin order,
    fingerprints, capability snapshot, seed, and per-track explanations.
-9. Rehearse the complete provider-write-free product path through the CLI.
-10. Connect approved Spins to the existing immutable sync plan/apply/verify
+9. **Complete:** rehearse the complete provider-write-free product path through
+   the opt-in development CLI and installed-binary helper.
+10. Reconcile recovered v0.1.x intake/apply compatibility and plan origins.
+11. Connect approved Spins to the existing immutable sync plan/apply/verify
    boundary.
-11. Introduce the hosted Rust service and authenticated client transport without
+12. Introduce the hosted Rust service and authenticated client transport without
    distributing Neon or provider refresh credentials.
 12. Build native clients over the stable contract only after isolation,
    compatibility, and deterministic-preview tests pass.

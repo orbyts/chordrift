@@ -56,9 +56,13 @@ capability degradation and unfilled seats without provider or database access.
 V020-10 now turns that verified draft into an exact ordered Spin with stable
 identity, seed, capability snapshot, selection/ordering reasons, narrative
 sections, warnings, fingerprints, idempotent migration-0046 persistence, and an
-account-scoped query view. It still performs no provider action. V020-11's
-CLI-first product rehearsal is next; hosted transport and native clients remain
-later work.
+account-scoped query view. It still performs no provider action. V020-11 now
+exposes those Rust-owned onboarding, collection, recipe, and Spin views through
+one opt-in `product` CLI namespace and an installed-binary comparison/replay
+helper. The commands accept fake/captured inputs, require an isolated
+migration-0046 database for persistence, and cannot call or write a provider.
+The recovered-intake compatibility reconciliation is the next required gate;
+publication planning, hosted transport, and native clients remain later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages
