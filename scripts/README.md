@@ -179,6 +179,34 @@ It refuses stale plans, `cleanup`, `retirement`, and reconcile while publish
 operations remain in the same plan. Those restrictions are intentional; the
 script is a convenience, not a bypass around Chordrift's safety model.
 
+## Guided mixed-intake workflow
+
+`chordrift-intake-wizard.sh` is the common interactive path for a batch spread
+across Liked Songs, Inbox, From Friends, Liked from Radio, and From Prompts:
+
+```console
+$ scripts/chordrift-intake-wizard.sh --account personal
+```
+
+It starts with a fresh pull. Before intake review it creates an immutable plan
+and isolates any pending `exclude_track` operations caused by removals from
+verified managed playlists. Those must be reconciled and pulled first; the
+wizard refuses to mix them with unrelated publish or retirement work.
+
+The second stage calls `chordrift intake audit`, a read-only Rust query over the
+exact current provider snapshot plus Neon intent, exclusions, and normalized
+history. It walks through active exclusions, private/manual placements, normal
+existing-playlist suggestions, complete-proposal approval, unchanged artwork
+reuse, phased publication, verification, and exact-confirmed destructive intake
+cleanup. `--review-only` stops after the joined classification report.
+
+The wizard intentionally stops when it encounters unrelated unresolved tracks,
+a missing existing-playlist suggestion, a new playlist, retirement, or artwork
+that cannot be reused unchanged. Those are separate creative or destructive
+decisions, not intake automation. Like every helper here, it uses the installed
+binary selected by `CHORDRIFT_BIN`; it contains no SQL, Spotify API client, or
+clustering implementation.
+
 ## Artwork label renderer
 
 `render_artwork_label.swift` is an internal macOS development helper for

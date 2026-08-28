@@ -18,6 +18,19 @@ Chordrift has three deliberately separate synchronization paths:
 | `chordrift history ingest` | Newly downloaded ZIPs in the local account inbox | Add only previously unknown historical events, then retain the ZIPs in the local archive. |
 | `chordrift history restore` | ZIPs already retained in the local archive | Rebuild enrichment after database recovery; not part of normal synchronization. |
 
+Audit the exact current Liked Songs and named intake inventory after a pull:
+
+```console
+$ chordrift intake audit --account personal
+```
+
+This read-only query joins the current provider snapshot with current canonical
+membership, the latest proposal, active and historical exclusions, and
+normalized listening statistics. Each track is labeled `already_covered`,
+`previously_excluded`, `assigned_approved`, `suggested_in_draft`,
+`known_from_history`, or `genuinely_new`. It performs no provider request and no
+database write; run `sync pull` first whenever provider state may have changed.
+
 After changing one or more playlists in Spotify, pull those changes into Neon:
 
 ```console

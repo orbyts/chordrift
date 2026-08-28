@@ -9,8 +9,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use crate::{
     ChordriftError, Result, albums, analysis, apply, apply_readiness, artwork, bookmarks,
     classifications, clusters, config, db, db_cleanup, db_reports, db_v2_migration, embeddings,
-    enrichment, history, model_inference, playlists, presentation, proposals, providers::spotify,
-    routes, signals, sync_plan, terminal, tracks,
+    enrichment, history, intake, model_inference, playlists, presentation, proposals,
+    providers::spotify, routes, signals, sync_plan, terminal, tracks,
 };
 
 /// Chordrift command-line interface.
@@ -36,6 +36,12 @@ pub enum Command {
         /// Spotify operation to perform.
         #[command(subcommand)]
         command: SpotifyCommand,
+    },
+    /// Audit current provider intake against Chordrift intent and history.
+    Intake {
+        /// Intake operation to perform.
+        #[command(subcommand)]
+        command: IntakeCommand,
     },
     /// Pull provider changes into Neon and refresh derived state.
     Sync {
@@ -133,6 +139,17 @@ pub enum Command {
         /// Enrichment operation to perform.
         #[command(subcommand)]
         command: EnrichmentCommand,
+    },
+}
+
+/// Read-only current-provider intake commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum IntakeCommand {
+    /// Join the exact current intake inventory with coverage, exclusions, and history.
+    Audit {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
     },
 }
 
@@ -1566,6 +1583,20 @@ async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
                 writeln!(output, "account: {account}")?;
             }
         },
+        Command::Intake { command } => {
+            let database = connect_current_database().await?;
+            let result: Result<()> = async {
+                match command {
+                    IntakeCommand::Audit { account } => {
+                        let report = intake::audit(&database, &account).await?;
+                        write_intake_audit(output, &report)
+                    }
+                }
+            }
+            .await;
+            database.close().await;
+            result?;
+        }
         Command::Sync { command } => match command {
             SyncCommand::Pull { account } => {
                 let database = connect_current_database().await?;
@@ -5928,6 +5959,86 @@ fn write_sync_plan_report(output: &mut impl Write, report: &sync_plan::PlanRepor
     Ok(())
 }
 
+fn write_intake_audit(output: &mut impl Write, report: &intake::IntakeAudit) -> Result<()> {
+    use intake::IntakeState;
+
+    let count = |state| {
+        report
+            .items
+            .iter()
+            .filter(|item| item.state == state)
+            .count()
+    };
+    writeln!(output, "intake audit: current")?;
+    writeln!(output, "snapshot_id: {}", report.snapshot_id)?;
+    writeln!(
+        output,
+        "proposal_generation_id: {}",
+        report
+            .proposal_generation_id
+            .map_or_else(|| "-".to_owned(), |value| value.to_string())
+    )?;
+    writeln!(
+        output,
+        "proposal_state: {}",
+        report.proposal_state.as_deref().unwrap_or("-")
+    )?;
+    writeln!(output, "items: {}", report.items.len())?;
+    writeln!(
+        output,
+        "already_covered: {}",
+        count(IntakeState::AlreadyCovered)
+    )?;
+    writeln!(
+        output,
+        "previously_excluded: {}",
+        count(IntakeState::PreviouslyExcluded)
+    )?;
+    writeln!(
+        output,
+        "assigned_approved: {}",
+        count(IntakeState::AssignedApproved)
+    )?;
+    writeln!(
+        output,
+        "suggested_in_draft: {}",
+        count(IntakeState::SuggestedInDraft)
+    )?;
+    writeln!(
+        output,
+        "known_from_history: {}",
+        count(IntakeState::KnownFromHistory)
+    )?;
+    writeln!(
+        output,
+        "genuinely_new: {}",
+        count(IntakeState::GenuinelyNew)
+    )?;
+    writeln!(output, "spotify_writes: disabled")?;
+    writeln!(
+        output,
+        "state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id"
+    )?;
+    for item in &report.items {
+        writeln!(
+            output,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            item.state.as_str(),
+            clean_cell(&item.title),
+            clean_cell(&item.artists),
+            clean_cell(&item.sources.join(" / ")),
+            clean_cell(&item.current_destinations.join(" / ")),
+            clean_cell(&item.proposal_destinations.join(" / ")),
+            item.listening_events,
+            item.play_count,
+            item.exclusion_history,
+            clean_cell(item.active_exclusion_reason.as_deref().unwrap_or("-")),
+            item.spotify_id
+        )?;
+    }
+    Ok(())
+}
+
 fn write_apply_report(output: &mut impl Write, report: &apply::ApplyReport) -> Result<()> {
     writeln!(output, "spotify apply: {}", report.status)?;
     writeln!(output, "apply_run_id: {}", report.apply_run_id)?;
@@ -5956,7 +6067,7 @@ mod tests {
         AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand,
         ClassificationCommand, Cli, ClusterCommand, Command, DbCleanupCommand, DbCommand,
         DbCompactCommand, DbV2Command, DbV2MigrationCommand, EmbeddingCommand, EnrichmentCommand,
-        HistoryCommand, LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg,
+        HistoryCommand, IntakeCommand, LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg,
         PlaylistSignalClassArg, ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg,
         SignalCommand, SpotifyCommand, SyncCommand, TrackCommand, format_count, format_elapsed,
         write_status,
@@ -5971,6 +6082,18 @@ mod tests {
             Command::Db {
                 command: DbCommand::Status
             }
+        ));
+    }
+
+    #[test]
+    fn parses_read_only_intake_audit() {
+        let cli = Cli::try_parse_from(["chordrift", "intake", "audit", "--account", "personal"])
+            .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Intake {
+                command: IntakeCommand::Audit { account }
+            } if account == "personal"
         ));
     }
 

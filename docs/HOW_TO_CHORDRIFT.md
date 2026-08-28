@@ -13,6 +13,7 @@ is staged for inspection rather than silently guessed.
 | I want to… | Guide | Spotify action |
 | --- | --- | --- |
 | Add or discover a song | [Add songs and preserve discovery context](how-to/ADDING_AND_DISCOVERY.md) | Like/Save it; use a named intake only for a richer signal. |
+| Review a mixed intake batch safely | [Add songs and preserve discovery context](how-to/ADDING_AND_DISCOVERY.md) | The intake wizard pulls first, isolates pending exclusions, then reviews Liked Songs and named intakes. |
 | Inventory or retire saved albums | [Saved albums and album cleanup](how-to/SAVED_ALBUMS.md) | Archive-only retirement keeps immutable album and track history. |
 | Stop hearing a song | [Delete or exclude a track safely](how-to/DELETING_AND_EXCLUDING.md) | Remove it from its verified Chordrift playlist, then reconcile. |
 | Keep a song but reject its current vibe | [Re-evaluate and reclassify a track](how-to/ROUTING_AND_RECLASSIFYING.md) | Move it to `Re-evaluate` and remove the wrong destination. |
@@ -74,6 +75,21 @@ shows the receipt, and creates the convergence plan. It refuses stale,
 multi-phase, cleanup, and retirement plans. Use `--skip-initial-pull` only when
 you have just completed and inspected a pull. `CHORDRIFT_BIN` may point to an
 alternate installed executable; the wrapper never invokes `cargo run`.
+
+For the complete common intake workflow, including a mandatory fresh provider
+pull, pending-exclusion isolation, exact intake audit, reviewed existing-
+playlist suggestions, verified publication, and separately confirmed intake
+cleanup, use:
+
+```console
+$ scripts/chordrift-intake-wizard.sh --account personal
+```
+
+The wizard never queries Spotify or Neon directly. Its classification comes
+from the read-only Rust `chordrift intake audit` boundary over the exact current
+provider snapshot plus durable Chordrift intent, exclusions, and listening
+evidence. It stops instead of mixing new-playlist, new-artwork, retirement, or
+unrelated unresolved work into the intake batch.
 
 ## Semantic playlists used for capture
 

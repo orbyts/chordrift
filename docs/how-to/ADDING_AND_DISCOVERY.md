@@ -61,7 +61,82 @@ write to Spotify.
 The consumer product should perform steps 2–7 in the background and surface
 only an understandable proposal when confidence or intent is ambiguous.
 
-## Review a mixed intake batch
+## Recommended: run the intake wizard
+
+For the common mixed batch—Liked Songs, Inbox, From Friends, Liked from Radio,
+and From Prompts—run:
+
+```console
+$ scripts/chordrift-intake-wizard.sh --account personal
+```
+
+The wizard deliberately handles two independent kinds of intent in order:
+
+1. It performs a fresh `sync pull`, creates an immutable baseline plan, and
+   checks for removals from verified Chordrift-managed playlists. If those
+   would become exclusions, it displays and reconciles them first, then pulls
+   again. It stops when unrelated publication or retirement work would make
+   that phase ambiguous.
+2. It runs the read-only Rust intake audit over that exact snapshot. The report
+   separates tracks already covered by a current managed playlist, active past
+   exclusions, approved-but-unpublished assignments, draft suggestions, tracks
+   known only from listening history, and genuinely new tracks.
+
+For every active exclusion, choose whether the new intake gesture means
+“restore and reconsider” or “keep excluded.” For unresolved tracks, choose a
+manual existing destination, an automatic existing-playlist suggestion, or an
+explicit exclusion. Automatic placements remain in an editable proposal until
+you review the exact destination and approve the complete generation.
+
+The wizard can reuse the existing reviewed artwork files only when Chordrift
+validates them unchanged against the new proposal. It stops when a new playlist
+or genuinely new artwork is required so that naming/artwork design remains a
+separate explicit workflow. Provider execution remains phase-separated:
+publish, pull/verify, then exact-confirmed destructive intake cleanup.
+
+Use the read-only form when you only want the classification report:
+
+```console
+$ scripts/chordrift-intake-wizard.sh --account personal --review-only
+```
+
+`--skip-pull` exists only for the narrow case where you have just completed and
+inspected a successful pull yourself. The default fresh pull is the safe path.
+
+## Manual equivalent: separate exclusions, then intake
+
+Start from exact current provider state:
+
+```console
+$ chordrift sync pull --account personal
+$ chordrift sync plan --account personal
+$ chordrift sync plan-show --account personal --details
+```
+
+Before changing intake intent, inspect any `exclude_track` operation in the
+`reconcile` phase. If present, assess/apply only reconcile, pull, and create a
+new plan. Do not combine an old assessment with the later intake state:
+
+```console
+$ chordrift sync readiness --account personal --plan PLAN_ID --probe
+$ chordrift sync apply --account personal \
+    --assessment ASSESSMENT_ID --phase reconcile \
+    --confirm ASSESSMENT_ID
+$ chordrift sync pull --account personal
+```
+
+Now ask Rust to join the fresh intake inventory with Neon intent and history:
+
+```console
+$ chordrift intake audit --account personal
+```
+
+Spotify is authoritative for current Liked Songs and named-intake membership.
+Neon is authoritative for Chordrift assignments, reversible exclusions, and
+normalized listening history. The audit performs that join without changing
+either system and emits stable redirected TSV for operator scripts.
+
+## Review and place the intake batch manually
 
 After adding a group of tracks to Liked Songs, Inbox, or Re-evaluate, pull once
 and inspect the complete unresolved set:

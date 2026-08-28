@@ -4,6 +4,11 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Add a v0.1.4-compatible read-only intake audit and guided operator wizard
+  that starts from a fresh provider pull, isolates pending managed removals,
+  joins current intake with durable intent/history, and preserves all existing
+  plan, readiness, apply, verification, and cleanup gates.
+
 ## [0.1.4] - 2026-08-26
 
 - Run independent saved-track, saved-album, and recent-play Spotify probes

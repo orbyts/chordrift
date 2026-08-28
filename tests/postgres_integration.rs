@@ -1,7 +1,229 @@
-use chordrift::{config, db, db_reports};
+use chordrift::{
+    config, db, db_reports,
+    intake::{self, IntakeState},
+};
 use serde_json::json;
 use storexa::{DatabaseConfig, PostgresProvider};
 use uuid::Uuid;
+
+#[tokio::test]
+#[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for a disposable PostgreSQL database"]
+async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
+    let config = DatabaseConfig::from_env_var("CHORDRIFT_TEST_DATABASE_URL")?
+        .with_name("chordrift-intake-audit-test")?
+        .with_provider(PostgresProvider::Neon)?
+        .with_min_connections(0)
+        .with_max_connections(2);
+    let database = db::connect(config).await?;
+    db::migrate(&database).await?;
+
+    let suffix = Uuid::new_v4().simple().to_string();
+    let account_label = format!("intake-{suffix}");
+    let account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_accounts
+         (provider, provider_account_id, account_label)
+         VALUES ('spotify', $1, $2) RETURNING id",
+    )
+    .bind(format!("provider-{suffix}"))
+    .bind(&account_label)
+    .fetch_one(database.pool())
+    .await?;
+    let snapshot_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_library_snapshots
+         (provider, source, provider_account_id)
+         VALUES ('spotify', 'intake-audit-test', $1) RETURNING id",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+
+    let mut tracks = Vec::new();
+    for (index, title) in [
+        "Already Covered",
+        "Previously Excluded",
+        "Known From History",
+        "Genuinely New",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let track_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO tracks (title, normalized_title)
+             VALUES ($1, lower($1)) RETURNING id",
+        )
+        .bind(title)
+        .fetch_one(database.pool())
+        .await?;
+        let provider_track_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO provider_tracks (track_id, provider, provider_track_id)
+             VALUES ($1, 'spotify', $2) RETURNING id",
+        )
+        .bind(track_id)
+        .bind(format!("intake-track-{index}-{suffix}"))
+        .fetch_one(database.pool())
+        .await?;
+        tracks.push((track_id, provider_track_id));
+    }
+
+    let saved_track_revision_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_saved_track_revisions
+         (provider_account_id, content_sha256, item_count)
+         VALUES ($1, $2, 4) RETURNING id",
+    )
+    .bind(account_id)
+    .bind("a".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    for (position, (_, provider_track_id)) in tracks.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO provider_saved_track_revision_tracks
+             (revision_id, provider_track_id, position)
+             VALUES ($1, $2, $3)",
+        )
+        .bind(saved_track_revision_id)
+        .bind(provider_track_id)
+        .bind(i32::try_from(position).expect("fixture position fits i32"))
+        .execute(database.pool())
+        .await?;
+    }
+    let saved_album_revision_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_saved_album_revisions
+         (provider_account_id, content_sha256, album_count, track_count)
+         VALUES ($1, $2, 0, 0) RETURNING id",
+    )
+    .bind(account_id)
+    .bind("b".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    sqlx::query(
+        "INSERT INTO provider_current_inventories
+         (provider_account_id, provider, source_snapshot_id,
+          saved_track_revision_id, saved_album_revision_id,
+          state_sha256, captured_at)
+         VALUES ($1, 'spotify', $2, $3, $4, $5, now())",
+    )
+    .bind(account_id)
+    .bind(snapshot_id)
+    .bind(saved_track_revision_id)
+    .bind(saved_album_revision_id)
+    .bind("c".repeat(64))
+    .execute(database.pool())
+    .await?;
+
+    let playlist_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlists (name, kind) VALUES ('Fixture Canonical', 'historical')
+         RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let provider_playlist_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_playlists (playlist_id, provider, provider_playlist_id)
+         VALUES ($1, 'spotify', $2) RETURNING id",
+    )
+    .bind(playlist_id)
+    .bind(format!("intake-playlist-{suffix}"))
+    .fetch_one(database.pool())
+    .await?;
+    let playlist_revision_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_playlist_revisions
+         (provider_playlist_id, content_sha256, item_count)
+         VALUES ($1, $2, 1) RETURNING id",
+    )
+    .bind(provider_playlist_id)
+    .bind("d".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    sqlx::query(
+        "INSERT INTO provider_playlist_revision_tracks
+         (revision_id, provider_track_id, position) VALUES ($1, $2, 0)",
+    )
+    .bind(playlist_revision_id)
+    .bind(tracks[0].1)
+    .execute(database.pool())
+    .await?;
+    sqlx::query(
+        "INSERT INTO provider_current_playlists
+         (provider_account_id, provider_playlist_id, revision_id, name,
+          collaborative, reported_item_count)
+         VALUES ($1, $2, $3, 'Fixture Canonical', FALSE, 1)",
+    )
+    .bind(account_id)
+    .bind(provider_playlist_id)
+    .bind(playlist_revision_id)
+    .execute(database.pool())
+    .await?;
+    sqlx::query(
+        "INSERT INTO provider_account_playlists
+         (provider_account_id, provider_playlist_id, role, drift_policy,
+          present_in_latest_snapshot, semantic_weight, signal_class)
+         VALUES ($1, $2, 'managed', 'neon_wins', TRUE, 0.0, 'canonical')",
+    )
+    .bind(account_id)
+    .bind(provider_playlist_id)
+    .execute(database.pool())
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO excluded_tracks
+         (provider_account_id, track_id, source_provider, excluded_at,
+          exclusion_reason)
+         VALUES ($1, $2, 'user_explicit', now(), 'fixture exclusion')",
+    )
+    .bind(account_id)
+    .bind(tracks[1].0)
+    .execute(database.pool())
+    .await?;
+    sqlx::query(
+        "INSERT INTO account_listening_track_statistics
+         (provider_account_id, provider_track_id, track_id, event_count,
+          play_count, total_ms_played, average_ms_played, skip_count,
+          completed_count, first_played_at, last_played_at)
+         VALUES ($1, $2, $3, 7, 3, 21000, 3000, 1, 2, now(), now())",
+    )
+    .bind(account_id)
+    .bind(format!("history-{suffix}"))
+    .bind(tracks[2].0)
+    .execute(database.pool())
+    .await?;
+
+    let before: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM provider_saved_track_revision_tracks
+         WHERE revision_id = $1",
+    )
+    .bind(saved_track_revision_id)
+    .fetch_one(database.pool())
+    .await?;
+    let audit = intake::audit(&database, &account_label).await?;
+    let after: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM provider_saved_track_revision_tracks
+         WHERE revision_id = $1",
+    )
+    .bind(saved_track_revision_id)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(before, after, "intake audit must be read-only");
+    assert_eq!(audit.snapshot_id, snapshot_id);
+    assert_eq!(audit.items.len(), 4);
+    assert_eq!(audit.items[0].state, IntakeState::AlreadyCovered);
+    assert_eq!(audit.items[1].state, IntakeState::GenuinelyNew);
+    assert_eq!(audit.items[2].state, IntakeState::KnownFromHistory);
+    assert_eq!(audit.items[3].state, IntakeState::PreviouslyExcluded);
+
+    sqlx::query("DELETE FROM provider_current_inventories WHERE provider_account_id = $1")
+        .bind(account_id)
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM provider_library_snapshots WHERE id = $1")
+        .bind(snapshot_id)
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM provider_accounts WHERE id = $1")
+        .bind(account_id)
+        .execute(database.pool())
+        .await?;
+    database.close().await;
+    Ok(())
+}
 
 #[tokio::test]
 #[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for a disposable PostgreSQL database"]

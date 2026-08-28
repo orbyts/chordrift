@@ -6,7 +6,20 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-08-26.
+Last updated: 2026-08-28.
+
+The isolated `codex/v014-intake-compatible` maintenance branch is based
+directly on the released v0.1.4 tag and therefore embeds exactly migrations
+0001–0045. It adds the read-only `chordrift intake audit` command and
+`scripts/chordrift-intake-wizard.sh` without migration 0046 or any v0.2 domain
+surface. The wizard starts from a fresh Spotify pull, isolates pending managed
+playlist removals before intake work, joins current intake with canonical
+coverage/exclusions/proposals/listening history, and retains exact approval and
+apply gates. It refuses new-playlist/artwork design, retirement, unrelated
+unresolved tracks, and ambiguous mixed plans. Use a dedicated Cargo target so
+the v0.2 development build cannot overwrite this operator binary. Do not run a
+database migration for this maintenance workflow; production is correctly
+current at 45/45.
 
 ## Start the next task here: observe the released v0.1.4 workflow
 
