@@ -18,6 +18,9 @@ All notable changes to Chordrift are documented here.
 - Continue a reviewed workflow across fresh publish, reconcile, and cleanup
   plans until zero-operation convergence, replacing the arbitrary five-phase
   stop with a 32-phase ceiling and repeated-target no-progress detection.
+- Retry bounded provider observation after a successful Spotify phase, and
+  re-prove exact canonical state against the cleanup plan's current snapshot
+  when an unchanged pull advanced the observation identity.
 
 ## [0.1.4] - 2026-08-26
 

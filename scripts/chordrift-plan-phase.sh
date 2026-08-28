@@ -83,10 +83,11 @@ WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chordrift-plan-phase.XXXXXX")
 DETAIL_FILE=$WORK_DIR/details.txt
 READINESS_FILE=$WORK_DIR/readiness.txt
 APPLY_FILE=$WORK_DIR/apply.txt
+VERIFY_FILE=$WORK_DIR/verify.txt
 NEXT_PLAN_FILE=$WORK_DIR/next-plan.txt
 
 cleanup() {
-    rm -f "$DETAIL_FILE" "$READINESS_FILE" "$APPLY_FILE" "$NEXT_PLAN_FILE"
+    rm -f "$DETAIL_FILE" "$READINESS_FILE" "$APPLY_FILE" "$VERIFY_FILE" "$NEXT_PLAN_FILE"
     rmdir "$WORK_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT HUP INT TERM
@@ -174,8 +175,37 @@ APPLY_RUN_ID=$(field apply_run_id "$APPLY_FILE")
 run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID"
 
 stage "Verify" "pull provider state and verify the exact receipt"
-run_chordrift sync pull --account "$ACCOUNT"
-run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID"
+VERIFY_ATTEMPT=1
+MAX_VERIFY_ATTEMPTS=4
+while [ "$VERIFY_ATTEMPT" -le "$MAX_VERIFY_ATTEMPTS" ]; do
+    run_chordrift sync pull --account "$ACCOUNT"
+    run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID" \
+        >"$VERIFY_FILE"
+    run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID"
+    APPLY_STATUS=$(field spotify_apply "$VERIFY_FILE" | sed 's/ (already current)$//')
+    case "$APPLY_STATUS" in
+        succeeded)
+            break
+            ;;
+        awaiting_pull)
+            if [ "$VERIFY_ATTEMPT" -ge "$MAX_VERIFY_ATTEMPTS" ]; then
+                printf 'Spotify accepted the phase, but Chordrift could not observe it after %s pulls.\n' \
+                    "$MAX_VERIFY_ATTEMPTS" >&2
+                printf 'The receipt remains awaiting verification; no later phase was attempted.\n' >&2
+                exit 3
+            fi
+            stage "Verification retry $((VERIFY_ATTEMPT + 1))/$MAX_VERIFY_ATTEMPTS" \
+                "wait briefly for Spotify playlist observation"
+            sleep 2
+            ;;
+        *)
+            printf 'Apply receipt entered unexpected state %s; no later phase was attempted.\n' \
+                "${APPLY_STATUS:-unknown}" >&2
+            exit 3
+            ;;
+    esac
+    VERIFY_ATTEMPT=$((VERIFY_ATTEMPT + 1))
+done
 
 stage "Next plan" "build from the newly observed provider snapshot"
 run_chordrift sync plan --account "$ACCOUNT" >"$NEXT_PLAN_FILE"

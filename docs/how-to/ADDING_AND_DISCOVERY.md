@@ -102,6 +102,10 @@ plans until it reaches zero operations; it no longer stops after an arbitrary
 five phases. A repeated phase with the same operation types, exact
 playlist/track targets, and payloads is treated as a no-progress cycle and
 stops safely.
+After Spotify accepts a phase, the helper performs up to four verification
+pulls before allowing the next phase. Destructive cleanup also re-proves exact
+canonical membership against its own current observation, so an intervening
+unchanged pull cannot invalidate otherwise current verification evidence.
 
 Use the read-only form when you only want the classification report:
 

@@ -778,6 +778,11 @@ Implement the provider-neutral recipe domain before building elaborate UI:
 - deterministic preview with no provider writes;
 - an initial `New Discoveries + Rediscovery` recipe that can use Like/save time,
   recent observations, and optional extended history;
+- one resumable workflow state machine for every client: persist provider write
+  receipts before verification, tolerate bounded provider-observation lag,
+  re-prove or safely carry exact verification across unchanged observations,
+  continue through publish/reconcile/cleanup until zero operations, and expose
+  “awaiting provider observation” distinctly from failure;
 - a thin native client that can inspect a proposal, adjust a small set of
   meaningful controls, open a track in its provider, and approve through the
   existing immutable execution gates.

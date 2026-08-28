@@ -213,6 +213,10 @@ After approval, one invocation continues across successive immutable plans and
 fresh pulls until the plan has zero operations. The convergence ceiling is 32
 phases, not the former arbitrary five; a ledger of phase/operation/target/
 payload signatures stops a repeated no-progress cycle well before that ceiling.
+The phase helper tolerates delayed Spotify observation with at most four pulls.
+Cleanup never relies on a stale verification receipt: the Rust apply gate
+re-proves the complete approved canonical state against the exact current
+snapshot before permitting an intake removal.
 
 The wizard intentionally stops when it encounters unrelated unresolved tracks,
 a missing existing-playlist suggestion, a new playlist, retirement, or artwork

@@ -908,8 +908,16 @@ async fn load_gate(
         .bind(snapshot_id)
         .fetch_one(database.pool())
         .await?;
-        if verification.try_get::<i64, _>("required")?
-            != verification.try_get::<i64, _>("verified")?
+        let required = verification.try_get::<i64, _>("required")?;
+        let verified = verification.try_get::<i64, _>("verified")?;
+        if required != verified
+            && !verify_publication(
+                database,
+                row.try_get("account_id")?,
+                snapshot_id,
+                proposal_id,
+            )
+            .await?
         {
             return Err(configuration(
                 "destructive phases require every canonical destination to be verified in the current pulled snapshot",

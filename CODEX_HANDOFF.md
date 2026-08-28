@@ -36,6 +36,10 @@ five-iteration safety bound while a legitimate follow-up reorder and verified
 intake cleanup remained. The wizard now continues until the newest plan has
 zero operations, with a 32-phase abnormal-churn ceiling and an in-run signature
 ledger that stops repeated phase/operation/playlist/track/payload signatures.
+The phase helper now waits through at most four provider pulls for a successful
+receipt. The destructive Rust gate also recomputes full canonical verification
+for its exact current snapshot when an unchanged pull advanced the observation
+ID, preserving the guard while allowing the same wizard run to reach cleanup.
 
 ## Start the next task here: observe the released v0.1.4 workflow
 
