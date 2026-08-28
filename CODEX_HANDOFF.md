@@ -43,6 +43,16 @@ ID, preserving the guard while allowing the same wizard run to reach cleanup.
 The live retry path exposed a redirected-label mismatch (`spotify apply` versus
 `spotify_apply`); the helper now accepts the stable human label and the legacy
 underscore spelling before deciding whether to retry or advance.
+The live audit then proved that a one-track publish had replaced the complete
+playlist and restored 92 previously removed Dakshina tracks whose exclusion
+plans had never become durable. Apply v4 now appends only enumerated additions;
+full replacement is legal only for an explicit membership-identical reorder.
+Those 92 tracks were recovered as active exclusions with one common audit
+reason, removed through verified apply run
+`5ec60422-e00a-4788-8534-a5289ae3e5c0`, and re-observed from Spotify. The final
+normalized-current-state invariant was 92 active recovery exclusions and zero
+of those tracks in Dakshina Pulse. The separate Snowglass comparison track was
+not changed.
 
 ## Start the next task here: observe the released v0.1.4 workflow
 

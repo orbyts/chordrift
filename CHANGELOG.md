@@ -23,6 +23,9 @@ All notable changes to Chordrift are documented here.
   when an unchanged pull advanced the observation identity.
 - Parse the redirected human-readable `spotify apply` receipt label during
   bounded verification retries instead of misreporting it as an unknown state.
+- Execute ordinary additions as only their enumerated plan operations. Reserve
+  exact full-playlist replacement for an explicit reorder whose live and
+  desired memberships are identical, preventing hidden track restorations.
 
 ## [0.1.4] - 2026-08-26
 

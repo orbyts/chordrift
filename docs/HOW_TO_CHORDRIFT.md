@@ -62,6 +62,12 @@ Never apply a plan merely because it exists. Confirm that its operations match
 your intent, then follow the readiness and apply sequence in
 [Synchronize and prove convergence](how-to/SYNC_AND_CONVERGENCE.md).
 
+Plan operations are the complete write authority. A planned addition may append
+only its named track; it cannot rewrite the full playlist. Full replacement is
+allowed only for an explicit reorder after Chordrift proves that current and
+desired membership are identical. Consequently, publishing a later intake
+track cannot silently restore a track you previously removed and excluded.
+
 For the complete terminal workflow, the repository includes an operator-only
 wrapper that uses the installed `chordrift` binary:
 

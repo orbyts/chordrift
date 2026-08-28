@@ -16,7 +16,7 @@ use crate::{
     providers::spotify::{self, MutationSession},
 };
 
-const APPLY_VERSION: &str = "spotify-apply-v3";
+const APPLY_VERSION: &str = "spotify-apply-v4";
 const READINESS_VERSION: &str = "spotify-apply-readiness-v5";
 const PLANNER_VERSION: &str = "spotify-dry-run-v10";
 
@@ -1166,30 +1166,84 @@ async fn execute_publish(
             }
             continue;
         }
-        for operation in &pending {
-            if operation.kind != "reorder_playlist" && operation.spotify_track_id.is_none() {
+        let reorders = pending
+            .iter()
+            .filter(|operation| operation.kind == "reorder_playlist")
+            .count();
+        if reorders > 0 {
+            if reorders != pending.len() {
                 return Err(configuration(
-                    "planned track addition has no Spotify track ID",
+                    "a reorder phase cannot contain implicit membership changes",
                 ));
             }
-            if operation.status != "succeeded" {
+            let mut live_membership = live_items.clone();
+            live_membership.sort();
+            let mut desired_membership = desired.clone();
+            desired_membership.sort();
+            if live_membership != desired_membership {
+                return Err(configuration(
+                    "a reorder requires identical current and desired membership",
+                ));
+            }
+            for operation in &pending {
                 mark_running(database, run_id, operation).await?;
             }
+            let first = desired.len().min(100);
+            let mut snapshot = session.replace_items(&target, &desired[..first]).await?;
+            for chunk in desired[first..].chunks(100) {
+                snapshot = session.add_items(&target, chunk, None).await?;
+            }
+            for operation in &pending {
+                mark_succeeded(
+                    database,
+                    run_id,
+                    operation,
+                    &target,
+                    json!({"snapshot_id": snapshot, "exact_order_replaced": true}),
+                )
+                .await?;
+            }
+            continue;
         }
-        let first = desired.len().min(100);
-        let mut snapshot = session.replace_items(&target, &desired[..first]).await?;
-        for chunk in desired[first..].chunks(100) {
-            snapshot = session.add_items(&target, chunk, None).await?;
-        }
+
+        let mut missing = Vec::new();
         for operation in &pending {
-            mark_succeeded(
-                database,
-                run_id,
-                operation,
-                &target,
-                json!({"snapshot_id": snapshot, "exact_order_replaced": true}),
-            )
-            .await?;
+            let spotify_track_id = operation
+                .spotify_track_id
+                .as_ref()
+                .ok_or_else(|| configuration("planned track addition has no Spotify track ID"))?;
+            if live_items.contains(spotify_track_id) {
+                mark_succeeded(
+                    database,
+                    run_id,
+                    operation,
+                    &target,
+                    json!({"reused_live_membership": true}),
+                )
+                .await?;
+            } else {
+                missing.push((*operation, spotify_track_id.clone()));
+            }
+        }
+        for chunk in missing.chunks(100) {
+            for (operation, _) in chunk {
+                mark_running(database, run_id, operation).await?;
+            }
+            let spotify_track_ids = chunk
+                .iter()
+                .map(|(_, spotify_track_id)| spotify_track_id.clone())
+                .collect::<Vec<_>>();
+            let snapshot = session.add_items(&target, &spotify_track_ids, None).await?;
+            for (operation, _) in chunk {
+                mark_succeeded(
+                    database,
+                    run_id,
+                    operation,
+                    &target,
+                    json!({"snapshot_id": snapshot, "enumerated_addition": true}),
+                )
+                .await?;
+            }
         }
     }
 

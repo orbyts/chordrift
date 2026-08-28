@@ -783,6 +783,9 @@ Implement the provider-neutral recipe domain before building elaborate UI:
   re-prove or safely carry exact verification across unchanged observations,
   continue through publish/reconcile/cleanup until zero operations, and expose
   “awaiting provider observation” distinctly from failure;
+- enforce an exact plan/apply contract: incremental additions may write only
+  enumerated tracks, while full replacement requires an explicit reorder and
+  proof that current and desired memberships are identical;
 - a thin native client that can inspect a proposal, adjust a small set of
   meaningful controls, open a track in its provider, and approve through the
   existing immutable execution gates.

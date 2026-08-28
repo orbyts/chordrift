@@ -179,6 +179,13 @@ It refuses stale plans, `cleanup`, `retirement`, and reconcile while publish
 operations remain in the same plan. Those restrictions are intentional; the
 script is a convenience, not a bypass around Chordrift's safety model.
 
+The Rust apply contract is also exact: an ordinary addition appends only the
+track IDs enumerated by the reviewed plan. It cannot replace the rest of the
+playlist. A complete playlist replacement is reserved for an explicit
+`reorder_playlist` operation, and apply refuses it unless the live and desired
+memberships are identical. This keeps a later intake publish from silently
+restoring tracks removed during an earlier cleanup.
+
 ## Guided mixed-intake workflow
 
 `chordrift-intake-wizard.sh` is the common interactive path for a batch spread
