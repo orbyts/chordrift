@@ -11,8 +11,8 @@ use crate::{
     ChordriftError, Result, albums, analysis,
     application::{ApplicationFacade, ApplicationInvocation},
     apply, apply_readiness, artwork, bookmarks, classifications, clusters, config, db, db_cleanup,
-    db_reports, db_v2_migration, embeddings, enrichment, history, model_inference, onboarding,
-    onboarding_audit, playlists, presentation, product_rehearsal, proposals,
+    db_reports, db_v2_migration, embeddings, enrichment, history, intake, model_inference,
+    onboarding, onboarding_audit, playlists, presentation, product_rehearsal, proposals,
     providers::spotify,
     recipe_execution, routes, signals, spin_preview, sync_plan, terminal, tracks,
 };
@@ -29,6 +29,12 @@ pub struct Cli {
 /// Top-level Chordrift commands.
 #[derive(Clone, Debug, Subcommand)]
 pub enum Command {
+    /// Print and optionally require stable installed-binary capabilities as JSON.
+    Capabilities {
+        /// Capability that must be available; may be repeated.
+        #[arg(long = "require", value_name = "CAPABILITY")]
+        required: Vec<String>,
+    },
     /// Rehearse the provider-neutral v0.2 product through the local CLI.
     Product {
         /// Product operation to perform.
@@ -46,6 +52,12 @@ pub enum Command {
         /// Spotify operation to perform.
         #[command(subcommand)]
         command: SpotifyCommand,
+    },
+    /// Audit current provider intake against Chordrift intent and history.
+    Intake {
+        /// Intake operation to perform.
+        #[command(subcommand)]
+        command: IntakeCommand,
     },
     /// Pull provider changes into Neon and refresh derived state.
     Sync {
@@ -143,6 +155,17 @@ pub enum Command {
         /// Enrichment operation to perform.
         #[command(subcommand)]
         command: EnrichmentCommand,
+    },
+}
+
+/// Read-only current-provider intake commands.
+#[derive(Clone, Debug, Subcommand)]
+pub enum IntakeCommand {
+    /// Join the exact current intake inventory with coverage, exclusions, and history.
+    Audit {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
     },
 }
 
@@ -1655,6 +1678,17 @@ where
 
 async fn execute_cli_handlers(cli: Cli, output: &mut impl Write) -> Result<()> {
     match cli.command {
+        Command::Capabilities { required } => {
+            let manifest = binary_capability_manifest();
+            for capability in required {
+                if !manifest.supports(&capability) {
+                    return Err(ChordriftError::Configuration(format!(
+                        "required binary capability is unavailable: {capability}"
+                    )));
+                }
+            }
+            writeln!(output, "{}", serde_json::to_string(&manifest)?)?;
+        }
         Command::Product { command } => run_product_command(command, output).await?,
         Command::Db { command } => {
             let config = config::database_config_from_env()?;
@@ -1717,6 +1751,20 @@ async fn execute_cli_handlers(cli: Cli, output: &mut impl Write) -> Result<()> {
                 writeln!(output, "account: {account}")?;
             }
         },
+        Command::Intake { command } => {
+            let database = connect_current_database().await?;
+            let result: Result<()> = async {
+                match command {
+                    IntakeCommand::Audit { account } => {
+                        let report = intake::audit(&database, &account).await?;
+                        write_intake_audit(output, &report)
+                    }
+                }
+            }
+            .await;
+            database.close().await;
+            result?;
+        }
         Command::Sync { command } => match command {
             SyncCommand::Pull { account } => {
                 let database = connect_current_database().await?;
@@ -6375,6 +6423,119 @@ fn write_status(output: &mut impl Write, status: &db::DatabaseStatus) -> Result<
     Ok(())
 }
 
+fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
+    use crate::contract::{
+        BINARY_CAPABILITY_SCHEMA_VERSION, BinaryCapabilityManifest,
+        CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS, CAPABILITY_MAINTENANCE_INTAKE_AUDIT,
+        CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW, CAPABILITY_PLAN_ORIGIN, CapabilityAvailability,
+        ContractVersionRange,
+    };
+
+    BinaryCapabilityManifest {
+        schema_version: BINARY_CAPABILITY_SCHEMA_VERSION,
+        binary_version: env!("CARGO_PKG_VERSION").to_owned(),
+        contract_versions: ContractVersionRange::exact(crate::contract::CONTRACT_VERSION),
+        capabilities: std::collections::BTreeMap::from([
+            (
+                CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
+                CAPABILITY_MAINTENANCE_INTAKE_AUDIT.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
+                CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
+                CAPABILITY_PLAN_ORIGIN.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+        ]),
+    }
+}
+
+fn write_intake_audit(output: &mut impl Write, report: &intake::IntakeAudit) -> Result<()> {
+    use intake::IntakeState;
+
+    let count = |state| {
+        report
+            .items
+            .iter()
+            .filter(|item| item.state == state)
+            .count()
+    };
+    writeln!(output, "intake audit: current")?;
+    writeln!(output, "snapshot_id: {}", report.snapshot_id)?;
+    writeln!(
+        output,
+        "proposal_generation_id: {}",
+        report
+            .proposal_generation_id
+            .map_or_else(|| "-".to_owned(), |value| value.to_string())
+    )?;
+    writeln!(
+        output,
+        "proposal_state: {}",
+        report.proposal_state.as_deref().unwrap_or("-")
+    )?;
+    writeln!(output, "items: {}", report.items.len())?;
+    writeln!(
+        output,
+        "already_covered: {}",
+        count(IntakeState::AlreadyCovered)
+    )?;
+    writeln!(
+        output,
+        "previously_excluded: {}",
+        count(IntakeState::PreviouslyExcluded)
+    )?;
+    writeln!(
+        output,
+        "assigned_approved: {}",
+        count(IntakeState::AssignedApproved)
+    )?;
+    writeln!(
+        output,
+        "suggested_in_draft: {}",
+        count(IntakeState::SuggestedInDraft)
+    )?;
+    writeln!(
+        output,
+        "known_from_history: {}",
+        count(IntakeState::KnownFromHistory)
+    )?;
+    writeln!(
+        output,
+        "genuinely_new: {}",
+        count(IntakeState::GenuinelyNew)
+    )?;
+    writeln!(output, "spotify_writes: disabled")?;
+    writeln!(
+        output,
+        "state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id"
+    )?;
+    for item in &report.items {
+        writeln!(
+            output,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            item.state.as_str(),
+            clean_cell(&item.title),
+            clean_cell(&item.artists),
+            clean_cell(&item.sources.join(" / ")),
+            clean_cell(&item.current_destinations.join(" / ")),
+            clean_cell(&item.proposal_destinations.join(" / ")),
+            item.listening_events,
+            item.play_count,
+            item.exclusion_history,
+            clean_cell(item.active_exclusion_reason.as_deref().unwrap_or("-")),
+            item.spotify_id
+        )?;
+    }
+    Ok(())
+}
+
 fn write_sync_plan_report(output: &mut impl Write, report: &sync_plan::PlanReport) -> Result<()> {
     writeln!(
         output,
@@ -6386,6 +6547,7 @@ fn write_sync_plan_report(output: &mut impl Write, report: &sync_plan::PlanRepor
         }
     )?;
     writeln!(output, "plan_id: {}", report.plan_id)?;
+    writeln!(output, "plan_origin: {}", report.origin.as_str())?;
     writeln!(
         output,
         "proposal_generation_id: {}",
@@ -6438,11 +6600,11 @@ mod tests {
         AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand,
         ClassificationCommand, Cli, ClusterCommand, Command, DbCleanupCommand, DbCommand,
         DbCompactCommand, DbV2Command, DbV2MigrationCommand, EmbeddingCommand, EnrichmentCommand,
-        HistoryCommand, LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg,
+        HistoryCommand, IntakeCommand, LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg,
         PlaylistSignalClassArg, ProductAuditMode, ProductCollectionCommand, ProductCommand,
         ProductOnboardingCommand, ProductRecipeCommand, ProductSpinCommand, ReevaluateCommand,
         RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand, SyncCommand,
-        TrackCommand, format_count, format_elapsed, write_status,
+        TrackCommand, binary_capability_manifest, format_count, format_elapsed, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -6454,6 +6616,42 @@ mod tests {
             Command::Db {
                 command: DbCommand::Status
             }
+        ));
+    }
+
+    #[test]
+    fn parses_machine_readable_capability_requirements() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "capabilities",
+            "--require",
+            "maintenance.intake-workflow.v1",
+            "--require",
+            "plan-origin.v1",
+        ])
+        .expect("valid capability handshake");
+        assert!(matches!(
+            cli.command,
+            Command::Capabilities { required }
+                if required == ["maintenance.intake-workflow.v1", "plan-origin.v1"]
+        ));
+
+        let manifest = binary_capability_manifest();
+        assert!(manifest.supports("maintenance.intake-workflow.v1"));
+        assert!(manifest.supports("maintenance.enumerated-playlist-additions.v1"));
+        assert!(!manifest.supports("spin-publication.v1"));
+        serde_json::to_string(&manifest).expect("capability manifest serializes");
+    }
+
+    #[test]
+    fn parses_read_only_intake_audit() {
+        let cli = Cli::try_parse_from(["chordrift", "intake", "audit", "--account", "personal"])
+            .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Intake {
+                command: IntakeCommand::Audit { account }
+            } if account == "personal"
         ));
     }
 

@@ -16,9 +16,11 @@ V020-08 adds the explicitly selected extended-history comparison. V020-09 adds
 provider-neutral deterministic recipe selection as an unordered Rust value;
 V020-10 now assigns and persists the exact provider-free Spin order with typed
 reasons and an application query view. V020-11 exposes those development
-boundaries under the opt-in `product` namespace described below. It does not
-change the released v0.1.4 runtime; migration 0046 is not applied to production
-Neon.
+boundaries under the opt-in `product` namespace described below. V020-11R adds
+the development-only capability handshake, intake audit, explicit maintenance
+plan origin, and enumerated playlist-write correction described below. These
+are not commands in the released v0.1.4 binary; migration 0046 is not applied
+to production Neon.
 
 Chordrift reads Spotify state into Neon and changes Spotify only through an
 exact inspected plan, readiness assessment, and explicitly confirmed apply
@@ -33,6 +35,43 @@ Chordrift has three deliberately separate synchronization paths:
 | `chordrift sync pull` | Spotify's live Web API plus history already in Neon | Update current playlists/saved tracks and relink already-imported history; never scan local ZIPs. |
 | `chordrift history ingest` | Newly downloaded ZIPs in the local account inbox | Add only previously unknown historical events, then retain the ZIPs in the local archive. |
 | `chordrift history restore` | ZIPs already retained in the local archive | Rebuild enrichment after database recovery; not part of normal synchronization. |
+
+## Development-line compatibility and intake
+
+Inspect or require exact installed-binary features as one JSON object:
+
+```console
+$ chordrift capabilities
+$ chordrift capabilities \
+    --require maintenance.intake-workflow.v1 \
+    --require maintenance.enumerated-playlist-additions.v1 \
+    --require plan-origin.v1
+```
+
+The command performs no database or provider access. Unknown requirements fail
+with a nonzero status. Scripts use feature names—not `--version` parsing—to
+detect compatibility.
+
+After a current pull, audit exact intake membership against durable coverage,
+exclusions, proposal intent, and normalized listening history:
+
+```console
+$ chordrift intake audit --account personal
+```
+
+The read-only report labels each provider identity `already_covered`,
+`previously_excluded`, `assigned_approved`, `suggested_in_draft`,
+`known_from_history`, or `genuinely_new` and emits stable redirected TSV.
+
+`sync plan` and `sync plan-show` now print `plan_origin: maintenance`; the
+origin is also committed to immutable plan preconditions. Maintenance readers
+and helpers reject unknown or `spin_publication` origins. This is deliberately
+separate from the plan phase: maintenance plans may still contain `publish`,
+`reconcile`, `cleanup`, and `retirement` phases.
+
+Ordinary playlist additions append only their enumerated operation IDs. Full
+replacement is reserved for `reorder_playlist` after identical-membership
+validation; an addition cannot restore a manually removed track implicitly.
 
 ## Development-line product rehearsal
 

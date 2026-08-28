@@ -14,6 +14,7 @@ use crate::{ChordriftError, Result};
 
 const PROVIDER: &str = "spotify";
 const PLANNER_VERSION: &str = "spotify-dry-run-v10";
+const PLAN_ORIGIN: PlanOrigin = PlanOrigin::Maintenance;
 const INTAKE_SURFACES: [(&str, &str, Option<&str>); 4] = [
     (
         "Inbox",
@@ -37,11 +38,30 @@ const INTAKE_SURFACES: [(&str, &str, Option<&str>); 4] = [
     ),
 ];
 
+/// Business origin of an immutable synchronization plan.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PlanOrigin {
+    /// Ordinary library maintenance, intake, and convergence work.
+    Maintenance,
+}
+
+impl PlanOrigin {
+    /// Stable machine-readable plan-origin label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Maintenance => "maintenance",
+        }
+    }
+}
+
 /// Summary of an immutable synchronization plan.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlanReport {
     /// Persisted dry-run identifier.
     pub plan_id: Uuid,
+    /// Explicit business path that created the plan.
+    pub origin: PlanOrigin,
     /// Approved proposal used as desired state.
     pub proposal_generation_id: Uuid,
     /// Immutable Spotify snapshot used as observed state.
@@ -286,6 +306,7 @@ async fn persist_operations(
 ) -> Result<PlanReport> {
     let input = json!({
         "planner_version": PLANNER_VERSION,
+        "plan_origin": PLAN_ORIGIN.as_str(),
         "scope": scope,
         "provider": PROVIDER,
         "account_id": account_id,
@@ -320,6 +341,7 @@ async fn persist_operations(
     .bind(PLANNER_VERSION)
     .bind(json!({
         "spotify_writes": false,
+        "plan_origin": PLAN_ORIGIN.as_str(),
         "requires_current_snapshot": snapshot_id,
         "requires_approved_proposal": proposal_id,
         "retirement_requires_separate_approval": true
@@ -361,6 +383,7 @@ async fn persist_operations(
 
     Ok(report(
         plan_id,
+        PLAN_ORIGIN,
         proposal_id,
         snapshot_id,
         false,
@@ -842,7 +865,7 @@ pub async fn show(
     let account_id = account_id(database, account_label).await?;
     let row = sqlx::query(
         "SELECT id, proposal_generation_id, source_snapshot_id, input_hash, summary,
-                started_at,
+                planner_version, preconditions, started_at,
                 source_snapshot_id = (SELECT id FROM provider_inventory_observations
                     WHERE provider_account_id = $1 ORDER BY captured_at DESC, id DESC LIMIT 1)
                     AS snapshot_current
@@ -857,6 +880,10 @@ pub async fn show(
     .await?
     .ok_or_else(|| ChordriftError::Configuration("no dry-run sync plan exists".to_owned()))?;
     let selected_plan_id: Uuid = row.try_get("id")?;
+    let origin = stored_plan_origin(
+        &row.try_get::<String, _>("planner_version")?,
+        &row.try_get::<Value, _>("preconditions")?,
+    )?;
     let summary: Summary = serde_json::from_value(row.try_get("summary")?)?;
     let count: i64 =
         sqlx::query_scalar("SELECT count(*)::bigint FROM sync_operations WHERE sync_run_id = $1")
@@ -865,6 +892,7 @@ pub async fn show(
             .await?;
     let report = report(
         selected_plan_id,
+        origin,
         row.try_get("proposal_generation_id")?,
         row.try_get("source_snapshot_id")?,
         true,
@@ -1726,7 +1754,7 @@ async fn existing_plan(
 ) -> Result<Option<PlanReport>> {
     let row = sqlx::query(
         "SELECT id, proposal_generation_id, source_snapshot_id, input_hash, summary,
-                started_at,
+                planner_version, preconditions, started_at,
                 (SELECT count(*)::bigint FROM sync_operations operation
                  WHERE operation.sync_run_id = sync_runs.id) AS operation_count
          FROM sync_runs WHERE provider_account_id = $1 AND provider = $2
@@ -1742,6 +1770,10 @@ async fn existing_plan(
         let summary: Summary = serde_json::from_value(row.try_get("summary")?)?;
         Ok(report(
             row.try_get("id")?,
+            stored_plan_origin(
+                &row.try_get::<String, _>("planner_version")?,
+                &row.try_get::<Value, _>("preconditions")?,
+            )?,
             row.try_get("proposal_generation_id")?,
             row.try_get("source_snapshot_id")?,
             true,
@@ -1780,6 +1812,7 @@ fn summarize(operations: &[PlanOperationInput]) -> Summary {
 #[allow(clippy::too_many_arguments)]
 fn report(
     plan_id: Uuid,
+    origin: PlanOrigin,
     proposal_generation_id: Uuid,
     source_snapshot_id: Uuid,
     reused: bool,
@@ -1790,6 +1823,7 @@ fn report(
 ) -> PlanReport {
     PlanReport {
         plan_id,
+        origin,
         proposal_generation_id,
         source_snapshot_id,
         reused,
@@ -1807,6 +1841,19 @@ fn report(
         external_cleanups: summary.external_cleanups,
         deferred: summary.deferred,
         created_at,
+    }
+}
+
+fn stored_plan_origin(planner_version: &str, preconditions: &Value) -> Result<PlanOrigin> {
+    match preconditions.get("plan_origin").and_then(Value::as_str) {
+        Some("maintenance") => Ok(PlanOrigin::Maintenance),
+        Some(origin) => Err(ChordriftError::Configuration(format!(
+            "maintenance workflow refuses plan origin {origin:?}"
+        ))),
+        None if planner_version == PLANNER_VERSION => Ok(PlanOrigin::Maintenance),
+        None => Err(ChordriftError::Configuration(
+            "sync plan has no recognized business origin".to_owned(),
+        )),
     }
 }
 
@@ -1867,7 +1914,7 @@ mod tests {
     use super::{
         CurrentPlaylist, DesiredPlaylist, DesiredTrack, PlanOperationInput,
         canonical_retirement_operations, count_kind, hex_sha256, operation_position,
-        operation_rank, phase_rank, playlist_diff, summarize,
+        operation_rank, phase_rank, playlist_diff, stored_plan_origin, summarize,
     };
     use serde_json::json;
     use std::collections::{BTreeMap, BTreeSet};
@@ -1912,6 +1959,16 @@ mod tests {
         assert!(phase_rank("publish") < phase_rank("reconcile"));
         assert!(phase_rank("reconcile") < phase_rank("cleanup"));
         assert!(phase_rank("cleanup") < phase_rank("retirement"));
+    }
+
+    #[test]
+    fn maintenance_reader_rejects_spin_publication_plan_origin() {
+        let error = stored_plan_origin(
+            "spin-publication-v1",
+            &json!({"plan_origin": "spin_publication"}),
+        )
+        .expect_err("maintenance path must reject Spin publication plans");
+        assert!(error.to_string().contains("spin_publication"));
     }
 
     #[test]

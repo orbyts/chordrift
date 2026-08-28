@@ -16,7 +16,7 @@ use crate::{
     providers::spotify::{self, MutationSession},
 };
 
-const APPLY_VERSION: &str = "spotify-apply-v3";
+const APPLY_VERSION: &str = "spotify-apply-v4";
 const READINESS_VERSION: &str = "spotify-apply-readiness-v5";
 const PLANNER_VERSION: &str = "spotify-dry-run-v10";
 
@@ -279,6 +279,57 @@ struct Operation {
     spotify_track_id: Option<String>,
     detail: Value,
     status: String,
+}
+
+enum PlaylistMembershipWrite<'operation> {
+    ExactReorder,
+    EnumeratedAdditions {
+        reused: Vec<&'operation Operation>,
+        missing: Vec<(&'operation Operation, String)>,
+    },
+}
+
+fn playlist_membership_write<'operation>(
+    live_items: &[String],
+    desired: &[String],
+    pending: &[&'operation Operation],
+) -> Result<PlaylistMembershipWrite<'operation>> {
+    let reorders = pending
+        .iter()
+        .filter(|operation| operation.kind == "reorder_playlist")
+        .count();
+    if reorders > 0 {
+        if reorders != pending.len() {
+            return Err(configuration(
+                "a reorder phase cannot contain implicit membership changes",
+            ));
+        }
+        let mut live_membership = live_items.to_vec();
+        live_membership.sort();
+        let mut desired_membership = desired.to_vec();
+        desired_membership.sort();
+        if live_membership != desired_membership {
+            return Err(configuration(
+                "a reorder requires identical current and desired membership",
+            ));
+        }
+        return Ok(PlaylistMembershipWrite::ExactReorder);
+    }
+
+    let mut reused = Vec::new();
+    let mut missing = Vec::new();
+    for operation in pending {
+        let spotify_track_id = operation
+            .spotify_track_id
+            .as_ref()
+            .ok_or_else(|| configuration("planned track addition has no Spotify track ID"))?;
+        if live_items.contains(spotify_track_id) {
+            reused.push(*operation);
+        } else {
+            missing.push((*operation, spotify_track_id.clone()));
+        }
+    }
+    Ok(PlaylistMembershipWrite::EnumeratedAdditions { reused, missing })
 }
 
 /// Executes one explicitly confirmed phase after revalidating every durable gate.
@@ -908,8 +959,16 @@ async fn load_gate(
         .bind(snapshot_id)
         .fetch_one(database.pool())
         .await?;
-        if verification.try_get::<i64, _>("required")?
-            != verification.try_get::<i64, _>("verified")?
+        let required = verification.try_get::<i64, _>("required")?;
+        let verified = verification.try_get::<i64, _>("verified")?;
+        if required != verified
+            && !verify_publication(
+                database,
+                row.try_get("account_id")?,
+                snapshot_id,
+                proposal_id,
+            )
+            .await?
         {
             return Err(configuration(
                 "destructive phases require every canonical destination to be verified in the current pulled snapshot",
@@ -1158,30 +1217,59 @@ async fn execute_publish(
             }
             continue;
         }
-        for operation in &pending {
-            if operation.kind != "reorder_playlist" && operation.spotify_track_id.is_none() {
-                return Err(configuration(
-                    "planned track addition has no Spotify track ID",
-                ));
+        match playlist_membership_write(&live_items, &desired, &pending)? {
+            PlaylistMembershipWrite::ExactReorder => {
+                for operation in &pending {
+                    mark_running(database, run_id, operation).await?;
+                }
+                let first = desired.len().min(100);
+                let mut snapshot = session.replace_items(&target, &desired[..first]).await?;
+                for chunk in desired[first..].chunks(100) {
+                    snapshot = session.add_items(&target, chunk, None).await?;
+                }
+                for operation in &pending {
+                    mark_succeeded(
+                        database,
+                        run_id,
+                        operation,
+                        &target,
+                        json!({"snapshot_id": snapshot, "exact_order_replaced": true}),
+                    )
+                    .await?;
+                }
             }
-            if operation.status != "succeeded" {
-                mark_running(database, run_id, operation).await?;
+            PlaylistMembershipWrite::EnumeratedAdditions { reused, missing } => {
+                for operation in reused {
+                    mark_succeeded(
+                        database,
+                        run_id,
+                        operation,
+                        &target,
+                        json!({"reused_live_membership": true}),
+                    )
+                    .await?;
+                }
+                for chunk in missing.chunks(100) {
+                    for (operation, _) in chunk {
+                        mark_running(database, run_id, operation).await?;
+                    }
+                    let spotify_track_ids = chunk
+                        .iter()
+                        .map(|(_, spotify_track_id)| spotify_track_id.clone())
+                        .collect::<Vec<_>>();
+                    let snapshot = session.add_items(&target, &spotify_track_ids, None).await?;
+                    for (operation, _) in chunk {
+                        mark_succeeded(
+                            database,
+                            run_id,
+                            operation,
+                            &target,
+                            json!({"snapshot_id": snapshot, "enumerated_addition": true}),
+                        )
+                        .await?;
+                    }
+                }
             }
-        }
-        let first = desired.len().min(100);
-        let mut snapshot = session.replace_items(&target, &desired[..first]).await?;
-        for chunk in desired[first..].chunks(100) {
-            snapshot = session.add_items(&target, chunk, None).await?;
-        }
-        for operation in &pending {
-            mark_succeeded(
-                database,
-                run_id,
-                operation,
-                &target,
-                json!({"snapshot_id": snapshot, "exact_order_replaced": true}),
-            )
-            .await?;
         }
     }
 
@@ -1617,7 +1705,23 @@ fn configuration(message: impl Into<String>) -> ChordriftError {
 
 #[cfg(test)]
 mod tests {
-    use super::ApplyPhase;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::{ApplyPhase, Operation, PlaylistMembershipWrite, playlist_membership_write};
+
+    fn addition(spotify_track_id: &str) -> Operation {
+        Operation {
+            id: Uuid::new_v4(),
+            kind: "add_track".to_owned(),
+            playlist_id: Some(Uuid::new_v4()),
+            playlist_name: "Fixture".to_owned(),
+            spotify_playlist_id: Some("playlist".to_owned()),
+            spotify_track_id: Some(spotify_track_id.to_owned()),
+            detail: json!({"position": 1}),
+            status: "pending".to_owned(),
+        }
+    }
 
     #[test]
     fn destructive_phases_require_the_extra_gate() {
@@ -1625,5 +1729,48 @@ mod tests {
         assert!(!ApplyPhase::Reconcile.destructive());
         assert!(ApplyPhase::Cleanup.destructive());
         assert!(ApplyPhase::Retirement.destructive());
+    }
+
+    #[test]
+    fn ordinary_addition_never_replaces_unrelated_live_membership() {
+        let operation = addition("new-track");
+        let plan = playlist_membership_write(
+            &["manual-live-track".to_owned()],
+            &["new-track".to_owned()],
+            &[&operation],
+        )
+        .expect("ordinary addition is valid");
+
+        let PlaylistMembershipWrite::EnumeratedAdditions { reused, missing } = plan else {
+            panic!("ordinary additions must never select exact replacement");
+        };
+        assert!(reused.is_empty());
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].1, "new-track");
+    }
+
+    #[test]
+    fn ordinary_addition_cannot_restore_an_unenumerated_manual_removal() {
+        let operation = addition("explicit-new-track");
+        let plan = playlist_membership_write(
+            &[],
+            &[
+                "manually-removed-track".to_owned(),
+                "explicit-new-track".to_owned(),
+            ],
+            &[&operation],
+        )
+        .expect("ordinary addition is valid");
+
+        let PlaylistMembershipWrite::EnumeratedAdditions { missing, .. } = plan else {
+            panic!("ordinary additions must remain enumerated");
+        };
+        assert_eq!(
+            missing
+                .iter()
+                .map(|(_, spotify_id)| spotify_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["explicit-new-track"]
+        );
     }
 }

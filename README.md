@@ -61,8 +61,12 @@ exposes those Rust-owned onboarding, collection, recipe, and Spin views through
 one opt-in `product` CLI namespace and an installed-binary comparison/replay
 helper. The commands accept fake/captured inputs, require an isolated
 migration-0046 database for persistence, and cannot call or write a provider.
-The recovered-intake compatibility reconciliation is the next required gate;
-publication planning, hosted transport, and native clients remain later work.
+V020-11R selectively reconciles the recovered 92-track incident without
+merging its maintenance branches: ordinary additions are enumerated rather
+than full replacements, a capability-checked complete intake wizard delegates
+to a read-only Rust audit, and every maintenance plan exposes an origin that
+rejects future Spin publication plans. Publication-plan integration is next;
+hosted transport and native clients remain later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages

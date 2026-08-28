@@ -72,6 +72,20 @@ assignment revision newer than the queue-entry event and a destination that is
 different from the rejected source. Merely regenerating a proposal cannot
 silently clear the queue.
 
+On the V020-11R development line, the general manual-placement helper can
+record the reviewed replacement while keeping publication separate:
+
+```console
+$ scripts/chordrift-manual-place.sh --account personal \
+    --to "NEW DESTINATION" --spotify-id SPOTIFY_TRACK_ID \
+    --reason "Reviewed Re-evaluate correction"
+```
+
+It requires the installed-binary capability handshake, refuses active
+exclusions, and changes editable proposal intent only. Maintenance phase
+helpers also require `plan_origin: maintenance`; future Spin publication plans
+cannot enter this correction workflow.
+
 ## Add a private classification dimension
 
 The complete column glossary, recommended vocabulary, examples, and v0.2

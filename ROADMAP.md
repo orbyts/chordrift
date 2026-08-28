@@ -84,7 +84,7 @@ deterministic provider-free Spins.
 - [x] **V020-11 — CLI-first product rehearsal.** Add consistent onboarding,
   collection, recipe, and Spin preview commands plus an installed-binary helper
   workflow. Compare inventory-only and enriched results without provider writes.
-- [ ] **V020-11R — Recovered-intake compatibility reconciliation.** Before
+- [x] **V020-11R — Recovered-intake compatibility reconciliation.** Before
   publication planning, selectively reconcile the v0.1.x 92-track incident
   fixes with current main: enumerated ordinary playlist writes, the complete
   operator intake workflow, a binary capability handshake, fake-binary shell
@@ -95,14 +95,26 @@ deterministic provider-free Spins.
 - [ ] **V020-12 — Publication-plan integration.** Convert an approved Spin into
   the existing immutable plan/readiness/apply/verify model. Exercise planning
   and verification with a fake provider; stop before a real Spotify write.
+  Persist and expose `spin_publication` as an origin distinct from
+  `maintenance`; maintenance intake helpers must reject it. Spin additions
+  must use the same enumerated-write invariant, and fake-provider tests must
+  prove that publication cannot replace unrelated membership or restore a
+  manually removed track.
 - [ ] **V020-13 — Latest-state migration rehearsal.** Take a new logical backup
   of the then-current live database, migrate a local copy, and compare current
   inventory/order, intake, exclusions, Re-evaluate, assignments, listening
-  evidence, archives, and durable plan/apply/verification history.
+  evidence, archives, and durable plan/apply/verification history. Compare
+  maintenance plan origins/capability observations as well as Spin publication
+  origins, and rerun the complete intake fake-binary compatibility suite before
+  presenting any cutover plan.
 - [ ] **V020-14 — Candidate and personal cutover gate.** Create a fresh candidate
   only when local rehearsal passes and capacity permits. Migrate the newest live
   state, verify runtime and invariants, present exact database and Spotify plans,
   and stop for separate approvals before connection cutover or provider writes.
+  The candidate binary must pass the machine-readable capability handshake and
+  the complete maintenance/intake and Spin-origin separation suite. Adapters may
+  preserve v0.1.x safety outcomes, but must not weaken the provider-neutral v0.2
+  ownership, determinism, or publication architecture.
 - [ ] **V020-15 — Release v0.2.0.** Complete formatting, strict Clippy, unit/doc/
   PostgreSQL integration tests, packaging, recovery documentation, GitHub
   release, and crates.io publication after the personal candidate is verified.
@@ -182,7 +194,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-11R — Recovered-intake compatibility reconciliation`.
+**Next slice:** `V020-12 — Publication-plan integration`.
 
 ## Portable core and native clients
 

@@ -62,6 +62,23 @@ $ chordrift tracks inspect --spotify-id SPOTIFY_TRACK_ID
 
 The report should show an active exclusion and retain its earlier history.
 
+On the V020-11R development line, ordinary publish additions can append only
+the track IDs enumerated by the reviewed plan. They cannot replace complete
+playlist membership or restore a manually removed track merely because that
+track remains in an older desired-state document. Full replacement is reserved
+for an explicit reorder whose live and desired memberships are identical.
+
+For one reviewed publish or reconcile phase in a combined maintenance plan:
+
+```console
+$ scripts/chordrift-plan-phase.sh --account personal \
+    --plan PLAN_ID --phase reconcile
+```
+
+The helper requires the binary capability handshake and
+`plan_origin: maintenance`; it refuses cleanup, retirement, stale plans, and
+future Spin publication plans.
+
 ## Spotify actions that do not mean exclusion
 
 | Action | Meaning Chordrift can safely infer |

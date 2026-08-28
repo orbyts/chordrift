@@ -134,6 +134,59 @@ contents, not only the tracks supplied to this helper. Once the complete
 proposal is reviewed and approved, use `chordrift-workflow.sh` for the ordinary
 plan/readiness/confirm/apply/verify sequence.
 
+## V020-11R mixed-intake workflow
+
+The following helpers require a compatible development-line binary. They call
+`chordrift capabilities --require …` before operational commands and fail
+closed when the installed binary lacks the exact workflow, enumerated-addition,
+or plan-origin contract. A version string alone is never treated as proof.
+
+Run the complete guided workflow with:
+
+```console
+$ CHORDRIFT_BIN=/path/to/development/chordrift \
+    scripts/chordrift-intake-wizard.sh --account personal
+```
+
+The wizard performs a fresh pull by default, requires every plan to report
+`plan_origin: maintenance`, audits current Liked Songs and named intake through
+the Rust `intake audit` query, isolates reversible exclusion intent, and walks
+through manual or reviewed automatic placement. After complete proposal and
+artwork review, it advances fresh plans through publish, pull/verification,
+reconciliation, and separately confirmed cleanup. It refuses unrelated
+unresolved tracks, new playlist/artwork design, retirement, repeated no-progress
+phases, and future Spin publication plans. `--review-only` stops after the
+read-only audit and may run without an interactive terminal.
+
+Supporting adapters remain independently useful:
+
+```console
+$ scripts/chordrift-manual-place.sh --account personal \
+    --to "Dakshina Pulse" --spotify-id SPOTIFY_TRACK_ID \
+    --reason "Reviewed South Indian discovery"
+$ scripts/chordrift-cluster-unresolved.sh --account personal
+$ scripts/chordrift-plan-phase.sh --account personal \
+    --plan PLAN_ID --phase publish
+```
+
+Manual placement changes editable Neon intent only. Clustering is read-only by
+default, reserves intake/Re-evaluate tracks unless `--include-intake` is
+explicit, and requires the exact proposal UUID for apply mode. The phase helper
+accepts only maintenance `publish` or `reconcile`, retains readiness and exact
+assessment confirmation, verifies delayed provider observation with bounded
+pulls, and refuses cleanup/retirement.
+
+The enumerated-write correction is below the scripts: ordinary `add_track` and
+`restore_track` operations append only their named IDs. They never replace the
+complete desired membership, so an unrelated live track cannot disappear and a
+manually removed track cannot return without its own explicit restoration.
+Only `reorder_playlist` may use complete replacement, after proving live and
+desired membership are identical.
+
+These are compatibility adapters around Rust-owned commands, not a second
+business path. Future clients may present the workflow differently while
+preserving the same safety outcomes.
+
 ## Artwork label renderer
 
 `render_artwork_label.swift` is an internal macOS development helper for

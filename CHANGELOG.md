@@ -52,6 +52,13 @@ All notable changes to Chordrift are documented here.
   onboarding, collection-review, recipe-execution, and Spin-preview application
   boundaries. Add an installed-binary helper that compares inventory-only and
   enriched audits and proves persisted Spin replay without any provider command.
+- Reconcile the recovered intake/apply incident selectively: ordinary playlist
+  additions now append only enumerated operation IDs; the development binary
+  exposes a JSON capability handshake and read-only intake audit; maintenance
+  plans carry an explicit origin; and the complete guided intake workflow plus
+  supporting helpers fail closed on incompatible binaries and non-maintenance
+  plans. Fake-binary and Rust regressions cover full-replacement and unintended-
+  restoration failures without a provider write.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

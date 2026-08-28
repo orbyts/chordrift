@@ -4,18 +4,20 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe the released **v0.1.4** daily driver and remain valid
-while `main` develops v0.2.0. The v0.2 application facade now carries the same
-CLI behavior, but the released binary and every command/output remain unchanged.
-Design pages identify which v0.2 foundations are implemented or still planned.
+The established workflows describe the released **v0.1.4** daily driver and
+remain valid while `main` develops v0.2.0. Sections labeled V020-11R describe
+the compatible development binary, not the installed v0.1.4 binary. Refer to
+the v0.1.4 tag for its exact commands. Design pages identify which v0.2
+foundations are implemented or still planned.
 
 ## Documentation map
 
 | Need | Authoritative document | Status |
 | --- | --- | --- |
 | Perform daily library work | This guide and the linked `how-to/` pages | Released v0.1.4 behavior; preserved during current v0.2 work. |
+| Understand IDs, phases, plan origins, and verification | [From intent to verified execution](how-to/INTENT_TO_EXECUTION.md) | Maintenance safety model plus V020-11R capability/origin reconciliation. |
 | Look up a command | [CLI command reference](reference/CLI_COMMANDS.md) | Complete v0.1.4 command surface; historical operator-only leaves are labeled. |
-| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 through V020-11 implemented; recovered-intake reconciliation next; later behavior explicitly listed. |
+| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 through V020-11R implemented; publication-plan integration next. |
 | Review intent interpretation | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Active v0.2 product policy, grounded in the existing explicit CLI loop. |
 | Review account/provider isolation | [Account and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Test-only adversarial proof implemented; production adapters remain v0.1.4. |
 | Review the additive v0.2 schema | [Product schema foundation](design/PRODUCT_SCHEMA_V020_05.md) | Migration 0046 implemented and rehearsed only on isolated PostgreSQL 18; not on production Neon. |
@@ -25,6 +27,7 @@ Design pages identify which v0.2 foundations are implemented or still planned.
 | Review Discovery + Rediscovery selection | [Recipe execution](design/DISCOVERY_REDISCOVERY_RECIPE_V020_09.md) | Provider-neutral deterministic unordered draft consumed by the implemented V020-10 Spin orderer. |
 | Review exact Spin ordering and replay | [Deterministic Spin preview](design/DETERMINISTIC_SPIN_PREVIEW_V020_10.md) | Exact ordered and persisted Rust value; provider-free and not yet a released CLI command. |
 | Rehearse the v0.2 product through the CLI | [CLI-first product rehearsal](design/CLI_FIRST_PRODUCT_REHEARSAL_V020_11.md) | Opt-in development-line commands and installed-binary helper; fake/captured inputs and isolated migration-0046 database only. |
+| Review recovered intake/apply compatibility | [Recovered intake compatibility](design/RECOVERED_INTAKE_COMPATIBILITY_V020_11R.md) | Enumerated writes, capability handshake, complete intake adapter, and maintenance/Spin origin separation. |
 | Review database-v2 decisions | [Database architecture v2](design/DATABASE_ARCHITECTURE_V2.md) | Completed v0.1.4 foundation and labeled historical execution record. |
 | Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
 
@@ -41,6 +44,7 @@ is staged for inspection rather than silently guessed.
 | I want to… | Guide | Spotify action |
 | --- | --- | --- |
 | Add or discover a song | [Add songs and preserve discovery context](how-to/ADDING_AND_DISCOVERY.md) | Like/Save it; use a named intake only for a richer signal. |
+| Review a mixed intake batch | [Add songs and preserve discovery context](how-to/ADDING_AND_DISCOVERY.md) | V020-11R development binary: capability-checked intake wizard. |
 | Inventory or retire saved albums | [Saved albums and album cleanup](how-to/SAVED_ALBUMS.md) | Archive-only retirement keeps immutable album and track history. |
 | Stop hearing a song | [Delete or exclude a track safely](how-to/DELETING_AND_EXCLUDING.md) | Remove it from its verified Chordrift playlist, then reconcile. |
 | Keep a song but reject its current vibe | [Re-evaluate and reclassify a track](how-to/ROUTING_AND_RECLASSIFYING.md) | Move it to `Re-evaluate` and remove the wrong destination. |
@@ -88,6 +92,8 @@ $ chordrift sync plan-show --account personal --details
 Never apply a plan merely because it exists. Confirm that its operations match
 your intent, then follow the readiness and apply sequence in
 [Synchronize and prove convergence](how-to/SYNC_AND_CONVERGENCE.md).
+Current maintenance output must say `plan_origin: maintenance`; intake helpers
+reject future Spin publication plans.
 
 For the complete terminal workflow, the repository includes an operator-only
 wrapper that uses the installed `chordrift` binary:
@@ -123,6 +129,37 @@ proposal disposition. It changes only editable Neon proposal intent and stops
 before proposal approval, planning, source cleanup, or any provider write. See
 [`scripts/README.md`](../scripts/README.md) for batching, stable-key usage, and
 the guarded `--prepare` path when the previous proposal is already approved.
+
+## V020-11R compatible intake workflow
+
+The development-line binary exposes an exact machine-readable handshake:
+
+```console
+$ chordrift capabilities \
+    --require maintenance.intake-workflow.v1 \
+    --require maintenance.enumerated-playlist-additions.v1 \
+    --require plan-origin.v1
+```
+
+The complete mixed-intake workflow is:
+
+```console
+$ scripts/chordrift-intake-wizard.sh --account personal
+```
+
+It pulls first, audits current Liked Songs and named intake against durable
+intent/history, isolates verified removals, supports manual or reviewed
+automatic placement, and advances only exact `maintenance` plans through
+publish, verification, reconciliation, and separately confirmed cleanup. It
+stops for unrelated unresolved tracks, new playlist/artwork design, retirement,
+an incompatible binary, or a non-maintenance plan. `--review-only` performs the
+joined audit without approval or provider writes.
+
+Supporting helpers are `chordrift-manual-place.sh`,
+`chordrift-cluster-unresolved.sh`, and `chordrift-plan-phase.sh`. They delegate
+all domain decisions to the Rust CLI and require advertised capabilities before
+doing work. Ordinary additions append only enumerated track IDs; complete
+replacement remains exclusive to a verified membership-identical reorder.
 
 ## Semantic playlists used for capture
 
@@ -214,7 +251,8 @@ surface. V020-10 now deterministically orders and persists that draft with exact
 reasons, seed, fingerprints, capability snapshot, sections, warnings, and an
 account-scoped query view. V020-11 now exposes these boundaries through the
 opt-in, fixture-backed `product` CLI and installed-binary helper without adding
-a provider action. Recovered-intake compatibility reconciliation is the next
-gate before publication planning. See the
+a provider action. V020-11R now adds the capability-checked intake adapter,
+enumerated playlist writes, and explicit maintenance plan origins. Publication-
+plan integration is next. See the
 [playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) for
 the complete staged direction.

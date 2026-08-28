@@ -33,7 +33,13 @@ $ chordrift sync plan-show --account personal --details
 ```
 
 Read every operation. Confirm the phase, playlist, track, and whether anything
-is destructive. A zero-operation plan proves current convergence.
+is destructive. A zero-operation plan proves current convergence. On the
+V020-11R development line, ordinary output also includes
+`plan_origin: maintenance`. Maintenance helpers reject absent, unknown, and
+future `spin_publication` origins.
+
+For the identifier lifecycle and the difference between plan origin and phase,
+see [From intent to verified execution](INTENT_TO_EXECUTION.md).
 
 ## Validate the exact plan
 
@@ -61,6 +67,12 @@ use `reconcile` for a reviewed managed-state interpretation such as exclusion.
 Cleanup and retirement are destructive phases and require their additional
 explicit gates. Never substitute a plan ID for `--confirm`: it must repeat the
 assessment ID.
+
+For a multi-phase maintenance plan, apply and verify only one fresh phase at a
+time with `scripts/chordrift-plan-phase.sh`. It requires explicit installed-
+binary capabilities, refuses reconcile while publish remains, and never accepts
+cleanup or retirement. Compatibility preserves these safety outcomes without
+making the shell command shape part of the provider-neutral v0.2 core.
 
 ## Prove the provider accepted it
 

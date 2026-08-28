@@ -172,6 +172,39 @@ pub enum CapabilityAvailability {
 /// Capability report keyed by stable provider-neutral capability names.
 pub type CapabilitySet = BTreeMap<String, CapabilityAvailability>;
 
+/// Machine-readable schema used by `chordrift capabilities`.
+pub const BINARY_CAPABILITY_SCHEMA_VERSION: u16 = 1;
+/// Complete operator intake workflow with explicit review gates.
+pub const CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW: &str = "maintenance.intake-workflow.v1";
+/// Read-only audit of current intake against durable intent and history.
+pub const CAPABILITY_MAINTENANCE_INTAKE_AUDIT: &str = "maintenance.intake-audit.v1";
+/// Ordinary playlist additions execute only their enumerated track operations.
+pub const CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS: &str =
+    "maintenance.enumerated-playlist-additions.v1";
+/// Synchronization plans expose an origin that maintenance tools can reject.
+pub const CAPABILITY_PLAN_ORIGIN: &str = "plan-origin.v1";
+
+/// Installed-binary capabilities that scripts and future clients can negotiate.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BinaryCapabilityManifest {
+    /// Manifest schema understood by the caller.
+    pub schema_version: u16,
+    /// Installed crate version, informational rather than a feature proxy.
+    pub binary_version: String,
+    /// Application-contract versions exposed by this binary.
+    pub contract_versions: ContractVersionRange,
+    /// Stable features with explicit availability.
+    pub capabilities: CapabilitySet,
+}
+
+impl BinaryCapabilityManifest {
+    /// Reports whether one exact stable capability is available.
+    #[must_use]
+    pub fn supports(&self, capability: &str) -> bool {
+        self.capabilities.get(capability) == Some(&CapabilityAvailability::Available)
+    }
+}
+
 /// Compatibility offer sent by a client.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ClientCompatibility {
@@ -728,6 +761,26 @@ mod tests {
             negotiated.evidence_capabilities["extended_history"],
             CapabilityAvailability::Degraded
         );
+    }
+
+    #[test]
+    fn binary_manifest_uses_exact_capability_names_instead_of_version_guessing() {
+        let manifest = BinaryCapabilityManifest {
+            schema_version: BINARY_CAPABILITY_SCHEMA_VERSION,
+            binary_version: "0.1.4+development".to_owned(),
+            contract_versions: ContractVersionRange::exact(CONTRACT_VERSION),
+            capabilities: BTreeMap::from([(
+                CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW.to_owned(),
+                CapabilityAvailability::Available,
+            )]),
+        };
+
+        assert!(manifest.supports(CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW));
+        assert!(!manifest.supports(CAPABILITY_PLAN_ORIGIN));
+        let encoded = serde_json::to_string(&manifest).expect("manifest serializes");
+        let decoded: BinaryCapabilityManifest =
+            serde_json::from_str(&encoded).expect("manifest deserializes");
+        assert_eq!(decoded, manifest);
     }
 
     #[test]

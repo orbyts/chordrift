@@ -75,14 +75,15 @@ V020-11 adds no provider adapter method, provider credential access,
 publication approval, plan conversion, or provider write. It did not access
 production Neon, call Spotify, or apply migration 0046.
 
-## Next required gate
+## Completed compatibility gate
 
-Before V020-12, main must reconcile the recovered v0.1.x 92-track incident.
-That task will selectively port the enumerated playlist-write correction and
-complete operator intake workflow, add the binary capability handshake and
-fake-binary compatibility proofs, separate maintenance plans from future Spin
-publication plans, and update V020-12 through V020-14 acceptance criteria. The
-older maintenance branches must not be merged wholesale.
+V020-11R now selectively reconciles the recovered v0.1.x 92-track incident. It
+ports the enumerated playlist-write correction and complete operator intake
+workflow, adds the binary capability handshake and fake-binary compatibility
+proofs, separates maintenance plans from future Spin publication plans, and
+updates V020-12 through V020-14 acceptance criteria. The older maintenance
+branches were not merged wholesale. See
+`RECOVERED_INTAKE_COMPATIBILITY_V020_11R.md`.
 
 Compatibility in that gate preserves safety invariants and operator outcomes,
 not every old command spelling or internal execution path. The provider-neutral

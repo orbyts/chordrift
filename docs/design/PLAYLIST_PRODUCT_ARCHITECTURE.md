@@ -9,10 +9,9 @@ behavior. Existing database-v2 names remain unchanged. Migration 0046 now
 implements the additive recipe, collection, surface, onboarding, and Spin table
 names shown here, but remains isolated from production Neon.
 
-Status: active v0.2 architecture, updated 2026-08-28. V020-01 through V020-11
-are implemented; recovered-intake compatibility reconciliation is next. This
-document is a design contract, not authorization to apply a migration or write
-to a provider.
+Status: active v0.2 architecture, updated 2026-08-28. V020-01 through V020-11R
+are implemented; publication-plan integration is next. This document is a
+design contract, not authorization to apply a migration or write to a provider.
 
 ## Current implementation status
 
@@ -64,8 +63,13 @@ to a provider.
   expose the existing onboarding, collection-review, recipe, and Spin-preview
   boundaries, compare both audit modes, and prove exact Spin replay using only
   fake/captured inputs and isolated migration-0046 persistence.
-- **Next — V020-11R:** reconcile the recovered v0.1.x intake/apply safety work
-  before defining Spin publication-plan integration.
+- **Implemented — V020-11R:** ordinary playlist writes are enumerated, the
+  complete capability-checked intake workflow delegates to a Rust read-only
+  audit, and explicit maintenance plan origins reject future Spin publication
+  plans. The old maintenance branches were not merged wholesale.
+- **Next — V020-12:** convert approved Spins into a distinct
+  `spin_publication` plan origin behind the existing readiness/apply/verify
+  safety model and fake provider.
 - **Not implemented yet:** approved collection authoring,
   publication integration, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the
@@ -446,10 +450,11 @@ an honest usable experience.
    fingerprints, capability snapshot, seed, and per-track explanations.
 9. **Complete:** rehearse the complete provider-write-free product path through
    the opt-in development CLI and installed-binary helper.
-10. Reconcile recovered v0.1.x intake/apply compatibility and plan origins.
+10. **Complete:** reconcile recovered v0.1.x intake/apply compatibility and
+    explicit maintenance plan origins without weakening the v0.2 core.
 11. Connect approved Spins to the existing immutable sync plan/apply/verify
    boundary.
 12. Introduce the hosted Rust service and authenticated client transport without
    distributing Neon or provider refresh credentials.
-12. Build native clients over the stable contract only after isolation,
+13. Build native clients over the stable contract only after isolation,
    compatibility, and deterministic-preview tests pass.

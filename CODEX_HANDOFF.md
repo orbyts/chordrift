@@ -8,34 +8,45 @@ archive contents.
 
 Last updated: 2026-08-28.
 
-## Start the next task here: V020-11R compatibility reconciliation
+## Start the next task here: V020-12 publication-plan integration
 
-Before beginning V020-12, perform `V020-11R — Recovered-intake compatibility
-reconciliation` from the authoritative execution map. Review commits `9a078f3`
-and `4b7d876`, but do not merge either older branch wholesale. Selectively port
-the enumerated playlist-write correction and add regression tests proving an
-ordinary addition cannot replace complete playlist membership or restore a
-manually removed track. Port the complete operator intake wizard and supporting
-scripts with current documentation, add a machine-readable installed-binary
-capability handshake, and add fake-binary shell compatibility tests.
+Implement only `V020-12 — Publication-plan integration` from the authoritative
+execution map. Convert an approved account-owned Spin into an immutable plan
+with explicit `spin_publication` origin, then exercise readiness, enumerated
+playlist additions, replay, and verification through a fake provider. Stop
+before any real Spotify write. The existing intake and maintenance helpers must
+reject the Spin plan origin, and ordinary Spin additions must not replace
+unrelated live membership or restore a manually removed track.
 
-Future Spin publication plans must be explicitly distinguishable from ordinary
-intake/maintenance plans, or the intake wizard must reject every non-maintenance
-plan origin. Update V020-12 through V020-14 acceptance criteria with the
-recovered incident's compatibility requirements. Do not access production
-Neon, write to Spotify, apply migration 0046, begin publication implementation,
-or change the installed v0.1.4 daily driver. Use fake binaries/providers and an
-isolated PostgreSQL 18 database only.
+Do not access production Neon, apply migration 0046, invoke Spotify, change the
+installed v0.1.4 daily driver, or start latest-state migration/cutover work.
+Use the current provider-neutral application/domain boundaries and isolated
+fixtures. Do not weaken ownership, deterministic Spin identity, exact plan
+origin, readiness, idempotency, or verification to imitate a legacy command.
 
-Compatibility is subordinate to the approved v0.2 architecture. Preserve the
-enumerated-write safety invariant, understandable operator workflow, and
-ability to detect an incompatible installed binary; do not preserve a legacy
-command spelling or internal path when doing so would weaken provider-neutral
-ownership, deterministic Rust-owned decisions, plan-origin separation, or
-publication safety. Prefer explicit compatibility adapters and a capability
-handshake, and reject unsupported legacy behavior visibly.
+V020-01 through V020-11R are complete. V020-11R reviewed `9a078f3` and
+`4b7d876` but did not merge either recovered branch wholesale. Apply v4 now
+uses exact replacement only for a membership-identical `reorder_playlist`;
+ordinary additions append only enumerated IDs. Pure regressions prove they
+cannot replace unrelated membership or restore an unenumerated manual removal.
 
-V020-01 through V020-11 are complete. V020-11 adds the opt-in development-line
+The public contract now includes a serializable installed-binary capability
+manifest. `chordrift capabilities --require …` is the exact compatibility
+handshake; version strings are informational only. `chordrift intake audit`
+provides the recovered read-only current-intake join. Maintenance plans persist
+and print `plan_origin: maintenance`; unknown and future Spin origins fail
+closed. The complete intake wizard and its manual-placement, clustering, and
+single-phase helpers require capabilities before doing work and reject every
+non-maintenance plan. Fake-binary tests prove capability-first execution,
+review-only workflow compatibility, and `spin_publication` rejection before
+audit/apply. See
+`docs/design/RECOVERED_INTAKE_COMPATIBILITY_V020_11R.md`.
+
+Compatibility remains subordinate to the v0.2 architecture: preserve safety
+invariants and understandable operator outcomes, not legacy command spelling
+or internal paths.
+
+V020-11 adds the opt-in development-line
 `chordrift product` namespace for fixture-backed onboarding capture/audit,
 account-scoped collection and immutable recipe review, provider-neutral recipe
 execution, and exact Spin preview creation/display. Every leaf passes through
@@ -177,8 +188,9 @@ decisions. When the latest proposal is approved, explicit `--prepare` may clone
 its structure through the strict 1.0 extension path only if the supplied IDs
 cover the entire pre-extension unresolved set. The extension still replays all
 durable manual decisions and may therefore expose older needs-review items; the
-helper reports rather than classifies them. Reconcile this narrow helper with
-the recovered complete wizard during V020-11R; do not treat it as a substitute.
+helper reports rather than classifies them. V020-11R retains this narrow helper
+for exact Inbox-only placement and adds the complete capability-checked wizard
+for mixed intake; neither replaces the other's stricter scope.
 
 On 2026-08-27 the helper was exercised against the live `personal` account for
 one explicitly reviewed Inbox discovery destined for `Dakshina Pulse`. The
