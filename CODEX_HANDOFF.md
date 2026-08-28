@@ -31,6 +31,11 @@ to the current audit by exact Spotify ID instead of source-display text.
 Automatic placement can legitimately return no fit for an unembedded track;
 the wizard now retains the editable proposal and offers manual placement,
 exclusion, deferral, or a safe stop in the same session.
+The first successful multi-phase live run then exhausted the original
+five-iteration safety bound while a legitimate follow-up reorder and verified
+intake cleanup remained. The wizard now continues until the newest plan has
+zero operations, with a 32-phase abnormal-churn ceiling and an in-run signature
+ledger that stops repeated phase/operation/playlist/track/payload signatures.
 
 ## Start the next task here: observe the released v0.1.4 workflow
 

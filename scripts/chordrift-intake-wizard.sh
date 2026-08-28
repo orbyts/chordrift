@@ -109,9 +109,11 @@ DRAFT_REVIEW_FILE=$WORK_DIR/draft-review-ids.txt
 READINESS_FILE=$WORK_DIR/readiness.txt
 APPLY_FILE=$WORK_DIR/apply.txt
 ARTWORK_STATUS_FILE=$WORK_DIR/artwork-status.txt
+EXECUTED_SIGNATURES_FILE=$WORK_DIR/executed-phase-signatures.txt
 : >"$RESTORE_FILE"
 : >"$AUTO_FILE"
 : >"$DRAFT_REVIEW_FILE"
+: >"$EXECUTED_SIGNATURES_FILE"
 
 cleanup() {
     case "$WORK_DIR" in
@@ -189,6 +191,26 @@ show_operation() {
         BEGIN { OFS = "\t"; print "Phase", "Operation", "Playlist", "Track", "Safety" }
         $1 ~ /^[0-9]+$/ && $3 == operation { print $2, $3, $4, $6, $8 }
     ' "$PLAN_DETAILS_FILE"
+}
+
+phase_signature() {
+    phase=$1
+    awk -F '\t' -v phase="$phase" '
+        $1 ~ /^[0-9]+$/ && $2 == phase {
+            print $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6 "\t" $7
+        }
+    ' "$PLAN_DETAILS_FILE" | cksum | awk '{ print $1 ":" $2 }'
+}
+
+remember_phase_signature() {
+    phase=$1
+    signature="$phase:$(phase_signature "$phase")"
+    if grep -Fx "$signature" "$EXECUTED_SIGNATURES_FILE" >/dev/null 2>&1; then
+        printf 'The same %s targets reappeared after verification; stopping a no-progress cycle.\n' \
+            "$phase" >&2
+        exit 3
+    fi
+    printf '%s\n' "$signature" >>"$EXECUTED_SIGNATURES_FILE"
 }
 
 audit_intake() {
@@ -558,9 +580,10 @@ ask_yes "Proceed to exact Spotify publication/verification and later intake clea
     exit 0
 }
 
-stage "Execute" "one reviewed phase per fresh provider snapshot"
+stage "Execute" "continue through fresh plans until verified convergence"
+MAX_PHASES=32
 iterations=0
-while [ "$iterations" -lt 5 ]; do
+while [ "$iterations" -lt "$MAX_PHASES" ]; do
     iterations=$((iterations + 1))
     create_plan
     OPERATIONS=$(field operations "$PLAN_FILE")
@@ -574,16 +597,22 @@ while [ "$iterations" -lt 5 ]; do
         exit 3
     fi
     if [ "$(phase_count publish)" -gt 0 ]; then
+        remember_phase_signature publish
+        stage "Convergence $iterations/$MAX_PHASES" "publish the next exact provider delta"
         "$SCRIPT_DIR/chordrift-plan-phase.sh" \
             --account "$ACCOUNT" --plan "$PLAN_ID" --phase publish
         continue
     fi
     if [ "$(phase_count reconcile)" -gt 0 ]; then
+        remember_phase_signature reconcile
+        stage "Convergence $iterations/$MAX_PHASES" "reconcile the next exact provider delta"
         "$SCRIPT_DIR/chordrift-plan-phase.sh" \
             --account "$ACCOUNT" --plan "$PLAN_ID" --phase reconcile
         continue
     fi
     if [ "$(phase_count cleanup)" -gt 0 ]; then
+        remember_phase_signature cleanup
+        stage "Convergence $iterations/$MAX_PHASES" "clean only verified consumed intake"
         stage "Destructive intake cleanup" "review exact verified removals"
         run_chordrift sync plan-show --account "$ACCOUNT" --plan "$PLAN_ID" --details
         run_chordrift sync readiness \
@@ -617,5 +646,6 @@ while [ "$iterations" -lt 5 ]; do
     exit 3
 done
 
-printf 'The wizard reached its five-phase safety bound. Run it again to reassess fresh state.\n' >&2
+printf 'The wizard reached its %s-phase convergence ceiling, which indicates abnormal provider churn.\n' \
+    "$MAX_PHASES" >&2
 exit 3

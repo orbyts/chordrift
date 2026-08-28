@@ -97,7 +97,11 @@ validates them unchanged against the new proposal. It stops when a new playlist
 or genuinely new artwork is required so that naming/artwork design remains a
 separate explicit workflow. Provider execution remains phase-separated:
 publish, pull/verify, reconcile routine duplicates, pull/verify, then
-exact-confirmed destructive intake cleanup.
+exact-confirmed destructive intake cleanup. The wizard keeps generating fresh
+plans until it reaches zero operations; it no longer stops after an arbitrary
+five phases. A repeated phase with the same operation types, exact
+playlist/track targets, and payloads is treated as a no-progress cycle and
+stops safely.
 
 Use the read-only form when you only want the classification report:
 

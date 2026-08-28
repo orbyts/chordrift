@@ -209,6 +209,11 @@ for a genuinely new track without an embedding. The wizard catches that
 review result and immediately offers manual destination, exclusion, deferral,
 or a safe stop instead of terminating as though the workflow failed.
 
+After approval, one invocation continues across successive immutable plans and
+fresh pulls until the plan has zero operations. The convergence ceiling is 32
+phases, not the former arbitrary five; a ledger of phase/operation/target/
+payload signatures stops a repeated no-progress cycle well before that ceiling.
+
 The wizard intentionally stops when it encounters unrelated unresolved tracks,
 a missing existing-playlist suggestion, a new playlist, retirement, or artwork
 that cannot be reused unchanged. Those are separate creative or destructive

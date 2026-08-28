@@ -15,6 +15,9 @@ All notable changes to Chordrift are documented here.
 - Treat “no accepted automatic fit” as an interactive review outcome, falling
   back to manual placement, exclusion, or explicit deferral without losing the
   editable proposal or reporting a false workflow failure.
+- Continue a reviewed workflow across fresh publish, reconcile, and cleanup
+  plans until zero-operation convergence, replacing the arbitrary five-phase
+  stop with a 32-phase ceiling and repeated-target no-progress detection.
 
 ## [0.1.4] - 2026-08-26
 
