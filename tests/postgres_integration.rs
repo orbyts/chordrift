@@ -333,6 +333,11 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     .bind(&account_label)
     .fetch_one(database.pool())
     .await?;
+    let chordrift_account_id: Uuid =
+        sqlx::query_scalar("SELECT chordrift_account_id FROM provider_accounts WHERE id = $1")
+            .bind(account_id)
+            .fetch_one(database.pool())
+            .await?;
     let snapshot_id: Uuid = sqlx::query_scalar(
         "INSERT INTO provider_library_snapshots
          (provider, source, provider_account_id)
@@ -526,6 +531,10 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
         .bind(account_id)
         .execute(database.pool())
         .await?;
+    sqlx::query("DELETE FROM chordrift_accounts WHERE id = $1")
+        .bind(chordrift_account_id)
+        .execute(database.pool())
+        .await?;
     database.close().await;
     Ok(())
 }
@@ -706,9 +715,11 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
             .bind(account_id)
             .fetch_one(database.pool())
             .await?;
-    let product_account_count: i64 = sqlx::query_scalar("SELECT count(*) FROM chordrift_accounts")
-        .fetch_one(database.pool())
-        .await?;
+    let product_account_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM chordrift_accounts WHERE id = $1")
+            .bind(chordrift_account_id)
+            .fetch_one(database.pool())
+            .await?;
     assert_eq!(product_account_count, 1);
 
     let replayed_account_id: Uuid = sqlx::query_scalar(
@@ -725,7 +736,8 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     .await?;
     assert_eq!(replayed_account_id, account_id);
     let product_account_count_after_replay: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM chordrift_accounts")
+        sqlx::query_scalar("SELECT count(*) FROM chordrift_accounts WHERE id = $1")
+            .bind(chordrift_account_id)
             .fetch_one(database.pool())
             .await?;
     assert_eq!(product_account_count_after_replay, 1);
