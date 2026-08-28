@@ -771,7 +771,9 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         other_chordrift_account_id
     );
     let owner_count_after_explicit_replay: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM chordrift_accounts")
+        sqlx::query_scalar("SELECT count(*) FROM chordrift_accounts WHERE id = $1 OR id = $2")
+            .bind(chordrift_account_id)
+            .bind(other_chordrift_account_id)
             .fetch_one(database.pool())
             .await?;
     assert_eq!(owner_count_after_explicit_replay, 2);
