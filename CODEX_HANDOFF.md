@@ -31,14 +31,34 @@ publication is enumerated: it cannot replace unrelated live membership or
 restore an actively excluded track. Compatibility preserves these outcomes;
 it never forces v0.1.4 command ceremony into the v0.2 product architecture.
 
-## Start the next task here: V020-14 database cutover approval gate
+The long-horizon classification goal is one versioned shared knowledge
+authority for canonical evidence and lawful vector/model generations, combined
+with a strictly isolated private account overlay and request-time context. It
+must not download provider audio, flatten explicit language/region/tradition
+facts into opaque similarity, or train on private corrections without consent.
+See `docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md`.
 
-V020-14 candidate creation and verification are complete. Do not start V020-15.
-The only currently available next action is for the user to approve or decline
-the exact atomic database cutover plan in
-`docs/design/CANDIDATE_CUTOVER_GATE_V020_14.md`. Approval must be explicit and
-applies only to the database/binary cutover; it does not authorize Spotify
-access or any provider write.
+## Start the next task here: V020-15 release v0.2.0
+
+V020-01 through V020-14 are complete. Implement only `V020-15 — Release
+v0.2.0` from the authoritative execution map. Complete formatting, strict
+Clippy, unit/doc/PostgreSQL integration tests, packaging, recovery documentation,
+the GitHub release, and crates.io publication. Verify the candidate evidence is
+still internally consistent, but do not repeat production or provider work
+merely to release.
+
+V020-15 does not authorize the separately documented database/binary cutover,
+Spotify access, or a provider write. The installed v0.1.4 binary and production
+connection remain unchanged unless the user separately and explicitly approves
+the exact cutover plan. Release approval and database cutover approval are
+different decisions.
+
+## V020-14 completed candidate evidence
+
+V020-14 completed candidate creation, verification, and presentation of the
+exact plans. See `docs/design/CANDIDATE_CUTOVER_GATE_V020_14.md`.
+
+## Separate unapproved database cutover gate
 
 If approved, take another final read-only production status, invariant, and
 logical backup before changing anything. If production advanced after the
@@ -81,7 +101,7 @@ unavailable. A local PostgreSQL 18.6 restore of the exact V020-14 dump passed
 the parent/heap-index check over all 751 relations and 19,115 pages, and every
 exact restore/data/application gate passed.
 
-V020-01 through V020-13 are complete. V020-13 took a fresh read-only logical
+V020-01 through V020-14 are complete. V020-13 took a fresh read-only logical
 backup of the healthy production PostgreSQL 18.6 database at 45/45 migrations
 and preserved it under
 `$DROPBOX/Music/Chordrift/Backups/2026-08-28-v020-13-latest-state/`. The custom

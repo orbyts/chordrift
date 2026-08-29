@@ -9,9 +9,9 @@ behavior. Existing database-v2 names remain unchanged. Migration 0046 now
 implements the additive recipe, collection, surface, onboarding, and Spin table
 names shown here, but remains isolated from production Neon.
 
-Status: active v0.2 architecture, updated 2026-08-28. V020-01 through V020-13
-are complete; V020-14's fresh candidate is verified and its atomic database
-cutover still awaits separate approval. This
+Status: active v0.2 architecture, updated 2026-08-28. V020-01 through V020-14
+are complete; release work is next, while atomic database cutover still awaits
+separate approval. This
 document is a design contract, not authorization to apply a production
 migration, cut over a connection, or write to a provider.
 
@@ -79,7 +79,7 @@ migration, cut over a connection, or write to a provider.
   invariants, exact required-domain hashes, idempotent migration replay,
   `pg_amcheck`, and the complete intake fake-binary suite. No candidate,
   production migration, connection cutover, or provider action occurred.
-- **Verified candidate — V020-14:** the newest-state backup restored into a
+- **Complete — V020-14:** the newest-state backup restored into a
   fresh Neon PostgreSQL 18 candidate, advanced to 47/47, and retained exact
   invariant plus 21-table durable-domain parity. The current-main capability,
   maintenance/intake, Spin-origin, fake-provider, and disposable PostgreSQL
@@ -112,6 +112,13 @@ first implementation supports Spotify only, but
 Spotify payloads stop at the adapter boundary. Provider-qualified identities
 map to provider-neutral music identities using explicit evidence; IDs from
 different providers are never matched by string coincidence.
+
+The later [classification knowledge foundation](CLASSIFICATION_KNOWLEDGE_FOUNDATION.md)
+extends this boundary without changing it: a shared, versioned authority may
+serve lawful canonical facts and reusable vector/model generations, while
+private preferences, classifications, corrections, and listening evidence stay
+account-scoped and request-time context stays in recipes. It is future design,
+not part of v0.2.0 or permission to acquire provider audio.
 
 ## Natural provider use and hidden orchestration
 

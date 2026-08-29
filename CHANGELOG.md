@@ -82,6 +82,13 @@ All notable changes to Chordrift are documented here.
   naturally while Chordrift hides internal plan/assessment/receipt ceremony,
   records supported reversible intent automatically, leaves ambiguity for
   review, and asks for consent only before Chordrift mutates a provider.
+- Record the long-horizon classification knowledge architecture: explicit
+  provenance-backed canonical facts and versioned lawful shared vector/model
+  generations remain distinct from private account classifications,
+  corrections, listening evidence, and request-time context. Treat vector
+  indexes as rebuildable retrieval structures behind an authenticated service,
+  and require data/model rights, consent, privacy, and multilingual evaluation
+  before any shared learning or foundation-model work.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

@@ -107,7 +107,7 @@ deterministic provider-free Spins.
   maintenance plan origins/capability observations as well as Spin publication
   origins, and rerun the complete intake fake-binary compatibility suite before
   presenting any cutover plan.
-- [ ] **V020-14 — Candidate and personal cutover gate.** Create a fresh candidate
+- [x] **V020-14 — Candidate and personal cutover gate.** Create a fresh candidate
   only when local rehearsal passes and capacity permits. Migrate the newest live
   state, verify runtime and invariants, present exact database and Spotify plans,
   and stop for separate approvals before connection cutover or provider writes.
@@ -115,9 +115,9 @@ deterministic provider-free Spins.
   the complete maintenance/intake and Spin-origin separation suite. Adapters may
   preserve v0.1.x safety outcomes, but must not weaken the provider-neutral v0.2
   ownership, determinism, or publication architecture. Candidate creation,
-  migration, exact parity, runtime, capability, and compatibility verification
-  are complete; the slice remains open at the separately approved atomic
-  database cutover boundary. No Spotify write is currently proposed.
+  migration, exact parity, runtime, capability, compatibility verification,
+  and presentation of both plans are complete. Connection cutover remains a
+  separate ungranted approval; no Spotify write is currently proposed.
 - [ ] **V020-15 — Release v0.2.0.** Complete formatting, strict Clippy, unit/doc/
   PostgreSQL integration tests, packaging, recovery documentation, GitHub
   release, and crates.io publication after the personal candidate is verified.
@@ -194,12 +194,19 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v0.9.0 — Product hardening:** installation, updates, accessibility,
   performance/load budgets, observability, support diagnostics, failure
   injection, and end-to-end recovery rehearsals.
+- **Long-horizon classification knowledge foundation:** one versioned shared
+  authority for canonical facts, lawful model artifacts, and shared vector
+  generations, combined at query time with an isolated private account overlay
+  and contextual recipe. Assign a release only after hosted authorization,
+  privacy/consent, cross-provider identity, lawful data/model rights, and
+  multilingual evaluation boundaries are proven. See
+  `docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md`.
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Current gate:** `V020-14 — approve or decline the documented atomic database
-cutover`. Do not start V020-15 and do not treat database approval as Spotify
-write approval.
+**Next slice:** `V020-15 — Release v0.2.0`. The separately documented database
+cutover remains unapproved and release work must not treat it—or any Spotify
+access/write—as implicitly authorized.
 
 ## Portable core and native clients
 
@@ -475,13 +482,16 @@ do not become acoustically similar merely because both are frequently played.
 Spotify-only tracks must retain a deterministic personal/metadata fallback
 rather than downloading or scraping provider audio.
 
-Chordrift does not train a music foundation model. It performs inference with
-pretrained models or imports independently sourced semantic tags for an
-identified recording, then caches the result with model/source, version,
-confidence, and retrieval time. Before clustering ships, review the then-current
-Spotify Platform policy and keep Spotify as the live synchronization and
-user-action provider; resolve the artist/title/ISRC identity independently for
-model inference and portable enrichment.
+For the completed v0.0.5 scope, Chordrift does not train a music foundation
+model. It performs inference with pretrained models or imports independently
+sourced semantic tags for an identified recording, then caches the result with
+model/source, version, confidence, and retrieval time. The later shared
+classification direction may evaluate trained adapters or eventually a
+foundation model only after lawful-data, license, consent, privacy, and
+multilingual evaluation gates are designed and accepted. Before clustering
+ships, review the then-current Spotify Platform policy and keep Spotify as the
+live synchronization and user-action provider; resolve the artist/title/ISRC
+identity independently for model inference and portable enrichment.
 
 Status: complete. Provenance-aware external semantic enrichment is the first
 input task for v0.0.6 before cluster generation begins.

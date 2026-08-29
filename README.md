@@ -78,10 +78,11 @@ the complete invariant report and exact required-domain hashes, passes
 V020-14 has now created and independently verified a fresh Neon PostgreSQL 18
 candidate at 47/47 with exact newest-state invariant and durable-domain parity,
 the capability handshake, and the complete compatibility/origin test suite.
-The installed v0.1.4 binary and production connection remain unchanged while
-V020-14 waits at its separately approved atomic database cutover gate. No
-Spotify call or provider write occurred; hosted transport and native clients
-remain later work.
+V020-14 is complete because candidate verification and presentation of the
+separately gated plans are complete. The installed v0.1.4 binary and production
+connection remain unchanged; atomic database cutover is still unapproved. No
+Spotify call or provider write occurred. V020-15 release work is next; hosted
+transport and native clients remain later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages

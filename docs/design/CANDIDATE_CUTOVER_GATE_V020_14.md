@@ -1,6 +1,6 @@
 # Candidate and personal cutover gate — V020-14
 
-Status: candidate verification complete on 2026-08-28; database cutover is
+Status: V020-14 complete on 2026-08-28; database cutover is
 awaiting separate explicit approval. No production database mutation,
 connection change, installed-binary change, Spotify access, or provider write
 has occurred.
@@ -148,7 +148,9 @@ exclusions, and enumerated-write rule before it can present an exact write plan.
 
 ## Gate result
 
-The candidate itself is verified. V020-14 remains open at the explicit database
-cutover approval boundary. V020-15 must not begin, production must not be
-migrated, the installed v0.1.4 daily driver must not change, and Spotify must
-not be invoked merely because this candidate passed.
+The candidate is verified and the exact plans have been presented, completing
+V020-14. Database cutover remains a separate ungranted approval rather than
+unfinished slice work. V020-15 may prepare and publish the release, but it must
+not migrate production, change the installed v0.1.4 daily driver, cut over a
+connection, invoke Spotify, or perform a provider write merely because this
+candidate passed.
