@@ -221,6 +221,7 @@ unexpected_cleanup_operations() {
 
 if [ "$SKIP_PULL" = false ]; then
     stage "Observe" "fresh Spotify pull before reviewing the holding queue"
+    printf 'Refreshing Spotify state; this usually takes 5–20 seconds.\n'
     run_chordrift sync pull --account "$ACCOUNT" >"$PULL_FILE"
     printf 'Spotify observation refreshed.\n'
 else
@@ -477,17 +478,27 @@ while [ "$iterations" -lt 16 ]; do
             printf 'Cleanup apply returned no run ID. Stop and inspect.\n' >&2
             exit 1
         }
-        run_chordrift sync pull --account "$ACCOUNT" >"$PULL_FILE"
-        run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID" \
-            >"$APPLY_FILE"
-        APPLY_STATUS=$(sed -n \
-            -e 's/^spotify apply: //p' \
-            -e 's/^spotify_apply: //p' \
-            "$APPLY_FILE" | tail -n 1 | sed 's/ (already current)$//')
-        [ "$APPLY_STATUS" = succeeded ] || {
-            printf 'Spotify accepted cleanup, but it is not yet verified. Stop and inspect.\n' >&2
-            exit 3
-        }
+        VERIFY_ATTEMPT=1
+        MAX_VERIFY_ATTEMPTS=4
+        while [ "$VERIFY_ATTEMPT" -le "$MAX_VERIFY_ATTEMPTS" ]; do
+            run_chordrift sync pull --account "$ACCOUNT" >"$PULL_FILE"
+            run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID" \
+                >"$APPLY_FILE"
+            APPLY_STATUS=$(sed -n \
+                -e 's/^spotify apply: //p' \
+                -e 's/^spotify_apply: //p' \
+                "$APPLY_FILE" | tail -n 1 | sed 's/ (already current)$//')
+            [ "$APPLY_STATUS" != succeeded ] || break
+            if [ "$VERIFY_ATTEMPT" -ge "$MAX_VERIFY_ATTEMPTS" ]; then
+                printf 'Spotify accepted cleanup, but Chordrift could not observe it after %s pulls.\n' \
+                    "$MAX_VERIFY_ATTEMPTS" >&2
+                printf 'The receipt remains pending; no unrelated work was attempted.\n' >&2
+                exit 3
+            fi
+            printf 'Cleanup is awaiting Spotify observation; retrying automatically.\n'
+            sleep 2
+            VERIFY_ATTEMPT=$((VERIFY_ATTEMPT + 1))
+        done
         printf 'cleanup phase verified.\n'
         continue
     fi
