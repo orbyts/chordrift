@@ -131,7 +131,9 @@ the lowest practical development cost. Reuse lawful metadata, existing models,
 current Chordrift embeddings, and accepted account evidence; ask the user only
 for genuinely missing, conflicting, incorrect, or personal knowledge. Run
 inference on demand, cache it by exact generation/input fingerprint, and require
-no always-on service or provider write.
+no always-on service or provider write. Use a separately owned Storexa-backed
+Neon knowledge project for shared authoring state, allowing it to autosuspend;
+never place private listening/account history there.
 
 - [ ] **V021-01 — Classification evidence contract.** Define the versioned
   `TrackClassificationReport`: independent language, region/association,
@@ -140,11 +142,14 @@ no always-on service or provider write.
   fingerprints, shared/personal scope, and runtime compatibility. Keep
   classification distinct from canonical placement and Spin eligibility. Add
   the “Yaro Yarodi” multilingual fixture; do not change SQL or Spotify.
-- [ ] **V021-02 — Additive personal-intelligence ledger.** Add immutable private
-  label/correction and behavioral-evidence events, draft/candidate/published
-  intelligence releases, active-release selection, model/artifact manifests,
-  evaluation reports, and content-addressed classification caches. Rehearse
-  migration locally before a separately approved live migration.
+- [ ] **V021-02 — Split knowledge and personal-intelligence ledgers.** Design
+  and rehearse two additive Storexa-backed schemas: a separate Neon knowledge
+  project for canonical facts, taxonomy, source/license provenance, scoped
+  contributions, reviewed shared claims, model/artifact manifests, and shared
+  evaluations; and the existing account project for immutable private labels,
+  behavioral evidence, personal releases, active-release selection, and exact
+  classification caches. No browser or contributor receives either database
+  credential. Do not create/migrate a Neon project without separate approval.
 - [ ] **V021-03 — Existing-evidence feature baseline.** Build deterministic
   features from canonical/provider identity, title/album text and script,
   credited artist roles and catalog priors, lawful MusicBrainz-style metadata,
@@ -188,7 +193,9 @@ service only when measured demand justifies their cost.
 - [ ] **V022-01 — Authenticated service transport.** Expose the existing
   command/query/event contract without redefining domain behavior.
 - [ ] **V022-02 — Product identity and authorization.** Implement sessions,
-  account ownership, revocation, and tenant-safe authorization tests.
+  account ownership, revocation, scoped classification contributions, and
+  tenant-safe authorization tests. A contribution shares only the explicit
+  claim/evidence the person approved, never their library or listening history.
 - [ ] **V022-03 — Encrypted provider credential vault.** Keep refresh credentials
   server-side with rotation and revocation; clients retain only Chordrift
   sessions.

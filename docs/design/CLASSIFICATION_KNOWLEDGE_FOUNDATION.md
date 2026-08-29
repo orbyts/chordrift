@@ -51,7 +51,7 @@ for an always-running service. The first useful deployment has zero idle
 inference cost:
 
 ```text
-Authoring database + developer Classification Lab
+Separate Neon knowledge project + developer Classification Lab
                          │ publish
                          ▼
 Immutable knowledge/model package
@@ -64,8 +64,13 @@ Private Chordrift account ledger
 ```
 
 The authoring store contains taxonomy, lawful metadata, training examples,
-corrections, provenance, candidates, and evaluations. It may be local and does
-not need continuous availability. Published packages contain only immutable,
+corrections, provenance, candidates, and evaluations. The intended development
+deployment is a separate Storexa-backed Neon project so shared knowledge has
+independent credentials, migrations, backups, retention, and lifecycle from the
+private account ledger. It can autosuspend and does not need continuous
+availability, keeping current development infrastructure effectively free while
+remaining subject to measured project/storage/compute limits. Published
+packages contain only immutable,
 checksummed taxonomy, feature-pipeline, existing-model/adapter, artist-prior,
 evaluation, and compatibility artifacts. Chordrift loads a package only for an
 unknown or stale track, caches the report by track/input/model/personal-release
@@ -80,6 +85,29 @@ global catalog embedding or always-on vector service is required.
 If usage later justifies it, the identical classification contract may run in a
 scale-to-zero job, queued shared worker, or always-on service with a shared
 cache. Deployment changes must not change the report semantics.
+
+### Physical data boundary
+
+The two Neon projects serve different authorities:
+
+| Store | May contain | Must not contain |
+| --- | --- | --- |
+| Shared knowledge project | Canonical identities and facts, taxonomy, lawful source/license provenance, artist/catalog priors, explicitly scoped contribution events, reviewed shared claims, model/artifact manifests, shared evaluations, optional rebuildable vector indexes | Private libraries, playlist names, listening history, exclusions, private corrections, personal model overlays, provider credentials |
+| Private account project | Provider inventory, listening evidence, personal labels/corrections, placement and removal evidence, exclusions, personal releases, active release, cached account classification reports | Another person's private evidence or unreviewed claims presented as shared truth |
+
+Storexa supplies the same typed connection, health, migration, and recovery
+machinery to both Rust-owned stores. The browser never connects to either.
+During personal development the local Rust Lab is the only writer to the shared
+project. Friends later contribute through authenticated application commands;
+they never receive Neon credentials. Before hosted identity exists, any friend
+annotation must arrive as an explicit reviewable import and cannot become a
+promoted shared claim automatically.
+
+A contribution contains only the claim and evidence the contributor chose to
+share, with contributor scope, consent/provenance, time, and withdrawal state.
+It does not implicitly disclose their library, playlists, listening behavior,
+or private classifier. Conflicting contributions remain visible until a
+review/evaluation process promotes a shared conclusion.
 
 ## One logical knowledge authority, several physical stores
 

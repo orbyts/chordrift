@@ -105,7 +105,9 @@ explainable multidimensional report, immutable on-demand model packages,
 private account adaptation, exact caching, and a developer-only web
 Classification Lab before any hosted inference service. See the
 [classification knowledge foundation](docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md)
-and [roadmap](ROADMAP.md).
+and [roadmap](ROADMAP.md). The development authoring store is planned as a
+separate autosuspending Storexa-backed Neon project; private account evidence
+remains in the existing account project, and inference remains on demand.
 
 Its longer-term form is a personal listening-system designer. Chordrift should
 inspect a library, propose a coherent organization, explain every

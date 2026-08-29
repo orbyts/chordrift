@@ -43,6 +43,17 @@ a factual label solely from playlist placement, or train on private corrections
 across accounts without consent. See
 `docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md`.
 
+The intended development authoring store is a separate autosuspending Neon
+project accessed through Storexa, physically isolated from the live personal
+account ledger and requiring no always-on inference service. It may contain
+canonical facts, taxonomy, lawful provenance, scoped contributions, reviewed
+shared claims, and model/release metadata—never private libraries, playlist
+names, listening history, exclusions, or private overlays. Friends eventually
+contribute only through authenticated application commands; before hosted
+identity exists, contributions are explicit reviewable imports. Do not create a
+Neon project, change capacity, or migrate either live store without a separately
+approved V021-02 plan.
+
 ## Start the next task here: V021-01 classification evidence contract
 
 V020-01 through V020-15 are complete. v0.2.0 is released and the separately
