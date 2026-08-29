@@ -72,6 +72,18 @@ binary compatibility cases pass. Production remains unchanged at 45/45; no
 candidate, cutover, Spotify access, or provider write occurred. See
 `docs/design/LATEST_STATE_MIGRATION_REHEARSAL_V020_13.md`.
 
+Repository cleanup on 2026-08-28 left `main` as the only local and GitHub
+branch. Two annotated recovery tags preserve the only intentionally retained
+unmerged references: `archive/v0.1.4-intake-wizard` points to tested commit
+`9a078f3`, and `archive/apple-music-pre-v0.2` points to prototype commit
+`21217a6`. Treat both as historical source, not current architecture. The
+intake tag can recreate a migration-45 fallback worktree if absolutely needed;
+the safer capability-checked wizard is already on `main` but intentionally
+cannot run with the released v0.1.4 binary or against the unmigrated production
+database. Prefer the v0.2 path after the V020-14 candidate/cutover gates pass.
+The Apple provider must be redesigned against the provider-neutral boundary
+rather than merged from its archive tag.
+
 V020-12 adds
 `SpinPublicationBoundary`: one explicitly approved account-owned Spin becomes
 an immutable, checkpoint-bound synchronization plan with
