@@ -70,6 +70,82 @@ fn reevaluate_reconcile_audit_allows_only_selected_old_placement_drift() {
 }
 
 #[test]
+fn reviewed_workflow_confirmation_keeps_internal_assessment_ids_noninteractive() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let work = temporary_work("workflow-confirmation");
+    let fake = work.join("chordrift-fake");
+    let log = work.join("commands.log");
+    let plan = "00000000-0000-0000-0000-000000000021";
+    let next_plan = "00000000-0000-0000-0000-000000000022";
+    let assessment = "00000000-0000-0000-0000-000000000023";
+    let apply = "00000000-0000-0000-0000-000000000024";
+    write_fake(
+        &fake,
+        &format!(
+            r##"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"$FAKE_CHORDRIFT_LOG"
+case "$*" in
+  capabilities*) printf '%s\n' '{{"schema_version":1}}' ;;
+  "sync plan-show --account personal --plan {plan} --details")
+    printf '%s\n' \
+      'plan_id: {plan}' \
+      'plan_origin: maintenance' \
+      'snapshot_current: true' \
+      'sequence	phase	operation	playlist	spotify_playlist_id	spotify_track_id	payload	safety' \
+      '0	publish	add_track	Fixture	playlist	track	Reason=approved_assignment	—'
+    ;;
+  "sync apply-preflight --account personal --plan {plan}")
+    printf '%s\n' 'publish_preflight: passed'
+    ;;
+  "sync readiness --account personal --plan {plan} --probe")
+    printf '%s\n' 'assessment_id: {assessment}' 'apply_readiness: ready'
+    ;;
+  "sync apply --account personal --assessment {assessment} --phase publish --confirm {assessment}")
+    printf '%s\n' 'apply_run_id: {apply}'
+    ;;
+  "sync apply-show --account personal --run {apply}")
+    printf '%s\n' 'spotify_apply: succeeded'
+    ;;
+  "sync pull --account personal") printf '%s\n' 'sync: current' ;;
+  "sync plan --account personal") printf '%s\n' 'plan_id: {next_plan}' ;;
+  *) printf 'unexpected fake command: %s\n' "$*" >&2; exit 90 ;;
+esac
+"##,
+        ),
+    );
+
+    let output = Command::new(root.join("scripts/chordrift-plan-phase.sh"))
+        .args([
+            "--account",
+            "personal",
+            "--plan",
+            plan,
+            "--phase",
+            "publish",
+            "--workflow-confirmation",
+            plan,
+            "--concise",
+        ])
+        .env("CHORDRIFT_BIN", &fake)
+        .env("FAKE_CHORDRIFT_LOG", &log)
+        .output()
+        .expect("confirmed workflow phase executes without a terminal");
+    assert!(
+        output.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let commands = fs::read_to_string(&log).expect("fake command log exists");
+    assert!(commands.contains(&format!(
+        "sync apply --account personal --assessment {assessment} --phase publish --confirm {assessment}"
+    )));
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("assessment UUID"));
+    fs::remove_dir_all(work).expect("temporary test directory is removed");
+}
+
+#[test]
 fn installed_binary_capability_manifest_is_machine_readable() {
     let output = Command::new(env!("CARGO_BIN_EXE_chordrift"))
         .args([

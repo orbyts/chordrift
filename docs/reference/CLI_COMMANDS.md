@@ -509,6 +509,10 @@ For the complete existing-destination correction workflow, use:
 $ scripts/chordrift-reevaluate-wizard.sh --account personal
 ```
 
+Choose the destinations, review the concise Spotify changes, and authorize the
+correction once. The wizard keeps proposal IDs, plan phases, readiness UUIDs,
+verification pulls, and receipts internal unless manual diagnosis is needed.
+
 The CSV uses the same columns and safe import/approval flow as `classify
 export`; fill only evidence you know and mark intended rows with `action=set`.
 Then use `chordrift classify import` and `chordrift classify approve`.

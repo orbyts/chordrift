@@ -52,8 +52,15 @@ revisions first. Only after complete proposal and unchanged-artwork review does
 it offer to publish the selected additions, verify them, and separately remove
 those tracks from an old incorrect destination only when the plan identifies a
 snapshot-matched `managed_provider_drift` removal. It verifies that correction
-before separately removing the verified tracks from `Re-evaluate` with an exact
-destructive-cleanup confirmation.
+before separately removing the verified tracks from `Re-evaluate` behind the
+same reviewed operation boundary.
+
+This is presented as one action, not three operator workflows. After you choose
+the destinations, Chordrift shows the concise additions and removals and asks
+once whether to apply that reviewed correction to Spotify. The proposal, plan,
+readiness assessment, phase ordering, receipts, pulls, retries, and exact IDs are
+durable internal evidence. They remain available for diagnosis but are not
+values you should normally have to copy or confirm.
 
 The wizard rejects unrelated unresolved tracks, new playlist or artwork design,
 retirement, non-maintenance plans, and unexpected publish, reconcile, or cleanup
@@ -72,8 +79,7 @@ at an artwork confirmation—resume without repeating the placement decisions:
 $ scripts/chordrift-reevaluate-wizard.sh --account personal --resume
 ```
 
-Exact-ID prompts retry after a typo and accept `cancel` as the explicit safe
-exit. Reusing existing artwork validates the original files in place through a
+Reusing existing artwork validates the original files in place through a
 temporary manifest; it does not copy the complete artwork directory.
 
 The general `chordrift-intake-wizard.sh` is not the Re-evaluate placement

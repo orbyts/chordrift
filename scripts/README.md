@@ -205,20 +205,28 @@ unrelated unresolved work, reuses only the unchanged approved artwork set, and
 allows only enumerated selected-track publication. After provider verification,
 it permits only snapshot-matched `managed_provider_drift` removals of those
 selected tracks from old incorrect destinations, verifies that phase, and then
-presents a separate exact-confirmed destructive cleanup containing only selected
-removals from `Re-evaluate`.
+performs separately planned, snapshot-gated cleanup containing only selected
+removals from `Re-evaluate` under the same reviewed authorization.
+
+The complete correction is one operator action. After destinations are chosen,
+the wizard shows a short human-readable Spotify change summary and asks once for
+authorization. Plan IDs, readiness assessments, exact confirmations, phased
+ordering, retries, receipts, and fresh-snapshot checks remain enforced internally
+instead of being transcribed by the operator. Use the lower-level plan commands
+only for diagnosis or manual recovery.
 
 Use `--resume` only after placement review and proposal approval already
 completed but a later gate stopped. It reuses that exact approved proposal and
-any pending artwork batch; it does not ask for the destinations again. Exact-ID
-typos now re-prompt until the value matches or the operator types `cancel`.
-Artwork reuse writes only a temporary manifest beside the existing files, so it
+any pending artwork batch; it does not ask for the destinations again. Artwork
+reuse writes only a temporary manifest beside the existing files, so it
 does not copy the 134 MB visual-system directory into another temporary tree.
 
 Do not use `chordrift-intake-wizard.sh` to choose Re-evaluate destinations. The
 intake wizard handles Liked Songs, named intake playlists, and verified managed-
 playlist removals. `chordrift-workflow.sh` and `chordrift-plan-phase.sh` are
-lower-level resume/recovery helpers, not the first command for queue review.
+lower-level resume/recovery helpers, not the first command for queue review. A
+parent workflow may pass its already-reviewed, plan-bound authorization to the
+phase helper; a direct invocation retains the exact assessment-ID prompt.
 
 ## Artwork label renderer
 

@@ -482,11 +482,12 @@ pub async fn verify_pending_publications(
     for run in runs {
         let run_id: Uuid = run.try_get("id")?;
         let proposal_id: Uuid = run.try_get("proposal_generation_id")?;
-        let canonical_required = publication_touches_canonical(database, run_id).await?;
-        if (!canonical_required
-            || verify_publication(database, account_id, snapshot_id, proposal_id).await?)
-            && verify_routing_publication(database, account_id, snapshot_id, run_id).await?
-        {
+        if verify_publish_operations(database, account_id, snapshot_id, run_id).await? {
+            // Persist a complete managed baseline when the final proposal already
+            // matches. A later reconcile phase may still be required, so complete
+            // proposal equality is deliberately not a condition of this publish
+            // receipt succeeding.
+            let _ = verify_publication(database, account_id, snapshot_id, proposal_id).await?;
             sqlx::query(
                 "UPDATE sync_apply_runs SET status = 'succeeded', finished_at = now(),
                  summary = summary || jsonb_build_object('verified_snapshot_id', $2::text)
@@ -652,82 +653,105 @@ pub async fn verify_pending_publications(
     Ok(verified)
 }
 
-async fn publication_touches_canonical(database: &Database, apply_run_id: Uuid) -> Result<bool> {
-    sqlx::query_scalar(
-        "SELECT EXISTS (
-             SELECT 1
-             FROM sync_apply_operations execution
-             JOIN sync_operations planned ON planned.id = execution.planned_operation_id
-             JOIN playlists playlist ON playlist.id = planned.playlist_id
-             WHERE execution.apply_run_id = $1
-               AND planned.phase = 'publish'
-               AND playlist.generation_id IS NOT NULL
-         )",
-    )
-    .bind(apply_run_id)
-    .fetch_one(database.pool())
-    .await
-    .map_err(Into::into)
-}
-
-async fn verify_routing_publication(
+async fn verify_publish_operations(
     database: &Database,
     account_id: Uuid,
     snapshot_id: Uuid,
     apply_run_id: Uuid,
 ) -> Result<bool> {
-    let route_ids: Vec<Uuid> = sqlx::query_scalar(
-        "SELECT DISTINCT planned.playlist_id
-         FROM sync_apply_operations execution
-         JOIN sync_operations planned ON planned.id = execution.planned_operation_id
-         JOIN routing_surfaces route ON route.playlist_id = planned.playlist_id
-         WHERE execution.apply_run_id = $1 AND planned.phase = 'publish'",
-    )
-    .bind(apply_run_id)
-    .fetch_all(database.pool())
-    .await?;
-    for playlist_id in route_ids {
-        let desired: Vec<Uuid> = sqlx::query_scalar(
-            "SELECT track_id FROM playlist_tracks
-             WHERE playlist_id = $1 ORDER BY position",
-        )
-        .bind(playlist_id)
-        .fetch_all(database.pool())
-        .await?;
-        let current: Vec<Uuid> = sqlx::query_scalar(
-            "SELECT track.track_id
-             FROM provider_account_playlists policy
-             JOIN provider_playlists provider
-               ON provider.id = policy.provider_playlist_id
-              AND provider.playlist_id = $2
-             JOIN provider_observed_playlist_tracks membership
-               ON membership.provider_playlist_id = provider.id
-              AND membership.snapshot_id = $3
-             JOIN provider_tracks track ON track.id = membership.provider_track_id
-             WHERE policy.provider_account_id = $1
-               AND policy.present_in_latest_snapshot
-             ORDER BY membership.position",
-        )
-        .bind(account_id)
-        .bind(playlist_id)
-        .bind(snapshot_id)
-        .fetch_all(database.pool())
-        .await?;
-        let present: bool = sqlx::query_scalar(
-            "SELECT EXISTS (
-                 SELECT 1 FROM provider_account_playlists policy
-                 JOIN provider_playlists provider ON provider.id = policy.provider_playlist_id
-                 WHERE policy.provider_account_id = $1
-                   AND provider.playlist_id = $2
-                   AND policy.present_in_latest_snapshot
-             )",
-        )
-        .bind(account_id)
-        .bind(playlist_id)
-        .fetch_one(database.pool())
-        .await?;
-        if !present || current != desired {
+    let operations = operations(database, apply_run_id).await?;
+    for operation in operations {
+        if operation.status != "succeeded" {
             return Ok(false);
+        }
+        if operation.kind == "upload_artwork" {
+            // Spotify does not expose a stable cover-content digest. A successful
+            // provider response is the strongest available verification signal.
+            continue;
+        }
+        let target = target_for(database, apply_run_id, &operation).await?;
+        let observed_name: Option<String> = sqlx::query_scalar(
+            "SELECT current.name
+             FROM current_spotify_playlists current
+             WHERE current.provider_account_id = $1
+               AND current.spotify_playlist_id = $2",
+        )
+        .bind(account_id)
+        .bind(&target)
+        .fetch_optional(database.pool())
+        .await?;
+        let Some(observed_name) = observed_name else {
+            return Ok(false);
+        };
+        match operation.kind.as_str() {
+            "create_playlist" | "rename_playlist" => {
+                if observed_name != operation.playlist_name {
+                    return Ok(false);
+                }
+            }
+            "add_track" | "restore_track" => {
+                let spotify_track_id = operation.spotify_track_id.as_deref().ok_or_else(|| {
+                    configuration("published track operation has no Spotify track ID")
+                })?;
+                let present: bool = sqlx::query_scalar(
+                    "SELECT EXISTS (
+                         SELECT 1
+                         FROM provider_playlists playlist
+                         JOIN provider_observed_playlist_tracks membership
+                           ON membership.provider_playlist_id = playlist.id
+                          AND membership.snapshot_id = $3
+                         JOIN provider_tracks track ON track.id = membership.provider_track_id
+                         WHERE playlist.provider = 'spotify'
+                           AND playlist.provider_playlist_id = $1
+                           AND track.provider = 'spotify'
+                           AND track.provider_track_id = $2
+                     )",
+                )
+                .bind(&target)
+                .bind(spotify_track_id)
+                .bind(snapshot_id)
+                .fetch_one(database.pool())
+                .await?;
+                if !present {
+                    return Ok(false);
+                }
+            }
+            "reorder_playlist" => {
+                let playlist_id = operation.playlist_id.ok_or_else(|| {
+                    configuration("published reorder has no canonical playlist ID")
+                })?;
+                let desired: Vec<Uuid> = sqlx::query_scalar(
+                    "SELECT track_id FROM playlist_tracks
+                     WHERE playlist_id = $1 ORDER BY position",
+                )
+                .bind(playlist_id)
+                .fetch_all(database.pool())
+                .await?;
+                let current: Vec<Uuid> = sqlx::query_scalar(
+                    "SELECT track.track_id
+                     FROM provider_account_playlists policy
+                     JOIN provider_playlists playlist
+                       ON playlist.id = policy.provider_playlist_id
+                     JOIN provider_observed_playlist_tracks membership
+                       ON membership.provider_playlist_id = playlist.id
+                      AND membership.snapshot_id = $3
+                     JOIN provider_tracks track ON track.id = membership.provider_track_id
+                     WHERE policy.provider_account_id = $1
+                       AND policy.present_in_latest_snapshot
+                       AND playlist.provider = 'spotify'
+                       AND playlist.provider_playlist_id = $2
+                     ORDER BY membership.position",
+                )
+                .bind(account_id)
+                .bind(&target)
+                .bind(snapshot_id)
+                .fetch_all(database.pool())
+                .await?;
+                if current != desired {
+                    return Ok(false);
+                }
+            }
+            _ => return Ok(false),
         }
     }
     Ok(true)

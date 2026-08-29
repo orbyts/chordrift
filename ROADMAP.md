@@ -124,6 +124,14 @@ deterministic provider-free Spins.
   PostgreSQL integration tests, packaging, recovery documentation, GitHub
   release, and crates.io publication after the personal candidate is verified.
 
+Post-release daily-driver hardening enforces the product rule already recorded
+in the architecture: a reviewed Re-evaluate move is one user action with one
+provider authorization. Exact plans, readiness assessments, ordered
+publish/reconcile/cleanup phases, retries, and receipts remain internal. Publish
+verification is operation-scoped so an enumerated addition cannot wait on a
+later planned removal; complete-state verification is retained for the
+destructive cleanup gate.
+
 ### v0.2.1 — Hosted Rust authority
 
 Goal: make the same application contract safely consumable by shipped clients

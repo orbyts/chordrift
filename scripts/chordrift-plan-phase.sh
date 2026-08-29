@@ -10,10 +10,13 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 ACCOUNT=personal
 PLAN_ID=
 PHASE=
+WORKFLOW_CONFIRMATION=
+CONCISE=false
 
 usage() {
     printf '%s\n' \
         "Usage: scripts/chordrift-plan-phase.sh --plan PLAN_UUID --phase publish|reconcile [--account LABEL]" \
+        "       [--workflow-confirmation PLAN_UUID --concise]" \
         "" \
         "Reviews and applies exactly one current publish or reconcile phase." \
         "It refuses cleanup, retirement, stale plans, failed readiness, and" \
@@ -40,6 +43,15 @@ while [ "$#" -gt 0 ]; do
             PHASE=$2
             shift 2
             ;;
+        --workflow-confirmation)
+            [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+            WORKFLOW_CONFIRMATION=$2
+            shift 2
+            ;;
+        --concise)
+            CONCISE=true
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -59,6 +71,10 @@ case "$ACCOUNT" in
         ;;
 esac
 [ -n "$PLAN_ID" ] || { printf '%s\n' '--plan is required.' >&2; exit 2; }
+[ -z "$WORKFLOW_CONFIRMATION" ] || [ "$WORKFLOW_CONFIRMATION" = "$PLAN_ID" ] || {
+    printf '%s\n' '--workflow-confirmation must exactly match --plan.' >&2
+    exit 2
+}
 case "$PHASE" in
     publish|reconcile) ;;
     cleanup|retirement)
@@ -92,9 +108,12 @@ READINESS_FILE=$WORK_DIR/readiness.txt
 APPLY_FILE=$WORK_DIR/apply.txt
 VERIFY_FILE=$WORK_DIR/verify.txt
 NEXT_PLAN_FILE=$WORK_DIR/next-plan.txt
+PREFLIGHT_FILE=$WORK_DIR/preflight.txt
+PULL_FILE=$WORK_DIR/pull.txt
 
 cleanup() {
-    rm -f "$DETAIL_FILE" "$READINESS_FILE" "$APPLY_FILE" "$VERIFY_FILE" "$NEXT_PLAN_FILE"
+    rm -f "$DETAIL_FILE" "$READINESS_FILE" "$APPLY_FILE" "$VERIFY_FILE" \
+        "$NEXT_PLAN_FILE" "$PREFLIGHT_FILE" "$PULL_FILE"
     rmdir "$WORK_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT HUP INT TERM
@@ -148,11 +167,17 @@ if [ "$PHASE" = reconcile ] && printf '%s\n' "$PLAN_PHASES" | grep -Fx publish >
     printf 'This plan still contains an earlier publish phase. Apply and verify publish first.\n' >&2
     exit 1
 fi
-run_chordrift sync plan-show --account "$ACCOUNT" --plan "$PLAN_ID" --details
+[ "$CONCISE" = true ] || \
+    run_chordrift sync plan-show --account "$ACCOUNT" --plan "$PLAN_ID" --details
 
 if [ "$PHASE" = publish ]; then
     stage "Preflight" "validate publish artifacts and request estimates"
-    run_chordrift sync apply-preflight --account "$ACCOUNT" --plan "$PLAN_ID"
+    if [ "$CONCISE" = true ]; then
+        run_chordrift sync apply-preflight --account "$ACCOUNT" --plan "$PLAN_ID" \
+            >"$PREFLIGHT_FILE"
+    else
+        run_chordrift sync apply-preflight --account "$ACCOUNT" --plan "$PLAN_ID"
+    fi
 fi
 
 stage "Readiness" "assess exact plan and probe Spotify read-only"
@@ -164,24 +189,30 @@ READINESS_STATUS=$(field apply_readiness "$READINESS_FILE" | sed 's/ (already cu
     printf 'Readiness did not pass. No apply was attempted.\n' >&2
     exit 1
 }
-run_chordrift sync readiness-show --account "$ACCOUNT" --assessment "$ASSESSMENT_ID"
+if [ "$CONCISE" = false ]; then
+    run_chordrift sync readiness-show --account "$ACCOUNT" --assessment "$ASSESSMENT_ID"
+fi
 
-printf '\nPlan %s is ready for phase %s.\n' "$PLAN_ID" "$PHASE"
-while true; do
-    printf "Type the assessment UUID %s to authorize this one phase (or 'cancel'): " \
-        "$ASSESSMENT_ID" >/dev/tty
-    IFS= read -r CONFIRMATION </dev/tty
-    if [ "$CONFIRMATION" = "$ASSESSMENT_ID" ]; then
-        break
-    fi
-    case "$CONFIRMATION" in
-        cancel|CANCEL|Cancel)
-            printf 'Cancelled. No apply was attempted.\n'
-            exit 0
-            ;;
-    esac
-    printf 'Confirmation did not match; please copy the complete value and try again.\n' >&2
-done
+if [ -n "$WORKFLOW_CONFIRMATION" ]; then
+    CONFIRMATION=$ASSESSMENT_ID
+else
+    printf '\nPlan %s is ready for phase %s.\n' "$PLAN_ID" "$PHASE"
+    while true; do
+        printf "Type the assessment UUID %s to authorize this one phase (or 'cancel'): " \
+            "$ASSESSMENT_ID" >/dev/tty
+        IFS= read -r CONFIRMATION </dev/tty
+        if [ "$CONFIRMATION" = "$ASSESSMENT_ID" ]; then
+            break
+        fi
+        case "$CONFIRMATION" in
+            cancel|CANCEL|Cancel)
+                printf 'Cancelled. No apply was attempted.\n'
+                exit 0
+                ;;
+        esac
+        printf 'Confirmation did not match; please copy the complete value and try again.\n' >&2
+    done
+fi
 
 stage "Apply" "execute only the exact confirmed $PHASE phase"
 run_chordrift sync apply \
@@ -194,16 +225,21 @@ APPLY_RUN_ID=$(field apply_run_id "$APPLY_FILE")
     printf 'Apply returned no run ID. Stop and inspect manually.\n' >&2
     exit 1
 }
-run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID"
+[ "$CONCISE" = true ] || run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID"
 
 stage "Verify" "pull provider state and verify the exact receipt"
 VERIFY_ATTEMPT=1
 MAX_VERIFY_ATTEMPTS=4
 while [ "$VERIFY_ATTEMPT" -le "$MAX_VERIFY_ATTEMPTS" ]; do
-    run_chordrift sync pull --account "$ACCOUNT"
+    if [ "$CONCISE" = true ]; then
+        run_chordrift sync pull --account "$ACCOUNT" >"$PULL_FILE"
+    else
+        run_chordrift sync pull --account "$ACCOUNT"
+    fi
     run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID" \
         >"$VERIFY_FILE"
-    run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID"
+    [ "$CONCISE" = true ] || \
+        run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID"
     APPLY_STATUS=$(sed -n \
         -e 's/^spotify apply: //p' \
         -e 's/^spotify_apply: //p' \
@@ -239,5 +275,9 @@ NEXT_PLAN_ID=$(field plan_id "$NEXT_PLAN_FILE")
     printf 'Could not parse the next plan. Stop and inspect manually.\n' >&2
     exit 1
 }
-run_chordrift sync plan-show --account "$ACCOUNT" --plan "$NEXT_PLAN_ID" --details
-printf '\nCompleted phase %s. Review the new plan before any later phase.\n' "$PHASE"
+if [ "$CONCISE" = false ]; then
+    run_chordrift sync plan-show --account "$ACCOUNT" --plan "$NEXT_PLAN_ID" --details
+    printf '\nCompleted phase %s. Review the new plan before any later phase.\n' "$PHASE"
+else
+    printf '%s phase verified.\n' "$PHASE"
+fi

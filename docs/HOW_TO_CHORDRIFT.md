@@ -188,6 +188,10 @@ When ready to choose the corrected existing destination, run:
 $ scripts/chordrift-reevaluate-wizard.sh --account personal
 ```
 
+It asks for destination choices and then one authorization for the summarized
+Spotify correction. Internal plans, assessments, and verification phases do not
+need separate operator confirmations.
+
 This is separate from `chordrift-intake-wizard.sh`, which handles Likes, named
 intake, and verified removals/exclusions.
 

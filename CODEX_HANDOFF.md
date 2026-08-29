@@ -22,7 +22,9 @@ verification remain mandatory Rust-owned safety evidence, but clients should
 hide that machinery during ordinary use. Explicit consent is needed when
 Chordrift itself will mutate a provider—create, rename, reorder, add, remove,
 delete, or change artwork—and destructive onboarding reorganization needs an
-exact recoverable preview.
+exact recoverable preview. One understandable reviewed action may span several
+internally gated phases; ask once for that action instead of asking the person
+to authorize every internal plan or assessment separately.
 
 Onboarding must support rebuild-and-tidy, preserve-and-enhance, and custom
 organization paths. Mixed-authority “collaborative” surfaces protect user-added
@@ -61,13 +63,14 @@ The macOS application follows only after v0.2.1, the separate Classification
 Authority contract, and a further Chordrift client-boundary refactor are proven.
 Its slices are intentionally not numbered yet.
 
-This is a safe project pause point. Released and installed v0.2.0 plus the
-verified 47/47 account database remain the daily-driver pair; neither the hosted
-authority nor the separate classifier is required for normal CLI maintenance.
-Resume by reading this handoff and implementing only V021-01. Do not leave a
-partially converted transport in the installed binary.
+Released and installed v0.2.0 plus the verified 47/47 account database remain
+the daily-driver pair; neither the hosted authority nor the separate classifier
+is required for normal CLI maintenance. Before declaring the project paused or
+starting V021-01, finish the current Re-evaluate correction and the remaining
+daily-driver workflow checks recorded below. Do not leave a partially converted
+transport in the installed binary.
 
-## Start the next task here: V021-01 authenticated service transport
+## Start the next task here: daily-driver closeout, then V021-01
 
 V020-01 through V020-15 are complete. v0.2.0 is released and the separately
 approved personal binary/database cutover is complete. Implement only
@@ -75,9 +78,10 @@ approved personal binary/database cutover is complete. Implement only
 map. Expose the existing command/query/event contract without redefining domain
 behavior. Keep the in-process development transport and current v0.2.0 daily
 workflow intact. Do not implement product identity, move provider credentials,
-add durable jobs, deploy a service, call or write Spotify, create the separate
-Classification Authority project, or infer authority for old-project/rollback
-deletion in this slice.
+add durable jobs, deploy a service, create the separate Classification Authority
+project, or infer authority for old-project/rollback deletion in this slice.
+Never call or write Spotify autonomously; the one unfinished correction may
+continue only through its explicit, concise user authorization.
 
 ## Released v0.2.0 and current personal deployment
 
@@ -100,6 +104,24 @@ connection change. This is current operator plumbing only. Never make Apogee a
 Chordrift dependency, product contract, installer requirement, or GUI setting;
 hosted/native clients authenticate to the Rust authority and retain only a
 revocable Chordrift session in the OS credential store.
+
+### Current Re-evaluate correction state
+
+One daily-driver correction is intentionally unfinished pending the user's one
+remaining provider-mutation authorization. Spotify accepted and Chordrift has
+verified three enumerated additions: `Dirty Old Town` to `Snowglass Letters`,
+plus `Hona Tha Pyar` and `Yeh Jo Des Hai Tera` to `Uttara Glow`. Current provider
+inventory is 22 playlists and 1,517 memberships. The verified publish receipt is
+`2d1b7e2b-0a60-4fde-928c-d23220bbc045`; those additions must not be replayed.
+
+The current maintenance plan has one operation: remove `Hona Tha Pyar` from its
+old incorrect `Snowglass Letters` placement. After that is observed, the planner
+may emit cleanup only for the three successfully resolved `Re-evaluate` entries.
+Run `scripts/chordrift-reevaluate-wizard.sh --account personal --resume`; it must
+show a concise human-readable summary and ask once. It then keeps readiness
+UUIDs, phase confirmations, pulls, retries, and receipts internal. Do not delete
+the legacy Neon project until this and the remaining daily-driver workflow checks
+pass.
 
 Final read-only checks preserved snapshot
 `dc96cc26-c917-4bb4-8a7f-4b3c5e836f66`, 22 playlists, 1,514 memberships, 387

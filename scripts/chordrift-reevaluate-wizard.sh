@@ -112,6 +112,7 @@ ARTWORK_STATUS_FILE=$WORK_DIR/artwork-status.txt
 READINESS_FILE=$WORK_DIR/readiness.txt
 APPLY_FILE=$WORK_DIR/apply.txt
 FINAL_QUEUE_FILE=$WORK_DIR/final-queue.tsv
+PULL_FILE=$WORK_DIR/pull.txt
 : >"$SELECTED_IDS_FILE"
 
 cleanup() {
@@ -145,24 +146,6 @@ ask_value() {
     printf '%s' "$value"
 }
 
-require_exact() {
-    label=$1
-    expected=$2
-    while true; do
-        entered=$(ask_value "Type the exact $label $expected (or 'cancel'): ")
-        if [ "$entered" = "$expected" ]; then
-            return 0
-        fi
-        case "$entered" in
-            cancel|CANCEL|Cancel)
-                printf 'Cancelled. Nothing after this gate was changed.\n'
-                exit 0
-                ;;
-        esac
-        printf 'Confirmation did not match; please copy the complete value and try again.\n' >&2
-    done
-}
-
 capture_queue() {
     run_chordrift playlists tracks --account "$ACCOUNT" --name Re-evaluate >"$1"
     awk -F '\t' '$1 ~ /^[0-9]+$/ && $5 != "" { print $5 }' "$1" | sort -u >"$2"
@@ -175,7 +158,7 @@ create_plan() {
     [ -n "$PLAN_ID" ] && [ -n "$OPERATIONS" ] || {
         printf 'Could not parse the current plan. Stop and inspect manually.\n' >&2
         exit 1
-    }
+        }
     run_chordrift sync plan-show \
         --account "$ACCOUNT" --plan "$PLAN_ID" --details >"$PLAN_DETAILS_FILE"
     PLAN_ORIGIN=$(field plan_origin "$PLAN_DETAILS_FILE")
@@ -188,6 +171,22 @@ create_plan() {
         printf 'Plan %s is stale. Run the wizard again after a fresh pull.\n' "$PLAN_ID" >&2
         exit 1
     }
+}
+
+show_plan_summary() {
+    printf '\nReviewed Spotify change:\n'
+    awk -F '\t' '
+        FILENAME == ARGV[1] && $1 ~ /^[0-9]+$/ { title[$5] = $2; next }
+        $1 == "sequence" { operations = 1; next }
+        operations && $1 ~ /^[0-9]+$/ {
+            label = ($6 in title) ? title[$6] : $6
+            if ($2 == "publish" && ($3 == "add_track" || $3 == "restore_track"))
+                printf "  Add %s to %s\n", label, $4
+            else if ($2 == "reconcile" && $3 == "remove_track")
+                printf "  Remove %s from old placement %s after verification\n", label, $4
+        }
+    ' "$QUEUE_FILE" "$PLAN_DETAILS_FILE"
+    printf '  Remove each successfully placed track from Re-evaluate after verification\n'
 }
 
 phase_count() {
@@ -222,7 +221,8 @@ unexpected_cleanup_operations() {
 
 if [ "$SKIP_PULL" = false ]; then
     stage "Observe" "fresh Spotify pull before reviewing the holding queue"
-    run_chordrift sync pull --account "$ACCOUNT"
+    run_chordrift sync pull --account "$ACCOUNT" >"$PULL_FILE"
+    printf 'Spotify observation refreshed.\n'
 else
     stage "Observe" "using the operator-confirmed current snapshot"
 fi
@@ -259,7 +259,7 @@ else
     case "$(field proposal "$STATUS_FILE")" in
         proposed) ;;
         approved)
-            ask_yes "Prepare an editable copy of the approved library for Re-evaluate corrections?" || exit 0
+            printf 'Preparing an editable copy of the approved library.\n'
             run_chordrift proposals extend --account "$ACCOUNT" --min-similarity 1
             ;;
         *)
@@ -280,11 +280,10 @@ else
             m|M)
                 destination=$(ask_value 'Exact destination display name: ')
                 [ -n "$destination" ] || { printf 'Destination is required.\n' >&2; exit 2; }
-                reason=$(ask_value 'Reason for this correction: ')
-                [ -n "$reason" ] || reason="Reviewed Re-evaluate correction"
                 "$SCRIPT_DIR/chordrift-manual-place.sh" \
                     --account "$ACCOUNT" --to "$destination" \
-                    --spotify-id "$spotify_id" --reason "$reason"
+                    --spotify-id "$spotify_id" \
+                    --reason "Reviewed Re-evaluate correction to $destination"
                 printf '%s\n' "$spotify_id" >>"$SELECTED_IDS_FILE"
                 ;;
             d|D)
@@ -322,8 +321,7 @@ else
             exit 3
         }
     cat "$STATUS_FILE"
-    ask_yes "Approve this complete proposal containing the reviewed corrections?" || exit 0
-    require_exact "proposal generation ID" "$PROPOSAL_ID"
+    printf 'Saving the reviewed destinations as the approved Neon proposal.\n'
     run_chordrift proposals approve --account "$ACCOUNT" --confirm "$PROPOSAL_ID"
 fi
 
@@ -343,16 +341,15 @@ if [ "$ARTWORK_STATE" = pending ]; then
 fi
 case "$ARTWORK_STATE" in
 approved)
-    cat "$ARTWORK_STATUS_FILE"
+    printf 'Reviewed artwork is already approved and unchanged.\n'
     ;;
 pending)
-    cat "$ARTWORK_STATUS_FILE"
     BATCH_ID=$(field batch_id "$ARTWORK_STATUS_FILE")
     [ -n "$BATCH_ID" ] || {
         printf 'The pending artwork review has no batch ID. No provider write occurred.\n' >&2
         exit 3
     }
-    require_exact "artwork batch ID" "$BATCH_ID"
+    printf 'Reusing the unchanged reviewed artwork batch.\n'
     run_chordrift artwork approve --account "$ACCOUNT" --confirm "$BATCH_ID"
     ;;
 missing)
@@ -361,7 +358,7 @@ missing)
             "$ARTWORK_MANIFEST" >&2
         exit 3
     }
-    ask_yes "Reuse the existing reviewed artwork files unchanged for this proposal generation?" || exit 0
+    printf 'Reusing the unchanged reviewed artwork files for this proposal.\n'
     ARTWORK_SOURCE_DIR=$(CDPATH= cd -- "$(dirname -- "$ARTWORK_MANIFEST")" && pwd)
     ARTWORK_REVIEW_MANIFEST=$(mktemp "$ARTWORK_SOURCE_DIR/.chordrift-manifest.XXXXXX")
     sed -E "s/(\"proposal_generation_id\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\\1$PROPOSAL_ID\\2/" \
@@ -370,8 +367,10 @@ missing)
         --manifest "$ARTWORK_REVIEW_MANIFEST"
     run_chordrift artwork status --account "$ACCOUNT" >"$ARTWORK_STATUS_FILE"
     BATCH_ID=$(field batch_id "$ARTWORK_STATUS_FILE")
-    cat "$ARTWORK_STATUS_FILE"
-    require_exact "artwork batch ID" "$BATCH_ID"
+    [ -n "$BATCH_ID" ] || {
+        printf 'Artwork import returned no batch ID. No provider write occurred.\n' >&2
+        exit 3
+    }
     run_chordrift artwork approve --account "$ACCOUNT" --confirm "$BATCH_ID"
     ;;
 *)
@@ -381,7 +380,31 @@ missing)
     ;;
 esac
 
-ask_yes "Publish the selected destinations, verify them, and then review exact Re-evaluate cleanup?" || {
+create_plan
+[ "$OPERATIONS" -gt 0 ] || {
+    printf 'The reviewed correction is already current. No Spotify write is needed.\n'
+    exit 0
+}
+RETIREMENT_COUNT=$(phase_count retirement)
+[ "$RETIREMENT_COUNT" -eq 0 ] || {
+    printf 'The plan contains retirement work. No apply was attempted.\n' >&2
+    exit 3
+}
+UNEXPECTED=$(unexpected_publish_operations)
+[ -z "$UNEXPECTED" ] || {
+    printf 'The publish phase contains unexpected work. No apply was attempted:\n%s\n' \
+        "$UNEXPECTED" >&2
+    exit 3
+}
+UNEXPECTED=$(reevaluate_unexpected_reconcile_operations \
+    "$SELECTED_IDS_FILE" "$PLAN_DETAILS_FILE")
+[ -z "$UNEXPECTED" ] || {
+    printf 'The reconcile phase contains unexpected work. No apply was attempted:\n%s\n' \
+        "$UNEXPECTED" >&2
+    exit 3
+}
+show_plan_summary
+ask_yes "Apply this one reviewed correction to Spotify?" || {
     printf 'Stopped before provider writes. Approved Neon intent remains available.\n'
     exit 0
 }
@@ -392,8 +415,6 @@ while [ "$iterations" -lt 16 ]; do
     iterations=$((iterations + 1))
     create_plan
     [ "$OPERATIONS" -gt 0 ] || break
-    run_chordrift sync plan-show --account "$ACCOUNT" --plan "$PLAN_ID" --details
-
     PUBLISH_COUNT=$(phase_count publish)
     CLEANUP_COUNT=$(phase_count cleanup)
     RECONCILE_COUNT=$(phase_count reconcile)
@@ -411,7 +432,8 @@ while [ "$iterations" -lt 16 ]; do
             exit 3
         }
         "$SCRIPT_DIR/chordrift-plan-phase.sh" \
-            --account "$ACCOUNT" --plan "$PLAN_ID" --phase publish
+            --account "$ACCOUNT" --plan "$PLAN_ID" --phase publish \
+            --workflow-confirmation "$PLAN_ID" --concise
         continue
     fi
 
@@ -424,7 +446,8 @@ while [ "$iterations" -lt 16 ]; do
             exit 3
         }
         "$SCRIPT_DIR/chordrift-plan-phase.sh" \
-            --account "$ACCOUNT" --plan "$PLAN_ID" --phase reconcile
+            --account "$ACCOUNT" --plan "$PLAN_ID" --phase reconcile \
+            --workflow-confirmation "$PLAN_ID" --concise
         continue
     fi
 
@@ -445,9 +468,6 @@ while [ "$iterations" -lt 16 ]; do
             printf 'Cleanup readiness is blocked. No cleanup was attempted.\n' >&2
             exit 3
         }
-        run_chordrift sync readiness-show \
-            --account "$ACCOUNT" --assessment "$ASSESSMENT_ID"
-        require_exact "cleanup assessment ID" "$ASSESSMENT_ID"
         run_chordrift sync apply \
             --account "$ACCOUNT" --assessment "$ASSESSMENT_ID" \
             --phase cleanup --confirm "$ASSESSMENT_ID" --allow-destructive \
@@ -457,9 +477,18 @@ while [ "$iterations" -lt 16 ]; do
             printf 'Cleanup apply returned no run ID. Stop and inspect.\n' >&2
             exit 1
         }
-        run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID"
-        run_chordrift sync pull --account "$ACCOUNT"
-        run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID"
+        run_chordrift sync pull --account "$ACCOUNT" >"$PULL_FILE"
+        run_chordrift sync apply-show --account "$ACCOUNT" --run "$APPLY_RUN_ID" \
+            >"$APPLY_FILE"
+        APPLY_STATUS=$(sed -n \
+            -e 's/^spotify apply: //p' \
+            -e 's/^spotify_apply: //p' \
+            "$APPLY_FILE" | tail -n 1 | sed 's/ (already current)$//')
+        [ "$APPLY_STATUS" = succeeded ] || {
+            printf 'Spotify accepted cleanup, but it is not yet verified. Stop and inspect.\n' >&2
+            exit 3
+        }
+        printf 'cleanup phase verified.\n'
         continue
     fi
 
