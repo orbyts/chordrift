@@ -114,7 +114,10 @@ deterministic provider-free Spins.
   The candidate binary must pass the machine-readable capability handshake and
   the complete maintenance/intake and Spin-origin separation suite. Adapters may
   preserve v0.1.x safety outcomes, but must not weaken the provider-neutral v0.2
-  ownership, determinism, or publication architecture.
+  ownership, determinism, or publication architecture. Candidate creation,
+  migration, exact parity, runtime, capability, and compatibility verification
+  are complete; the slice remains open at the separately approved atomic
+  database cutover boundary. No Spotify write is currently proposed.
 - [ ] **V020-15 — Release v0.2.0.** Complete formatting, strict Clippy, unit/doc/
   PostgreSQL integration tests, packaging, recovery documentation, GitHub
   release, and crates.io publication after the personal candidate is verified.
@@ -194,7 +197,9 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-14 — Candidate and personal cutover gate`.
+**Current gate:** `V020-14 — approve or decline the documented atomic database
+cutover`. Do not start V020-15 and do not treat database approval as Spotify
+write approval.
 
 ## Portable core and native clients
 

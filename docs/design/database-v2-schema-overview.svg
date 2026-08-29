@@ -18,7 +18,7 @@
 
   <rect class="bg" width="2600" height="2000"/>
   <text class="heading" x="70" y="65">Chordrift database v2 — conceptual Neon table map</text>
-  <text class="sub" x="70" y="102">Clean v0.1.4 runtime after migration 0044 cleanup and 0045 hardening. Tables are grouped by responsibility, not alphabetically.</text>
+  <text class="sub" x="70" y="102">Current v0.2 candidate at migration 0047; v0.1.4 production remains at 0045. Tables are grouped by responsibility, not alphabetically.</text>
 
   <!-- Main relationships, behind panels -->
   <path class="edge" d="M430 370H490"/><text class="label" x="438" y="350">identifies</text>

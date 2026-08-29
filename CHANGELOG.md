@@ -71,6 +71,13 @@ All notable changes to Chordrift are documented here.
   assignments, listening/archive evidence, and durable synchronization
   history; pass migration replay, `pg_amcheck`, and the complete intake
   fake-binary suite without creating a candidate or changing production.
+- Create a fresh Neon PostgreSQL 18 candidate from an even newer read-only
+  production backup, migrate it from 45/47 to 47/47, and verify byte-identical
+  invariants plus exact normalized data parity across the 21 durable-domain
+  tables. Pass the current-main capability handshake, maintenance/intake,
+  Spin-origin, fake-provider, and disposable PostgreSQL suites; leave the
+  installed v0.1.4 binary and production connection unchanged at the explicit
+  atomic cutover approval gate, with no Spotify call or provider write.
 - Make the everyday product contract explicit: people continue using Spotify
   naturally while Chordrift hides internal plan/assessment/receipt ceremony,
   records supported reversible intent automatically, leaves ambiguity for

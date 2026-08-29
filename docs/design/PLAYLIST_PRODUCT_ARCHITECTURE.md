@@ -10,7 +10,8 @@ implements the additive recipe, collection, surface, onboarding, and Spin table
 names shown here, but remains isolated from production Neon.
 
 Status: active v0.2 architecture, updated 2026-08-28. V020-01 through V020-13
-are implemented; the separately approved candidate/cutover gate is next. This
+are complete; V020-14's fresh candidate is verified and its atomic database
+cutover still awaits separate approval. This
 document is a design contract, not authorization to apply a production
 migration, cut over a connection, or write to a provider.
 
@@ -78,6 +79,13 @@ migration, cut over a connection, or write to a provider.
   invariants, exact required-domain hashes, idempotent migration replay,
   `pg_amcheck`, and the complete intake fake-binary suite. No candidate,
   production migration, connection cutover, or provider action occurred.
+- **Verified candidate — V020-14:** the newest-state backup restored into a
+  fresh Neon PostgreSQL 18 candidate, advanced to 47/47, and retained exact
+  invariant plus 21-table durable-domain parity. The current-main capability,
+  maintenance/intake, Spin-origin, fake-provider, and disposable PostgreSQL
+  gates pass. The installed v0.1.4 binary and production connection remain
+  unchanged while the exact atomic cutover plan awaits approval; Spotify was
+  not invoked and no provider write is proposed.
 - **Not implemented yet:** approved collection authoring,
   real-provider Spin execution, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the

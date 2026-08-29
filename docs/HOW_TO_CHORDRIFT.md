@@ -5,7 +5,7 @@ to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMA
 only when you need every option or an internal diagnostic command.
 
 The established workflows describe the released **v0.1.4** daily driver and
-remain valid while `main` develops v0.2.0. Sections labeled V020-11R/V020-13 describe
+remain valid while `main` develops v0.2.0. Sections labeled V020-11R through V020-14 describe
 the compatible development binary, not the installed v0.1.4 binary. Refer to
 the v0.1.4 tag for its exact commands. Design pages identify which v0.2
 foundations are implemented or still planned.
@@ -17,7 +17,7 @@ foundations are implemented or still planned.
 | Perform daily library work | This guide and the linked `how-to/` pages | Released v0.1.4 behavior; preserved during current v0.2 work. |
 | Understand IDs, phases, plan origins, and verification | [From intent to verified execution](how-to/INTENT_TO_EXECUTION.md) | Maintenance safety model plus V020-11R capability/origin reconciliation. |
 | Look up a command | [CLI command reference](reference/CLI_COMMANDS.md) | Complete v0.1.4 command surface; historical operator-only leaves are labeled. |
-| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 through V020-13 implemented; candidate/cutover gate next. |
+| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | V020-01 through V020-13 complete; V020-14 candidate verified and cutover approval pending. |
 | Review intent interpretation | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Active v0.2 product policy, grounded in the existing explicit CLI loop. |
 | Review account/provider isolation | [Account and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Test-only adversarial proof implemented; production adapters remain v0.1.4. |
 | Review the additive v0.2 schema | [Product schema foundation](design/PRODUCT_SCHEMA_V020_05.md) | Migration 0046 implemented and rehearsed only on isolated PostgreSQL 18; not on production Neon. |
@@ -30,6 +30,7 @@ foundations are implemented or still planned.
 | Review recovered intake/apply compatibility | [Recovered intake compatibility](design/RECOVERED_INTAKE_COMPATIBILITY_V020_11R.md) | Enumerated writes, capability handshake, complete intake adapter, and maintenance/Spin origin separation. |
 | Review approved Spin publication planning | [Spin publication-plan integration](design/SPIN_PUBLICATION_PLAN_V020_12.md) | Checkpoint-bound immutable plan plus fake-provider readiness/replay/verification; no production provider write path. |
 | Review the newest live-state migration proof | [Latest-state migration rehearsal](design/LATEST_STATE_MIGRATION_REHEARSAL_V020_13.md) | Fresh read-only backup restored and migrated locally from 45/47 to 47/47 with exact invariant/domain parity; no candidate or cutover. |
+| Review the verified candidate and exact cutover gates | [Candidate and personal cutover gate](design/CANDIDATE_CUTOVER_GATE_V020_14.md) | Fresh Neon candidate verified at 47/47 with exact parity; installed v0.1.4 and production connection unchanged; database approval pending and no Spotify write proposed. |
 | Review database-v2 decisions | [Database architecture v2](design/DATABASE_ARCHITECTURE_V2.md) | Completed v0.1.4 foundation and labeled historical execution record. |
 | Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
 
@@ -257,6 +258,8 @@ a provider action. V020-11R now adds the capability-checked intake adapter,
 enumerated playlist writes, and explicit maintenance plan origins. V020-12 adds
 approved, checkpoint-bound Spin plans and fake-provider verification without a
 production mutation adapter. V020-13 proves the newest live state migrates
-cleanly on an isolated restore; candidate creation and cutover remain next. See the
+cleanly on an isolated restore. V020-14's fresh Neon candidate now passes exact
+parity and runtime gates; the installed v0.1.4 binary remains active while its
+atomic database cutover waits for separate approval. See the
 [playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) for
 the complete staged direction.

@@ -31,24 +31,55 @@ publication is enumerated: it cannot replace unrelated live membership or
 restore an actively excluded track. Compatibility preserves these outcomes;
 it never forces v0.1.4 command ceremony into the v0.2 product architecture.
 
-## Start the next task here: V020-14 candidate and personal cutover gate
+## Start the next task here: V020-14 database cutover approval gate
 
-Implement only `V020-14 — Candidate and personal cutover gate` from the
-authoritative execution map. First verify current Neon capacity and take a
-newest-state logical backup; do not assume the V020-13 artifact is current.
-Create a fresh candidate only when capacity permits, restore and migrate it,
-verify runtime plus every V020-13 invariant/domain gate, and run the candidate
-binary's machine-readable capability handshake plus the complete maintenance,
-intake, and Spin-origin separation suite. Present the exact database cutover
-and Spotify publication plans, then stop for separate explicit approvals before
-changing a connection or making any provider write.
+V020-14 candidate creation and verification are complete. Do not start V020-15.
+The only currently available next action is for the user to approve or decline
+the exact atomic database cutover plan in
+`docs/design/CANDIDATE_CUTOVER_GATE_V020_14.md`. Approval must be explicit and
+applies only to the database/binary cutover; it does not authorize Spotify
+access or any provider write.
 
-Do not migrate or otherwise modify the current production database, change the
-installed v0.1.4 daily driver, cut over a connection, invoke Spotify, or perform
-a provider write merely because candidate creation or verification succeeds.
-Preserve the natural-provider-use product rule and do not reintroduce internal-
-ID ceremony as product UX. If candidate capacity is unavailable, stop and
-report rather than deleting or resizing an existing project without authority.
+If approved, take another final read-only production status, invariant, and
+logical backup before changing anything. If production advanced after the
+candidate source backup, refresh only the candidate, reapply migrations
+0046/0047, and repeat exact parity and runtime gates. Cut over the verified
+current-main binary and private database connection as one controlled unit,
+then perform only read-only post-cutover checks. Retain the old production
+project as rollback evidence. If any gate differs, restore the old v0.1.4
+binary/config pair and stop. Never split the binary and database cutover.
+
+Do not invoke Spotify during database cutover. After a successful cutover, a
+read-only provider observation may be proposed separately. Any resulting
+non-zero maintenance write needs its own exact enumerated plan and explicit
+approval. There is still no production `SpinPublicationProvider`, so no Spin
+write can be approved or performed in V020-14.
+
+The verified candidate is Neon project `royal-snow-31539822`, named
+`chordrift-v020-candidate-20260828`, in `aws-us-west-2` on PostgreSQL 18.6. It
+is healthy at 47/47 migrations and uses 184,295,424 synthetic bytes against a
+536,870,912-byte branch limit. The installed v0.1.4 binary and production
+connection remain unchanged; production remains 45/45.
+
+The newest read-only source backup is preserved under
+`$DROPBOX/Music/Chordrift/Backups/2026-08-28-v020-14-candidate-source/`; its
+22,686,266-byte dump SHA-256 is
+`cc1f53eb8d6740f94b97d39be24a8131164f479ae5a35ca33bcffe3824703225`.
+Production, pristine restore, and candidate invariants are byte-identical.
+Normalized UTC dumps of all 21 required durable tables are byte-identical with
+SHA-256
+`77a55e441f84c1ea105d857bdb9c033356d2e1826778e0ddd796a473f7cde44b`.
+All 101 historical plans remain `<legacy-unlabeled>` and every new product table
+remains empty. The capability handshake, complete all-target suite, fake-binary
+intake suite, Spin-origin regressions, and disposable PostgreSQL 18 tests pass.
+
+A candidate-only URI appeared in local `pg_amcheck` diagnostic output. Its role
+password was immediately changed, the replacement was verified, and the old
+credential was verified rejected. No production credential was involved.
+Neon's project role cannot install `amcheck`, so remote relation inspection was
+unavailable. A local PostgreSQL 18.6 restore of the exact V020-14 dump passed
+the parent/heap-index check over all 751 relations and 19,115 pages, and every
+exact restore/data/application gate passed.
 
 V020-01 through V020-13 are complete. V020-13 took a fresh read-only logical
 backup of the healthy production PostgreSQL 18.6 database at 45/45 migrations
