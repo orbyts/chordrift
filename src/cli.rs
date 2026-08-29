@@ -83,7 +83,8 @@ pub enum Command {
         #[command(subcommand)]
         command: AlbumCommand,
     },
-    /// Create and inspect the provider-native Re-evaluate holding queue.
+    /// Historical Re-evaluate migration and retirement commands.
+    #[command(hide = true)]
     Reevaluate {
         /// Re-evaluation operation to perform.
         #[command(subcommand)]
@@ -325,6 +326,15 @@ pub enum ReevaluateCommand {
     },
     /// Retire the obsolete multi-route review surfaces after coverage is complete.
     RetireLegacy {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Exact destructive confirmation phrase.
+        #[arg(long)]
+        confirm: String,
+    },
+    /// Retire the empty Re-evaluate surface and preserve its Neon history.
+    Retire {
         /// Local label for this Spotify account.
         #[arg(long, default_value = "personal")]
         account: String,
@@ -2289,6 +2299,14 @@ async fn run_reevaluate_command(
             let report = routes::retire_legacy(database, &account, &confirm).await?;
             writeln!(output, "legacy_routes_retired: {}", report.routes)?;
             writeln!(output, "covered_tracks: {}", report.tracks)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
+        ReevaluateCommand::Retire { account, confirm } => {
+            let queue = routes::retire_reevaluate(database, &account, &confirm).await?;
+            writeln!(output, "queue: {}", queue.name)?;
+            writeln!(output, "active: {}", queue.active)?;
+            writeln!(output, "tracks: {}", queue.track_count)?;
             writeln!(output, "spotify_writes: disabled")?;
             Ok(())
         }
@@ -6871,6 +6889,24 @@ mod tests {
             Command::Reevaluate {
                 command: ReevaluateCommand::Export { account, file }
             } if account == "personal" && file == std::path::Path::new("review.csv")
+        ));
+    }
+
+    #[test]
+    fn parses_reevaluate_retirement() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "reevaluate",
+            "retire",
+            "--confirm",
+            "RETIRE RE-EVALUATE",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Reevaluate {
+                command: ReevaluateCommand::Retire { account, confirm }
+            } if account == "personal" && confirm == "RETIRE RE-EVALUATE"
         ));
     }
 

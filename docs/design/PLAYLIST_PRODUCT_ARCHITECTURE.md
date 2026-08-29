@@ -83,7 +83,9 @@ design contract, not authorization to write to a provider.
   maintenance/intake, Spin-origin, fake-provider, and disposable PostgreSQL
   gates pass. The released v0.2.0 binary is now paired with the refreshed 47/47
   database; the final read-only gates preserved current inventory, exclusions,
-  and Re-evaluate state. Spotify was not invoked during cutover.
+  and historical Re-evaluate state. Spotify was not invoked during cutover.
+  The holding queue was subsequently superseded by direct moves between managed
+  playlists; its Neon history remains compatible with database-v2.
 - **Not implemented yet:** approved collection authoring,
   real-provider Spin execution, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the

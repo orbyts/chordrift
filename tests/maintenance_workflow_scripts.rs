@@ -87,6 +87,7 @@ esac
     assert_eq!(commands.matches("sync pull --account personal").count(), 1);
     assert!(!commands.contains("sync apply"));
     assert!(!commands.contains("proposals extend"));
+    assert!(!commands.contains("reevaluate"));
     fs::remove_dir_all(work).unwrap();
 }
 
@@ -124,7 +125,7 @@ esac
 }
 
 #[test]
-fn queue_track_is_not_lost_when_cleanup_id_list_is_empty() {
+fn retired_queue_is_not_consulted_when_cleanup_id_list_is_empty() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let work = temporary_work("unified-empty-cleanup-list");
     let fake = work.join("chordrift-fake");
@@ -137,10 +138,11 @@ printf '%s\n' "$*" >>"$FAKE_CHORDRIFT_LOG"
 case "$*" in
   capabilities*) printf '%s\n' '{"schema_version":1}' ;;
   "sync pull --account personal") printf '%s\n' 'sync: current' ;;
-  "sync plan --account personal") printf '%s\n' 'plan_id: 00000000-0000-0000-0000-000000000013' 'operations: 0' ;;
+  "sync plan --account personal") printf '%s\n' 'plan_id: 00000000-0000-0000-0000-000000000013' 'operations: 1' ;;
   "sync plan-show --account personal --plan 00000000-0000-0000-0000-000000000013 --details")
     printf '%s\n' 'plan_origin: maintenance' 'snapshot_current: true' \
-      'sequence	phase	operation	playlist	spotify_playlist_id	spotify_track_id	payload	safety'
+      'sequence	phase	operation	playlist	spotify_playlist_id	spotify_track_id	payload	safety' \
+      '0	retirement	archive_playlist	Re-evaluate	queue	-	{"surface":"retired_reevaluate"}	{"queue_empty":true}'
     ;;
   "intake audit --account personal") printf '%s\n' 'state	track	artists	sources	current_destinations	proposal_destinations	events	plays	exclusion_history	exclusion_reason	spotify_id' ;;
   "reevaluate status --account personal") printf '%s\n' 'queue: Re-evaluate' 'tracks: 1' ;;
@@ -160,13 +162,15 @@ esac
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Needs a destination"));
-    assert!(stdout.contains("Fixture Song"));
+    assert!(stdout.contains("separately reviewed retirement remains pending"));
+    assert!(!stdout.contains("Needs a destination"));
+    assert!(!stdout.contains("Fixture Song"));
     assert!(
         !fs::read_to_string(&log)
             .unwrap()
             .contains("proposals extend")
     );
+    assert!(!fs::read_to_string(&log).unwrap().contains("reevaluate"));
     fs::remove_dir_all(work).unwrap();
 }
 
@@ -277,5 +281,6 @@ esac
             .unwrap()
             .contains("proposals assign")
     );
+    assert!(!fs::read_to_string(&log).unwrap().contains("reevaluate"));
     fs::remove_dir_all(work).unwrap();
 }

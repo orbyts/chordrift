@@ -16,8 +16,10 @@ CHORDRIFT_BIN=$1
 shift
 
 if ! "$CHORDRIFT_BIN" capabilities "$@" >/dev/null; then
+    RESOLVED_BIN=$(command -v "$CHORDRIFT_BIN" 2>/dev/null || printf '%s' "$CHORDRIFT_BIN")
     printf '%s\n' \
+        "Selected binary: $RESOLVED_BIN" \
         'The selected Chordrift binary does not satisfy this workflow capability contract.' \
-        'Install a compatible development binary or use the commands it explicitly supports.' >&2
+        'Install current main with `cargo install --path . --force`, or clear a stale CHORDRIFT_BIN override.' >&2
     exit 64
 fi

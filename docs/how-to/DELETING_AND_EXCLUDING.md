@@ -84,9 +84,8 @@ future Spin publication plans.
 | Action | Meaning Chordrift can safely infer |
 | --- | --- |
 | Remove only from Liked Songs | The track is no longer saved. It may still belong in playlists. |
-| Remove from `Re-evaluate` | The corrective queue changed; this is not a global rejection by itself. |
 | Remove from a protected user playlist | Provider-wins membership edit for that playlist. |
-| Remove from one canonical and add to another | Likely move or destination preference; stage for review. |
+| Remove from one canonical and add to exactly one other | Direct reclassification; preserve the correction as evidence. |
 | Delete an entire playlist | Ambiguous and potentially destructive; use explicit retirement policy. |
 
 If you also want the track unsaved, remove it from Liked Songs in Spotify and
@@ -94,6 +93,6 @@ pull that state. Unsaving and excluding are independent decisions.
 
 ## When you mean “wrong playlist,” not “delete”
 
-Do not remove the track as an exclusion. Add it to `Re-evaluate`, remove it from
-the wrong destination, and follow
-[Re-evaluate and reclassify a track](ROUTING_AND_RECLASSIFYING.md).
+Do not leave the track only absent. In Spotify, move it from the wrong managed
+playlist directly to the correct managed playlist, then follow
+[Reclassify a track by moving it](ROUTING_AND_RECLASSIFYING.md).

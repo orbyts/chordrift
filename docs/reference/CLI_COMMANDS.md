@@ -3,7 +3,7 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the released **v0.2.0** CLI. It retains the
+Command status: this page documents the **v0.2.1-alpha.1** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
@@ -472,61 +472,51 @@ manually in a client surface that supports it. For a playlist, register or use
 an approved artwork artifact and run `artwork update --playlist NAME` to create
 an auditable one-cover plan.
 
-### Re-evaluate: capture a correction while listening
+### Reclassification and the retired Re-evaluate surface
 
-Re-evaluate is one provider-native holding queue, not a final listening
-playlist. Move a misplaced track into it and remove the track from its current
-destination. Membership carries zero clustering, embedding, rotation, or
-preference weight. Chordrift records entry and exit events, suppresses both
-exclusion and source restoration while the track is present, and clears the
-queue only after a replacement destination is published and verified. `status`
-reports provider-observed membership from the latest imported snapshot rather
-than the queue's empty desired-membership placeholder.
-
-Create or update the queue in Neon with a label-free master and a
-deterministically labeled Spotify cover:
+Current correction is a direct provider gesture: remove a misplaced track from
+one managed playlist, add it to the correct managed playlist, and run:
 
 ```console
-$ chordrift reevaluate create \
-    --account personal \
-    --background artwork/review/re-evaluate-background.png \
-    --artwork artwork/review/re-evaluate-spotify.png
+$ scripts/chordrift-maintain.sh --account personal
 ```
 
-Inspect the queue or export a long queue to the standard revisioned
-classification worksheet:
+Exactly one new managed destination is inferred as reclassification. Several
+destinations cause one concise question. The confirmed correction remains in
+Neon as evidence and may later be exported through a versioned Classification
+Authority contract.
+
+The top-level `reevaluate` command family is hidden and retained only for
+historical migration, inspection, export, and one-time retirement. Do not run
+`reevaluate create` for a current account. `reevaluate status`, `reevaluate
+export`, and `reevaluate retire-legacy` remain available to audit older state.
+Their exact historical command shapes are retained here so a tagged database
+can still be diagnosed:
 
 ```console
+$ chordrift reevaluate create --help
 $ chordrift reevaluate status --account personal
 $ chordrift reevaluate export --account personal --file reevaluate.csv
 $ chordrift reevaluate retire-legacy --account personal \
     --confirm "RETIRE LEGACY ROUTES"
 ```
 
-For the complete existing-destination correction workflow, use:
+The final retirement command requires an empty provider queue, preserves Neon
+history, and changes no Spotify state itself:
 
 ```console
-$ scripts/chordrift-maintain.sh --account personal
+$ chordrift reevaluate retire --account personal \
+    --confirm "RETIRE RE-EVALUATE"
 ```
 
-This is also the command for Likes, named intake, exclusions, and ordinary
-managed-playlist changes. It asks only for ambiguous destinations, shows the net
-Spotify effect, and authorizes once; internal IDs remain diagnostic evidence.
+Its next maintenance plan contains a separately gated
+`retirement/archive_playlist` operation. Inspect that exact operation, run
+readiness, and apply only the retirement phase with `--allow-destructive`.
+Ordinary maintenance refuses retirement.
 
-The CSV uses the same columns and safe import/approval flow as `classify
-export`; fill only evidence you know and mark intended rows with `action=set`.
-Then use `chordrift classify import` and `chordrift classify approve`.
-
-`reevaluate retire-legacy` is an exact-confirmed Neon-only transition. It
-requires the replacement queue and complete proposal-or-exclusion coverage;
-Spotify retirement remains a separate reviewed plan operation. The personal
-v0.1.4 migration is already complete; this command is retained for historical
-CLI completeness, not ordinary use.
-
-An intentional removal from both a verified destination and Re-evaluate is
-normally inferred after a pull and reviewed plan. A provider-unavailable track
-or another known exception can be retired directly with an exact confirmation;
-restoration retains the exclusion history and returns it to unresolved review:
+A provider-unavailable track or another known exception can be excluded
+directly with an exact confirmation; restoration retains the exclusion history
+and returns it to unresolved review:
 
 ```console
 $ chordrift tracks exclude --spotify-id SPOTIFY_TRACK_ID \
@@ -555,22 +545,9 @@ $ chordrift routes add --help
 $ chordrift routes tracks --account personal --route "Route — South Indian"
 ```
 
-Creating Re-evaluate changes Neon only. Publish it through the normal inspected
-workflow:
-
-```console
-$ chordrift sync plan --account personal
-$ chordrift sync plan-show --account personal --details
-$ chordrift sync apply-preflight --account personal
-$ chordrift sync readiness --account personal --probe
-$ chordrift sync apply --account personal --assessment ASSESSMENT_ID \
-    --phase publish --confirm ASSESSMENT_ID
-$ chordrift sync pull --account personal
-```
-
 The retired review routes were `Route — South Indian`, `Route — North Indian`,
 and `Route — Decide Later`. They are historical evidence, not current intake or
-correction surfaces. Use `Re-evaluate` for a live correction.
+correction surfaces. Use a direct managed-playlist move for a live correction.
 
 ### User-created playlists and retirement
 
@@ -908,10 +885,10 @@ Machine labels are temporary
 content-derived identifiers, not playlist names, and no Spotify playlist is
 created or modified.
 
-Chordrift supports an auditable correction workflow through `Re-evaluate`,
-`proposals assign`, `proposals review`, classifications, and reversible
-exclusions. A later generation replays account-specific decisions while the
-original score and assignment remain preserved.
+Chordrift supports an auditable correction workflow through direct managed-
+playlist moves, `proposals assign`, `proposals review`, classifications, and
+reversible exclusions. A later generation replays account-specific decisions
+while the original score and assignment remain preserved.
 
 ## Proposed playlist library
 

@@ -150,11 +150,13 @@ $ CHORDRIFT_BIN=/path/to/chordrift \
 ```
 
 The wizard covers Likes, named intake, managed-playlist removals, exclusions,
-and Re-evaluate corrections. It observes Spotify, asks for an existing
-destination only when placement is ambiguous, prints the exact provider-visible
-net change, and asks once. It requires `plan_origin: maintenance` and refuses
-new playlist/artwork design, retirement, unexpected work, and Spin publication.
-`--review-only` never applies.
+and direct moves between managed playlists. It observes Spotify, infers a
+reclassification when exactly one new managed destination is visible, asks for
+an existing destination only when placement is ambiguous, prints the exact
+provider-visible net change, and asks once. It requires
+`plan_origin: maintenance` and refuses new playlist/artwork design, retirement,
+unexpected work, and Spin publication. `--review-only` never applies. It never
+queries or populates the retired `Re-evaluate` surface.
 
 The remaining helpers are developer recovery tools:
 

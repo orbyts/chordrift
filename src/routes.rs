@@ -223,6 +223,51 @@ pub async fn reevaluate(database: &Database, account_label: &str) -> Result<Rout
     resolve_exact(database, account_id, REEVALUATE_NAME).await
 }
 
+/// Retires the empty Re-evaluate surface while preserving its history.
+pub async fn retire_reevaluate(
+    database: &Database,
+    account_label: &str,
+    confirm: &str,
+) -> Result<RouteRecord> {
+    const PHRASE: &str = "RETIRE RE-EVALUATE";
+    if confirm != PHRASE {
+        return Err(configuration(format!(
+            "Re-evaluate retirement requires --confirm {PHRASE:?}"
+        )));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let route = resolve_exact(database, account_id, REEVALUATE_NAME).await?;
+    let current_tracks: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint
+         FROM provider_current_playlists current_playlist
+         JOIN provider_playlists provider
+           ON provider.id = current_playlist.provider_playlist_id
+         JOIN provider_playlist_revision_tracks membership
+           ON membership.revision_id = current_playlist.revision_id
+         WHERE current_playlist.provider_account_id = $1
+           AND provider.playlist_id = $2",
+    )
+    .bind(account_id)
+    .bind(route.playlist_id)
+    .fetch_one(database.pool())
+    .await?;
+    if current_tracks != 0 {
+        return Err(configuration(format!(
+            "Re-evaluate still contains {current_tracks} track(s); move them before retirement"
+        )));
+    }
+    sqlx::query(
+        "UPDATE routing_surfaces SET active = FALSE, updated_at = now()
+         WHERE provider_account_id = $1 AND playlist_id = $2
+           AND purpose = 'reevaluate' AND active",
+    )
+    .bind(account_id)
+    .bind(route.playlist_id)
+    .execute(database.pool())
+    .await?;
+    reevaluate(database, account_label).await
+}
+
 /// Retires every legacy route only after the replacement queue exists and every
 /// routed track is represented by the current proposal or a durable exclusion.
 pub async fn retire_legacy(

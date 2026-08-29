@@ -17,7 +17,7 @@ this order.
 
 Released v0.2.0 is now the daily-use CLI, paired with the verified 47/47 Neon
 database. It remains authoritative for listening evidence, configured intake,
-exclusions, Re-evaluate state, classifications, and verified sync history. The
+exclusions, historical correction evidence, classifications, and verified sync history. The
 former v0.1.4 binary/config/database pair and final pre-cutover backup are
 retained only for controlled recovery. No development slice may dual-write
 experimental state or change Spotify unless an exact plan receives separate
@@ -103,7 +103,7 @@ deterministic provider-free Spins.
   manually removed track.
 - [x] **V020-13 — Latest-state migration rehearsal.** Take a new logical backup
   of the then-current live database, migrate a local copy, and compare current
-  inventory/order, intake, exclusions, Re-evaluate, assignments, listening
+  inventory/order, intake, exclusions, correction history, assignments, listening
   evidence, archives, and durable plan/apply/verification history. Compare
   maintenance plan origins/capability observations as well as Spin publication
   origins, and rerun the complete intake fake-binary compatibility suite before
@@ -125,19 +125,40 @@ deterministic provider-free Spins.
   release, and crates.io publication after the personal candidate is verified.
 
 Post-release daily-driver hardening now exposes one ordinary maintenance wizard
-for Likes, named intake, managed-playlist edits, exclusions, and Re-evaluate.
-It observes provider changes, asks only for ambiguous destinations, summarizes
-the net Spotify effect, and accepts one authorization. Exact proposals, plans,
+for Likes, named intake, managed-playlist edits, exclusions, and direct moves
+between managed playlists. It infers one unambiguous destination as
+reclassification, asks only when destinations are ambiguous, summarizes the
+net Spotify effect, and accepts one authorization. Exact proposals, plans,
 readiness assessments, ordered publish/reconcile/cleanup phases, retries, and
 receipts remain internal. New playlist/artwork design, retirement, and Spin
-publication stay separate. Durable current-state comparisons prevent unchanged
-pulls from fabricating repeated Re-evaluate entry events, and cleanup keys off
-the start of the current queue stay rather than the latest observation.
+publication stay separate. The former `Re-evaluate` queue is retired; its Neon
+events remain historical correction evidence and current clients must not
+recreate it.
+
+### v0.2.1 alpha checkpoints — installable daily-driver testing
+
+Goal: publish official prereleases before and during v0.2.1 so Suhail can test
+the exact crates.io artifact through the normal CI/release path. Alpha releases
+are checkpoints, not replacements for the hosted-authority goal.
+
+- [x] **A021-01 — Unified ordinary maintenance.** Replace separate operator
+  workflows with one capability-checked wizard for Likes, named intake,
+  exclusions, managed edits, and direct reclassification moves.
+- [ ] **A021-02 — Retire the correction holding queue.** Preserve all Neon
+  correction history, deactivate the empty `Re-evaluate` surface, remove its
+  empty Spotify relationship through one exact retirement operation, and prove
+  it stays absent. Direct managed-playlist moves are the replacement gesture.
+- [ ] **A021-03 — Publish the first alpha.** Publish
+  `v0.2.1-alpha.1`, then increment only for real fixes found through daily use.
+  Every alpha must pass CI and install from crates.io with the capability
+  handshake; never rely on the ambiguous v0.2.0 version string.
 
 ### v0.2.1 — Hosted Rust authority
 
 Goal: make the same application contract safely consumable by shipped clients
-without distributing database or provider credentials.
+without distributing database or provider credentials. v0.2.1 final remains
+the expected daily driver while the separate Classification Authority project
+and later Chordrift refactor begin.
 
 - [ ] **V021-01 — Authenticated service transport.** Expose the existing
   command/query/event contract without redefining domain behavior.
@@ -220,10 +241,10 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V021-01 — Authenticated service transport`. v0.2.0 remains the
-live daily driver. Expose the existing application command/query/event contract
-through an authenticated transport without redefining domain behavior. The
-separate Classification Authority is not part of this slice.
+**Next gate:** complete `A021-02` and publish `v0.2.1-alpha.1` through CI and
+crates.io. After that installable checkpoint, begin `V021-01 — Authenticated
+service transport` without redefining domain behavior. The separate
+Classification Authority is not part of that slice.
 
 ## Portable core and native clients
 
@@ -1064,8 +1085,8 @@ publication, capability reporting, and deep-link construction.
 
 This milestone also owns configurable terminal presentation, the complete
 two-account isolation audit, provider-neutral identifiers, and a first-class
-Re-evaluate review surface. Do not claim reusable multi-account product support
-until that audit passes.
+correction review surface based on direct managed-playlist moves. Do not claim
+reusable multi-account product support until that audit passes.
 
 The native app establishes the production operating model. It runs scheduled
 work through a quiet background helper or system service without opening
@@ -1078,8 +1099,8 @@ configuration, but the shipped product must not require Apogee. Never place
 secrets in config files, logs, shell history, source control, or launch scripts.
 
 Evaluate a dedicated classic Hindi cinema destination after v0.1.2. For now,
-misplaced older Hindi songs enter `Re-evaluate` and retain their source and
-classification history. A later CSV review should distinguish era, language,
+misplaced older Hindi songs move directly to an existing managed destination
+and retain their source and classification history. A later CSV review should distinguish era, language,
 cinema tradition, and listening intent before proposing a poetic Sanskrit-
 inspired identity and approved artwork; do not create the playlist merely from
 artist identity or a few edge cases.
@@ -1106,11 +1127,12 @@ authoritative and editable outside the UI.
 
 ## v0.4.0 — Learned correction policies
 
-Promote `Re-evaluate` into a complete review experience. Learn only from
-explicit approved corrections, distinguish a one-track exception from a
-reusable account rule, quantify confidence, and send ambiguous or conflicting
-tracks back to review. Allow high-confidence automatic routing only under an
-explicit user policy with inspectable history and an immediate override path.
+Promote confirmed direct reclassification evidence into a complete review
+experience. Learn only from explicit approved corrections, distinguish a
+one-track exception from a reusable account rule, quantify confidence, and send
+ambiguous or conflicting tracks to review. Allow high-confidence automatic
+routing only under an explicit user policy with inspectable history and an
+immediate override path. Do not recreate a provider holding queue.
 
 ## v0.5.0 — Rolling listening experiences
 

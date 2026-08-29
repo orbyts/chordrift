@@ -18,7 +18,7 @@ make the active library enjoyable again without silently losing history.
 
 ## Release status
 
-**v0.2.0 is the current release.** It preserves the proven maintenance CLI
+**v0.2.1-alpha.1 is the current daily-driver prerelease.** It preserves the proven maintenance CLI
 through one application facade and adds the provider-neutral product domain,
 onboarding and audit boundaries, deterministic recipe/Spin previews, explicit
 plan origins, and additive schema migrations 0046 and 0047. The personal
@@ -26,20 +26,22 @@ cutover pairs the v0.2.0 binary with the verified 47/47 database candidate;
 mixing a v0.1.4 binary with that database is not a supported operating mode.
 The `v0.1.4` tag remains the exact historical reference and rollback source.
 
-v0.2.0 is also a deliberate pause-safe baseline. The installed CLI and verified
+The v0.2.1 alpha line provides official installable checkpoints on the path to
+the hosted-authority v0.2.1 final daily driver. The installed CLI and verified
 47/47 account database may continue handling ordinary maintenance while later
 architecture work is paused; no hosted service or Classification Authority is
-required for the current workflow. On return, read `CODEX_HANDOFF.md` and begin
-with `V021-01 — Authenticated service transport`. Do not partially mix that
-future transport work into the installed daily-driver binary.
+required for the current workflow. Authenticated transport remains V021-01 and
+the rest of the v0.2.1 hosted-authority sequence remains intact. The separate
+Classification Authority project and a later Chordrift refactor follow v0.2.1
+final.
 
 Install the locked release with:
 
 ```console
-$ cargo install chordrift --version 0.2.0 --locked --force
+$ cargo install chordrift --version 0.2.1-alpha.1 --locked --force
 ```
 
-Read the [v0.2.0 release notes](docs/releases/V0.2.0.md) and
+Read the [v0.2.1-alpha.1 release notes](docs/releases/V0.2.1-alpha.1.md) and
 [recovery procedure](docs/how-to/RECOVERY_AND_ROLLBACK.md) before changing an
 existing database-backed installation.
 
@@ -140,10 +142,11 @@ Chordrift separates three concerns that streaming applications commonly mix:
 - **Canonical collections** are durable musical identities and user-approved
   boundaries. A collection may be a vibe, tradition, region, era, personal
   cohort, or another meaningful grouping.
-- **Intake surfaces** record how music entered the system or that it needs
-  attention. Liked Songs is the lowest-friction intake; named inboxes retain
-  richer provenance; `Re-evaluate` holds corrections without teaching a false
-  destination.
+- **Intake surfaces** record how music entered the system. Liked Songs is the
+  lowest-friction intake and named inboxes retain richer provenance. A
+  correction is now the natural Spotify action: move the track from the wrong
+  managed playlist to the right one, and let maintenance record the confirmed
+  reclassification.
 - **Generated listening playlists** are renewable experiences produced from
   versioned recipes. A track retains one explainable canonical identity while
   being eligible for multiple mixes.

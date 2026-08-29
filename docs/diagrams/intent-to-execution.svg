@@ -35,7 +35,7 @@
   <g filter="url(#shadow)">
     <rect x="80" y="205" width="245" height="112" rx="16" fill="#ffffff" stroke="#7da8dc" stroke-width="2"/>
     <text x="102" y="239" class="node-title">Provider gesture</text>
-    <text x="102" y="267" class="node-copy">Like, Inbox, Re-evaluate,</text>
+    <text x="102" y="267" class="node-copy">Like, Inbox, direct move,</text>
     <text x="102" y="290" class="node-copy">remove, or manual edit</text>
   </g>
 

@@ -59,7 +59,6 @@ WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chordrift-maintain.XXXXXX")
 PLAN_FILE=$WORK_DIR/plan.txt
 DETAIL_FILE=$WORK_DIR/details.tsv
 AUDIT_FILE=$WORK_DIR/intake.tsv
-QUEUE_FILE=$WORK_DIR/reevaluate.tsv
 AMBIGUOUS_FILE=$WORK_DIR/ambiguous.tsv
 AUTO_MOVES_FILE=$WORK_DIR/automatic-moves.tsv
 MOVE_AMBIGUOUS_FILE=$WORK_DIR/ambiguous-moves.tsv
@@ -91,11 +90,6 @@ create_plan() {
     }
 }
 
-operation_ids() {
-    phase=$1
-    awk -F '\t' -v phase="$phase" '$1 ~ /^[0-9]+$/ && $2 == phase && $6 != "-" { print $6 }' "$DETAIL_FILE" | sort -u
-}
-
 find_ambiguous() {
     : >"$AMBIGUOUS_FILE"
     run intake audit --account "$ACCOUNT" >"$AUDIT_FILE"
@@ -105,17 +99,6 @@ find_ambiguous() {
         }
     ' "$AUDIT_FILE" >>"$AMBIGUOUS_FILE"
 
-    if run reevaluate status --account "$ACCOUNT" >/dev/null 2>&1; then
-        run playlists tracks --account "$ACCOUNT" --name Re-evaluate >"$QUEUE_FILE"
-        CLEANUP_IDS=$WORK_DIR/cleanup-ids.txt
-        operation_ids cleanup >"$CLEANUP_IDS"
-        # Keep the first awk input non-empty so NR/FNR file detection remains
-        # correct when the plan contains no cleanup IDs.
-        printf '%s\n' __no_cleanup_track__ >>"$CLEANUP_IDS"
-        awk -F '\t' 'NR == FNR { done[$1] = 1; next }
-            $1 ~ /^[0-9]+$/ && !done[$5] { print "reevaluate\t" $2 "\t" $3 "\t" $5 }
-        ' "$CLEANUP_IDS" "$QUEUE_FILE" >>"$AMBIGUOUS_FILE"
-    fi
     cat "$MOVE_AMBIGUOUS_FILE" >>"$AMBIGUOUS_FILE"
     sort -u "$AMBIGUOUS_FILE" -o "$AMBIGUOUS_FILE"
 }
@@ -269,17 +252,27 @@ if [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ]; then
     create_plan
 fi
 
-UNSAFE=$(awk -F '\t' '$1 ~ /^[0-9]+$/ && $3 !~ /^(add_track|remove_track|exclude_track|restore_track|remove_saved_track)$/ { print }' "$DETAIL_FILE")
+UNSAFE=$(awk -F '\t' '$1 ~ /^[0-9]+$/ &&
+    $3 !~ /^(add_track|remove_track|exclude_track|restore_track|remove_saved_track)$/ &&
+    !($2 == "retirement" && $3 == "archive_playlist" &&
+      $7 ~ /"surface":"retired_reevaluate"/ && $8 ~ /"queue_empty":true/) { print }' "$DETAIL_FILE")
 [ -z "$UNSAFE" ] || {
     printf 'Stopped: this change includes work outside ordinary maintenance:\n%s\n' "$UNSAFE" >&2
     exit 3
 }
 
-OPERATIONS=$(field operations "$PLAN_FILE")
-[ "${OPERATIONS:-0}" -gt 0 ] || { printf 'Everything is already in sync.\n'; exit 0; }
+OPERATIONS=$(awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" { count++ } END { print count + 0 }' "$DETAIL_FILE")
+[ "$OPERATIONS" -gt 0 ] || {
+    if awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 == "retirement" { found = 1 } END { exit !found }' "$DETAIL_FILE"; then
+        printf 'Ordinary maintenance is in sync. A separately reviewed retirement remains pending.\n'
+    else
+        printf 'Everything is already in sync.\n'
+    fi
+    exit 0
+}
 
 printf '\nChordrift will make these Spotify changes:\n'
-awk -F '\t' '$1 ~ /^[0-9]+$/ {
+awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" {
     action = $3
     if (action == "add_track") action = "add"
     else if (action == "remove_track") action = "remove"
@@ -297,8 +290,8 @@ iterations=0
 while [ "$iterations" -lt 8 ]; do
     iterations=$((iterations + 1))
     create_plan
-    [ "$(field operations "$PLAN_FILE")" -gt 0 ] || { printf 'Done. Spotify and Chordrift agree.\n'; exit 0; }
-    phase=$(awk -F '\t' '$1 ~ /^[0-9]+$/ { print $2; exit }' "$DETAIL_FILE")
+    phase=$(awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" { print $2; exit }' "$DETAIL_FILE")
+    [ -n "$phase" ] || { printf 'Done. Ordinary maintenance is in sync; separate retirement remains pending.\n'; exit 0; }
     case "$phase" in publish|reconcile|cleanup) ;; *) printf 'Stopped before unsupported phase %s.\n' "$phase" >&2; exit 3 ;; esac
     "$SCRIPT_DIR/chordrift-plan-phase.sh" --account "$ACCOUNT" --plan "$PLAN_ID" \
         --phase "$phase" --workflow-confirmation "$PLAN_ID" --concise

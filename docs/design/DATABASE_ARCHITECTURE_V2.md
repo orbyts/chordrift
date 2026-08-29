@@ -114,7 +114,7 @@ body merely to prove that nothing changed.
 ### Durable Chordrift intent
 
 Provider-neutral user intent is authoritative and retained: canonical
-collections, intake surfaces, the Re-evaluate queue, classifications,
+collections, intake surfaces, historical correction evidence, classifications,
 corrections, exclusions, retirements, recipe definitions, approvals, and
 verified apply receipts. Provider adapters translate this intent but do not
 own it.
@@ -257,8 +257,8 @@ baseline is:
   canonical playlists and 1,754 unique ordered assignments; assignment
   SHA-256 fingerprint
   `d32d747874c61b330686f89a050fde15a6ae49c23c467b7ec7036436b4c789df`;
-- 107 active exclusions; one active Re-evaluate surface with zero current
-  tracks;
+- 107 active exclusions; one now-retired Re-evaluate surface retained only as
+  historical correction evidence;
 - 149,314 active normalized listening events across 15,575 historical Spotify
   identities: 1,720 matched and 13,855 unmatched identities, with 100,926
   matched and 48,388 unmatched events;

@@ -28,7 +28,7 @@ usage() {
         "then analytical-group dominance >= 0.55 with at least 10 placed tracks." \
         "It persists generated destinations as durable assignment revisions." \
         "" \
-        "By default, unresolved Inbox/intake, Re-evaluate, and saved/liked tracks" \
+        "By default, unresolved Inbox/intake and saved/liked tracks" \
         "are reserved for manual decisions and block automatic assignment." \
         "Use --include-intake only after reviewing every remaining intake item." \
         "" \
@@ -153,7 +153,7 @@ awk -F '\t' '
 RESERVED_COUNT=$(awk 'NR > 1 { count += 1 } END { print count + 0 }' "$RESERVED_FILE")
 
 if [ "$RESERVED_COUNT" -gt 0 ] && [ "$INCLUDE_INTAKE" = false ]; then
-    stage "Manual review required" "$RESERVED_COUNT intake/liked/Re-evaluate track(s) are reserved"
+    stage "Manual review required" "$RESERVED_COUNT intake/liked track(s) are reserved"
     cat "$RESERVED_FILE"
     printf '\nAssign your Hindi, Telugu, Tamil, and A. R. Rahman intake tracks manually first.\n'
     printf 'After reviewing any remaining intake tracks, rerun with --include-intake if appropriate.\n'

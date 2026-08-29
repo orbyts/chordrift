@@ -41,9 +41,8 @@ Destructive or history-erasing interpretations are never inferred silently.
 | Observed provider change | Plausible intent | Product behavior |
 | --- | --- | --- |
 | Add to a named intake | New discovery with explicit provenance | Capture automatically and later propose placement. |
-| Add to `Re-evaluate` and remove from the wrong destination | Keep track; reject current destination | Capture automatically as zero-signal corrective intent. |
 | Remove from one verified canonical playlist | Exclude, refile, or temporary edit | Stage interpretation; use surrounding actions to disambiguate. |
-| Remove from canonical and add to another | Deliberate move or destination preference | Propose a move and learn only after confirmation. |
+| Remove from canonical and add to exactly one other managed playlist | Deliberate reclassification | Infer the move, show it in the maintenance review, and retain the confirmed correction as evidence. |
 | Add directly to a canonical playlist | Destination preference or one-off manual choice | Stage a preference; ask whether it should become a lock. |
 | Reorder a canonical playlist | Exact-order preference or casual queue editing | Ask whether to lock order; do not silently retrain vibe placement. |
 | Remove from Liked Songs | Unsave | Record saved-state change without implying exclusion. |
@@ -53,9 +52,9 @@ Destructive or history-erasing interpretations are never inferred silently.
 ## Context improves inference
 
 Intent should be inferred from a short sequence, not one isolated mutation. For
-example, removing a track from `Tidal Hush` and immediately adding it to
-`Re-evaluate` is strong reclassification evidence. Removing it with no
-other action is ambiguous between exclusion and wrong placement. Removing it
+example, removing a track from `Tidal Hush` and adding it to `Dakshina Pulse`
+is strong reclassification evidence. Removing it with no other managed
+destination is ambiguous between exclusion and wrong placement. Removing it
 from every active playlist and unsaving it is stronger rejection evidence, but
 Chordrift should still retain the historical record.
 
@@ -63,8 +62,8 @@ Chordrift should still retain the historical record.
 
 The eventual UI should appear only when useful:
 
-- a passive “captured” acknowledgment for high-confidence intake and
-  Re-evaluate transitions;
+- a passive “captured” acknowledgment for high-confidence intake and direct
+  reclassification transitions;
 - a compact confirmation for ambiguous delete/move/order changes;
 - an exact preview when a new poetic playlist, name, or artwork is proposed;
 - a reversible history view explaining why a track moved or disappeared;
@@ -73,3 +72,7 @@ The eventual UI should appear only when useful:
 For the personal CLI, the same model is deliberately explicit: pull, inspect,
 plan, approve, apply one phase, and pull again. Each edge case proven here
 becomes a product rule rather than hidden operator knowledge.
+
+The earlier `Re-evaluate` holding queue is retired in v0.2.0. Its durable events
+remain historical evidence, but current clients must not recreate it or require
+it for correction handling.

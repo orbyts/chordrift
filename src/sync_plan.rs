@@ -572,7 +572,15 @@ async fn routing_surface_operations(
                 provider.id AS provider_playlist_row_id,
                 provider.provider_playlist_id AS spotify_playlist_id,
                 snapshot.name AS current_name,
-                snapshot.provider_snapshot_id
+                snapshot.provider_snapshot_id,
+                COALESCE((
+                    SELECT count(*)::bigint
+                    FROM provider_current_playlists current_playlist
+                    JOIN provider_playlist_revision_tracks membership
+                      ON membership.revision_id = current_playlist.revision_id
+                    WHERE current_playlist.provider_account_id = $1
+                      AND current_playlist.provider_playlist_id = provider.id
+                ), 0) AS current_track_count
          FROM routing_surfaces route
          JOIN playlists playlist ON playlist.id = route.playlist_id
          LEFT JOIN provider_playlists provider
@@ -601,7 +609,14 @@ async fn routing_surface_operations(
             .is_some();
 
         if !active {
-            if present && purpose == "legacy_route" {
+            if present && matches!(purpose.as_str(), "legacy_route" | "reevaluate") {
+                let retiring_reevaluate = purpose == "reevaluate";
+                if retiring_reevaluate && route.try_get::<i64, _>("current_track_count")? != 0 {
+                    return Err(ChordriftError::Configuration(
+                        "retired Re-evaluate is no longer empty; move its tracks before planning retirement"
+                            .to_owned(),
+                    ));
+                }
                 operations.push(PlanOperationInput {
                     phase: "retirement".to_owned(),
                     operation_type: "archive_playlist".to_owned(),
@@ -613,8 +628,8 @@ async fn routing_surface_operations(
                     spotify_track_id: None,
                     payload: json!({
                         "expected_snapshot_id": route.try_get::<Option<String>, _>("provider_snapshot_id")?,
-                        "surface": "legacy_routing",
-                        "replacement": "Re-evaluate",
+                        "surface": if retiring_reevaluate { "retired_reevaluate" } else { "legacy_routing" },
+                        "replacement": if retiring_reevaluate { "direct_managed_playlist_moves" } else { "Re-evaluate" },
                         "container_only": true,
                         "inventory_retained": true
                     }),
@@ -622,7 +637,8 @@ async fn routing_surface_operations(
                         "destructive": true,
                         "deferred": true,
                         "requires_snapshot_match": true,
-                        "tracks_preserved_in_approved_proposal": true
+                        "tracks_preserved_in_approved_proposal": true,
+                        "queue_empty": retiring_reevaluate
                     }),
                 });
             }

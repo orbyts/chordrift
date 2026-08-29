@@ -81,7 +81,7 @@ keeps them together for review but `sync apply` executes only one named phase:
 | --- | --- | --- |
 | `publish` | Add/create destinations, replace approved order, upload approved artwork. | Establish the safe destination first. |
 | `reconcile` | Record exclusions and remove tracks from superseded managed destinations. | Run only after reviewing provider drift and exact removals. |
-| `cleanup` | Consume verified Inbox/Liked/Re-evaluate entries or approved external relationships. | Destructive and deferred until the destination is published and verified. |
+| `cleanup` | Consume verified Inbox/Liked entries or approved external relationships. | Destructive and deferred until the destination is published and verified. |
 | `retirement` | Remove a separately approved obsolete container relationship. | Destructive and separately approved. |
 
 For a multi-phase plan, do not apply every phase from one old snapshot. Apply

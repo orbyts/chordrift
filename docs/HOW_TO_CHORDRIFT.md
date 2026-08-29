@@ -4,7 +4,7 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.0**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-alpha.1**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
 and verified 47/47 database together; see
@@ -14,11 +14,11 @@ and verified 47/47 database together; see
 
 | Need | Authoritative document | Status |
 | --- | --- | --- |
-| Perform daily library work | This guide and the linked `how-to/` pages | Current v0.2.0 maintenance behavior. |
+| Perform daily library work | This guide and the linked `how-to/` pages | Current v0.2.1 alpha maintenance behavior. |
 | Understand IDs, phases, plan origins, and verification | [From intent to verified execution](how-to/INTENT_TO_EXECUTION.md) | Maintenance safety model plus V020-11R capability/origin reconciliation. |
-| Look up a command | [CLI command reference](reference/CLI_COMMANDS.md) | Complete v0.2.0 command surface; operator-only leaves are labeled. |
+| Look up a command | [CLI command reference](reference/CLI_COMMANDS.md) | Complete v0.2.1 alpha command surface; operator-only leaves are labeled. |
 | Recover or roll back an upgrade | [Recovery and rollback](how-to/RECOVERY_AND_ROLLBACK.md) | Atomic binary/database recovery and split-brain precautions. |
-| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | v0.2.0 portable core complete; hosted authority is next. |
+| Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | Portable core complete; v0.2.1 stabilizes the local daily driver before the separate dependency and next refactor. |
 | Review intent interpretation | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Active v0.2 product policy, grounded in the existing explicit CLI loop. |
 | Review account/provider isolation | [Account and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Adversarial account/provider proof implemented; Spotify is the current production adapter. |
 | Review the additive v0.2 schema | [Product schema foundation](design/PRODUCT_SCHEMA_V020_05.md) | Migration 0046 implemented and rehearsed only on isolated PostgreSQL 18; not on production Neon. |
@@ -52,7 +52,7 @@ is staged for inspection rather than silently guessed.
 | Review ordinary Spotify changes | [Add songs and preserve discovery context](how-to/ADDING_AND_DISCOVERY.md) | Run the single maintenance wizard; answer only when placement is ambiguous. |
 | Inventory or retire saved albums | [Saved albums and album cleanup](how-to/SAVED_ALBUMS.md) | Archive-only retirement keeps immutable album and track history. |
 | Stop hearing a song | [Delete or exclude a track safely](how-to/DELETING_AND_EXCLUDING.md) | Remove it from its verified Chordrift playlist, then reconcile. |
-| Keep a song but reject its current vibe | [Re-evaluate and reclassify a track](how-to/ROUTING_AND_RECLASSIFYING.md) | Move it to `Re-evaluate`, remove the wrong destination, then run the same maintenance wizard. |
+| Keep a song but reject its current vibe | [Reclassify a track by moving it](how-to/ROUTING_AND_RECLASSIFYING.md) | Move it directly from the wrong managed playlist to the right one, then run maintenance. |
 | Add private region, tradition, language, or cohort facts | [Classify tracks with user dimensions](how-to/CLASSIFICATION_DIMENSIONS.md) | Review one track/a small group directly, or approve a CSV batch. |
 | Bring Neon up to date | [Synchronize and prove convergence](how-to/SYNC_AND_CONVERGENCE.md) | Run a pull after provider changes. |
 | Understand how the product interprets provider intent | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Keep using Spotify; Chordrift interprets bounded changes. |
@@ -155,7 +155,7 @@ $ chordrift capabilities \
 ```
 
 The complete ordinary workflow for Likes, named intake, managed-playlist edits,
-exclusions, and Re-evaluate corrections is:
+exclusions, and direct reclassification moves is:
 
 ```console
 $ scripts/chordrift-maintain.sh --account personal
@@ -178,10 +178,10 @@ Use these playlists to tell Chordrift why a newly encountered track matters:
 | `Liked from Radio` | Discovery from radio or autoplay. |
 | `From Prompts` | Discovery from a Spotify prompt-generated playlist. |
 
-Use `Re-evaluate` differently: it means “keep this track, but its current
-Chordrift destination needs correction.” Move the track into Re-evaluate and
-remove it from the wrong destination. Chordrift retains the event and will not
-restore the rejected membership while the track remains in the queue.
+Correction does not require another semantic playlist. Move a track directly
+from its wrong managed playlist to the correct managed playlist. Chordrift
+retains the paired change as reclassification evidence and does not restore the
+rejected membership.
 
 When ready, run the same daily maintenance command:
 
@@ -209,9 +209,10 @@ foundation.
 
 - Removing a track from a verified Chordrift playlist can stage an exclusion.
 - Removing it only from Liked Songs means “unsave,” not necessarily “forget.”
-- Adding it to Re-evaluate means “keep and reclassify,” not “exclude.”
-- A track is eligible for inferred exclusion only when it is absent from both
-  its verified destination and Re-evaluate.
+- Removing it from one managed playlist and adding it to another means “keep
+  and reclassify,” not “exclude.”
+- A track is eligible for inferred exclusion only when it leaves its verified
+  destination without another managed destination.
 - Removing it from a protected user-managed playlist changes that playlist but
   does not automatically teach a global preference.
 - Exclusion removes a track from active Chordrift listening surfaces; it does

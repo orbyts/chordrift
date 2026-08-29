@@ -59,29 +59,27 @@ catalog metadata, never the Like, listener/account identity, playlists, play
 counts, listening history, or private behavior. Do not create that project or
 its Neon store from a Chordrift task.
 
-The macOS application follows only after v0.2.1, the separate Classification
+The macOS application follows only after v0.2.1 final, the separate Classification
 Authority contract, and a further Chordrift client-boundary refactor are proven.
 Its slices are intentionally not numbered yet.
 
-Released and installed v0.2.0 plus the verified 47/47 account database remain
-the daily-driver pair; neither the hosted authority nor the separate classifier
-is required for normal CLI maintenance. Before declaring the project paused or
-starting V021-01, finish the current Re-evaluate correction and the remaining
-daily-driver workflow checks recorded below. Do not leave a partially converted
-transport in the installed binary.
+The v0.2.1 alpha line plus the verified 47/47 account database is the current
+daily-driver pair; neither hosted authority nor the separate classifier is
+required for normal CLI maintenance. Finish retiring the empty historical
+`Re-evaluate` surface and publish the alpha through CI/crates.io. The alpha is
+an installable checkpoint before V021-01, not a replacement for the v0.2.1
+hosted-authority sequence.
 
-## Start the next task here: daily-driver closeout, then V021-01
+## Start the next task here: finish alpha, then V021-01
 
 V020-01 through V020-15 are complete. v0.2.0 is released and the separately
-approved personal binary/database cutover is complete. Implement only
-`V021-01 — Authenticated service transport` from the authoritative execution
-map. Expose the existing command/query/event contract without redefining domain
-behavior. Keep the in-process development transport and current v0.2.0 daily
-workflow intact. Do not implement product identity, move provider credentials,
-add durable jobs, deploy a service, create the separate Classification Authority
-project, or infer authority for old-project/rollback deletion in this slice.
-Never call or write Spotify autonomously; the one unfinished correction may
-continue only through its explicit, concise user authorization.
+approved personal binary/database cutover is complete. Finish the exact
+historical queue retirement and publish `v0.2.1-alpha.1`. After that checkpoint,
+the next implementation slice is `V021-01 — Authenticated service transport`.
+Do not pull product identity, credential relocation, durable jobs, deployment,
+a native client, or the separate Classification Authority into V021-01. Never
+call or write Spotify without the user-authorized exact maintenance or
+retirement operation.
 
 ## Released v0.2.0 and current personal deployment
 
@@ -90,8 +88,10 @@ Release commit `a079eba0eb71955969cf29186e9d73cffae1cd82` is annotated as
 documentation tests, fresh/upgrade PostgreSQL 18 integration, Spotify
 persistence round-trip, and clean packaging. The GitHub release and crates.io
 package are public. The crate installed from crates.io reports `chordrift 0.2.0`
-and advertises all required maintenance intake, enumerated-addition,
-plan-origin, and Spin-publication-plan capabilities.
+but predates the post-release maintenance capability command. For current
+`main`, install with `cargo install --path . --force`; the wizard deliberately
+trusts the machine-readable capability handshake rather than the ambiguous
+version string.
 
 The user separately approved the personal cutover after a final read-only
 Spotify pull, backup, candidate refresh, and exact parity proof. The installed
@@ -105,7 +105,7 @@ Chordrift dependency, product contract, installer requirement, or GUI setting;
 hosted/native clients authenticate to the Rust authority and retain only a
 revocable Chordrift session in the OS credential store.
 
-### Current Re-evaluate correction state
+### Retiring the historical Re-evaluate correction surface
 
 One daily-driver correction was used to expose excessive compatibility-wizard
 ceremony. Spotify accepted and Chordrift has
@@ -116,10 +116,10 @@ inventory is 22 playlists and 1,517 memberships. The verified publish receipt is
 
 `scripts/chordrift-maintain.sh --account personal` is now the only user-facing
 ordinary workflow. It covers Likes, intake, exclusions, managed edits, and
-Re-evaluate; asks only for ambiguous destinations; summarizes net provider
-effects; and accepts one authorization. The former intake and Re-evaluate
-wizards were removed. Internal plan phases and verification remain recovery
-evidence.
+direct moves between managed playlists; asks only for ambiguous destinations;
+summarizes net provider effects; and accepts one authorization. The former
+intake and Re-evaluate wizards were removed. Internal plan phases and
+verification remain recovery evidence.
 
 The user explicitly authorized the already-resolved queue cleanup. Plan
 `8453ec0f-ed9c-4ae0-b812-1a1b678108fc` contained exactly three removals from
@@ -127,6 +127,13 @@ The user explicitly authorized the already-resolved queue cleanup. Plan
 3/3. Verified snapshot `8a19bf16-34cb-4c3a-9383-bae30ef9d5f0` has an empty
 queue, and current maintenance plan `233d9fbb-5993-41e5-9bf7-fe9a9e744366`
 has zero operations. Do not replay the earlier additions or cleanup.
+
+The user subsequently chose to remove the correction queue from the product.
+The replacement gesture is a direct move from the wrong managed Spotify
+playlist to the correct one. The paired change is current reclassification
+evidence and may later become reviewed input to the separate Classification
+Authority. Neon history must be retained; only the empty provider playlist and
+active routing-surface policy are retired.
 
 Final read-only checks preserved snapshot
 `dc96cc26-c917-4bb4-8a7f-4b3c5e836f66`, 22 playlists, 1,514 memberships, 387

@@ -42,15 +42,14 @@ $ chordrift db v2 status --account personal
 $ chordrift intake audit --account personal
 $ chordrift sync plan-show --account personal --details
 $ chordrift playlists list --account personal
-$ chordrift playlists tracks --account personal --name Re-evaluate
 ```
 
 The expected personal cutover state is v0.2.0, 47/47 migrations, the same
-current playlist membership and exclusions as the final source backup, and the
-same three current Re-evaluate tracks. `intake audit` is read-only. A queue
-status may report zero pending classification actions even while the provider
-inventory correctly contains three Re-evaluate tracks; those are different
-views and should not be "cleaned" merely to make the counts match.
+current playlist membership and exclusions as the final source backup.
+`intake audit` is read-only. The three-track `Re-evaluate` state was historical
+cutover evidence; those tracks were subsequently moved to verified canonical
+destinations, the queue was emptied, and the surface retired. Recovery must
+preserve those correction events without recreating the provider playlist.
 
 `sync plan-show` must identify maintenance plans as `maintenance`. Do not run
 readiness or apply during cutover verification. Spin publication remains

@@ -67,8 +67,8 @@ surface only an understandable proposal when confidence or intent is ambiguous.
 ## Review ordinary additions and discovery
 
 For current Liked Songs, Inbox, From Friends, Liked from Radio, From Prompts,
-managed-playlist edits, and Re-evaluate, use the single capability-checked
-wizard:
+managed-playlist edits, and direct reclassification moves, use the single
+capability-checked wizard:
 
 ```console
 $ scripts/chordrift-maintain.sh --account personal

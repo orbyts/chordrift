@@ -4,6 +4,24 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.1] - 2026-08-29
+
+- Replace separate intake and correction scripts with one capability-checked
+  daily maintenance wizard that infers direct moves between managed playlists,
+  asks only for ambiguous placement, summarizes the provider-visible change,
+  and retains the existing plan/readiness/apply/verify safety boundary.
+- Retire the empty provider-native `Re-evaluate` workflow in favor of natural
+  direct playlist moves while preserving all correction history in Neon.
+- Keep a pending, separately reviewed retirement from blocking ordinary
+  maintenance without allowing the daily wizard to execute that retirement.
+- Preserve ordinary playlist membership through enumerated-only additions and
+  reject Spin publication origins from maintenance helpers.
+- Improve incompatible-binary diagnostics by showing the selected executable
+  and identifying stale `CHORDRIFT_BIN` overrides.
+- Refresh user-facing documentation around the v0.2.1 daily-driver direction,
+  direct reclassification, historical queue retirement, and the separate
+  future Classification Authority dependency.
+
 ## [0.2.0] - 2026-08-29
 
 - Begin the v0.2.0 development line with a public, transport-neutral Rust
