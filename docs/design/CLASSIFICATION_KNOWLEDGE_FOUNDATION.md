@@ -158,6 +158,26 @@ It does not implicitly disclose their library, playlists, listening behavior,
 or private classifier. Conflicting contributions remain visible until a
 review/evaluation process promotes a shared conclusion.
 
+### Placement gestures as candidate learning evidence
+
+A direct provider move into a reviewed Chordrift destination first records
+private account placement intent. For example, moving a track into Celluloid
+Mehfil supports private eligibility for that surface; it does not by itself
+prove a globally reusable `classic-hindi-film` fact. Repeated local moves may
+improve the private overlay and identify tracks that need Classification Lab
+review.
+
+Only a separate explicit contribution action may minimize one such gesture
+into candidate shared evidence. That contribution carries recording identity,
+the bounded proposed dimension/value, evidence type (`reviewed-placement`),
+taxonomy and model versions, confidence, consent provenance, and a revocable
+contribution identifier. It must omit account identity, provider playlist
+names, listening history, play counts, exclusions, neighboring private tracks,
+and unrelated behavior. The Classification Authority evaluates the candidate
+against lawful metadata, existing examples, conflicts, and held-out tests
+before it can influence a published shared release. Chordrift never streams raw
+playlist activity into shared training automatically.
+
 ## One logical knowledge authority, several physical stores
 
 The intended “master” is a versioned classification knowledge authority—not a

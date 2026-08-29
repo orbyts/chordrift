@@ -18,7 +18,7 @@ use crate::{
 
 const APPLY_VERSION: &str = "spotify-apply-v4";
 const READINESS_VERSION: &str = "spotify-apply-readiness-v5";
-const PLANNER_VERSION: &str = "spotify-dry-run-v10";
+const PLANNER_VERSION: &str = "spotify-dry-run-v11";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Independently gated execution phases in a synchronization plan.

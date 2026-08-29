@@ -1,5 +1,12 @@
 # Add songs and preserve discovery context
 
+> **Alpha.4 limitation:** moving an existing managed track directly between
+> managed Spotify playlists is supported. Adding a previously unknown track
+> directly to a managed playlist is reserved for A021-07 / alpha.5. Until that
+> release, use Liked Songs or a named intake playlist for genuinely new tracks;
+> do not approve a plan that describes the new managed membership as drift to
+> remove.
+
 These capture semantics and the V020-11R capability-checked helpers apply to
 v0.2.0. The `v0.1.4` tag remains the exact historical reference.
 

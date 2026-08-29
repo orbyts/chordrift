@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{ChordriftError, Result};
 
 const PROVIDER: &str = "spotify";
-const PLANNER_VERSION: &str = "spotify-dry-run-v10";
+const PLANNER_VERSION: &str = "spotify-dry-run-v11";
 const PLAN_ORIGIN: PlanOrigin = PlanOrigin::Maintenance;
 const INTAKE_SURFACES: [(&str, &str, Option<&str>); 4] = [
     (
@@ -1551,6 +1551,38 @@ async fn desired_playlists(
     account_id: Uuid,
     proposal_id: Uuid,
 ) -> Result<Vec<DesiredPlaylist>> {
+    // Explicitly approved manual categories are useful product surfaces even
+    // before their first track arrives. Generated clusters remain implicit
+    // until they contain music, but manual destinations must exist so a person
+    // can reclassify directly in the provider UI.
+    let manual_rows = sqlx::query(
+        "SELECT playlist.id AS playlist_id, playlist.concept_id, concept.stable_key,
+                revision.name, revision.description
+         FROM playlists playlist
+         JOIN playlist_concepts concept ON concept.id = playlist.concept_id
+         JOIN playlist_name_revisions revision
+           ON revision.playlist_id = playlist.id AND revision.selected
+         WHERE playlist.generation_id = $1 AND playlist.kind = 'manual'
+         ORDER BY lower(revision.name), playlist.id",
+    )
+    .bind(proposal_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut playlists: BTreeMap<Uuid, DesiredPlaylist> = BTreeMap::new();
+    for row in manual_rows {
+        let id: Uuid = row.try_get("playlist_id")?;
+        playlists.insert(
+            id,
+            DesiredPlaylist {
+                playlist_id: id,
+                concept_id: row.try_get("concept_id")?,
+                stable_key: row.try_get("stable_key")?,
+                name: row.try_get("name")?,
+                description: row.try_get("description")?,
+                tracks: Vec::new(),
+            },
+        );
+    }
     let rows = sqlx::query(
         "SELECT playlist.id AS playlist_id, playlist.concept_id, concept.stable_key,
                 revision.name, revision.description, membership.position,
@@ -1580,7 +1612,6 @@ async fn desired_playlists(
     .bind(proposal_id)
     .fetch_all(database.pool())
     .await?;
-    let mut playlists: BTreeMap<Uuid, DesiredPlaylist> = BTreeMap::new();
     for row in rows {
         let id: Uuid = row.try_get("playlist_id")?;
         let playlist = playlists.entry(id).or_insert_with(|| DesiredPlaylist {
@@ -2037,6 +2068,24 @@ mod tests {
         second.payload = json!({"position": 2});
         assert!(operation_rank(&create.operation_type) < operation_rank(&first.operation_type));
         assert!(operation_position(&first) < operation_position(&second));
+    }
+
+    #[test]
+    fn empty_approved_manual_destination_becomes_an_explicit_creation() {
+        let desired = DesiredPlaylist {
+            playlist_id: Uuid::new_v4(),
+            concept_id: Uuid::new_v4(),
+            stable_key: "playlist-empty-manual".to_owned(),
+            name: "Empty manual destination".to_owned(),
+            description: "Ready for direct provider moves".to_owned(),
+            tracks: Vec::new(),
+        };
+
+        let operations = playlist_diff(&[desired], &BTreeMap::new(), &BTreeSet::new());
+
+        assert_eq!(count_kind(&operations, "create_playlist"), 1);
+        assert_eq!(count_kind(&operations, "add_track"), 0);
+        assert_eq!(operations[0].payload["stable_key"], "playlist-empty-manual");
     }
 
     #[test]

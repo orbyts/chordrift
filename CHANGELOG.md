@@ -4,6 +4,22 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.4] - 2026-08-29
+
+- Publish explicitly approved empty manual destinations so the listener can
+  move the first tracks into them directly in Spotify; generated empty clusters
+  remain suppressed.
+- Add five reviewed Indian-library surfaces: Raga Meridian, Kaveri Resonance,
+  Celluloid Mehfil, Cinema Monsoon, and Unscripted Rasa.
+- Define Indian Film Classics as releases through 1979 and modern Indian film
+  music as 1980 onward, eliminating the earlier 1970s boundary gap.
+- Move only four already-reviewed classic Hindi tracks from Rasa Archive into
+  Celluloid Mehfil; leave the other new surfaces empty rather than guessing.
+- Reuse the retired Re-evaluate background for Raga Meridian, preserve the
+  rejected color Celluloid study, and approve a monochrome Celluloid master.
+- Complete Re-evaluate retirement after a fresh Spotify pull proved zero
+  provider surfaces and tracks while Neon history remained intact.
+
 ## [0.2.1-alpha.3] - 2026-08-29
 
 - Replace per-revision proposal replay with set-based PostgreSQL operations,

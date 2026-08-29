@@ -137,12 +137,28 @@ repetition budgets. The same applies to Indian film eras, classical traditions,
 languages, regions, and other cohorts. Splitting and merging are therefore
 account-scoped presentation policy, not changes to shared classification truth.
 
-The first personal expansion to review after alpha.3 is North Indian classical,
-South Indian classical, pre-1970 Indian film classics, 1980s-to-recent Indian
-film music, and non-film Indian music, while retaining Uttara Glow as the
-exclusive A. R. Rahman surface and Dakshina Pulse. The 1970s boundary remains a
-deliberate design-review question. No playlist is created until exact proposed
-membership, poetic name, and artwork are separately approved.
+The first personal expansion is now reviewed for alpha.4. `Raga Meridian`
+represents North Indian/Hindustani classical music, `Kaveri Resonance`
+represents South Indian/Carnatic classical music, `Celluloid Mehfil` represents
+Indian film songs through 1979, `Cinema Monsoon` represents Indian film music
+from 1980 onward, and `Unscripted Rasa` represents Indian non-film music.
+Uttara Glow remains the exclusive A. R. Rahman surface and Dakshina Pulse
+remains available. Only four already-reviewed classic Hindi tracks seed
+Celluloid Mehfil; the other destinations begin empty so direct provider moves,
+not weak inference, supply their first account-specific examples.
+
+Empty generated clusters remain unpublished. An explicitly reviewed manual
+destination is different: publishing it empty gives the listener a real
+provider-native target for the first direct reclassification gesture.
+
+Artwork generation is not a hidden Chordrift runtime dependency on Codex. The
+current development workflow uses an image generator to create a label-free
+master, then Chordrift deterministically renders the title, hashes every file,
+imports an immutable complete batch, and requires human approval. A future
+automatic workflow should call a provider-neutral artwork-generation port with
+versioned prompts and reproducible provenance. Generated results must still be
+reviewed before any provider upload, and changing image vendors must not alter
+the playlist or publication domain contract.
 
 ## Natural provider use and hidden orchestration
 

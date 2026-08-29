@@ -144,7 +144,7 @@ are checkpoints, not replacements for the hosted-authority goal.
 - [x] **A021-01 — Unified ordinary maintenance.** Replace separate operator
   workflows with one capability-checked wizard for Likes, named intake,
   exclusions, managed edits, and direct reclassification moves.
-- [ ] **A021-02 — Retire the correction holding queue.** Preserve all Neon
+- [x] **A021-02 — Retire the correction holding queue.** Preserve all Neon
   correction history, deactivate the empty `Re-evaluate` surface, remove its
   empty Spotify relationship through one exact retirement operation, and prove
   it stays absent. Direct managed-playlist moves are the replacement gesture.
@@ -169,7 +169,16 @@ are checkpoints, not replacements for the hosted-authority goal.
   non-film Indian music while retaining Uttara Glow as the exclusive A. R.
   Rahman surface and Dakshina Pulse. Resolve the 1970s boundary explicitly,
   present poetic names, exact membership changes, and artwork for approval,
-  then apply only the separately approved design.
+  then apply only the separately approved design. Publish the implementation
+  and reviewed asset set as `v0.2.1-alpha.4`.
+- [ ] **A021-07 — Direct managed-playlist intake.** Treat a previously unknown
+  track added directly to a managed provider playlist as preserved intake plus
+  explicit destination intent, not provider drift to remove. Keep direct moves
+  of known tracks unchanged, resolve active exclusions explicitly, batch the
+  new assignments through the ordinary wizard, and add fake-binary regressions
+  proving destination-only additions cannot be deleted or require Liked Songs.
+  Publish the repair as `v0.2.1-alpha.5` before relying on Spotify's per-playlist
+  Add action for new tracks.
 
 ### v0.2.1 — Hosted Rust authority
 
@@ -259,9 +268,8 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** publish and test alpha.3, observe the manually deleted inactive
-Re-evaluate container, then complete the separately reviewed `A021-06` playlist
-and artwork design. After those operational checkpoints, begin `V021-01 —
+**Next gate:** publish and install alpha.4, apply and verify A021-06's exact
+approved five-surface plan, then complete A021-07/alpha.5 before beginning `V021-01 —
 Authenticated service transport` without redefining domain behavior. The
 separate Classification Authority is not part of that slice.
 

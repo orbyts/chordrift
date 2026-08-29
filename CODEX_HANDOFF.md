@@ -86,6 +86,33 @@ as a GitHub prerelease. The exact registry artifact is installed at
 `CHORDRIFT_BIN` unset. The standard wizard therefore resolves the installed
 alpha.3 binary instead of the retired temporary v0.1.4 build.
 
+Alpha.4 is the reviewed Indian-library expansion. A current pull captured
+snapshot `20972dcb-40fc-4522-9288-47ffa7733b35` with 21 playlists and proved
+`reevaluate_surfaces: 0` and `reevaluate_tracks: 0`; A021-02 is complete and
+Neon correction history remains. Approved proposal
+`322ed115-4eaa-4b22-bacb-0b634f7cc175` adds Raga Meridian, Kaveri Resonance,
+Celluloid Mehfil, Cinema Monsoon, and Unscripted Rasa. Indian Film Classics is
+through 1979; modern Indian film is 1980 onward. Only four reviewed classic
+Hindi tracks move from Rasa Archive to Celluloid Mehfil; the other four new
+manual destinations intentionally begin empty.
+
+Approved artwork batch `2a425045-1c7b-40fe-bed0-6ee505923fda` contains 25
+artifacts under `artwork/canonical/drift-atlas-v5-indian-surfaces/`. Raga
+Meridian reuses the retired Re-evaluate background. Celluloid Mehfil uses the
+approved monochrome master; its color study is preserved under `studies/`.
+Planner v11 publishes explicitly approved empty manual categories while still
+suppressing empty generated clusters. The pre-release exact plan is
+`b602e1c0-960d-47a3-b91d-3a5f3e76f0d1`: five creates, five artwork uploads,
+four additions, four matching removals, and no exclusions or retirements.
+
+The user also identified Spotify's destination-native `Add` action as a lower-
+friction intake gesture. Alpha.4 does not yet safely interpret a previously
+unknown track added only to a managed playlist; the current drift path could
+otherwise propose removing it. A021-07/alpha.5 must treat that shape as
+preserved intake plus explicit destination intent and prove through fake-binary
+tests that it cannot be deleted. Until alpha.5, direct moves of known tracks are
+safe, but genuinely new tracks must enter through Liked Songs or named intake.
+
 ## Start the next task here: reviewed playlist expansion, then V021-01
 
 V020-01 through V020-15 are complete. v0.2.0 is released and the separately
