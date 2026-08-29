@@ -332,6 +332,14 @@ if run_chordrift artwork status --account "$ACCOUNT" >"$ARTWORK_STATUS_FILE" 2>/
    [ "$(field proposal_generation_id "$ARTWORK_STATUS_FILE")" = "$PROPOSAL_ID" ]; then
     ARTWORK_STATE=$(field artwork "$ARTWORK_STATUS_FILE")
 fi
+if [ "$ARTWORK_STATE" = pending ]; then
+    PENDING_CONTACT_SHEET=$(field contact_sheet "$ARTWORK_STATUS_FILE")
+    if [ -z "$PENDING_CONTACT_SHEET" ] || [ ! -f "$PENDING_CONTACT_SHEET" ]; then
+        printf 'The pending artwork batch references an expired temporary review copy.\n'
+        printf 'A new review will use the persistent original artwork files.\n'
+        ARTWORK_STATE=missing
+    fi
+fi
 case "$ARTWORK_STATE" in
 approved)
     cat "$ARTWORK_STATUS_FILE"
