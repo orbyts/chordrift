@@ -206,6 +206,13 @@ allows only enumerated selected-track publication. After provider verification,
 it presents a separate exact-confirmed destructive cleanup containing only
 selected removals from `Re-evaluate`.
 
+Use `--resume` only after placement review and proposal approval already
+completed but a later gate stopped. It reuses that exact approved proposal and
+any pending artwork batch; it does not ask for the destinations again. Exact-ID
+typos now re-prompt until the value matches or the operator types `cancel`.
+Artwork reuse writes only a temporary manifest beside the existing files, so it
+does not copy the 134 MB visual-system directory into another temporary tree.
+
 Do not use `chordrift-intake-wizard.sh` to choose Re-evaluate destinations. The
 intake wizard handles Liked Songs, named intake playlists, and verified managed-
 playlist removals. `chordrift-workflow.sh` and `chordrift-plan-phase.sh` are

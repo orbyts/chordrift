@@ -62,6 +62,17 @@ $ scripts/chordrift-reevaluate-wizard.sh \
     --account personal --review-only
 ```
 
+If the proposal was already approved and the wizard stopped later—for example,
+at an artwork confirmation—resume without repeating the placement decisions:
+
+```console
+$ scripts/chordrift-reevaluate-wizard.sh --account personal --resume
+```
+
+Exact-ID prompts retry after a typo and accept `cancel` as the explicit safe
+exit. Reusing existing artwork validates the original files in place through a
+temporary manifest; it does not copy the complete artwork directory.
+
 The general `chordrift-intake-wizard.sh` is not the Re-evaluate placement
 wizard. It handles Liked Songs, named intake, and verified removals from managed
 playlists.

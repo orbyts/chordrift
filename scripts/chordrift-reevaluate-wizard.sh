@@ -13,12 +13,15 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 ACCOUNT=personal
 SKIP_PULL=false
 REVIEW_ONLY=false
+RESUME=false
 ARTWORK_MANIFEST=$REPO_ROOT/artwork/canonical/drift-atlas-v4/manifest.json
+ARTWORK_REVIEW_MANIFEST=
 
 usage() {
     printf '%s\n' \
         "Usage: scripts/chordrift-reevaluate-wizard.sh [--account LABEL] [--skip-pull]" \
         "       scripts/chordrift-reevaluate-wizard.sh [--account LABEL] --review-only" \
+        "       scripts/chordrift-reevaluate-wizard.sh [--account LABEL] --resume" \
         "       [--artwork-manifest PATH]" \
         "" \
         "Reviews current Re-evaluate tracks, records explicit replacement" \
@@ -46,6 +49,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --review-only)
             REVIEW_ONLY=true
+            shift
+            ;;
+        --resume)
+            RESUME=true
             shift
             ;;
         --artwork-manifest)
@@ -107,6 +114,9 @@ FINAL_QUEUE_FILE=$WORK_DIR/final-queue.tsv
 : >"$SELECTED_IDS_FILE"
 
 cleanup() {
+    if [ -n "$ARTWORK_REVIEW_MANIFEST" ] && [ -f "$ARTWORK_REVIEW_MANIFEST" ]; then
+        rm -f -- "$ARTWORK_REVIEW_MANIFEST"
+    fi
     case "$WORK_DIR" in
         "${TMPDIR:-/tmp}"/chordrift-reevaluate-wizard.*) rm -rf -- "$WORK_DIR" ;;
     esac
@@ -137,11 +147,19 @@ ask_value() {
 require_exact() {
     label=$1
     expected=$2
-    entered=$(ask_value "Type the exact $label $expected: ")
-    [ "$entered" = "$expected" ] || {
-        printf 'Confirmation did not match. Nothing after this gate was changed.\n' >&2
-        exit 1
-    }
+    while true; do
+        entered=$(ask_value "Type the exact $label $expected (or 'cancel'): ")
+        if [ "$entered" = "$expected" ]; then
+            return 0
+        fi
+        case "$entered" in
+            cancel|CANCEL|Cancel)
+                printf 'Cancelled. Nothing after this gate was changed.\n'
+                exit 0
+                ;;
+        esac
+        printf 'Confirmation did not match; please copy the complete value and try again.\n' >&2
+    done
 }
 
 capture_queue() {
@@ -222,88 +240,113 @@ if [ "$REVIEW_ONLY" = true ]; then
     exit 0
 fi
 
-stage "Editable proposal" "preserve the approved library before recording corrections"
-run_chordrift proposals status --account "$ACCOUNT" >"$STATUS_FILE"
-case "$(field proposal "$STATUS_FILE")" in
-    proposed) ;;
-    approved)
-        ask_yes "Prepare an editable copy of the approved library for Re-evaluate corrections?" || exit 0
-        run_chordrift proposals extend --account "$ACCOUNT" --min-similarity 1
-        ;;
-    state)
-        printf 'Unexpected proposal state. No correction was recorded.\n' >&2
-        exit 1
-        ;;
-    *)
-        printf 'The latest proposal is not editable or approved. No correction was recorded.\n' >&2
-        exit 1
-        ;;
-esac
-run_chordrift proposals status --account "$ACCOUNT"
-run_chordrift proposals list --account "$ACCOUNT"
-
-stage "Placement review" "choose an existing destination or defer each track"
-while IFS="$(printf '\t')" read -r position title artists album spotify_id; do
-    case "$position" in ''|*[!0-9]*) continue ;; esac
-    printf '\n%s — %s\nAlbum: %s\nSpotify ID: %s\n' "$title" "$artists" "$album" "$spotify_id"
-    printf 'Choose [m]ove to an existing destination, [d]efer, [q] stop: ' >/dev/tty
-    IFS= read -r choice </dev/tty
-    case "$choice" in
-        m|M)
-            destination=$(ask_value 'Exact destination display name: ')
-            [ -n "$destination" ] || { printf 'Destination is required.\n' >&2; exit 2; }
-            reason=$(ask_value 'Reason for this correction: ')
-            [ -n "$reason" ] || reason="Reviewed Re-evaluate correction"
-            "$SCRIPT_DIR/chordrift-manual-place.sh" \
-                --account "$ACCOUNT" --to "$destination" \
-                --spotify-id "$spotify_id" --reason "$reason"
-            printf '%s\n' "$spotify_id" >>"$SELECTED_IDS_FILE"
-            ;;
-        d|D)
-            printf 'Deferred; the track remains in Re-evaluate.\n'
-            ;;
-        *)
-            printf 'Stopped with existing edits unapproved and Spotify unchanged.\n'
-            exit 0
-            ;;
-    esac
-done <"$QUEUE_FILE"
-
-sort -u "$SELECTED_IDS_FILE" -o "$SELECTED_IDS_FILE"
-SELECTED_COUNT=$(wc -l <"$SELECTED_IDS_FILE" | tr -d ' ')
-[ "$SELECTED_COUNT" -gt 0 ] || {
-    printf 'No replacement destinations were selected. Spotify remains unchanged.\n'
-    exit 0
-}
-
-stage "Proposal review" "approve only complete, unrelated-work-free intent"
-run_chordrift proposals unresolved --account "$ACCOUNT" --limit 10000 >"$UNRESOLVED_FILE"
-UNRESOLVED_COUNT=$(awk 'NR > 1 { count += 1 } END { print count + 0 }' "$UNRESOLVED_FILE")
-[ "$UNRESOLVED_COUNT" -eq 0 ] || {
-    printf 'The editable proposal contains %s unresolved track(s). No approval was attempted.\n' \
-        "$UNRESOLVED_COUNT" >&2
-    cat "$UNRESOLVED_FILE" >&2
-    exit 3
-}
-run_chordrift proposals status --account "$ACCOUNT" >"$STATUS_FILE"
-PROPOSAL_ID=$(field generation_id "$STATUS_FILE")
-[ "$(field proposal "$STATUS_FILE")" = proposed ] &&
-    [ "$(field coverage_complete "$STATUS_FILE")" = true ] || {
+if [ "$RESUME" = true ]; then
+    stage "Resume" "reuse the already-approved Re-evaluate correction proposal"
+    cp "$QUEUE_IDS_FILE" "$SELECTED_IDS_FILE"
+    SELECTED_COUNT=$QUEUE_COUNT
+    run_chordrift proposals status --account "$ACCOUNT" >"$STATUS_FILE"
+    PROPOSAL_ID=$(field generation_id "$STATUS_FILE")
+    [ "$(field proposal "$STATUS_FILE")" = approved ] && [ -n "$PROPOSAL_ID" ] || {
         cat "$STATUS_FILE" >&2
-        printf 'Proposal is not a complete editable generation. No approval was attempted.\n' >&2
+        printf -- '--resume requires the already-approved correction proposal.\n' >&2
         exit 3
     }
-cat "$STATUS_FILE"
-ask_yes "Approve this complete proposal containing the reviewed corrections?" || exit 0
-require_exact "proposal generation ID" "$PROPOSAL_ID"
-run_chordrift proposals approve --account "$ACCOUNT" --confirm "$PROPOSAL_ID"
+    cat "$STATUS_FILE"
+else
+    stage "Editable proposal" "preserve the approved library before recording corrections"
+    run_chordrift proposals status --account "$ACCOUNT" >"$STATUS_FILE"
+    case "$(field proposal "$STATUS_FILE")" in
+        proposed) ;;
+        approved)
+            ask_yes "Prepare an editable copy of the approved library for Re-evaluate corrections?" || exit 0
+            run_chordrift proposals extend --account "$ACCOUNT" --min-similarity 1
+            ;;
+        *)
+            printf 'The latest proposal is not editable or approved. No correction was recorded.\n' >&2
+            exit 1
+            ;;
+    esac
+    run_chordrift proposals status --account "$ACCOUNT"
+    run_chordrift proposals list --account "$ACCOUNT"
+
+    stage "Placement review" "choose an existing destination or defer each track"
+    while IFS="$(printf '\t')" read -r position title artists album spotify_id; do
+        case "$position" in ''|*[!0-9]*) continue ;; esac
+        printf '\n%s — %s\nAlbum: %s\nSpotify ID: %s\n' "$title" "$artists" "$album" "$spotify_id"
+        printf 'Choose [m]ove to an existing destination, [d]efer, [q] stop: ' >/dev/tty
+        IFS= read -r choice </dev/tty
+        case "$choice" in
+            m|M)
+                destination=$(ask_value 'Exact destination display name: ')
+                [ -n "$destination" ] || { printf 'Destination is required.\n' >&2; exit 2; }
+                reason=$(ask_value 'Reason for this correction: ')
+                [ -n "$reason" ] || reason="Reviewed Re-evaluate correction"
+                "$SCRIPT_DIR/chordrift-manual-place.sh" \
+                    --account "$ACCOUNT" --to "$destination" \
+                    --spotify-id "$spotify_id" --reason "$reason"
+                printf '%s\n' "$spotify_id" >>"$SELECTED_IDS_FILE"
+                ;;
+            d|D)
+                printf 'Deferred; the track remains in Re-evaluate.\n'
+                ;;
+            *)
+                printf 'Stopped with existing edits unapproved and Spotify unchanged.\n'
+                exit 0
+                ;;
+        esac
+    done <"$QUEUE_FILE"
+
+    sort -u "$SELECTED_IDS_FILE" -o "$SELECTED_IDS_FILE"
+    SELECTED_COUNT=$(wc -l <"$SELECTED_IDS_FILE" | tr -d ' ')
+    [ "$SELECTED_COUNT" -gt 0 ] || {
+        printf 'No replacement destinations were selected. Spotify remains unchanged.\n'
+        exit 0
+    }
+
+    stage "Proposal review" "approve only complete, unrelated-work-free intent"
+    run_chordrift proposals unresolved --account "$ACCOUNT" --limit 10000 >"$UNRESOLVED_FILE"
+    UNRESOLVED_COUNT=$(awk 'NR > 1 { count += 1 } END { print count + 0 }' "$UNRESOLVED_FILE")
+    [ "$UNRESOLVED_COUNT" -eq 0 ] || {
+        printf 'The editable proposal contains %s unresolved track(s). No approval was attempted.\n' \
+            "$UNRESOLVED_COUNT" >&2
+        cat "$UNRESOLVED_FILE" >&2
+        exit 3
+    }
+    run_chordrift proposals status --account "$ACCOUNT" >"$STATUS_FILE"
+    PROPOSAL_ID=$(field generation_id "$STATUS_FILE")
+    [ "$(field proposal "$STATUS_FILE")" = proposed ] &&
+        [ "$(field coverage_complete "$STATUS_FILE")" = true ] || {
+            cat "$STATUS_FILE" >&2
+            printf 'Proposal is not a complete editable generation. No approval was attempted.\n' >&2
+            exit 3
+        }
+    cat "$STATUS_FILE"
+    ask_yes "Approve this complete proposal containing the reviewed corrections?" || exit 0
+    require_exact "proposal generation ID" "$PROPOSAL_ID"
+    run_chordrift proposals approve --account "$ACCOUNT" --confirm "$PROPOSAL_ID"
+fi
 
 stage "Existing artwork" "reuse only the unchanged reviewed visual system"
+ARTWORK_STATE=missing
 if run_chordrift artwork status --account "$ACCOUNT" >"$ARTWORK_STATUS_FILE" 2>/dev/null &&
-   [ "$(field proposal_generation_id "$ARTWORK_STATUS_FILE")" = "$PROPOSAL_ID" ] &&
-   [ "$(field artwork "$ARTWORK_STATUS_FILE")" = approved ]; then
+   [ "$(field proposal_generation_id "$ARTWORK_STATUS_FILE")" = "$PROPOSAL_ID" ]; then
+    ARTWORK_STATE=$(field artwork "$ARTWORK_STATUS_FILE")
+fi
+case "$ARTWORK_STATE" in
+approved)
     cat "$ARTWORK_STATUS_FILE"
-else
+    ;;
+pending)
+    cat "$ARTWORK_STATUS_FILE"
+    BATCH_ID=$(field batch_id "$ARTWORK_STATUS_FILE")
+    [ -n "$BATCH_ID" ] || {
+        printf 'The pending artwork review has no batch ID. No provider write occurred.\n' >&2
+        exit 3
+    }
+    require_exact "artwork batch ID" "$BATCH_ID"
+    run_chordrift artwork approve --account "$ACCOUNT" --confirm "$BATCH_ID"
+    ;;
+missing)
     [ -f "$ARTWORK_MANIFEST" ] || {
         printf 'No reusable artwork manifest exists at %s. No Spotify write occurred.\n' \
             "$ARTWORK_MANIFEST" >&2
@@ -311,22 +354,23 @@ else
     }
     ask_yes "Reuse the existing reviewed artwork files unchanged for this proposal generation?" || exit 0
     ARTWORK_SOURCE_DIR=$(CDPATH= cd -- "$(dirname -- "$ARTWORK_MANIFEST")" && pwd)
-    ARTWORK_REVIEW_DIR=$WORK_DIR/artwork-review
-    mkdir "$ARTWORK_REVIEW_DIR"
-    cp -R "$ARTWORK_SOURCE_DIR"/. "$ARTWORK_REVIEW_DIR"/
+    ARTWORK_REVIEW_MANIFEST=$(mktemp "$ARTWORK_SOURCE_DIR/.chordrift-manifest.XXXXXX")
     sed -E "s/(\"proposal_generation_id\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\\1$PROPOSAL_ID\\2/" \
-        "$ARTWORK_REVIEW_DIR/$(basename -- "$ARTWORK_MANIFEST")" \
-        >"$ARTWORK_REVIEW_DIR/manifest.next.json"
-    mv "$ARTWORK_REVIEW_DIR/manifest.next.json" \
-        "$ARTWORK_REVIEW_DIR/$(basename -- "$ARTWORK_MANIFEST")"
+        "$ARTWORK_MANIFEST" >"$ARTWORK_REVIEW_MANIFEST"
     run_chordrift artwork import --account "$ACCOUNT" \
-        --manifest "$ARTWORK_REVIEW_DIR/$(basename -- "$ARTWORK_MANIFEST")"
+        --manifest "$ARTWORK_REVIEW_MANIFEST"
     run_chordrift artwork status --account "$ACCOUNT" >"$ARTWORK_STATUS_FILE"
     BATCH_ID=$(field batch_id "$ARTWORK_STATUS_FILE")
     cat "$ARTWORK_STATUS_FILE"
     require_exact "artwork batch ID" "$BATCH_ID"
     run_chordrift artwork approve --account "$ACCOUNT" --confirm "$BATCH_ID"
-fi
+    ;;
+*)
+    cat "$ARTWORK_STATUS_FILE" >&2
+    printf 'Artwork is in unsupported state %s. No provider write occurred.\n' "$ARTWORK_STATE" >&2
+    exit 3
+    ;;
+esac
 
 ask_yes "Publish the selected destinations, verify them, and then review exact Re-evaluate cleanup?" || {
     printf 'Stopped before provider writes. Approved Neon intent remains available.\n'
