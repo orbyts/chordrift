@@ -100,7 +100,7 @@ deterministic provider-free Spins.
   must use the same enumerated-write invariant, and fake-provider tests must
   prove that publication cannot replace unrelated membership or restore a
   manually removed track.
-- [ ] **V020-13 — Latest-state migration rehearsal.** Take a new logical backup
+- [x] **V020-13 — Latest-state migration rehearsal.** Take a new logical backup
   of the then-current live database, migrate a local copy, and compare current
   inventory/order, intake, exclusions, Re-evaluate, assignments, listening
   evidence, archives, and durable plan/apply/verification history. Compare
@@ -194,7 +194,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-13 — Latest-state migration rehearsal`.
+**Next slice:** `V020-14 — Candidate and personal cutover gate`.
 
 ## Portable core and native clients
 

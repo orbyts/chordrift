@@ -65,6 +65,12 @@ All notable changes to Chordrift are documented here.
   readiness/fake execution/verification, idempotent replay, enumerated-only
   additions, protected unrelated live membership, and active-exclusion proof
   without wiring the production Spotify mutation adapter.
+- Rehearse the complete v0.2 schema against a fresh read-only production
+  backup restored only into local PostgreSQL 18. Preserve byte-identical
+  invariants and exact hashes for inventory, intake, exclusions, Re-evaluate,
+  assignments, listening/archive evidence, and durable synchronization
+  history; pass migration replay, `pg_amcheck`, and the complete intake
+  fake-binary suite without creating a candidate or changing production.
 - Make the everyday product contract explicit: people continue using Spotify
   naturally while Chordrift hides internal plan/assessment/receipt ceremony,
   records supported reversible intent automatically, leaves ambiguity for

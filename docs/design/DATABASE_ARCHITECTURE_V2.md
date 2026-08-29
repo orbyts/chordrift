@@ -20,7 +20,9 @@ production Neon. V020-11 exposes these isolated consumers through an explicit
 development CLI opt-in; V020-11R restores the safe intake adapter. V020-12 adds
 migration 0047's narrow surface-to-recipe and checkpoint-bound Spin-plan
 identity reconciliation plus fake-provider publication verification. Neither
-development migration is applied to production.
+development migration is applied to production. V020-13 proves both migrations
+against a fresh latest-state production backup restored only into isolated
+PostgreSQL 18, with exact invariant and durable-domain parity.
 
 Status: database-v2 foundation complete in the released v0.1.4 runtime, updated
 2026-08-28. The live project uses content-addressed current provider state,
@@ -43,9 +45,9 @@ foundation additively and does not reopen the migration.
 | Released runtime | v0.1.4 reads and writes only the database-v2 current-state and normalized-evidence surfaces. |
 | Schema | Production is healthy at 45/45 migrations; migration 0045 repairs the last stored function that referenced removed v1 relations. |
 | Legacy storage | Database-v1 physical tables and the former rollback project are gone after independently verified exact-confirmed cleanup. |
-| Recovery | The verified pre-compaction logical dump and immutable Spotify archives remain the external recovery sources. |
+| Recovery | The verified pre-compaction dump remains the historical recovery baseline; V020-13 adds a verified latest-state 45-migration logical dump. Immutable Spotify archives remain independent evidence sources. |
 | Routine operation | Use `sync pull` and the normal plan/readiness/apply workflow; do not replay migration or cleanup applies. |
-| v0.2 relationship | Migration 0046 extends this foundation with the provider-neutral product schema; migration 0047 adds only the Spin publication-plan relationship required by V020-12. Both remain isolated from production Neon. |
+| v0.2 relationship | Migration 0046 extends this foundation with the provider-neutral product schema; migration 0047 adds only the Spin publication-plan relationship required by V020-12. V020-13 rehearsed both on a fresh local restore; both remain unapplied to production Neon. |
 
 The exact migration-0046 reconciliation and ownership model is documented in
 the [V020-05 product schema foundation](PRODUCT_SCHEMA_V020_05.md). It adds

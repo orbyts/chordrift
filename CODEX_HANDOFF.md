@@ -31,25 +31,48 @@ publication is enumerated: it cannot replace unrelated live membership or
 restore an actively excluded track. Compatibility preserves these outcomes;
 it never forces v0.1.4 command ceremony into the v0.2 product architecture.
 
-## Start the next task here: V020-13 latest-state migration rehearsal
+## Start the next task here: V020-14 candidate and personal cutover gate
 
-Implement only `V020-13 — Latest-state migration rehearsal` from the
-authoritative execution map. Take a new logical backup of the then-current live
-database using the repository's established read-only backup procedure, restore
-it only into an isolated local PostgreSQL 18 target, apply the complete
-development migration chain there, and compare inventory/order, intake,
-exclusions, Re-evaluate, assignments, listening evidence, archives, durable
-maintenance history, capability observations, and both plan origins. Rerun the
-complete intake fake-binary suite and present findings before any candidate or
-cutover work.
+Implement only `V020-14 — Candidate and personal cutover gate` from the
+authoritative execution map. First verify current Neon capacity and take a
+newest-state logical backup; do not assume the V020-13 artifact is current.
+Create a fresh candidate only when capacity permits, restore and migrate it,
+verify runtime plus every V020-13 invariant/domain gate, and run the candidate
+binary's machine-readable capability handshake plus the complete maintenance,
+intake, and Spin-origin separation suite. Present the exact database cutover
+and Spotify publication plans, then stop for separate explicit approvals before
+changing a connection or making any provider write.
 
-Do not modify production Neon, invoke Spotify, change the installed v0.1.4
-daily driver, create a candidate database, cut over a connection, or perform a
-provider write. A production logical backup is an observation artifact, not
-authorization to migrate or mutate production. Preserve the natural-provider-
-use product rule and do not reintroduce internal-ID ceremony as product UX.
+Do not migrate or otherwise modify the current production database, change the
+installed v0.1.4 daily driver, cut over a connection, invoke Spotify, or perform
+a provider write merely because candidate creation or verification succeeds.
+Preserve the natural-provider-use product rule and do not reintroduce internal-
+ID ceremony as product UX. If candidate capacity is unavailable, stop and
+report rather than deleting or resizing an existing project without authority.
 
-V020-01 through V020-12 are complete. V020-12 adds
+V020-01 through V020-13 are complete. V020-13 took a fresh read-only logical
+backup of the healthy production PostgreSQL 18.6 database at 45/45 migrations
+and preserved it under
+`$DROPBOX/Music/Chordrift/Backups/2026-08-28-v020-13-latest-state/`. The custom
+dump SHA-256 is
+`40223ce9898b756438c864bb12899d14d638883a41d87adc6b02a2d500b941c1`.
+It restored with exit-on-error into isolated local PostgreSQL 18.6 and advanced
+from 45/47 to 47/47; migration replay was idempotent.
+
+The installed-binary production invariant, pristine restore, and migrated
+restore reports are byte-identical. Normalized data-only hashes match across
+21 tables covering current inventory/order, proposals/intake, exclusions,
+Re-evaluate, assignments, listening/archive evidence, plans, operations,
+readiness, apply, and verification history. `pg_amcheck` passed all 852
+relations / 19,238 pages. The current intake audit has zero unresolved items.
+The migrated copy contains zero capability observations or product activity;
+all 101 historical plans remain honestly `<legacy-unlabeled>`, so neither
+`maintenance` nor `spin_publication` was fabricated. All four intake fake-
+binary compatibility cases pass. Production remains unchanged at 45/45; no
+candidate, cutover, Spotify access, or provider write occurred. See
+`docs/design/LATEST_STATE_MIGRATION_REHEARSAL_V020_13.md`.
+
+V020-12 adds
 `SpinPublicationBoundary`: one explicitly approved account-owned Spin becomes
 an immutable, checkpoint-bound synchronization plan with
 `plan_origin: spin_publication`. The surface must be active, renewable,

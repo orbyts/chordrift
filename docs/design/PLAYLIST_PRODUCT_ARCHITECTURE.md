@@ -9,9 +9,10 @@ behavior. Existing database-v2 names remain unchanged. Migration 0046 now
 implements the additive recipe, collection, surface, onboarding, and Spin table
 names shown here, but remains isolated from production Neon.
 
-Status: active v0.2 architecture, updated 2026-08-28. V020-01 through V020-12
-are implemented; latest-state migration rehearsal is next. This document is a
-design contract, not authorization to apply a migration or write to a provider.
+Status: active v0.2 architecture, updated 2026-08-28. V020-01 through V020-13
+are implemented; the separately approved candidate/cutover gate is next. This
+document is a design contract, not authorization to apply a production
+migration, cut over a connection, or write to a provider.
 
 ## Current implementation status
 
@@ -72,6 +73,11 @@ design contract, not authorization to apply a migration or write to a provider.
   execution, replay, and verification prove enumerated additions preserve
   unrelated membership and active surface exclusions; no production provider
   implements the port.
+- **Implemented — V020-13:** a fresh read-only production backup restored into
+  isolated PostgreSQL 18 and advanced from 45/47 to 47/47 with byte-identical
+  invariants, exact required-domain hashes, idempotent migration replay,
+  `pg_amcheck`, and the complete intake fake-binary suite. No candidate,
+  production migration, connection cutover, or provider action occurred.
 - **Not implemented yet:** approved collection authoring,
   real-provider Spin execution, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the

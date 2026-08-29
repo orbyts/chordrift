@@ -71,8 +71,12 @@ with explicit `spin_publication` origin. A provider-neutral fake execution path
 proves readiness, enumerated additions, replay, preservation of unrelated live
 membership, active-exclusion safety, and verification without wiring Spotify.
 Migration 0047 adds only the missing surface-to-recipe and Spin-plan identity
-links and remains unapplied to production Neon. Latest-state migration rehearsal
-is next; hosted transport and native clients remain later work.
+links and remains unapplied to production Neon. V020-13 now proves a fresh
+45-migration production backup restores locally, advances to 47/47, preserves
+the complete invariant report and exact required-domain hashes, passes
+`pg_amcheck`, and retains honest absence of newer plan-origin/capability rows.
+Candidate creation and personal cutover remain the separately gated next
+slice; hosted transport and native clients remain later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages

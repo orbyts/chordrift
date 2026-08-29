@@ -17,6 +17,13 @@ either the existing maintenance proposal or an explicit checkpoint-backed
 unapplied to production. See
 [Spin publication-plan integration](SPIN_PUBLICATION_PLAN_V020_12.md).
 
+V020-13 subsequently restored a fresh 45-migration production backup into
+isolated PostgreSQL 18 and applied the complete 47-migration chain. The
+production, pristine-restore, and migrated invariant reports are byte-identical;
+21 required legacy tables retain exact normalized data hashes; migration replay
+is idempotent; and `pg_amcheck` passes. Production still remains 45/45. See
+[Latest-state migration rehearsal](LATEST_STATE_MIGRATION_REHEARSAL_V020_13.md).
+
 ## Reconciliation with the existing schema
 
 The v0.1.4 database already contains mature observation, analysis, proposal,
