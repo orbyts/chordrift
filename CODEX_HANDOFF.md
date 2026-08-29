@@ -105,6 +105,19 @@ suppressing empty generated clusters. The pre-release exact plan is
 `b602e1c0-960d-47a3-b91d-3a5f3e76f0d1`: five creates, five artwork uploads,
 four additions, four matching removals, and no exclusions or retirements.
 
+Alpha.4 is complete. Commit `a6beae7f1dbf7e2a94684e4e3dfbcbf3c0cfe92e`
+passed CI run `33280954942`; `v0.2.1-alpha.4` is published on crates.io and as
+a GitHub prerelease, and the exact registry artifact is installed at
+`~/.cargo/bin/chordrift`. It reports `0.2.1-alpha.4`, passes the capability
+handshake, and `CHORDRIFT_BIN` is unset. Publication apply run
+`70b0cdd6-8ac4-4d77-b3b0-802bd6bd5dbc` completed 14/14 operations. After a
+fresh pull, reconcile apply run `1a88b40f-b3f9-4025-a681-094df364a4b9`
+completed the exact four reviewed Rasa Archive removals. Spotify's playlist
+index exposed the returned removal snapshot after two initially unchanged
+observations; snapshot `b8bb2a83-eeac-4399-83ed-89fa9514ecff` then verified the
+receipt. Final plan `009ab341-a81f-47c7-8c88-611856fd0faf` contains zero
+operations. A021-06 is complete.
+
 The user also identified Spotify's destination-native `Add` action as a lower-
 friction intake gesture. Alpha.4 does not yet safely interpret a previously
 unknown track added only to a managed playlist; the current drift path could
@@ -113,15 +126,15 @@ preserved intake plus explicit destination intent and prove through fake-binary
 tests that it cannot be deleted. Until alpha.5, direct moves of known tracks are
 safe, but genuinely new tracks must enter through Liked Songs or named intake.
 
-## Start the next task here: reviewed playlist expansion, then V021-01
+## Start the next task here: direct managed-playlist intake, then V021-01
 
 V020-01 through V020-15 are complete. v0.2.0 is released and the separately
-approved personal binary/database cutover is complete. `v0.2.1-alpha.3` is
-published and locally installed. Ordinary maintenance is in sync. The user may
-delete the inactive empty Re-evaluate provider container manually; observe that
-deletion on the next normal sync without recreating it. Next complete A021-06's
-reviewed playlist taxonomy, names, membership preview, and artwork review, then
-begin `V021-01 — Authenticated service transport`.
+approved personal binary/database cutover is complete. `v0.2.1-alpha.4` is
+published and locally installed. The five reviewed Indian-library destinations
+are live with approved artwork, the exact post-apply plan is empty, and ordinary
+maintenance is in sync. Next complete A021-07 so a previously unknown track
+added directly to a managed playlist is preserved as intake plus explicit
+destination intent, then begin `V021-01 — Authenticated service transport`.
 Do not pull product identity, credential relocation, durable jobs, deployment,
 a native client, or the separate Classification Authority into V021-01. Never
 call or write Spotify without the user-authorized exact maintenance or
@@ -198,11 +211,8 @@ isolated rehearsal with 610 active decisions and 7,918 memberships extended in
 1.12 seconds locally; a two-track atomic batch completed in 0.09 seconds. The
 disposable benchmark database was removed after verification.
 
-After alpha.3, A021-06 is the next operational design checkpoint before
-V021-01. It previews North Indian classical, South Indian classical, pre-1970
-Indian film classics, 1980s-to-recent Indian film music, and non-film Indian
-music while retaining Uttara Glow as the exclusive A. R. Rahman surface and
-Dakshina Pulse. Resolve the 1970s boundary during review. Classification
+Alpha.4 completed A021-06 with the 1970s assigned to Celluloid Mehfil (Indian
+film through 1979) and Cinema Monsoon beginning in 1980. Classification
 Authority outputs rich dimensions; Chordrift decides account-specific surface
 granularity from library depth and preference. Deep artist catalogs may justify
 several artist-specific cadence-managed surfaces, while sparse catalogs remain

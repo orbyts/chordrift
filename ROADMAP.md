@@ -162,10 +162,10 @@ are checkpoints, not replacements for the hosted-authority goal.
   N+1 path with set-based SQL, batch same-destination moves atomically, expose
   visible progress, and prove the result on a representative isolated rehearsal
   copy. Publish the repair as `v0.2.1-alpha.3`.
-- [ ] **A021-06 — Reviewed Indian-library surface expansion.** Preserve and
+- [x] **A021-06 — Reviewed Indian-library surface expansion.** Preserve and
   consider reusing the retired Re-evaluate visual asset. Design and preview
   managed surfaces for North Indian classical, South Indian classical,
-  pre-1970 Indian film classics, 1980s-to-recent Indian film music, and
+  Indian film classics through 1979, 1980s-to-recent Indian film music, and
   non-film Indian music while retaining Uttara Glow as the exclusive A. R.
   Rahman surface and Dakshina Pulse. Resolve the 1970s boundary explicitly,
   present poetic names, exact membership changes, and artwork for approval,
@@ -268,10 +268,10 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** publish and install alpha.4, apply and verify A021-06's exact
-approved five-surface plan, then complete A021-07/alpha.5 before beginning `V021-01 —
-Authenticated service transport` without redefining domain behavior. The
-separate Classification Authority is not part of that slice.
+**Next gate:** complete A021-07/alpha.5 so a new track added directly to a
+managed Spotify playlist is preserved as intake and destination intent. Then
+begin `V021-01 — Authenticated service transport` without redefining domain
+behavior. The separate Classification Authority is not part of that slice.
 
 ## Portable core and native clients
 
