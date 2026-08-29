@@ -32,7 +32,7 @@ and verified 47/47 database together; see
 | Review approved Spin publication planning | [Spin publication-plan integration](design/SPIN_PUBLICATION_PLAN_V020_12.md) | Checkpoint-bound immutable plan plus fake-provider readiness/replay/verification; no production provider write path. |
 | Review the newest live-state migration proof | [Latest-state migration rehearsal](design/LATEST_STATE_MIGRATION_REHEARSAL_V020_13.md) | Fresh read-only backup restored and migrated locally from 45/47 to 47/47 with exact invariant/domain parity; no candidate or cutover. |
 | Review the verified candidate and cutover evidence | [Candidate and personal cutover gate](design/CANDIDATE_CUTOVER_GATE_V020_14.md) | Historical gate plus the completed v0.2.0 binary/database outcome; no Spotify write occurred. |
-| Review the long-term classification/model vision | [Classification knowledge foundation](design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md) | Future shared canonical knowledge and versioned vectors plus an isolated private account overlay; lawful-input, consent, and evaluation prerequisites are explicit. |
+| Review classification intelligence and the developer Lab | [Classification knowledge foundation](design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md) | Active v0.2.1 direction: zero-idle on-demand packages, explainable reports, private learning overlay, and later optional hosted inference. |
 | Review database-v2 decisions | [Database architecture v2](design/DATABASE_ARCHITECTURE_V2.md) | Completed v0.1.4 foundation and labeled historical execution record. |
 | Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
 

@@ -1,8 +1,9 @@
 # Classification knowledge foundation
 
-Status: long-horizon product direction, recorded 2026-08-28. This is not part
-of v0.2.0 and does not authorize collection of provider audio, model training,
-cross-account data sharing, or a production service deployment.
+Status: active architecture direction, recorded 2026-08-28 and reconciled for
+the low-cost v0.2.1 personal implementation on 2026-08-29. It does not authorize
+collection of provider audio, cross-account data sharing, a live migration, or
+a production service deployment.
 
 ## Product objective
 
@@ -26,11 +27,66 @@ playlist label. It has several independently supported dimensions, including:
 The result should be a multidimensional evidence profile, not one opaque genre
 or vibe assignment.
 
+For the personal implementation, the target explanation is concrete:
+
+```text
+Title text: likely Tamil/transliterated Tamil
+Album/film context: South Indian cinema
+A. R. Rahman: multilingual composer
+Performers: language distributions learned from their catalogs
+Nearby accepted examples: predominantly Tamil
+Your accepted classification: Tamil
+Confidence: 0.93
+```
+
+Each line is independently sourced evidence. Title language is not silently
+promoted to vocal language; a multilingual artist prior is supporting evidence,
+not proof; and placement in a mixed South Indian collection may teach personal
+eligibility without fabricating a Tamil factual label.
+
+## Immediate low-cost deployment
+
+“Authority” is a logical ownership and versioning boundary, not a requirement
+for an always-running service. The first useful deployment has zero idle
+inference cost:
+
+```text
+Authoring database + developer Classification Lab
+                         │ publish
+                         ▼
+Immutable knowledge/model package
+                         │ load on demand
+                         ▼
+In-process Rust classification runner
+                         │ cache exact report
+                         ▼
+Private Chordrift account ledger
+```
+
+The authoring store contains taxonomy, lawful metadata, training examples,
+corrections, provenance, candidates, and evaluations. It may be local and does
+not need continuous availability. Published packages contain only immutable,
+checksummed taxonomy, feature-pipeline, existing-model/adapter, artist-prior,
+evaluation, and compatibility artifacts. Chordrift loads a package only for an
+unknown or stale track, caches the report by track/input/model/personal-release
+fingerprint, and exits. Spins normally consume cached classifications.
+
+The account's personal overlay remains separate from the shared base package.
+It contains accepted corrections, small learned adapters/prototypes, placement
+evidence, policy revision, and evaluation. Activating a new release changes one
+account-scoped pointer; rollback selects the previous immutable release. No
+global catalog embedding or always-on vector service is required.
+
+If usage later justifies it, the identical classification contract may run in a
+scale-to-zero job, queued shared worker, or always-on service with a shared
+cache. Deployment changes must not change the report semantics.
+
 ## One logical knowledge authority, several physical stores
 
-The intended “master” is a versioned classification knowledge service—not a
+The intended “master” is a versioned classification knowledge authority—not a
 publicly writable vector database. Its contract presents one authoritative
-view while its implementation may use several specialized stores:
+view while its implementation may be an offline package, an in-process runner,
+or later several specialized hosted stores:
 
 ```text
 Lawful catalog, metadata, and model inputs
@@ -45,7 +101,7 @@ Model/artifact registry   Shared vector indexes
 versions · licenses       acoustic · semantic · fused
           └─────────┬─────────┘
                     ▼
-       Versioned classification service
+      Versioned classification boundary
                     │
           ┌─────────┴─────────┐
           ▼                   ▼
@@ -60,9 +116,11 @@ The relational knowledge store remains authoritative for identities, facts,
 licenses, provenance, confidence, model versions, and review history. Vector
 indexes are rebuildable retrieval structures keyed by canonical recording,
 modality, model revision, input revision, and dimensions. Model weights and
-larger artifacts belong in a versioned artifact registry/object store. Other
-applications consume an authenticated API rather than receiving direct access
-to operational tables or another person's vectors.
+larger artifacts belong in a versioned artifact registry/object store. When
+deployed remotely, other applications consume an authenticated API rather than
+receiving direct access to operational tables or another person's vectors. The
+local developer Lab calls the same Rust boundary in process and never gives the
+browser database or provider credentials.
 
 ## Representation layers
 
@@ -157,11 +215,12 @@ the remaining evidence and reports lower confidence rather than inventing it.
 
 The existing database-v2 and v0.2 product schema remain the private account
 ledger and orchestration authority. Current embeddings are rebuildable caches
-inside that deployment. This future service would extract shared canonical
-knowledge and model generations behind a provider-neutral API while preserving
-account-owned classifications, corrections, recipes, and listening evidence in
-their private boundary.
+inside that deployment. v0.2.1 first introduces the classification report,
+private evidence/release ledger, on-demand package runner, and developer Lab
+without extracting a shared service or distributing private data.
 
-No extraction should begin until hosted identity/authorization, privacy and
-consent, canonical cross-provider identity, lawful data/model sourcing, and
-evaluation requirements have their own accepted roadmap slices.
+The local implementation may reuse the live account's existing evidence only
+after its additive migration and release gates pass. Shared cross-account
+learning and remote inference remain later work requiring hosted
+identity/authorization, privacy and consent, canonical cross-provider identity,
+lawful data/model sourcing, and explicit multilingual evaluation.

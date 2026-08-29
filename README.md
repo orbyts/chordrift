@@ -100,6 +100,13 @@ write; v0.2.0 still has no production Spotify adapter for Spin publication.
 Documentation on `main` describes v0.2.0. Use the `v0.1.4` tag when exact
 historical commands or behavior are needed.
 
+The next release line is v0.2.1 personal classification intelligence: an
+explainable multidimensional report, immutable on-demand model packages,
+private account adaptation, exact caching, and a developer-only web
+Classification Lab before any hosted inference service. See the
+[classification knowledge foundation](docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md)
+and [roadmap](ROADMAP.md).
+
 Its longer-term form is a personal listening-system designer. Chordrift should
 inspect a library, propose a coherent organization, explain every
 recommendation, and—only after approval—carry out an exact, auditable plan. It

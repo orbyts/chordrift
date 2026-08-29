@@ -31,21 +31,29 @@ publication is enumerated: it cannot replace unrelated live membership or
 restore an actively excluded track. Compatibility preserves these outcomes;
 it never forces v0.1.4 command ceremony into the v0.2 product architecture.
 
-The long-horizon classification goal is one versioned shared knowledge
-authority for canonical evidence and lawful vector/model generations, combined
-with a strictly isolated private account overlay and request-time context. It
-must not download provider audio, flatten explicit language/region/tradition
-facts into opaque similarity, or train on private corrections without consent.
-See `docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md`.
+The immediate v0.2.1 goal is low-cost personal classification intelligence: a
+versioned shared/base evidence package, strictly isolated private account
+overlay, on-demand inference with exact caching, and a developer-only web
+Classification Lab. “Authority” is logical ownership/versioning, not an
+always-running service. Reuse lawful metadata, existing models, current
+embeddings, and accepted account evidence; ask only for missing, conflicting,
+incorrect, or genuinely personal knowledge. Never download provider audio,
+flatten explicit language/region/tradition facts into opaque similarity, infer
+a factual label solely from playlist placement, or train on private corrections
+across accounts without consent. See
+`docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md`.
 
-## Start the next task here: V021-01 authenticated service transport
+## Start the next task here: V021-01 classification evidence contract
 
 V020-01 through V020-15 are complete. v0.2.0 is released and the separately
 approved personal binary/database cutover is complete. Implement only
-`V021-01 — Authenticated service transport` from the authoritative execution
-map. Expose the existing command/query/event contract without redefining domain
-behavior. Do not infer authority for a Spotify write, old-project deletion, or
-rollback-copy deletion.
+`V021-01 — Classification evidence contract` from the authoritative execution
+map. Define typed multidimensional claims, evidence/provenance, confidence,
+alternatives, unknown/conflict state, exact fingerprints, shared/private scope,
+and compatibility. Include the “Yaro Yarodi” multilingual explanation fixture.
+Keep classification separate from canonical placement and Spin eligibility.
+Do not change SQL, call Spotify, select/deploy a model, create the web Lab, or
+infer authority for old-project/rollback deletion in this slice.
 
 ## Released v0.2.0 and current personal deployment
 
