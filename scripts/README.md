@@ -203,8 +203,10 @@ confirmed the current snapshot. The wizard prepares an editable proposal,
 records each explicit replacement through `chordrift-manual-place.sh`, refuses
 unrelated unresolved work, reuses only the unchanged approved artwork set, and
 allows only enumerated selected-track publication. After provider verification,
-it presents a separate exact-confirmed destructive cleanup containing only
-selected removals from `Re-evaluate`.
+it permits only snapshot-matched `managed_provider_drift` removals of those
+selected tracks from old incorrect destinations, verifies that phase, and then
+presents a separate exact-confirmed destructive cleanup containing only selected
+removals from `Re-evaluate`.
 
 Use `--resume` only after placement review and proposal approval already
 completed but a later gate stopped. It reuses that exact approved proposal and

@@ -21,6 +21,55 @@ fn temporary_work(label: &str) -> PathBuf {
 }
 
 #[test]
+fn reevaluate_reconcile_audit_allows_only_selected_old_placement_drift() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let work = temporary_work("reevaluate-reconcile-audit");
+    let selected = work.join("selected.txt");
+    let expected = work.join("expected.tsv");
+    let unexpected = work.join("unexpected.tsv");
+    fs::write(&selected, "selected-track\n").expect("selected fixture is written");
+    fs::write(
+        &expected,
+        concat!(
+            "sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety\n",
+            "0\treconcile\tremove_track\tOld Wrong Playlist\told-playlist\tselected-track\tExpected snapshot id=fixture · Reason=managed_provider_drift\tDestructive · Requires snapshot match\n",
+        ),
+    )
+    .expect("expected plan fixture is written");
+    fs::write(
+        &unexpected,
+        concat!(
+            "sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety\n",
+            "0\treconcile\tremove_track\tUnrelated Playlist\tunrelated\tother-track\tExpected snapshot id=fixture · Reason=managed_provider_drift\tDestructive · Requires snapshot match\n",
+        ),
+    )
+    .expect("unexpected plan fixture is written");
+
+    let library = root.join("scripts/chordrift-reevaluate-plan-audit.lib.sh");
+    let run_audit = |details: &Path| {
+        Command::new("sh")
+            .args([
+                "-c",
+                ". \"$1\"; reevaluate_unexpected_reconcile_operations \"$2\" \"$3\"",
+                "reevaluate-audit",
+            ])
+            .arg(&library)
+            .arg(&selected)
+            .arg(details)
+            .output()
+            .expect("plan audit executes")
+    };
+
+    let accepted = run_audit(&expected);
+    assert!(accepted.status.success());
+    assert!(accepted.stdout.is_empty());
+    let rejected = run_audit(&unexpected);
+    assert!(rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stdout).contains("other-track"));
+    fs::remove_dir_all(work).expect("temporary test directory is removed");
+}
+
+#[test]
 fn installed_binary_capability_manifest_is_machine_readable() {
     let output = Command::new(env!("CARGO_BIN_EXE_chordrift"))
         .args([

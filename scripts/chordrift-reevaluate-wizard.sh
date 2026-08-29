@@ -10,6 +10,7 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+. "$SCRIPT_DIR/chordrift-reevaluate-plan-audit.lib.sh"
 ACCOUNT=personal
 SKIP_PULL=false
 REVIEW_ONLY=false
@@ -385,7 +386,7 @@ ask_yes "Publish the selected destinations, verify them, and then review exact R
     exit 0
 }
 
-stage "Converge" "publish selected destinations before holding-queue cleanup"
+stage "Converge" "publish destinations, reconcile old placements, then clean up the holding queue"
 iterations=0
 while [ "$iterations" -lt 16 ]; do
     iterations=$((iterations + 1))
@@ -397,8 +398,8 @@ while [ "$iterations" -lt 16 ]; do
     CLEANUP_COUNT=$(phase_count cleanup)
     RECONCILE_COUNT=$(phase_count reconcile)
     RETIREMENT_COUNT=$(phase_count retirement)
-    [ "$RECONCILE_COUNT" -eq 0 ] && [ "$RETIREMENT_COUNT" -eq 0 ] || {
-        printf 'The plan contains unrelated reconcile or retirement work. No apply was attempted.\n' >&2
+    [ "$RETIREMENT_COUNT" -eq 0 ] || {
+        printf 'The plan contains retirement work. No apply was attempted.\n' >&2
         exit 3
     }
 
@@ -411,6 +412,19 @@ while [ "$iterations" -lt 16 ]; do
         }
         "$SCRIPT_DIR/chordrift-plan-phase.sh" \
             --account "$ACCOUNT" --plan "$PLAN_ID" --phase publish
+        continue
+    fi
+
+    if [ "$RECONCILE_COUNT" -gt 0 ]; then
+        UNEXPECTED=$(reevaluate_unexpected_reconcile_operations \
+            "$SELECTED_IDS_FILE" "$PLAN_DETAILS_FILE")
+        [ -z "$UNEXPECTED" ] || {
+            printf 'The reconcile phase contains unexpected work. No apply was attempted:\n%s\n' \
+                "$UNEXPECTED" >&2
+            exit 3
+        }
+        "$SCRIPT_DIR/chordrift-plan-phase.sh" \
+            --account "$ACCOUNT" --plan "$PLAN_ID" --phase reconcile
         continue
     fi
 

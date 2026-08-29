@@ -50,11 +50,14 @@ prepares an editable copy of the approved proposal, and asks you to choose an
 exact existing destination or defer each track. It records explicit assignment
 revisions first. Only after complete proposal and unchanged-artwork review does
 it offer to publish the selected additions, verify them, and separately remove
-those verified tracks from `Re-evaluate` with an exact destructive-cleanup
-confirmation.
+those tracks from an old incorrect destination only when the plan identifies a
+snapshot-matched `managed_provider_drift` removal. It verifies that correction
+before separately removing the verified tracks from `Re-evaluate` with an exact
+destructive-cleanup confirmation.
 
 The wizard rejects unrelated unresolved tracks, new playlist or artwork design,
-retirement, non-maintenance plans, and unexpected publish or cleanup operations.
+retirement, non-maintenance plans, and unexpected publish, reconcile, or cleanup
+operations.
 Review without changing proposal intent or Spotify with:
 
 ```console
