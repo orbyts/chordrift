@@ -73,6 +73,8 @@ pub mod routes;
 pub mod signals;
 /// Deterministic ordered Spin previews and migration-0046 persistence.
 pub mod spin_preview;
+/// Approved Spin publication planning and provider-neutral verification.
+pub mod spin_publication;
 /// Immutable provider synchronization plans that never mutate remote services.
 pub mod sync_plan;
 mod terminal;

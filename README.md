@@ -65,8 +65,14 @@ V020-11R selectively reconciles the recovered 92-track incident without
 merging its maintenance branches: ordinary additions are enumerated rather
 than full replacements, a capability-checked complete intake wizard delegates
 to a read-only Rust audit, and every maintenance plan exposes an origin that
-rejects future Spin publication plans. Publication-plan integration is next;
-hosted transport and native clients remain later work.
+rejects future Spin publication plans. V020-12 now converts an approved Spin
+into a checkpoint-bound immutable plan
+with explicit `spin_publication` origin. A provider-neutral fake execution path
+proves readiness, enumerated additions, replay, preservation of unrelated live
+membership, active-exclusion safety, and verification without wiring Spotify.
+Migration 0047 adds only the missing surface-to-recipe and Spin-plan identity
+links and remains unapplied to production Neon. Latest-state migration rehearsal
+is next; hosted transport and native clients remain later work.
 
 Documentation on `main` follows the same split: how-to and CLI-reference pages
 describe the working v0.1.4 surface unless marked otherwise, while design pages

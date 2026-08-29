@@ -32,6 +32,8 @@ use chordrift::{
         SelectionBudgets,
     },
     spin_preview::{SpinPreviewBoundary, SpinPreviewInput},
+    spin_publication::{SpinPublicationBoundary, SpinPublicationRequest},
+    sync_plan::{self, PlanOrigin},
 };
 use serde_json::json;
 use storexa::{Database, DatabaseConfig, PostgresProvider};
@@ -107,6 +109,14 @@ async fn seed_inventory_checkpoint(
     database: &Database,
     provider_account_id: Uuid,
 ) -> chordrift::Result<Uuid> {
+    let source_snapshot_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_library_snapshots
+         (provider, source, provider_account_id)
+         VALUES ('spotify', 'v02012-fixture', $1) RETURNING id",
+    )
+    .bind(provider_account_id)
+    .fetch_one(database.pool())
+    .await?;
     let mut provider_track_ids = Vec::new();
     for (provider_track_id, title) in [
         ("track-a", "Track A"),
@@ -213,12 +223,14 @@ async fn seed_inventory_checkpoint(
 
     let checkpoint_id: Uuid = sqlx::query_scalar(
         "INSERT INTO provider_inventory_checkpoints
-         (provider_account_id, provider, checkpoint_kind, label, state_sha256, captured_at)
-         VALUES ($1, 'spotify', 'named_baseline', 'V020-07 fixture', $2, now())
+         (provider_account_id, provider, checkpoint_kind, label, state_sha256,
+          source_snapshot_id, captured_at)
+         VALUES ($1, 'spotify', 'named_baseline', 'V020-07 fixture', $2, $3, now())
          RETURNING id",
     )
     .bind(provider_account_id)
     .bind("d".repeat(64))
+    .bind(source_snapshot_id)
     .fetch_one(database.pool())
     .await?;
     for (provider_playlist_id, revision_id, name) in provider_playlists {
@@ -1598,6 +1610,142 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
             .fetch_one(database.pool())
             .await?;
     assert_eq!(preview_publications, 0);
+
+    sqlx::query(
+        "UPDATE playlist_recipe_revisions
+            SET state = 'approved', approved_at = now()
+          WHERE id = $1",
+    )
+    .bind(recipe_revision_id)
+    .execute(database.pool())
+    .await?;
+    let publication_surface_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlist_surfaces
+             (chordrift_account_id, stable_key, name, authority, purpose,
+              refresh_policy, recipe_id)
+         VALUES ($1, 'v02012-spin', 'V020-12 Spin', 'collaborative',
+                 'renewable_experience', 'manual_spin', $2) RETURNING id",
+    )
+    .bind(chordrift_account_id)
+    .bind(recipe_id)
+    .fetch_one(database.pool())
+    .await?;
+    let publication_target_id: Uuid = sqlx::query_scalar(
+        "SELECT provider_playlist_id
+           FROM provider_inventory_checkpoint_playlists
+          WHERE checkpoint_id = $1 ORDER BY name, provider_playlist_id LIMIT 1",
+    )
+    .bind(checkpoint_id)
+    .fetch_one(database.pool())
+    .await?;
+    sqlx::query(
+        "INSERT INTO playlist_surface_provider_links
+             (chordrift_account_id, surface_id, provider_account_id,
+              provider_namespace, provider_playlist_id, state)
+         VALUES ($1, $2, $3, 'spotify', $4, 'active')",
+    )
+    .bind(chordrift_account_id)
+    .bind(publication_surface_id)
+    .bind(audit_provider_account_id)
+    .bind(publication_target_id)
+    .execute(database.pool())
+    .await?;
+    let excluded_spin_track = preview
+        .tracks
+        .last()
+        .expect("Spin has an exclusion fixture")
+        .track_id
+        .into_resource_id()
+        .as_uuid();
+    let excluded_provider_track: String = sqlx::query_scalar(
+        "SELECT provider_track_id FROM provider_tracks
+          WHERE provider = 'spotify' AND track_id = $1",
+    )
+    .bind(excluded_spin_track)
+    .fetch_one(database.pool())
+    .await?;
+    sqlx::query(
+        "INSERT INTO playlist_track_directives
+             (chordrift_account_id, surface_id, track_id, directive, reason)
+         VALUES ($1, $2, $3, 'exclude', 'user removed this track from this surface')",
+    )
+    .bind(chordrift_account_id)
+    .bind(publication_surface_id)
+    .bind(excluded_spin_track)
+    .execute(database.pool())
+    .await?;
+    let approve_publication = CommandRequest {
+        contract_version: CONTRACT_VERSION,
+        request_id: Default::default(),
+        idempotency_key: IdempotencyKey::new(),
+        command: Command::ApprovePublication {
+            spin_id: ResourceId::from_uuid(preview.identity.spin_id().into_resource_id().as_uuid()),
+        },
+    };
+    let publication_request = SpinPublicationRequest {
+        surface_id: AccountOwnedId::new(
+            product_account,
+            chordrift::domain::SurfaceId::from_uuid(publication_surface_id),
+        ),
+        provider_connection_id: ProviderConnectionId::from_uuid(audit_provider_account_id),
+    };
+    let publication_boundary = SpinPublicationBoundary::new(&database);
+    let publication = ApplicationFacade::new()
+        .invoke(publication_boundary.invocation(
+            product_account,
+            &approve_publication,
+            publication_request,
+        ))
+        .await?
+        .expect("approved Spin becomes an immutable publication plan");
+    assert_eq!(publication.excluded_tracks, 1);
+    assert!(
+        publication
+            .operations
+            .iter()
+            .all(|operation| match operation {
+                chordrift::spin_publication::SpinPublicationOperation::CreatePlaylist {
+                    ..
+                } => true,
+                chordrift::spin_publication::SpinPublicationOperation::AddTrack {
+                    provider_track_id,
+                    ..
+                } => provider_track_id != &excluded_provider_track,
+            })
+    );
+    let persisted_origin: String =
+        sqlx::query_scalar("SELECT preconditions ->> 'plan_origin' FROM sync_runs WHERE id = $1")
+            .bind(publication.plan_id)
+            .fetch_one(database.pool())
+            .await?;
+    assert_eq!(persisted_origin, "spin_publication");
+    let (shown_publication, snapshot_current, _) =
+        sync_plan::show(&database, "v02007-fixture", Some(publication.plan_id)).await?;
+    assert_eq!(shown_publication.origin, PlanOrigin::SpinPublication);
+    assert_eq!(shown_publication.proposal_generation_id, None);
+    assert!(snapshot_current);
+    let publication_replay = ApplicationFacade::new()
+        .invoke(publication_boundary.invocation(
+            product_account,
+            &approve_publication,
+            publication_request,
+        ))
+        .await?
+        .expect("identical publication planning reuses the immutable plan");
+    assert_eq!(publication_replay.plan_id, publication.plan_id);
+    assert!(publication_replay.reused);
+    let cross_account_publication = ApplicationFacade::new()
+        .invoke(publication_boundary.invocation(
+            ChordriftAccountId::from_uuid(other_chordrift_account_id),
+            &approve_publication,
+            publication_request,
+        ))
+        .await?
+        .expect_err("another account cannot publish this Spin or surface");
+    assert_eq!(
+        cross_account_publication.client_error().code,
+        chordrift::contract::ErrorCode::PermissionDenied
+    );
 
     let spin_id: Uuid = sqlx::query_scalar(
         "INSERT INTO playlist_spins

@@ -59,6 +59,16 @@ All notable changes to Chordrift are documented here.
   supporting helpers fail closed on incompatible binaries and non-maintenance
   plans. Fake-binary and Rust regressions cover full-replacement and unintended-
   restoration failures without a provider write.
+- Convert an approved account-owned Spin into an immutable checkpoint-bound
+  plan with explicit `spin_publication` origin. Add migration 0047's
+  surface-to-recipe and Spin-plan identity reconciliation, provider-neutral
+  readiness/fake execution/verification, idempotent replay, enumerated-only
+  additions, protected unrelated live membership, and active-exclusion proof
+  without wiring the production Spotify mutation adapter.
+- Make the everyday product contract explicit: people continue using Spotify
+  naturally while Chordrift hides internal plan/assessment/receipt ceremony,
+  records supported reversible intent automatically, leaves ambiguity for
+  review, and asks for consent only before Chordrift mutates a provider.
 - Reconcile current documentation around one explicit boundary: v0.1.4 remains
   the released daily-use CLI, while `main` documents implemented and planned
   v0.2 work without presenting completed database/legacy gates as current

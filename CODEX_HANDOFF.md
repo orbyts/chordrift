@@ -8,23 +8,68 @@ archive contents.
 
 Last updated: 2026-08-28.
 
-## Start the next task here: V020-12 publication-plan integration
+## Product-experience rule for every task
 
-Implement only `V020-12 — Publication-plan integration` from the authoritative
-execution map. Convert an approved account-owned Spin into an immutable plan
-with explicit `spin_publication` origin, then exercise readiness, enumerated
-playlist additions, replay, and verification through a fake provider. Stop
-before any real Spotify write. The existing intake and maintenance helpers must
-reject the Spin plan origin, and ordinary Spin additions must not replace
-unrelated live membership or restore a manually removed track.
+People use Spotify normally; they do not operate Chordrift's internal ledger.
+Chordrift may automatically observe provider changes and record supported,
+reversible intent in Neon. A removal or move already performed by the user in
+Spotify does not need duplicate approval merely to be remembered. Correlate a
+safe remove/add pair into placement intent and a surface-specific negative
+directive; leave ambiguous changes as reviewable suggestions.
 
-Do not access production Neon, apply migration 0046, invoke Spotify, change the
-installed v0.1.4 daily driver, or start latest-state migration/cutover work.
-Use the current provider-neutral application/domain boundaries and isolated
-fixtures. Do not weaken ownership, deterministic Spin identity, exact plan
-origin, readiness, idempotency, or verification to imitate a legacy command.
+Batch IDs, plan IDs, readiness assessments, idempotency keys, receipts, and
+verification remain mandatory Rust-owned safety evidence, but clients should
+hide that machinery during ordinary use. Explicit consent is needed when
+Chordrift itself will mutate a provider—create, rename, reorder, add, remove,
+delete, or change artwork—and destructive onboarding reorganization needs an
+exact recoverable preview.
 
-V020-01 through V020-11R are complete. V020-11R reviewed `9a078f3` and
+Onboarding must support rebuild-and-tidy, preserve-and-enhance, and custom
+organization paths. Mixed-authority “collaborative” surfaces protect user-added
+and pinned tracks while Spins compute the remaining seats. Ordinary Spin
+publication is enumerated: it cannot replace unrelated live membership or
+restore an actively excluded track. Compatibility preserves these outcomes;
+it never forces v0.1.4 command ceremony into the v0.2 product architecture.
+
+## Start the next task here: V020-13 latest-state migration rehearsal
+
+Implement only `V020-13 — Latest-state migration rehearsal` from the
+authoritative execution map. Take a new logical backup of the then-current live
+database using the repository's established read-only backup procedure, restore
+it only into an isolated local PostgreSQL 18 target, apply the complete
+development migration chain there, and compare inventory/order, intake,
+exclusions, Re-evaluate, assignments, listening evidence, archives, durable
+maintenance history, capability observations, and both plan origins. Rerun the
+complete intake fake-binary suite and present findings before any candidate or
+cutover work.
+
+Do not modify production Neon, invoke Spotify, change the installed v0.1.4
+daily driver, create a candidate database, cut over a connection, or perform a
+provider write. A production logical backup is an observation artifact, not
+authorization to migrate or mutate production. Preserve the natural-provider-
+use product rule and do not reintroduce internal-ID ceremony as product UX.
+
+V020-01 through V020-12 are complete. V020-12 adds
+`SpinPublicationBoundary`: one explicitly approved account-owned Spin becomes
+an immutable, checkpoint-bound synchronization plan with
+`plan_origin: spin_publication`. The surface must be active, renewable,
+Chordrift/mixed-authority, bound to the same recipe, and linked to the selected
+account-owned provider connection. Active surface exclusions are omitted and
+the plan contains only optional target creation plus enumerated additions—no
+implicit full membership, removal, replacement, or reorder.
+
+The provider-neutral `SpinPublicationProvider` port has no production Spotify
+implementation. Readiness binds the exact plan/checkpoint/baseline; fake apply
+and verification prove stale-state rejection, preservation of unrelated live
+membership, exact enumerated additions, idempotent replay, and post-write
+presence. General plan inspection exposes `spin_publication` with no fabricated
+legacy proposal generation, while maintenance helpers continue to reject that
+origin. Migration 0047 adds only the missing account-safe surface-to-recipe
+link and permits checkpoint-bound Spin dry-run identity in the existing sync
+ledger. Neither migration 0046 nor 0047 was applied to production. See
+`docs/design/SPIN_PUBLICATION_PLAN_V020_12.md`.
+
+V020-11R reviewed `9a078f3` and
 `4b7d876` but did not merge either recovered branch wholesale. Apply v4 now
 uses exact replacement only for a membership-identical `reorder_playlist`;
 ordinary additions append only enumerated IDs. Pure regressions prove they
@@ -138,9 +183,11 @@ cross-account connection before provider access. See
 `docs/design/ONBOARDING_SESSION_V020_06.md` for the exact boundary.
 
 V020-05's one additive migration, `0046_product_domain_foundation.sql`, remains
-unchanged and unapplied to production Neon. The complete 46-file fresh chain,
-idempotent migrator replay, and migration-45 upgrade pass on isolated
-PostgreSQL 18. Production remains healthy at 45/45. See
+unchanged and unapplied to production Neon. V020-12 adds the separate additive
+`0047_spin_publication_plans.sql`; the complete 47-file fresh chain and
+idempotent migrator replay pass on isolated PostgreSQL 18, while the original
+migration-45-to-46 rehearsal remains intact. Production remains healthy at
+45/45. See
 `docs/design/PRODUCT_SCHEMA_V020_05.md` for the exact reconciliation.
 
 V020-04 adds a test-only deterministic

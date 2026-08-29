@@ -183,6 +183,8 @@ pub const CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS: &str =
     "maintenance.enumerated-playlist-additions.v1";
 /// Synchronization plans expose an origin that maintenance tools can reject.
 pub const CAPABILITY_PLAN_ORIGIN: &str = "plan-origin.v1";
+/// Approved Spins can become immutable, fake-provider-verified publication plans.
+pub const CAPABILITY_SPIN_PUBLICATION_PLAN: &str = "spin-publication-plan.v1";
 
 /// Installed-binary capabilities that scripts and future clients can negotiate.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

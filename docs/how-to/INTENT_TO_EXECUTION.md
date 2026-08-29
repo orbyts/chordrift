@@ -26,6 +26,21 @@ Neon is the durable ledger for these objects. Recording intent, approvals,
 plans, assessments, and receipts is an intentional Neon write, but it is not a
 Spotify write. Spotify changes only at `sync apply`.
 
+These identifiers describe the current operator and diagnostic interface, not
+the intended everyday product ceremony. The product may observe provider
+changes, infer only well-supported reversible intent, create plans, assess
+readiness, and verify receipts automatically. A normal user should approve an
+understandable provider mutation—not transcribe internal UUIDs. A change the
+user already made directly in Spotify can be remembered in Neon without asking
+for duplicate authorization; ambiguous interpretations stay proposed for
+review.
+
+On mixed-authority surfaces, user-added or pinned membership is protected and
+Chordrift computes around it. A user removal becomes a surface-specific
+negative-placement directive. Ordinary publication may add only its explicitly
+enumerated tracks and cannot replace unrelated live membership or silently
+restore an active exclusion.
+
 ## Identifier glossary
 
 | Identifier | What it identifies | Created by | Permission it grants |

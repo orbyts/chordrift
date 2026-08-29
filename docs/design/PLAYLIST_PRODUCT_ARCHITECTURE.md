@@ -9,8 +9,8 @@ behavior. Existing database-v2 names remain unchanged. Migration 0046 now
 implements the additive recipe, collection, surface, onboarding, and Spin table
 names shown here, but remains isolated from production Neon.
 
-Status: active v0.2 architecture, updated 2026-08-28. V020-01 through V020-11R
-are implemented; publication-plan integration is next. This document is a
+Status: active v0.2 architecture, updated 2026-08-28. V020-01 through V020-12
+are implemented; latest-state migration rehearsal is next. This document is a
 design contract, not authorization to apply a migration or write to a provider.
 
 ## Current implementation status
@@ -67,11 +67,13 @@ design contract, not authorization to apply a migration or write to a provider.
   complete capability-checked intake workflow delegates to a Rust read-only
   audit, and explicit maintenance plan origins reject future Spin publication
   plans. The old maintenance branches were not merged wholesale.
-- **Next — V020-12:** convert approved Spins into a distinct
-  `spin_publication` plan origin behind the existing readiness/apply/verify
-  safety model and fake provider.
+- **Implemented — V020-12:** approved account-owned Spins become immutable,
+  checkpoint-bound `spin_publication` plans. Provider-neutral readiness, fake
+  execution, replay, and verification prove enumerated additions preserve
+  unrelated membership and active surface exclusions; no production provider
+  implements the port.
 - **Not implemented yet:** approved collection authoring,
-  publication integration, hosted transport, and native clients.
+  real-provider Spin execution, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the
   existence of contract or domain types.
 
@@ -97,6 +99,34 @@ Spotify payloads stop at the adapter boundary. Provider-qualified identities
 map to provider-neutral music identities using explicit evidence; IDs from
 different providers are never matched by string coincidence.
 
+## Natural provider use and hidden orchestration
+
+The normal product experience must not expose Chordrift's internal safety
+ledger as routine ceremony. A person may keep listening, adding, removing, and
+moving tracks in Spotify. Chordrift observes those provider changes, correlates
+them with prior state, and records supported intent in Neon without asking the
+person to copy batch, plan, or assessment identifiers. Those identifiers,
+immutable plans, readiness assessments, receipts, and verification records
+remain essential internal evidence and advanced diagnostics—not the primary
+user interface.
+
+Recording an observation or a supported, reversible interpretation in Neon is
+not a provider mutation and may happen automatically. A change the person
+already made in Spotify is itself authorization for that provider-side change;
+Chordrift does not ask them to authorize the same removal or move again merely
+to remember it. When a removal from one surface and addition to another can be
+correlated safely, Chordrift may record a move, a destination preference, and a
+surface-specific negative-placement directive. Ambiguous changes remain
+reviewable suggestions and never become silent destructive intent.
+
+Explicit consent is required when Chordrift itself is about to mutate a
+provider: create, rename, reorder, add, remove, delete, or change artwork. The
+client presents the understandable effect; Rust may create plans, readiness
+assessments, idempotency keys, and verification receipts behind that decision.
+Destructive onboarding reorganizations additionally require an exact preview
+and recoverable transition. Safety machinery stays in force even when it is
+automatic and visually quiet.
+
 ## First-run journey
 
 1. Create or open a Chordrift account.
@@ -105,8 +135,16 @@ different providers are never matched by string coincidence.
 4. Show a read-only library audit: surfaces, tracks, overlap, available
    evidence, and uncertainty.
 5. Offer optional archive import as an enrichment step, not a prerequisite.
-6. Let the user either preserve existing playlists and begin learning, or
-   preview a default starter organization. The default is always preserve.
+6. Offer explicit onboarding paths:
+   - **Rebuild and tidy:** deduplicate playlist membership, compute musical
+     clusters, and preview replacement surfaces with proposed poetic names and
+     artwork. This is destructive and therefore requires an exact recoverable
+     transition preview and consent.
+   - **Preserve and enhance:** keep existing playlists, optionally improve
+     names and artwork, and propose additional clustered surfaces. This is the
+     expected default for most people.
+   - **Custom organization:** choose the other Collection, Recipe, and Spin
+     options exposed by the product.
 7. Save approved collection boundaries and playlist recipes as durable intent.
 8. Generate a provider-free **Spin** preview with selection and ordering
    explanations.
@@ -276,8 +314,12 @@ playlist enum:
 
 This represents user playlists, provider mixes, pure Chordrift outputs, and
 collaborative outputs without multiplying special cases. Collaborative
-playlists keep explicit user-pinned tracks as directives while Chordrift
-regenerates the remaining seats.
+playlists keep user-added and explicit user-pinned tracks as protected
+directives while Chordrift regenerates only the remaining seats.
+“Collaborative” is Chordrift's mixed-authority policy and does not depend on a
+provider's social collaboration feature. A user removal of a Chordrift-selected
+track becomes surface-specific feedback; an ordinary later Spin cannot restore
+it unless the user reverses that intent.
 
 ## Database organization
 
@@ -398,6 +440,13 @@ tests at every step.
 - A user-pinned inclusion or hard exclusion survives regeneration.
 - Provider writes still require preview, immutable plan, approval, apply, and
   verification.
+- Plans, readiness assessments, receipts, and exact IDs may be created and
+  checked automatically. Clients show them only as useful progress or advanced
+  diagnostics; the human approval boundary is the understandable provider
+  mutation, not internal Neon bookkeeping.
+- Ordinary Spin publication is additive and enumerated. It cannot replace
+  unrelated live membership, overwrite user-added collaborative membership, or
+  restore an active surface exclusion.
 - Generated names and artwork cannot authorize provider publication.
 - Listening evidence and explicit user corrections remain permanent;
   statistics, embeddings, and unreferenced candidate generations remain

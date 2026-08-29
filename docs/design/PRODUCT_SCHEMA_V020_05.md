@@ -9,6 +9,14 @@ Status: implemented and rehearsed on isolated PostgreSQL 18 on 2026-08-27.
 Migration 0046 is present on the v0.2 development line only. It has not been
 applied to production Neon and does not change the released v0.1.4 runtime.
 
+V020-12 adds the narrowly scoped
+`0047_spin_publication_plans.sql` evolution. It adds an optional account-safe
+recipe link to `playlist_surfaces` and allows a `sync_runs` dry-run to bind
+either the existing maintenance proposal or an explicit checkpoint-backed
+`spin_publication` origin. It creates no second publication ledger and remains
+unapplied to production. See
+[Spin publication-plan integration](SPIN_PUBLICATION_PLAN_V020_12.md).
+
 ## Reconciliation with the existing schema
 
 The v0.1.4 database already contains mature observation, analysis, proposal,

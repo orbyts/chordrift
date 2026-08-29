@@ -17,7 +17,10 @@ and adds no schema or database access. V020-10 persists exact ordered previews
 in migration 0046's existing `playlist_spins` and `playlist_spin_tracks` tables
 without changing database-v2 or the migration. Migration 0046 is not applied to
 production Neon. V020-11 exposes these isolated consumers through an explicit
-development CLI opt-in; it adds no schema change and applies no migration.
+development CLI opt-in; V020-11R restores the safe intake adapter. V020-12 adds
+migration 0047's narrow surface-to-recipe and checkpoint-bound Spin-plan
+identity reconciliation plus fake-provider publication verification. Neither
+development migration is applied to production.
 
 Status: database-v2 foundation complete in the released v0.1.4 runtime, updated
 2026-08-28. The live project uses content-addressed current provider state,
@@ -42,7 +45,7 @@ foundation additively and does not reopen the migration.
 | Legacy storage | Database-v1 physical tables and the former rollback project are gone after independently verified exact-confirmed cleanup. |
 | Recovery | The verified pre-compaction logical dump and immutable Spotify archives remain the external recovery sources. |
 | Routine operation | Use `sync pull` and the normal plan/readiness/apply workflow; do not replay migration or cleanup applies. |
-| v0.2 relationship | Migration 0046 now extends this foundation additively with the provider-neutral product schema. It passed fresh and migration-45 upgrade rehearsals on isolated PostgreSQL 18 and is not applied to production Neon. |
+| v0.2 relationship | Migration 0046 extends this foundation with the provider-neutral product schema; migration 0047 adds only the Spin publication-plan relationship required by V020-12. Both remain isolated from production Neon. |
 
 The exact migration-0046 reconciliation and ownership model is documented in
 the [V020-05 product schema foundation](PRODUCT_SCHEMA_V020_05.md). It adds
@@ -62,6 +65,9 @@ is the first runtime consumer of the existing Spin tables; it adds no migration
 and performs no provider operation. The
 [V020-11 CLI rehearsal](CLI_FIRST_PRODUCT_REHEARSAL_V020_11.md) composes these
 consumers only against an operator-selected isolated migration-0046 database.
+The [V020-12 publication-plan boundary](SPIN_PUBLICATION_PLAN_V020_12.md) reuses
+the existing sync ledger through migration 0047 and exercises only a fake
+provider; it does not change the database-v2 diagram's production table groups.
 
 ## Why this redesign existed
 

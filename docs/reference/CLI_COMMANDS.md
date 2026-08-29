@@ -45,7 +45,8 @@ $ chordrift capabilities
 $ chordrift capabilities \
     --require maintenance.intake-workflow.v1 \
     --require maintenance.enumerated-playlist-additions.v1 \
-    --require plan-origin.v1
+    --require plan-origin.v1 \
+    --require spin-publication-plan.v1
 ```
 
 The command performs no database or provider access. Unknown requirements fail
@@ -63,11 +64,14 @@ The read-only report labels each provider identity `already_covered`,
 `previously_excluded`, `assigned_approved`, `suggested_in_draft`,
 `known_from_history`, or `genuinely_new` and emits stable redirected TSV.
 
-`sync plan` and `sync plan-show` now print `plan_origin: maintenance`; the
-origin is also committed to immutable plan preconditions. Maintenance readers
-and helpers reject unknown or `spin_publication` origins. This is deliberately
-separate from the plan phase: maintenance plans may still contain `publish`,
-`reconcile`, `cleanup`, and `retirement` phases.
+`sync plan` prints `plan_origin: maintenance`; `sync plan-show` exposes either
+`maintenance` or `spin_publication` from immutable plan preconditions. A Spin
+plan has no legacy proposal generation and prints `proposal_generation_id: -`.
+Maintenance helpers reject unknown or `spin_publication` origins. This is
+deliberately separate from the plan phase: maintenance plans may still contain
+`publish`, `reconcile`, `cleanup`, and `retirement` phases. V020-12's Spin-plan
+creation remains a Rust application boundary, not a released CLI leaf, and no
+production provider adapter can execute it yet.
 
 Ordinary playlist additions append only their enumerated operation IDs. Full
 replacement is reserved for `reorder_playlist` after identical-membership

@@ -43,6 +43,8 @@ const INTAKE_SURFACES: [(&str, &str, Option<&str>); 4] = [
 pub enum PlanOrigin {
     /// Ordinary library maintenance, intake, and convergence work.
     Maintenance,
+    /// Publication of one approved immutable Spin.
+    SpinPublication,
 }
 
 impl PlanOrigin {
@@ -51,6 +53,7 @@ impl PlanOrigin {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Maintenance => "maintenance",
+            Self::SpinPublication => "spin_publication",
         }
     }
 }
@@ -63,7 +66,7 @@ pub struct PlanReport {
     /// Explicit business path that created the plan.
     pub origin: PlanOrigin,
     /// Approved proposal used as desired state.
-    pub proposal_generation_id: Uuid,
+    pub proposal_generation_id: Option<Uuid>,
     /// Immutable Spotify snapshot used as observed state.
     pub source_snapshot_id: Uuid,
     /// Whether an identical plan already existed.
@@ -384,7 +387,7 @@ async fn persist_operations(
     Ok(report(
         plan_id,
         PLAN_ORIGIN,
-        proposal_id,
+        Some(proposal_id),
         snapshot_id,
         false,
         input_hash,
@@ -1813,7 +1816,7 @@ fn summarize(operations: &[PlanOperationInput]) -> Summary {
 fn report(
     plan_id: Uuid,
     origin: PlanOrigin,
-    proposal_generation_id: Uuid,
+    proposal_generation_id: Option<Uuid>,
     source_snapshot_id: Uuid,
     reused: bool,
     input_hash: String,
@@ -1847,6 +1850,7 @@ fn report(
 fn stored_plan_origin(planner_version: &str, preconditions: &Value) -> Result<PlanOrigin> {
     match preconditions.get("plan_origin").and_then(Value::as_str) {
         Some("maintenance") => Ok(PlanOrigin::Maintenance),
+        Some("spin_publication") => Ok(PlanOrigin::SpinPublication),
         Some(origin) => Err(ChordriftError::Configuration(format!(
             "maintenance workflow refuses plan origin {origin:?}"
         ))),
@@ -1962,13 +1966,13 @@ mod tests {
     }
 
     #[test]
-    fn maintenance_reader_rejects_spin_publication_plan_origin() {
-        let error = stored_plan_origin(
+    fn plan_reader_exposes_spin_publication_origin() {
+        let origin = stored_plan_origin(
             "spin-publication-v1",
             &json!({"plan_origin": "spin_publication"}),
         )
-        .expect_err("maintenance path must reject Spin publication plans");
-        assert!(error.to_string().contains("spin_publication"));
+        .expect("general plan inspection recognizes the explicit origin");
+        assert_eq!(origin, super::PlanOrigin::SpinPublication);
     }
 
     #[test]

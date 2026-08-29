@@ -47,8 +47,8 @@ require stable feature names rather than guessing from the crate version.
 Maintenance plans persist `plan_origin: maintenance` inside immutable
 preconditions and print it in plan output. Maintenance readers and helpers
 reject absent/unknown origins unless the plan is a recognized legacy instance
-of the current maintenance planner. Future V020-12 Spin publication plans must
-persist and expose `spin_publication`; they cannot enter the intake wizard.
+of the current maintenance planner. V020-12 Spin publication plans now persist
+and expose `spin_publication`; they cannot enter the intake wizard.
 
 This separation is architectural, not merely a shell check. Plan origin says
 which business path authorized a diff; phase says which bounded risk class is

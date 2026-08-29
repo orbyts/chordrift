@@ -6427,8 +6427,8 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
     use crate::contract::{
         BINARY_CAPABILITY_SCHEMA_VERSION, BinaryCapabilityManifest,
         CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS, CAPABILITY_MAINTENANCE_INTAKE_AUDIT,
-        CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW, CAPABILITY_PLAN_ORIGIN, CapabilityAvailability,
-        ContractVersionRange,
+        CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW, CAPABILITY_PLAN_ORIGIN,
+        CAPABILITY_SPIN_PUBLICATION_PLAN, CapabilityAvailability, ContractVersionRange,
     };
 
     BinaryCapabilityManifest {
@@ -6450,6 +6450,10 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
             ),
             (
                 CAPABILITY_PLAN_ORIGIN.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
+                CAPABILITY_SPIN_PUBLICATION_PLAN.to_owned(),
                 CapabilityAvailability::Available,
             ),
         ]),
@@ -6551,7 +6555,9 @@ fn write_sync_plan_report(output: &mut impl Write, report: &sync_plan::PlanRepor
     writeln!(
         output,
         "proposal_generation_id: {}",
-        report.proposal_generation_id
+        report
+            .proposal_generation_id
+            .map_or_else(|| "-".to_owned(), |value| value.to_string())
     )?;
     writeln!(output, "source_snapshot_id: {}", report.source_snapshot_id)?;
     writeln!(output, "operations: {}", report.operation_count)?;
@@ -6639,6 +6645,7 @@ mod tests {
         let manifest = binary_capability_manifest();
         assert!(manifest.supports("maintenance.intake-workflow.v1"));
         assert!(manifest.supports("maintenance.enumerated-playlist-additions.v1"));
+        assert!(manifest.supports("spin-publication-plan.v1"));
         assert!(!manifest.supports("spin-publication.v1"));
         serde_json::to_string(&manifest).expect("capability manifest serializes");
     }

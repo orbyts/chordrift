@@ -92,7 +92,7 @@ deterministic provider-free Spins.
   publication plans. Preserve safety invariants and operator outcomes through
   adapters; do not force legacy command shapes into the v0.2 Rust architecture
   when they conflict. Do not merge the maintenance branches wholesale.
-- [ ] **V020-12 — Publication-plan integration.** Convert an approved Spin into
+- [x] **V020-12 — Publication-plan integration.** Convert an approved Spin into
   the existing immutable plan/readiness/apply/verify model. Exercise planning
   and verification with a fake provider; stop before a real Spotify write.
   Persist and expose `spin_publication` as an origin distinct from
@@ -194,7 +194,7 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-12 — Publication-plan integration`.
+**Next slice:** `V020-13 — Latest-state migration rehearsal`.
 
 ## Portable core and native clients
 
