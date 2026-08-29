@@ -1,18 +1,21 @@
-# Classification knowledge foundation
+# External Classification Authority foundation
 
-Status: active architecture direction, recorded 2026-08-28 and reconciled for
-the low-cost v0.2.1 personal implementation on 2026-08-29. It does not authorize
-collection of provider audio, cross-account data sharing, a live migration, or
-a production service deployment.
+Status: founding brief for a separate future product/project and Chordrift
+dependency, recorded 2026-08-28 and separated from the Chordrift roadmap on
+2026-08-29. It is not a Chordrift database module or v0.2.1 slice. Start its own
+repository, roadmap, release sequence, and task before implementation. This
+brief does not authorize creation of that project or Neon store, collection of
+provider audio, cross-account data sharing, a live migration, or a production
+service deployment.
 
 ## Product objective
 
-Chordrift should become exceptionally reliable at organizing music a person
-already knows and likes. Providers remain the source of catalog access,
-playback, and new discoveries. Chordrift's job is to understand the listener's
-existing musical world well enough to find useful, explainable ways to split,
-combine, sequence, and refresh it for a context such as dancing, calming down,
-working, coding, rediscovery, or a specific cultural/linguistic tradition.
+The Classification Authority should become exceptionally reliable at describing
+recordings from lawful evidence. Chordrift is one future consumer. Providers
+remain the source of catalog access, playback, and new discoveries; Chordrift
+combines returned classification evidence with private listener context to
+split, combine, sequence, and refresh music for dancing, calming down, working,
+coding, rediscovery, or a specific cultural/linguistic tradition.
 
 This is classification in a broad sense. A recording does not have one correct
 playlist label. It has several independently supported dimensions, including:
@@ -27,24 +30,34 @@ playlist label. It has several independently supported dimensions, including:
 The result should be a multidimensional evidence profile, not one opaque genre
 or vibe assignment.
 
-For the personal implementation, the target explanation is concrete:
+The target explanation is concrete:
 
 ```text
 Title text: likely Tamil/transliterated Tamil
 Album/film context: South Indian cinema
 A. R. Rahman: multilingual composer
 Performers: language distributions learned from their catalogs
-Nearby accepted examples: predominantly Tamil
-Your accepted classification: Tamil
+Nearby reviewed examples: predominantly Tamil
+Reviewed classification: Tamil
 Confidence: 0.93
 ```
 
 Each line is independently sourced evidence. Title language is not silently
 promoted to vocal language; a multilingual artist prior is supporting evidence,
-not proof; and placement in a mixed South Indian collection may teach personal
-eligibility without fabricating a Tamil factual label.
+not proof; and placement in a mixed South Indian collection may teach private
+eligibility without fabricating or contributing a Tamil factual label.
 
-## Immediate low-cost deployment
+The authority is a learned classifier, not an exhaustive catalog of final
+answers. It is not required to store every recording or a permanent
+classification row for every recording. It retains compact, reviewable
+knowledge that improves generalization: representative examples, taxonomies,
+source facts, artist/catalog priors, disagreements, evaluation cases, and
+versioned model artifacts. Given an unseen recording, the selected release
+returns ranked claims, calibrated confidence, alternatives, supporting
+evidence, and an explicit unknown/conflict state. Weak or closely competing
+evidence must cause abstention or review rather than a forced label.
+
+## Low-cost first deployment in the separate project
 
 “Authority” is a logical ownership and versioning boundary, not a requirement
 for an always-running service. The first useful deployment has zero idle
@@ -60,10 +73,11 @@ Immutable knowledge/model package
 In-process Rust classification runner
                          │ cache exact report
                          ▼
-Private Chordrift account ledger
+Private consumer cache (Chordrift is one consumer)
 ```
 
-The authoring store contains taxonomy, lawful metadata, training examples,
+The authoring store contains taxonomy, selective lawful metadata, reviewed
+learning examples,
 corrections, provenance, candidates, and evaluations. The intended development
 deployment is a separate Storexa-backed Neon project so shared knowledge has
 independent credentials, migrations, backups, retention, and lifecycle from the
@@ -73,14 +87,39 @@ remaining subject to measured project/storage/compute limits. Published
 packages contain only immutable,
 checksummed taxonomy, feature-pipeline, existing-model/adapter, artist-prior,
 evaluation, and compatibility artifacts. Chordrift loads a package only for an
-unknown or stale track, caches the report by track/input/model/personal-release
-fingerprint, and exits. Spins normally consume cached classifications.
+unknown or stale track, caches the report privately by
+track/input/shared-release fingerprint, and exits. Spins normally consume
+cached classifications. A shared result cache may later improve throughput,
+but it is disposable infrastructure rather than classification authority.
 
-The account's personal overlay remains separate from the shared base package.
-It contains accepted corrections, small learned adapters/prototypes, placement
-evidence, policy revision, and evaluation. Activating a new release changes one
-account-scoped pointer; rollback selects the previous immutable release. No
-global catalog embedding or always-on vector service is required.
+The account's private overlay remains separate from the shared package. It
+contains private corrections, placement evidence, preferences, exclusions, and
+policy revisions used downstream for account-specific ranking and playlist
+composition. Those signals do not train or alter a shared release unless the
+person explicitly contributes a bounded factual claim. Activating a new shared
+release changes one account-scoped pointer; rollback selects the previous
+immutable release. No exhaustive catalog embedding or always-on vector service
+is required.
+
+The ordinary query boundary is deliberately narrow:
+
+```text
+Chordrift observes a Like or unknown recording (private trigger)
+             │
+             ├── stays private: account, Like, plays, playlists, behavior
+             │
+             └── query: recording identity + permitted catalog metadata
+                                      │
+                                      ▼
+                         Selected shared model release
+                                      │
+                                      ▼
+             ranked claims · confidence · alternatives · evidence
+                         unknown/conflict · release identity
+                                      │
+                                      ▼
+                    private exact-fingerprint report cache
+```
 
 If usage later justifies it, the identical classification contract may run in a
 scale-to-zero job, queued shared worker, or always-on service with a shared
@@ -92,12 +131,12 @@ The two Neon projects serve different authorities:
 
 | Store | May contain | Must not contain |
 | --- | --- | --- |
-| Shared knowledge project | Canonical identities and facts, taxonomy, lawful source/license provenance, artist/catalog priors, explicitly scoped contribution events, reviewed shared claims, model/artifact manifests, shared evaluations, optional rebuildable vector indexes | Private libraries, playlist names, listening history, exclusions, private corrections, personal model overlays, provider credentials |
+| Shared knowledge project | Selective canonical identities and source facts, taxonomy, lawful source/license provenance, representative reviewed examples, artist/catalog priors, explicitly scoped contribution events, disagreements, model/artifact manifests, shared evaluations, optional rebuildable indexes | An exhaustive song-by-song answer catalog, private libraries, playlist names, listening history, exclusions, private corrections, personal model overlays, provider credentials |
 | Private account project | Provider inventory, listening evidence, personal labels/corrections, placement and removal evidence, exclusions, personal releases, active release, cached account classification reports | Another person's private evidence or unreviewed claims presented as shared truth |
 
 Storexa supplies the same typed connection, health, migration, and recovery
 machinery to both Rust-owned stores. The browser never connects to either.
-During personal development the local Rust Lab is the only writer to the shared
+During initial development the local Rust Lab is the only writer to the shared
 project. Friends later contribute through authenticated application commands;
 they never receive Neon credentials. Before hosted identity exists, any friend
 annotation must arrive as an explicit reviewable import and cannot become a
@@ -120,8 +159,8 @@ or later several specialized hosted stores:
 Lawful catalog, metadata, and model inputs
                     │
                     ▼
-Shared canonical knowledge
-  identities · explicit facts · provenance · confidence · conflicts
+Shared learning knowledge
+  examples · taxonomy · priors · explicit facts · provenance · conflicts
                     │
           ┌─────────┴─────────┐
           ▼                   ▼
@@ -140,9 +179,11 @@ preferences · corrections mood · activity · constraints
 Explainable account-specific ranking and playlist composition
 ```
 
-The relational knowledge store remains authoritative for identities, facts,
-licenses, provenance, confidence, model versions, and review history. Vector
-indexes are rebuildable retrieval structures keyed by canonical recording,
+The relational knowledge store remains authoritative for the selected
+identities and facts it does retain, plus examples, licenses, provenance,
+confidence, model versions, and review history. It is not the authoritative
+answer only because a recording has a row. Vector indexes are optional,
+rebuildable retrieval structures keyed by example or canonical recording,
 modality, model revision, input revision, and dimensions. Model weights and
 larger artifacts belong in a versioned artifact registry/object store. When
 deployed remotely, other applications consume an authenticated API rather than
@@ -152,12 +193,15 @@ browser database or provider credentials.
 
 ## Representation layers
 
-### 1. Shared canonical facts
+### 1. Shared reviewed facts and examples
 
-Evidence-backed facts such as recording identity, language, artist association,
-release geography, tradition, era, and instrumentation remain explicit and
-queryable. Every claim carries source, scope, time, parser/model revision,
-confidence, and conflict state. Unknown and disputed values stay visible.
+Selected evidence-backed facts and representative examples—such as recording
+identity, language, artist association, release geography, tradition, era, and
+instrumentation—remain explicit and queryable when they add learning or audit
+value. Every claim carries source, scope, time, parser/model revision,
+confidence, and conflict state. Unknown and disputed values stay visible. The
+store may deliberately omit an ordinary recording that the released classifier
+can already handle reliably.
 
 These facts supply hard or explainable boundaries that geometric similarity
 alone cannot guarantee. “Hindi,” “Tamil,” “1970s Hindi film music,” and
@@ -212,10 +256,13 @@ discover music the provider has not supplied.
 
 Early improvement should preserve a stable pretrained base and learn smaller,
 auditable components: calibration, projections, classifiers, or ranking
-adapters over reviewed examples. Useful training evidence includes explicit
-dimension labels, accepted/rejected placements, comparisons, boundary
-corrections, and context-specific choices. Passive behavior is weaker evidence
-and must not be treated as an unambiguous label.
+adapters over reviewed examples. The goal is generalization to recordings that
+have never appeared in the shared store. Useful shared learning evidence
+includes explicit dimension labels, comparisons, boundary corrections, source
+facts, and curator-reviewed examples. Account placements and passive behavior
+remain private placement evidence; they are neither shared training labels nor
+unambiguous factual classifications without an explicit contribution and
+review boundary.
 
 Training a new music foundation model is a later option, not an assumption.
 It requires sufficient lawful data rights, commercially compatible model
@@ -239,16 +286,20 @@ derived vectors, retention, cross-user reuse, export, and commercial service
 use. If rights are insufficient, the modality is unavailable; Chordrift uses
 the remaining evidence and reports lower confidence rather than inventing it.
 
-## Relationship to current Chordrift
+## Dependency boundary with Chordrift
 
-The existing database-v2 and v0.2 product schema remain the private account
-ledger and orchestration authority. Current embeddings are rebuildable caches
-inside that deployment. v0.2.1 first introduces the classification report,
-private evidence/release ledger, on-demand package runner, and developer Lab
-without extracting a shared service or distributing private data.
+The existing database-v2 and v0.2 product schema remain Chordrift's private
+account ledger and orchestration authority. Current account embeddings remain
+rebuildable Chordrift caches. The separate project defines and versions its own
+classification request/report contract, shared authoring ledger, model package
+runner, release lifecycle, evaluation, and developer Lab. Chordrift integrates
+only after a compatible dependency release exists; it stores its selected
+dependency release and exact private response cache without absorbing the
+authority's implementation or database.
 
-The local implementation may reuse the live account's existing evidence only
-after its additive migration and release gates pass. Shared cross-account
-learning and remote inference remain later work requiring hosted
-identity/authorization, privacy and consent, canonical cross-provider identity,
-lawful data/model sourcing, and explicit multilingual evaluation.
+A Chordrift integration may use permitted catalog metadata as inference input
+only after its own additive migration and release gates pass. It may not
+silently copy account evidence into shared training data. Multi-contributor
+learning and remote inference remain work for the separate project requiring
+hosted identity/authorization, privacy and consent, canonical cross-provider
+identity, lawful data/model sourcing, and explicit multilingual evaluation.

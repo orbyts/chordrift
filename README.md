@@ -26,6 +26,13 @@ cutover pairs the v0.2.0 binary with the verified 47/47 database candidate;
 mixing a v0.1.4 binary with that database is not a supported operating mode.
 The `v0.1.4` tag remains the exact historical reference and rollback source.
 
+v0.2.0 is also a deliberate pause-safe baseline. The installed CLI and verified
+47/47 account database may continue handling ordinary maintenance while later
+architecture work is paused; no hosted service or Classification Authority is
+required for the current workflow. On return, read `CODEX_HANDOFF.md` and begin
+with `V021-01 — Authenticated service transport`. Do not partially mix that
+future transport work into the installed daily-driver binary.
+
 Install the locked release with:
 
 ```console
@@ -100,14 +107,24 @@ write; v0.2.0 still has no production Spotify adapter for Spin publication.
 Documentation on `main` describes v0.2.0. Use the `v0.1.4` tag when exact
 historical commands or behavior are needed.
 
-The next release line is v0.2.1 personal classification intelligence: an
-explainable multidimensional report, immutable on-demand model packages,
-private account adaptation, exact caching, and a developer-only web
-Classification Lab before any hosted inference service. See the
-[classification knowledge foundation](docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md)
-and [roadmap](ROADMAP.md). The development authoring store is planned as a
-separate autosuspending Storexa-backed Neon project; private account evidence
-remains in the existing account project, and inference remains on demand.
+The next Chordrift release line is **v0.2.1 hosted Rust authority**. It exposes
+the existing application contract through authenticated transport, adds product
+identity and tenant authorization, keeps provider credentials server-side,
+makes background operations durable, preserves remote/local CLI parity, and
+finishes with an observable recoverable service release. See the
+[roadmap](ROADMAP.md).
+
+Learned shared classification is a separate product and future Chordrift
+dependency, not a Chordrift database module or v0.2.1 slice. That project owns
+its knowledge store, model artifacts, evaluation, release lifecycle, and
+developer Classification Lab. Chordrift will own only the narrow query adapter,
+private exact-fingerprint cache, account-specific placement policy, and provider
+operations. The complete project brief is preserved in the
+[classification knowledge foundation](docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md).
+The classifier is expected to generalize to unseen recordings from compact
+reviewed knowledge—not store one final answer for every song—and return ranked
+claims, calibrated confidence, alternatives, evidence, and unknown/conflict
+states.
 
 Its longer-term form is a personal listening-system designer. Chordrift should
 inspect a library, propose a coherent organization, explain every

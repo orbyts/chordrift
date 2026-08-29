@@ -124,116 +124,59 @@ deterministic provider-free Spins.
   PostgreSQL integration tests, packaging, recovery documentation, GitHub
   release, and crates.io publication after the personal candidate is verified.
 
-### v0.2.1 — Personal classification intelligence and developer Lab
-
-Goal: make classification materially useful for the live personal account with
-the lowest practical development cost. Reuse lawful metadata, existing models,
-current Chordrift embeddings, and accepted account evidence; ask the user only
-for genuinely missing, conflicting, incorrect, or personal knowledge. Run
-inference on demand, cache it by exact generation/input fingerprint, and require
-no always-on service or provider write. Use a separately owned Storexa-backed
-Neon knowledge project for shared authoring state, allowing it to autosuspend;
-never place private listening/account history there.
-
-- [ ] **V021-01 — Classification evidence contract.** Define the versioned
-  `TrackClassificationReport`: independent language, region/association,
-  genre/style/tradition, era/instrumentation, and sound/function claims with
-  confidence, alternatives, unknown/conflict state, provenance, feature/input
-  fingerprints, shared/personal scope, and runtime compatibility. Keep
-  classification distinct from canonical placement and Spin eligibility. Add
-  the “Yaro Yarodi” multilingual fixture; do not change SQL or Spotify.
-- [ ] **V021-02 — Split knowledge and personal-intelligence ledgers.** Design
-  and rehearse two additive Storexa-backed schemas: a separate Neon knowledge
-  project for canonical facts, taxonomy, source/license provenance, scoped
-  contributions, reviewed shared claims, model/artifact manifests, and shared
-  evaluations; and the existing account project for immutable private labels,
-  behavioral evidence, personal releases, active-release selection, and exact
-  classification caches. No browser or contributor receives either database
-  credential. Do not create/migrate a Neon project without separate approval.
-- [ ] **V021-03 — Existing-evidence feature baseline.** Build deterministic
-  features from canonical/provider identity, title/album text and script,
-  credited artist roles and catalog priors, lawful MusicBrainz-style metadata,
-  existing Chordrift embeddings, accepted facts, and current placements.
-  Record missing modalities honestly; do not acquire provider audio.
-- [ ] **V021-04 — On-demand personal classifier v1.** Evaluate and select the
-  smallest lawful existing multilingual representation plus auditable
-  per-dimension calibration/classifier adapters. Load only for unknown or stale
-  tracks, emit complete explanations, cache results, and exit with zero idle
-  compute. Artist or playlist association is evidence, never automatic proof of
-  language, region, or tradition.
-- [ ] **V021-05 — Intelligence release lifecycle.** Build, evaluate, publish,
-  activate, compare, and roll back immutable shared-base/personal-overlay
-  packages. Pin exact taxonomy, feature pipeline, base model, correction set,
-  evaluation, compatibility, and checksums; never silently replace the active
-  account release.
-- [ ] **V021-06 — Developer-only web Classification Lab.** Add a loopback Rust
-  authority and thin browser interface over the same application contract.
-  Rank review by uncertainty and information value, show full evidence, support
-  independent multi-dimensional corrections and batches, and publish/activate
-  a candidate release. The browser receives no Neon/provider credential, the
-  Lab does not depend on Apogee, and it exposes no provider-write command.
-- [ ] **V021-07 — Live classification and policy integration.** Let normal pulls
-  classify only new/stale tracks through the active release, then evaluate
-  separate canonical-placement and Spin eligibility predicates such as Tamil
-  allow/require/exclude, quota, and cadence. Produce explainable proposals and
-  `Re-evaluate` ambiguity; stop before automatic Spotify mutation.
-- [ ] **V021-08 — Behavioral learning and v0.2.1 release.** Treat explicit Lab
-  corrections as strongest evidence and account moves/removals as scoped,
-  weighted placement evidence—not fabricated factual labels. Propose reusable
-  rules only after repeated consistent observations, pass regression and
-  evaluation gates, migrate the personal account safely, and release v0.2.1.
-
-### v0.2.2 — Hosted Rust authority
+### v0.2.1 — Hosted Rust authority
 
 Goal: make the same application contract safely consumable by shipped clients
-without distributing database or provider credentials. Preserve the local
-on-demand classifier contract; add shared inference workers or an always-on
-service only when measured demand justifies their cost.
+without distributing database or provider credentials.
 
-- [ ] **V022-01 — Authenticated service transport.** Expose the existing
+- [ ] **V021-01 — Authenticated service transport.** Expose the existing
   command/query/event contract without redefining domain behavior.
-- [ ] **V022-02 — Product identity and authorization.** Implement sessions,
-  account ownership, revocation, scoped classification contributions, and
-  tenant-safe authorization tests. A contribution shares only the explicit
-  claim/evidence the person approved, never their library or listening history.
-- [ ] **V022-03 — Encrypted provider credential vault.** Keep refresh credentials
+- [ ] **V021-02 — Product identity and authorization.** Implement sessions,
+  account ownership, revocation, and tenant-safe authorization tests.
+- [ ] **V021-03 — Encrypted provider credential vault.** Keep refresh credentials
   server-side with rotation and revocation; clients retain only Chordrift
   sessions.
-- [ ] **V022-04 — Durable background operations.** Add job persistence,
+- [ ] **V021-04 — Durable background operations.** Add job persistence,
   progress, cancellation, retry, recovery, and idempotent replay.
-- [ ] **V022-05 — Remote CLI parity.** Make the installed CLI an authenticated
+- [ ] **V021-05 — Remote CLI parity.** Make the installed CLI an authenticated
   service client while retaining an explicit local development transport.
-- [ ] **V022-06 — Service deployment and release.** Select hosting and product
+- [ ] **V021-06 — Service deployment and release.** Select hosting and product
   authentication with the user, verify backup/restore and observability, then
   release without exposing Neon or provider secrets.
 
-### v0.2.3 — Native macOS client
+### Separate dependency — learned Classification Authority
 
-- [ ] **V023-01 — SwiftUI shell and generated client binding.** Establish native
-  navigation, application state, compatibility handshake, and accessibility.
-- [ ] **V023-02 — Sign-in and Spotify connection.** Implement system-browser
-  OAuth handoff and Keychain storage for the Chordrift session only.
-- [ ] **V023-03 — Onboarding and library audit.** Render inventory, evidence
-  availability, uncertainty, and preserve-or-organize choice.
-- [ ] **V023-04 — Collections, recipes, and Spin preview.** Render Rust-owned
-  views with native SwiftUI and Liquid Glass where supported.
-- [ ] **V023-05 — Publication and operations.** Present exact diffs, approval,
-  progress, cancellation, recovery, and verification without hidden writes.
-- [ ] **V023-06 — macOS release gate.** Complete accessibility, performance,
-  signing, notarization, packaging, update, and recovery tests.
+The shared Classification Authority is a different product/project, with its
+own repository, roadmap, release versions, Storexa-backed Neon knowledge store,
+model artifacts, evaluation gates, and developer Classification Lab. It is not
+a Chordrift database module or a v0.2.1 implementation slice. Its complete
+architectural brief is preserved in
+`docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md` for the new project task.
 
-### v0.2.4 — Native Windows client and portability proof
+Chordrift will eventually consume its versioned classification contract like
+any other external dependency. Chordrift owns private provider/account state,
+the narrow query adapter, exact private response caches, placement policy,
+Spins, approvals, and provider mutation. The dependency owns shared reviewed
+knowledge and inference. A Like is only a private trigger: Chordrift may send
+recording identity and permitted catalog metadata, never the Like, account
+identity, playlists, play counts, listening history, or private behavior.
 
-- [ ] **V024-01 — Select and establish the native Windows shell.** Keep the
-  client contract independent of the chosen presentation framework.
-- [ ] **V024-02 — Windows authentication and OS integration.** Add OAuth handoff,
-  Credential Manager session storage, notifications, links, and lifecycle.
-- [ ] **V024-03 — Workflow parity.** Support onboarding, collection review,
-  recipe/Spin preview, publication approval, progress, and recovery.
-- [ ] **V024-04 — Cross-platform conformance.** Run identical contract fixtures
-  through CLI, macOS, and Windows clients and prove Rust-owned decisions match.
-- [ ] **V024-05 — Windows release gate.** Complete accessibility, signing,
-  packaging, update, performance, and recovery tests.
+The dependency is a generalizing classifier, not an exhaustive song catalog.
+It stores representative reviewed examples, taxonomy, lawful facts and
+provenance, artist/catalog priors, disagreements, release manifests, and
+evaluations. For an unseen recording it returns ranked multidimensional claims,
+calibrated confidence, alternatives, evidence, and unknown/conflict states.
+Weak evidence causes abstention or review rather than a forced answer.
+
+### Post-v0.2.1 refactor gate before native clients
+
+Do not start the macOS application immediately after the hosted-authority
+release. First establish the separate Classification Authority project and its
+stable versioned consumer contract, then perform a focused Chordrift refactor
+that incorporates lessons from the hosted transport and keeps classification,
+placement, Spin eligibility, and provider execution separate. Number the macOS
+release slices only after that boundary is proven. Windows follows the same
+native-client contract after macOS proves it.
 
 ### v0.3.0 through v1.0.0
 
@@ -259,28 +202,28 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v0.9.0 — Product hardening:** installation, updates, accessibility,
   performance/load budgets, observability, support diagnostics, failure
   injection, and end-to-end recovery rehearsals.
-- **Long-horizon shared classification scale-out:** evolve v0.2.1's local,
-  on-demand authority into consented shared reviewed knowledge, reusable result
-  caches, and scale-to-zero or continuously available inference only when usage
-  justifies it. Cross-account learning still requires hosted authorization,
-  privacy/consent, cross-provider identity, lawful data/model rights, and
-  multilingual evaluation boundaries. See
+- **Classification dependency integration:** consume a compatible release from
+  the separately developed Classification Authority after its contract and
+  evaluation boundary are proven. Chordrift retains only its private query,
+  cache, policy, and placement responsibilities. See
   `docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md`.
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V021-01 — Classification evidence contract`. v0.2.0 remains the
-live daily driver. This slice changes no SQL or Spotify behavior and establishes
-the exact low-cost, on-demand intelligence contract before any model, Lab, or
-hosted transport implementation.
+**Next slice:** `V021-01 — Authenticated service transport`. v0.2.0 remains the
+live daily driver. Expose the existing application command/query/event contract
+through an authenticated transport without redefining domain behavior. The
+separate Classification Authority is not part of this slice.
 
 ## Portable core and native clients
 
 Chordrift is one portable Rust product with several thin clients. The CLI is
-the first client. The macOS client will use native SwiftUI and current Apple
-platform materials, including Liquid Glass where supported; Windows will have
-its own native client, and Linux may gain a separate native shell later. Client
-code owns presentation and OS integration only. Accounts, provider inventory,
+the first client. A future macOS client is intentionally deferred until the
+hosted-authority work, separate Classification Authority contract, and
+post-hosting client-boundary refactor are proven; its release slices are not yet
+numbered. Windows follows the proven native-client contract, and Linux may gain
+a separate native shell later. Client code owns presentation and OS integration
+only. Accounts, provider inventory,
 evidence, collections, recipes, Spins, publication safety, persistence,
 background work, and diagnostics remain Rust-owned.
 

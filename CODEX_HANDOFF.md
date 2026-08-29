@@ -31,40 +31,53 @@ publication is enumerated: it cannot replace unrelated live membership or
 restore an actively excluded track. Compatibility preserves these outcomes;
 it never forces v0.1.4 command ceremony into the v0.2 product architecture.
 
-The immediate v0.2.1 goal is low-cost personal classification intelligence: a
-versioned shared/base evidence package, strictly isolated private account
-overlay, on-demand inference with exact caching, and a developer-only web
-Classification Lab. “Authority” is logical ownership/versioning, not an
-always-running service. Reuse lawful metadata, existing models, current
-embeddings, and accepted account evidence; ask only for missing, conflicting,
-incorrect, or genuinely personal knowledge. Never download provider audio,
-flatten explicit language/region/tradition facts into opaque similarity, infer
-a factual label solely from playlist placement, or train on private corrections
-across accounts without consent. See
+The immediate Chordrift v0.2.1 goal is the hosted Rust authority. Expose the
+existing command/query/event application contract through authenticated
+transport, then add product identity/authorization, a server-side encrypted
+provider credential vault, durable background operations, remote CLI parity,
+and a recoverable observable service release. Do not redefine domain behavior
+to fit a transport and do not start a native client during this release.
+
+Learned shared classification is now explicitly a separate product/project and
+future Chordrift dependency. It owns its repository, roadmap, Storexa-backed
+Neon knowledge store, model artifacts, evaluations, releases, and developer
+Classification Lab. Chordrift owns private provider/account state, a narrow
+query adapter, exact private report caches, account placement/Spin policy,
+approval, and provider execution. Its preserved project brief is
 `docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md`.
 
-The intended development authoring store is a separate autosuspending Neon
-project accessed through Storexa, physically isolated from the live personal
-account ledger and requiring no always-on inference service. It may contain
-canonical facts, taxonomy, lawful provenance, scoped contributions, reviewed
-shared claims, and model/release metadata—never private libraries, playlist
-names, listening history, exclusions, or private overlays. Friends eventually
-contribute only through authenticated application commands; before hosted
-identity exists, contributions are explicit reviewable imports. Do not create a
-Neon project, change capacity, or migrate either live store without a separately
-approved V021-02 plan.
+The dependency is a generalizing classifier, not an exhaustive song-by-song
+catalog. It stores representative reviewed examples, taxonomy, lawful facts and
+provenance, artist/catalog priors, disagreements, model releases, and
+evaluations. It must classify unseen recordings with ranked multidimensional
+claims, calibrated confidence, alternatives, evidence, and unknown/conflict
+states; weak evidence causes abstention or review. A Like is only Chordrift's
+private trigger. A future query may contain recording identity and permitted
+catalog metadata, never the Like, listener/account identity, playlists, play
+counts, listening history, or private behavior. Do not create that project or
+its Neon store from a Chordrift task.
 
-## Start the next task here: V021-01 classification evidence contract
+The macOS application follows only after v0.2.1, the separate Classification
+Authority contract, and a further Chordrift client-boundary refactor are proven.
+Its slices are intentionally not numbered yet.
+
+This is a safe project pause point. Released and installed v0.2.0 plus the
+verified 47/47 account database remain the daily-driver pair; neither the hosted
+authority nor the separate classifier is required for normal CLI maintenance.
+Resume by reading this handoff and implementing only V021-01. Do not leave a
+partially converted transport in the installed binary.
+
+## Start the next task here: V021-01 authenticated service transport
 
 V020-01 through V020-15 are complete. v0.2.0 is released and the separately
 approved personal binary/database cutover is complete. Implement only
-`V021-01 — Classification evidence contract` from the authoritative execution
-map. Define typed multidimensional claims, evidence/provenance, confidence,
-alternatives, unknown/conflict state, exact fingerprints, shared/private scope,
-and compatibility. Include the “Yaro Yarodi” multilingual explanation fixture.
-Keep classification separate from canonical placement and Spin eligibility.
-Do not change SQL, call Spotify, select/deploy a model, create the web Lab, or
-infer authority for old-project/rollback deletion in this slice.
+`V021-01 — Authenticated service transport` from the authoritative execution
+map. Expose the existing command/query/event contract without redefining domain
+behavior. Keep the in-process development transport and current v0.2.0 daily
+workflow intact. Do not implement product identity, move provider credentials,
+add durable jobs, deploy a service, call or write Spotify, create the separate
+Classification Authority project, or infer authority for old-project/rollback
+deletion in this slice.
 
 ## Released v0.2.0 and current personal deployment
 
