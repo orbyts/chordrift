@@ -78,14 +78,23 @@ capability handshake, and read-only live maintenance review passed. These
 alphas are installable checkpoints before V021-01, not a replacement for the
 v0.2.1 hosted-authority sequence.
 
-## Start the next task here: finish alpha, then V021-01
+Alpha.3 removes the whole-library maintenance bottleneck: commit `85d2795`
+passed CI run `33279291297`, and `v0.2.1-alpha.3` is published on crates.io and
+as a GitHub prerelease. The exact registry artifact is installed at
+`~/.cargo/bin/chordrift`; it reports `0.2.1-alpha.3`, satisfies
+`maintenance.unified-workflow.v1`, and the login environment has
+`CHORDRIFT_BIN` unset. The standard wizard therefore resolves the installed
+alpha.3 binary instead of the retired temporary v0.1.4 build.
+
+## Start the next task here: reviewed playlist expansion, then V021-01
 
 V020-01 through V020-15 are complete. v0.2.0 is released and the separately
-approved personal binary/database cutover is complete. `v0.2.1-alpha.2` is
-published and locally installed. Ordinary maintenance is in sync; only the
-separately reviewed empty historical queue retirement remains pending. Finish
-that optional operational cleanup when desired. The next implementation slice
-is `V021-01 — Authenticated service transport`.
+approved personal binary/database cutover is complete. `v0.2.1-alpha.3` is
+published and locally installed. Ordinary maintenance is in sync. The user may
+delete the inactive empty Re-evaluate provider container manually; observe that
+deletion on the next normal sync without recreating it. Next complete A021-06's
+reviewed playlist taxonomy, names, membership preview, and artwork review, then
+begin `V021-01 — Authenticated service transport`.
 Do not pull product identity, credential relocation, durable jobs, deployment,
 a native client, or the separate Classification Authority into V021-01. Never
 call or write Spotify without the user-authorized exact maintenance or
