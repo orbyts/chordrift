@@ -148,7 +148,7 @@ are checkpoints, not replacements for the hosted-authority goal.
   correction history, deactivate the empty `Re-evaluate` surface, remove its
   empty Spotify relationship through one exact retirement operation, and prove
   it stays absent. Direct managed-playlist moves are the replacement gesture.
-- [ ] **A021-03 — Publish the first alpha.** Publish
+- [x] **A021-03 — Publish the first alpha.** Publish
   `v0.2.1-alpha.1`, then increment only for real fixes found through daily use.
   Every alpha must pass CI and install from crates.io with the capability
   handshake; never rely on the ambiguous v0.2.0 version string.

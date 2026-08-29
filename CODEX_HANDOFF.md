@@ -63,25 +63,27 @@ The macOS application follows only after v0.2.1 final, the separate Classificati
 Authority contract, and a further Chordrift client-boundary refactor are proven.
 Its slices are intentionally not numbered yet.
 
-The v0.2.1 alpha line plus the verified 47/47 account database is the current
+The published v0.2.1 alpha plus the verified 47/47 account database is the current
 daily-driver pair; neither hosted authority nor the separate classifier is
 required for normal CLI maintenance. Finish retiring the empty historical
-`Re-evaluate` surface and publish the alpha through CI/crates.io. The alpha is
+`Re-evaluate` surface. The alpha passed CI run `33275624573`, was published to
+crates.io, and was independently installed from the registry with its exact
+capability handshake. It is
 an installable checkpoint before V021-01, not a replacement for the v0.2.1
 hosted-authority sequence.
 
 ## Start the next task here: finish alpha, then V021-01
 
 V020-01 through V020-15 are complete. v0.2.0 is released and the separately
-approved personal binary/database cutover is complete. Finish the exact
-historical queue retirement and publish `v0.2.1-alpha.1`. After that checkpoint,
+approved personal binary/database cutover is complete. `v0.2.1-alpha.1` is
+published and locally installed. Finish the exact historical queue retirement. After that checkpoint,
 the next implementation slice is `V021-01 — Authenticated service transport`.
 Do not pull product identity, credential relocation, durable jobs, deployment,
 a native client, or the separate Classification Authority into V021-01. Never
 call or write Spotify without the user-authorized exact maintenance or
 retirement operation.
 
-## Released v0.2.0 and current personal deployment
+## Released v0.2.0 foundation and current v0.2.1 alpha deployment
 
 Release commit `a079eba0eb71955969cf29186e9d73cffae1cd82` is annotated as
 `v0.2.0`. CI run `33262366722` passed formatting, strict Clippy, all targets,
