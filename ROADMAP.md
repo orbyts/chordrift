@@ -158,6 +158,18 @@ are checkpoints, not replacements for the hosted-authority goal.
   apply; bind authorization to only the reviewed plan phase; and replace opaque
   track and plan identifiers in the ordinary wizard with human names. Publish
   the regressions as `v0.2.1-alpha.2` through the normal CI/crates.io path.
+- [x] **A021-05 — Fast delta maintenance.** Replace the 615-revision replay
+  N+1 path with set-based SQL, batch same-destination moves atomically, expose
+  visible progress, and prove the result on a representative isolated rehearsal
+  copy. Publish the repair as `v0.2.1-alpha.3`.
+- [ ] **A021-06 — Reviewed Indian-library surface expansion.** Preserve and
+  consider reusing the retired Re-evaluate visual asset. Design and preview
+  managed surfaces for North Indian classical, South Indian classical,
+  pre-1970 Indian film classics, 1980s-to-recent Indian film music, and
+  non-film Indian music while retaining Uttara Glow as the exclusive A. R.
+  Rahman surface and Dakshina Pulse. Resolve the 1970s boundary explicitly,
+  present poetic names, exact membership changes, and artwork for approval,
+  then apply only the separately approved design.
 
 ### v0.2.1 — Hosted Rust authority
 
@@ -247,11 +259,11 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** finish the separately authorized `A021-02` empty-playlist
-retirement when desired. Alpha.2 otherwise restores safe daily maintenance;
-after that operational checkpoint, begin `V021-01 — Authenticated service
-transport` without redefining domain behavior. The separate Classification
-Authority is not part of that slice.
+**Next gate:** publish and test alpha.3, observe the manually deleted inactive
+Re-evaluate container, then complete the separately reviewed `A021-06` playlist
+and artwork design. After those operational checkpoints, begin `V021-01 —
+Authenticated service transport` without redefining domain behavior. The
+separate Classification Authority is not part of that slice.
 
 ## Portable core and native clients
 

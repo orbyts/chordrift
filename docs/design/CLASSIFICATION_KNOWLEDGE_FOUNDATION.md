@@ -30,6 +30,16 @@ playlist label. It has several independently supported dimensions, including:
 The result should be a multidimensional evidence profile, not one opaque genre
 or vibe assignment.
 
+The authority never turns that profile directly into a fixed playlist
+taxonomy. Chordrift may combine or split the same rich claims differently for
+each account according to collection depth and explicit preference. A large
+single-artist catalog can justify several artist-specific listening surfaces;
+a small catalog should remain inside broader collections. Era, region,
+language, classical tradition, film/non-film context, and artist identity stay
+available as independent evidence even when the current account chooses one
+combined playlist. Cadence and recipe policy order the selected surface; they
+do not alter the underlying classification claims.
+
 The target explanation is concrete:
 
 ```text

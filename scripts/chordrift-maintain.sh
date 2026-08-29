@@ -63,6 +63,7 @@ DETAIL_FILE=$WORK_DIR/details.tsv
 AUDIT_FILE=$WORK_DIR/intake.tsv
 AMBIGUOUS_FILE=$WORK_DIR/ambiguous.tsv
 AUTO_MOVES_FILE=$WORK_DIR/automatic-moves.tsv
+RESOLVED_AUTO_MOVES_FILE=$WORK_DIR/resolved-automatic-moves.tsv
 MOVE_AMBIGUOUS_FILE=$WORK_DIR/ambiguous-moves.tsv
 DESTINATIONS_FILE=$WORK_DIR/destinations.tsv
 STATUS_FILE=$WORK_DIR/status.txt
@@ -180,7 +181,10 @@ ensure_editable_proposal() {
     run proposals status --account "$ACCOUNT" >"$STATUS_FILE"
     case "$(field proposal "$STATUS_FILE")" in
         proposed) ;;
-        approved) run proposals extend --account "$ACCOUNT" --min-similarity 1 >/dev/null ;;
+        approved)
+            printf 'Preparing an editable copy of the current playlist model…\n'
+            run proposals extend --account "$ACCOUNT" --min-similarity 1 >/dev/null
+            ;;
         *) printf 'No current approved playlist library is available.\n' >&2; exit 3 ;;
     esac
     run proposals list --account "$ACCOUNT" >"$DESTINATIONS_FILE"
@@ -198,16 +202,31 @@ resolve_ambiguous() {
     [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || return 0
     [ "$REVIEW_ONLY" = false ] || return 0
     ensure_editable_proposal
+    : >"$RESOLVED_AUTO_MOVES_FILE"
     while IFS="$(printf '\t')" read -r title artists spotify_id old_destination destination; do
         stable_key=$(resolve_destination "$destination") || {
             printf 'Inferred destination "%s" is no longer unique.\n' "$destination" >&2
             exit 3
         }
-        run proposals assign --account "$ACCOUNT" --spotify-id "$spotify_id" \
-            --playlist "$stable_key" --reason "Inferred from direct provider move" >/dev/null
-        printf 'Recorded move: %s — %s · %s → %s\n' \
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$stable_key" "$title" "$artists" "$spotify_id" "$old_destination" "$destination" \
+            >>"$RESOLVED_AUTO_MOVES_FILE"
+        printf 'Detected move: %s — %s · %s → %s\n' \
             "$title" "$artists" "$old_destination" "$destination"
     done <"$AUTO_MOVES_FILE"
+    move_count=$(wc -l <"$RESOLVED_AUTO_MOVES_FILE" | tr -d ' ')
+    if [ "$move_count" -gt 0 ]; then
+        printf 'Recording %s inferred move(s) in Chordrift…\n' "$move_count"
+        cut -f1 "$RESOLVED_AUTO_MOVES_FILE" | sort -u | while IFS= read -r stable_key; do
+            set -- proposals assign --account "$ACCOUNT"
+            while IFS="$(printf '\t')" read -r row_key _title _artists spotify_id _old _destination; do
+                [ "$row_key" != "$stable_key" ] || set -- "$@" --spotify-id "$spotify_id"
+            done <"$RESOLVED_AUTO_MOVES_FILE"
+            set -- "$@" --playlist "$stable_key" --reason "Inferred from direct provider move"
+            run "$@" >/dev/null
+        done
+        printf 'Recorded %s move(s) in Chordrift.\n' "$move_count"
+    fi
     [ ! -s "$AMBIGUOUS_FILE" ] || printf '\nChordrift needs one decision for each track below.\n'
     while IFS="$(printf '\t')" read -r source title artists spotify_id; do
         printf '\n%s — %s\nSource: %s\n' "$title" "$artists" "$source"

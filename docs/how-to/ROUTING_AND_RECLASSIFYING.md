@@ -46,3 +46,10 @@ $ chordrift reevaluate retire --account personal \
 The resulting `retirement/archive_playlist` operation must still be inspected,
 assessed, and explicitly applied before Spotify removes the empty playlist.
 Daily maintenance deliberately refuses retirement operations.
+
+For the current personal account the surface is inactive and empty, so deleting
+`Re-evaluate` directly in the Spotify UI is also safe. The next sync observes it
+absent and Chordrift will not recreate it. This deletes only the provider
+container: Neon correction history remains, and the approved visual sources at
+`artwork/review/re-evaluate-background.png` and
+`artwork/review/re-evaluate-spotify.png` remain reusable artwork inventory.

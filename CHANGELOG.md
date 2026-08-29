@@ -4,6 +4,19 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.3] - 2026-08-29
+
+- Replace per-revision proposal replay with set-based PostgreSQL operations,
+  preserving active manual assignments while eliminating hundreds of Neon
+  round trips during ordinary direct moves.
+- Assign all inferred moves for one destination in one atomic database
+  transaction and one CLI session instead of invoking one transaction per
+  track.
+- Show visible progress while preparing the editable proposal and recording a
+  batch of inferred moves.
+- Preserve the retired Re-evaluate artwork as reusable approved visual
+  inventory even after its empty Spotify container is manually deleted.
+
 ## [0.2.1-alpha.2] - 2026-08-29
 
 - Fix direct managed-playlist moves that initially appear as new-destination

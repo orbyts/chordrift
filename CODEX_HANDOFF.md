@@ -145,6 +145,34 @@ evidence and may later become reviewed input to the separate Classification
 Authority. Neon history must be retained; only the empty provider playlist and
 active routing-surface policy are retired.
 
+The user will delete the inactive empty `Re-evaluate` playlist directly in the
+Spotify UI. This is safe: Chordrift must observe the missing provider container,
+must not recreate it, and must retain Neon correction history. Do not delete its
+approved artwork. Preserve `artwork/review/re-evaluate-background.png` and
+`artwork/review/re-evaluate-spotify.png` as reusable visual inventory for the
+next reviewed playlist expansion.
+
+Alpha.2 daily use exposed a performance defect after a 28-track direct move.
+The Spotify pull itself took 17 seconds, but the wizard then spent about 83
+seconds cloning the 1,475-track approved proposal and replaying 615 active
+assignment revisions through roughly 1,800 sequential Neon round trips; it then
+launched 28 more per-track assignment sessions. Alpha.3 replaces replay with
+set-based SQL and batches all same-destination moves atomically. A representative
+isolated rehearsal with 610 active decisions and 7,918 memberships extended in
+1.12 seconds locally; a two-track atomic batch completed in 0.09 seconds. The
+disposable benchmark database was removed after verification.
+
+After alpha.3, A021-06 is the next operational design checkpoint before
+V021-01. It previews North Indian classical, South Indian classical, pre-1970
+Indian film classics, 1980s-to-recent Indian film music, and non-film Indian
+music while retaining Uttara Glow as the exclusive A. R. Rahman surface and
+Dakshina Pulse. Resolve the 1970s boundary during review. Classification
+Authority outputs rich dimensions; Chordrift decides account-specific surface
+granularity from library depth and preference. Deep artist catalogs may justify
+several artist-specific cadence-managed surfaces, while sparse catalogs remain
+combined. Require separate approval for exact membership, poetic names,
+artwork, and all provider writes.
+
 Final read-only checks preserved snapshot
 `dc96cc26-c917-4bb4-8a7f-4b3c5e836f66`, 22 playlists, 1,514 memberships, 387
 active exclusions, 1,718 canonical assignments, 149,419 listening events,

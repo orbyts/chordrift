@@ -359,7 +359,7 @@ case "$*" in
   "sync plan --account personal")
     count=$(grep -c '^sync plan --account personal$' "$FAKE_CHORDRIFT_LOG")
     if [ "$count" -eq 1 ]; then
-      printf '%s\n' 'plan_id: {first_plan}' 'operations: 1'
+      printf '%s\n' 'plan_id: {first_plan}' 'operations: 2'
     else
       printf '%s\n' 'plan_id: {second_plan}' 'operations: 0'
     fi
@@ -367,7 +367,8 @@ case "$*" in
   "sync plan-show --account personal --plan {first_plan} --details")
     printf '%b\n' 'plan_id: {first_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
       'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety' \
-      '0\treconcile\tremove_track\tNew Vibe\tnew\tfixture-track\t{{"reason":"managed_provider_drift"}}\t{{}}'
+      '0\treconcile\tremove_track\tNew Vibe\tnew\tfixture-track\t{{"reason":"managed_provider_drift"}}\t{{}}' \
+      '1\treconcile\tremove_track\tNew Vibe\tnew\tfixture-track-2\t{{"reason":"managed_provider_drift"}}\t{{}}'
     ;;
   "sync plan-show --account personal --plan {second_plan} --details")
     printf '%b\n' 'plan_id: {second_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
@@ -379,6 +380,12 @@ case "$*" in
       'canonical_placements: 1' \
       '  - Old Vibe (position 4, key playlist-old, source approved)'
     ;;
+  "tracks inspect --account personal --spotify-id fixture-track-2")
+    printf '%s\n' 'track: Second Song — Fixture Artist' 'current_playlists: 1' \
+      '  - New Vibe (position 2, role managed, signal canonical)' \
+      'canonical_placements: 1' \
+      '  - Old Vibe (position 5, key playlist-old, source approved)'
+    ;;
   "intake audit --account personal")
     printf '%b\n' 'state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id'
     ;;
@@ -388,7 +395,7 @@ case "$*" in
   "proposals list --account personal")
     printf '%b\n' 'position\tcount\tstable_key\tname' '1\t1\tplaylist-new\tNew Vibe'
     ;;
-  "proposals assign --account personal --spotify-id fixture-track --playlist playlist-new --reason Inferred from direct provider move")
+  "proposals assign --account personal --spotify-id fixture-track --spotify-id fixture-track-2 --playlist playlist-new --reason Inferred from direct provider move")
     printf '%s\n' 'proposal: proposed'
     ;;
   "proposals approve --account personal --confirm {proposal}") printf '%s\n' 'proposal: approved' ;;
@@ -412,15 +419,26 @@ esac
         String::from_utf8_lossy(&output.stderr)
     );
     let commands = fs::read_to_string(&log).unwrap();
+    assert_eq!(
+        commands
+            .matches("proposals assign --account personal")
+            .count(),
+        1
+    );
     assert!(commands.contains(
-        "proposals assign --account personal --spotify-id fixture-track --playlist playlist-new"
+        "--spotify-id fixture-track --spotify-id fixture-track-2 --playlist playlist-new"
     ));
     assert!(!commands.contains("sync readiness"));
     assert!(!commands.contains("sync apply"));
     assert!(
         String::from_utf8_lossy(&output.stdout)
-            .contains("Recorded move: Fixture Song — Fixture Artist · Old Vibe → New Vibe")
+            .contains("Detected move: Fixture Song — Fixture Artist · Old Vibe → New Vibe")
     );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Recording 2 inferred move(s) in Chordrift")
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Recorded 2 move(s) in Chordrift"));
     fs::remove_dir_all(work).unwrap();
 }
 

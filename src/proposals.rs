@@ -1947,14 +1947,167 @@ pub async fn assign(
     stable_key: &str,
     reason: &str,
 ) -> Result<AssignmentReport> {
-    change_assignment(
-        database,
-        account_label,
-        spotify_id,
-        Some(stable_key),
-        reason,
+    let spotify_ids = vec![spotify_id.to_owned()];
+    assign_many(database, account_label, &spotify_ids, stable_key, reason)
+        .await?
+        .pop()
+        .ok_or_else(|| ChordriftError::Configuration("no track was assigned".to_owned()))
+}
+
+/// Assigns several tracks to one stable proposed playlist in one transaction.
+pub async fn assign_many(
+    database: &Database,
+    account_label: &str,
+    spotify_ids: &[String],
+    stable_key: &str,
+    reason: &str,
+) -> Result<Vec<AssignmentReport>> {
+    if spotify_ids.is_empty() {
+        return Err(ChordriftError::Configuration(
+            "at least one Spotify track ID is required".to_owned(),
+        ));
+    }
+    if reason.trim().is_empty() || reason.chars().count() > 300 {
+        return Err(ChordriftError::Configuration(
+            "assignment reason must contain 1-300 characters".to_owned(),
+        ));
+    }
+    let unique_ids: HashSet<_> = spotify_ids.iter().collect();
+    if unique_ids.len() != spotify_ids.len() {
+        return Err(ChordriftError::Configuration(
+            "Spotify track IDs must not be repeated".to_owned(),
+        ));
+    }
+    let generation = status(database, account_label).await?;
+    require_editable(&generation)?;
+    let account_id = account_id(database, account_label).await?;
+    let destination_concept: Uuid = sqlx::query_scalar(
+        "SELECT concept.id
+         FROM playlist_concepts concept
+         JOIN playlists playlist ON playlist.concept_id = concept.id
+         WHERE concept.provider_account_id = $1 AND concept.stable_key = $2
+           AND playlist.generation_id = $3",
     )
-    .await
+    .bind(account_id)
+    .bind(stable_key)
+    .bind(generation.generation_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(
+            "destination stable key is not in the latest proposal".to_owned(),
+        )
+    })?;
+    let rows = sqlx::query(
+        "SELECT track.id, track.title, provider_track.provider_track_id AS spotify_id
+         FROM provider_tracks provider_track
+         JOIN tracks track ON track.id = provider_track.track_id
+         WHERE provider_track.provider = 'spotify'
+           AND provider_track.provider_track_id = ANY($2)
+           AND account_track_is_library_candidate($1, track.id)",
+    )
+    .bind(account_id)
+    .bind(spotify_ids)
+    .fetch_all(database.pool())
+    .await?;
+    let tracks: HashMap<String, (Uuid, String)> = rows
+        .into_iter()
+        .map(|row| {
+            Ok((
+                row.try_get("spotify_id")?,
+                (row.try_get("id")?, row.try_get("title")?),
+            ))
+        })
+        .collect::<Result<_>>()?;
+    if tracks.len() != spotify_ids.len() {
+        return Err(ChordriftError::Configuration(
+            "one or more Spotify track IDs are not in this account's preserved library inventory"
+                .to_owned(),
+        ));
+    }
+    let track_ids: Vec<Uuid> = spotify_ids.iter().map(|id| tracks[id].0).collect();
+
+    let mut transaction = database.pool().begin().await?;
+    sqlx::query(
+        "UPDATE track_playlist_assignment_revisions SET superseded_at = now()
+         WHERE provider_account_id = $1 AND track_id = ANY($2)
+           AND superseded_at IS NULL",
+    )
+    .bind(account_id)
+    .bind(&track_ids)
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query(
+        "INSERT INTO track_playlist_assignment_revisions
+         (provider_account_id, track_id, destination_concept_id, decision,
+          source_generation_id, reason)
+         SELECT $1, input.track_id, $3, 'assign', $4, $5
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS input(track_id, position)
+         ORDER BY input.position",
+    )
+    .bind(account_id)
+    .bind(&track_ids)
+    .bind(destination_concept)
+    .bind(generation.generation_id)
+    .bind(reason.trim())
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query(
+        "DELETE FROM playlist_tracks membership USING playlists playlist
+         WHERE membership.playlist_id = playlist.id
+           AND playlist.generation_id = $1 AND membership.track_id = ANY($2)",
+    )
+    .bind(generation.generation_id)
+    .bind(&track_ids)
+    .execute(&mut *transaction)
+    .await?;
+    let playlist_id = ensure_concept_playlist(
+        &mut transaction,
+        generation.generation_id,
+        destination_concept,
+    )
+    .await?;
+    let next_position: i32 = sqlx::query_scalar(
+        "SELECT COALESCE(max(position) + 1, 0) FROM playlist_tracks WHERE playlist_id = $1",
+    )
+    .bind(playlist_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    sqlx::query(
+        "INSERT INTO playlist_tracks
+         (playlist_id, track_id, position, source, provenance)
+         SELECT $1, input.track_id, $3 + input.position::integer - 1, 'manual',
+                jsonb_build_object('assignment_revision_id', revision.id)
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS input(track_id, position)
+         JOIN track_playlist_assignment_revisions revision
+           ON revision.provider_account_id = $4
+          AND revision.track_id = input.track_id AND revision.superseded_at IS NULL
+         ORDER BY input.position",
+    )
+    .bind(playlist_id)
+    .bind(&track_ids)
+    .bind(next_position)
+    .bind(account_id)
+    .execute(&mut *transaction)
+    .await?;
+    let represented = refresh_coverage_tx(
+        &mut transaction,
+        account_id,
+        generation.generation_id,
+        generation.required_track_count,
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(spotify_ids
+        .iter()
+        .map(|spotify_id| AssignmentReport {
+            title: tracks[spotify_id].1.clone(),
+            spotify_id: spotify_id.clone(),
+            destination: Some(stable_key.to_owned()),
+            represented_track_count: represented,
+            missing_track_count: generation.required_track_count.saturating_sub(represented),
+        })
+        .collect())
 }
 
 /// Returns a track to the internal needs-review queue.
@@ -2436,56 +2589,71 @@ async fn replay_assignment_overrides(
     account_id: Uuid,
     generation_id: Uuid,
 ) -> Result<()> {
-    let rows = sqlx::query(
-        "SELECT id, track_id, destination_concept_id, decision
+    let destination_concepts: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT DISTINCT destination_concept_id
          FROM track_playlist_assignment_revisions
          WHERE provider_account_id = $1 AND superseded_at IS NULL
-         ORDER BY created_at, id",
+           AND decision = 'assign'
+         ORDER BY destination_concept_id",
     )
     .bind(account_id)
     .fetch_all(&mut **transaction)
     .await?;
-    for row in rows {
-        let decision_id: Uuid = row.try_get("id")?;
-        let track_id: Uuid = row.try_get("track_id")?;
-        sqlx::query(
-            "DELETE FROM playlist_tracks membership USING playlists playlist
-             WHERE membership.playlist_id = playlist.id
-               AND playlist.generation_id = $1 AND membership.track_id = $2",
-        )
-        .bind(generation_id)
-        .bind(track_id)
-        .execute(&mut **transaction)
-        .await?;
-        let destination: Option<Uuid> = row.try_get("destination_concept_id")?;
-        if row.try_get::<String, _>("decision")? == "assign" {
-            let playlist_id = ensure_concept_playlist(
-                transaction,
-                generation_id,
-                destination.ok_or_else(|| {
-                    ChordriftError::Configuration("active assignment has no destination".to_owned())
-                })?,
-            )
-            .await?;
-            let position: i32 = sqlx::query_scalar(
-                "SELECT COALESCE(max(position) + 1, 0) FROM playlist_tracks WHERE playlist_id = $1",
-            )
-            .bind(playlist_id)
-            .fetch_one(&mut **transaction)
-            .await?;
-            sqlx::query(
-                "INSERT INTO playlist_tracks
-                 (playlist_id, track_id, position, source, provenance)
-                 VALUES ($1, $2, $3, 'manual', $4)",
-            )
-            .bind(playlist_id)
-            .bind(track_id)
-            .bind(position)
-            .bind(json!({"assignment_revision_id": decision_id, "replayed": true}))
-            .execute(&mut **transaction)
-            .await?;
-        }
+    for concept_id in destination_concepts {
+        ensure_concept_playlist(transaction, generation_id, concept_id).await?;
     }
+    sqlx::query(
+        "DELETE FROM playlist_tracks membership USING playlists playlist
+         WHERE membership.playlist_id = playlist.id
+           AND playlist.generation_id = $1
+           AND EXISTS (
+               SELECT 1 FROM track_playlist_assignment_revisions revision
+               WHERE revision.provider_account_id = $2
+                 AND revision.track_id = membership.track_id
+                 AND revision.superseded_at IS NULL
+           )",
+    )
+    .bind(generation_id)
+    .bind(account_id)
+    .execute(&mut **transaction)
+    .await?;
+    sqlx::query(
+        "WITH ranked AS (
+             SELECT revision.id AS decision_id, revision.track_id, playlist.id AS playlist_id,
+                    row_number() OVER (
+                        PARTITION BY playlist.id ORDER BY revision.created_at, revision.id
+                    )::integer AS destination_position
+             FROM track_playlist_assignment_revisions revision
+             JOIN playlists playlist
+               ON playlist.generation_id = $1
+              AND playlist.concept_id = revision.destination_concept_id
+             WHERE revision.provider_account_id = $2
+               AND revision.superseded_at IS NULL AND revision.decision = 'assign'
+         ), base_position AS (
+             SELECT playlist.id AS playlist_id,
+                    COALESCE(max(membership.position), -1)::integer AS value
+             FROM playlists playlist
+             LEFT JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+             WHERE playlist.generation_id = $1
+             GROUP BY playlist.id
+         )
+         INSERT INTO playlist_tracks
+         (playlist_id, track_id, position, source, provenance)
+         SELECT ranked.playlist_id, ranked.track_id,
+                base_position.value + ranked.destination_position,
+                'manual',
+                jsonb_build_object(
+                    'assignment_revision_id', ranked.decision_id,
+                    'replayed', true
+                )
+         FROM ranked
+         JOIN base_position ON base_position.playlist_id = ranked.playlist_id
+         ORDER BY ranked.playlist_id, ranked.destination_position",
+    )
+    .bind(generation_id)
+    .bind(account_id)
+    .execute(&mut **transaction)
+    .await?;
     Ok(())
 }
 

@@ -1335,7 +1335,7 @@ pub enum ProposalCommand {
         #[arg(long, required = true)]
         tag: Vec<String>,
     },
-    /// Assign or move one track to a stable proposed playlist.
+    /// Assign or move one or more tracks to a stable proposed playlist.
     Assign {
         /// Local label for this Spotify account.
         #[arg(long, default_value = "personal")]
@@ -4628,9 +4628,9 @@ async fn run_proposal_command(
             playlist,
             reason,
         } => {
-            for spotify_id in spotify_id {
-                let report =
-                    proposals::assign(database, &account, &spotify_id, &playlist, &reason).await?;
+            for report in
+                proposals::assign_many(database, &account, &spotify_id, &playlist, &reason).await?
+            {
                 write_assignment_report(output, &report)?;
             }
             Ok(())

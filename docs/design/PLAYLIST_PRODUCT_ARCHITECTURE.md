@@ -120,6 +120,30 @@ private preferences, classifications, corrections, and listening evidence stay
 account-scoped and request-time context stays in recipes. It is future design,
 not part of v0.2.0 or permission to acquire provider audio.
 
+## Adaptive playlist granularity
+
+Classification richness and playlist count are separate decisions. The shared
+Classification Authority should return the most useful supported dimensions it
+can—language, region, tradition, era, film/non-film context, artist priors,
+sound, mood, and confidence—without deciding how many playlists a listener
+must have. Chordrift combines those claims with private library distribution,
+user preferences, existing surfaces, and minimum viable collection sizes.
+
+A dimension becomes its own managed surface only when it is useful at that
+account's scale. A listener with a few Taylor Swift tracks may keep them inside
+broader pop/vibe surfaces; a listener with a deep catalog may receive several
+artist-specific surfaces whose ordering and rotation use the normal cadence and
+repetition budgets. The same applies to Indian film eras, classical traditions,
+languages, regions, and other cohorts. Splitting and merging are therefore
+account-scoped presentation policy, not changes to shared classification truth.
+
+The first personal expansion to review after alpha.3 is North Indian classical,
+South Indian classical, pre-1970 Indian film classics, 1980s-to-recent Indian
+film music, and non-film Indian music, while retaining Uttara Glow as the
+exclusive A. R. Rahman surface and Dakshina Pulse. The 1970s boundary remains a
+deliberate design-review question. No playlist is created until exact proposed
+membership, poetic name, and artwork are separately approved.
+
 ## Natural provider use and hidden orchestration
 
 The normal product experience must not expose Chordrift's internal safety
