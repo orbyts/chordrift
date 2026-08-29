@@ -15,11 +15,12 @@ CONCISE=false
 
 usage() {
     printf '%s\n' \
-        "Usage: scripts/chordrift-plan-phase.sh --plan PLAN_UUID --phase publish|reconcile [--account LABEL]" \
+        "Usage: scripts/chordrift-plan-phase.sh --plan PLAN_UUID --phase publish|reconcile|cleanup [--account LABEL]" \
         "       [--workflow-confirmation PLAN_UUID --concise]" \
         "" \
-        "Reviews and applies exactly one current publish or reconcile phase." \
-        "It refuses cleanup, retirement, stale plans, failed readiness, and" \
+        "Reviews and applies exactly one current maintenance phase." \
+        "Cleanup is accepted only inside an already confirmed unified workflow." \
+        "It refuses retirement, stale plans, failed readiness, and" \
         "reconcile while an earlier publish phase remains in the same plan." \
         "" \
         "Environment:" \
@@ -77,9 +78,14 @@ esac
 }
 case "$PHASE" in
     publish|reconcile) ;;
-    cleanup|retirement)
-        printf 'This helper refuses destructive phase %s; use the manual reviewed workflow.\n' \
-            "$PHASE" >&2
+    cleanup)
+        [ -n "$WORKFLOW_CONFIRMATION" ] || {
+            printf 'Cleanup requires the enclosing workflow confirmation.\n' >&2
+            exit 2
+        }
+        ;;
+    retirement)
+        printf 'This helper refuses retirement; use the separate reviewed workflow.\n' >&2
         exit 2
         ;;
     *)
@@ -215,11 +221,20 @@ else
 fi
 
 stage "Apply" "execute only the exact confirmed $PHASE phase"
-run_chordrift sync apply \
-    --account "$ACCOUNT" \
-    --assessment "$ASSESSMENT_ID" \
-    --phase "$PHASE" \
-    --confirm "$ASSESSMENT_ID" >"$APPLY_FILE"
+if [ "$PHASE" = cleanup ]; then
+    run_chordrift sync apply \
+        --account "$ACCOUNT" \
+        --assessment "$ASSESSMENT_ID" \
+        --phase "$PHASE" \
+        --confirm "$ASSESSMENT_ID" \
+        --allow-destructive >"$APPLY_FILE"
+else
+    run_chordrift sync apply \
+        --account "$ACCOUNT" \
+        --assessment "$ASSESSMENT_ID" \
+        --phase "$PHASE" \
+        --confirm "$ASSESSMENT_ID" >"$APPLY_FILE"
+fi
 APPLY_RUN_ID=$(field apply_run_id "$APPLY_FILE")
 [ -n "$APPLY_RUN_ID" ] || {
     printf 'Apply returned no run ID. Stop and inspect manually.\n' >&2

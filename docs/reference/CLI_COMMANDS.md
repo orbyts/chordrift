@@ -506,12 +506,12 @@ $ chordrift reevaluate retire-legacy --account personal \
 For the complete existing-destination correction workflow, use:
 
 ```console
-$ scripts/chordrift-reevaluate-wizard.sh --account personal
+$ scripts/chordrift-maintain.sh --account personal
 ```
 
-Choose the destinations, review the concise Spotify changes, and authorize the
-correction once. The wizard keeps proposal IDs, plan phases, readiness UUIDs,
-verification pulls, and receipts internal unless manual diagnosis is needed.
+This is also the command for Likes, named intake, exclusions, and ordinary
+managed-playlist changes. It asks only for ambiguous destinations, shows the net
+Spotify effect, and authorizes once; internal IDs remain diagnostic evidence.
 
 The CSV uses the same columns and safe import/approval flow as `classify
 export`; fill only evidence you know and mark intended rows with `action=set`.

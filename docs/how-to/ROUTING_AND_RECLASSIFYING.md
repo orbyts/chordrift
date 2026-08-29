@@ -13,11 +13,10 @@ In Spotify, move the playing track to `Re-evaluate`: add it there and remove it
 from the wrong Chordrift destination. The visible library immediately matches
 your judgment, while Chordrift retains the transition in Neon.
 
-Then run:
+Then run the normal maintenance workflow:
 
 ```console
-$ chordrift sync pull --account personal
-$ chordrift reevaluate status --account personal
+$ scripts/chordrift-maintain.sh --account personal
 ```
 
 The pull records an immutable queue-entry event and current zero-signal queue
@@ -38,22 +37,20 @@ workflow.
 
 ## Resolve the queue interactively
 
-Use the dedicated capability-checked wizard when the destination is an existing
-canonical playlist:
+The single daily wizard handles this alongside Likes, intake, exclusions, and
+ordinary playlist moves:
 
 ```console
-$ scripts/chordrift-reevaluate-wizard.sh --account personal
+$ scripts/chordrift-maintain.sh --account personal
 ```
 
-It performs a fresh pull, lists the authoritative provider-observed queue,
-prepares an editable copy of the approved proposal, and asks you to choose an
-exact existing destination or defer each track. It records explicit assignment
-revisions first. Only after complete proposal and unchanged-artwork review does
-it offer to publish the selected additions, verify them, and separately remove
-those tracks from an old incorrect destination only when the plan identifies a
-snapshot-matched `managed_provider_drift` removal. It verifies that correction
-before separately removing the verified tracks from `Re-evaluate` behind the
-same reviewed operation boundary.
+It asks for an exact existing destination only when Chordrift cannot infer one.
+If you directly remove a track from one managed destination and add it to
+exactly one other managed destination, the wizard records that move as the new
+classification without prompting.
+It then shows the additions and removals and asks once. Assignment revisions,
+snapshot gates, publication verification, old-placement reconciliation, queue
+cleanup, receipts, and retries stay internal.
 
 This is presented as one action, not three operator workflows. After you choose
 the destinations, Chordrift shows the concise additions and removals and asks
@@ -62,29 +59,14 @@ readiness assessment, phase ordering, receipts, pulls, retries, and exact IDs ar
 durable internal evidence. They remain available for diagnosis but are not
 values you should normally have to copy or confirm.
 
-The wizard rejects unrelated unresolved tracks, new playlist or artwork design,
-retirement, non-maintenance plans, and unexpected publish, reconcile, or cleanup
-operations.
+The wizard rejects unrelated work, new playlist or artwork design, retirement,
+non-maintenance plans, and unexpected provider operations.
 Review without changing proposal intent or Spotify with:
 
 ```console
-$ scripts/chordrift-reevaluate-wizard.sh \
+$ scripts/chordrift-maintain.sh \
     --account personal --review-only
 ```
-
-If the proposal was already approved and the wizard stopped later—for example,
-at an artwork confirmation—resume without repeating the placement decisions:
-
-```console
-$ scripts/chordrift-reevaluate-wizard.sh --account personal --resume
-```
-
-Reusing existing artwork validates the original files in place through a
-temporary manifest; it does not copy the complete artwork directory.
-
-The general `chordrift-intake-wizard.sh` is not the Re-evaluate placement
-wizard. It handles Liked Songs, named intake, and verified removals from managed
-playlists.
 
 ## Create the queue
 
@@ -122,19 +104,9 @@ assignment revision newer than the queue-entry event and a destination that is
 different from the rejected source. Merely regenerating a proposal cannot
 silently clear the queue.
 
-The general manual-placement helper remains available when the guided workflow
-must be resumed one step at a time:
-
-```console
-$ scripts/chordrift-manual-place.sh --account personal \
-    --to "NEW DESTINATION" --spotify-id SPOTIFY_TRACK_ID \
-    --reason "Reviewed Re-evaluate correction"
-```
-
-It requires the installed-binary capability handshake, refuses active
-exclusions, and changes editable proposal intent only. Maintenance phase
-helpers also require `plan_origin: maintenance`; future Spin publication plans
-cannot enter this correction workflow.
+Lower-level proposal and phase commands remain available for developer recovery.
+They are deliberately not documented as a second user workflow. Future Spin
+publication plans cannot enter ordinary maintenance.
 
 ## Add a private classification dimension
 

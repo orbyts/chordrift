@@ -24,7 +24,7 @@ membership or restore an unenumerated manual removal.
 
 ## Operator workflow adapter
 
-The recovered complete intake workflow is available through
+The recovered complete intake workflow was originally available through
 `scripts/chordrift-intake-wizard.sh` and its manual-placement, reviewed-
 clustering, and single-phase helpers. The shell owns prompting and sequencing
 only. The Rust `intake audit` query owns the read-only join of current provider
@@ -37,6 +37,10 @@ current intake, requires complete proposal coverage, and advances only fresh
 maintenance plans through separately verified phases. It stops for unrelated
 unresolved work, new playlist/artwork design, retirement, incompatible
 binaries, and unsupported plan origins.
+
+This is a historical V020-11R recovery record. Post-release hardening removed
+the separate intake and Re-evaluate wizards in favor of
+`scripts/chordrift-maintain.sh`, the one current ordinary-maintenance interface.
 
 ## Capability and plan-origin contract
 

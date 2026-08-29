@@ -64,18 +64,18 @@ write to Spotify.
 The later hosted/native product should perform steps 2–7 in the background and
 surface only an understandable proposal when confidence or intent is ambiguous.
 
-## V020-11R: review a mixed intake batch
+## Review ordinary additions and discovery
 
-For current Liked Songs, Inbox, From Friends, Liked from Radio, and From
-Prompts, use the capability-checked wizard:
+For current Liked Songs, Inbox, From Friends, Liked from Radio, From Prompts,
+managed-playlist edits, and Re-evaluate, use the single capability-checked
+wizard:
 
 ```console
-$ scripts/chordrift-intake-wizard.sh --account personal
+$ scripts/chordrift-maintain.sh --account personal
 ```
 
-It performs a fresh pull, requires `plan_origin: maintenance`, separates
-verified user removals from intake placement, and calls the read-only Rust
-audit:
+It performs one initial observation, requires `plan_origin: maintenance`, and
+uses the read-only Rust audit internally:
 
 ```console
 $ chordrift intake audit --account personal
@@ -86,24 +86,10 @@ The audit labels exact provider identities as `already_covered`,
 `known_from_history`, or `genuinely_new`. It makes no provider request and no
 database write. Use `--review-only` when that report is the desired endpoint.
 
-The interactive path lets you keep or restore exclusions, choose manual
-existing destinations, review normal clustering suggestions, explicitly
-exclude, or defer. It refuses unrelated unresolved inventory, new playlist or
-artwork design, retirement, and every non-maintenance plan. After complete
-proposal review, provider work remains phase-separated and exact-confirmed.
-
-Manual placement and reviewed clustering remain available independently:
-
-```console
-$ scripts/chordrift-manual-place.sh --account personal \
-    --to "Dakshina Pulse" --spotify-id SPOTIFY_TRACK_ID \
-    --reason "Reviewed South Indian discovery"
-$ scripts/chordrift-cluster-unresolved.sh --account personal
-```
-
-Clustering is read-only by default and reserves intake/Re-evaluate tracks until
-explicit `--include-intake`. None of these adapters owns classification logic;
-they require advertised binary capabilities and delegate to Rust commands.
+The interactive path asks for an existing destination only when placement is
+ambiguous, then shows one exact net-change summary and asks once. It refuses new
+playlist/artwork design, retirement, unrelated work, and non-maintenance plans.
+Lower-level proposal and clustering commands remain developer diagnostics.
 
 ## What not to do
 

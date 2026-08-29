@@ -107,21 +107,26 @@ revocable Chordrift session in the OS credential store.
 
 ### Current Re-evaluate correction state
 
-One daily-driver correction is intentionally unfinished pending the user's one
-remaining provider-mutation authorization. Spotify accepted and Chordrift has
+One daily-driver correction was used to expose excessive compatibility-wizard
+ceremony. Spotify accepted and Chordrift has
 verified three enumerated additions: `Dirty Old Town` to `Snowglass Letters`,
 plus `Hona Tha Pyar` and `Yeh Jo Des Hai Tera` to `Uttara Glow`. Current provider
 inventory is 22 playlists and 1,517 memberships. The verified publish receipt is
 `2d1b7e2b-0a60-4fde-928c-d23220bbc045`; those additions must not be replayed.
 
-The current maintenance plan has one operation: remove `Hona Tha Pyar` from its
-old incorrect `Snowglass Letters` placement. After that is observed, the planner
-may emit cleanup only for the three successfully resolved `Re-evaluate` entries.
-Run `scripts/chordrift-reevaluate-wizard.sh --account personal --resume`; it must
-show a concise human-readable summary and ask once. It then keeps readiness
-UUIDs, phase confirmations, pulls, retries, and receipts internal. Do not delete
-the legacy Neon project until this and the remaining daily-driver workflow checks
-pass.
+`scripts/chordrift-maintain.sh --account personal` is now the only user-facing
+ordinary workflow. It covers Likes, intake, exclusions, managed edits, and
+Re-evaluate; asks only for ambiguous destinations; summarizes net provider
+effects; and accepts one authorization. The former intake and Re-evaluate
+wizards were removed. Internal plan phases and verification remain recovery
+evidence.
+
+The user explicitly authorized the already-resolved queue cleanup. Plan
+`8453ec0f-ed9c-4ae0-b812-1a1b678108fc` contained exactly three removals from
+`Re-evaluate`; apply receipt `54063b3b-7196-48f6-b7f9-7bad1d9923a4` succeeded
+3/3. Verified snapshot `8a19bf16-34cb-4c3a-9383-bae30ef9d5f0` has an empty
+queue, and current maintenance plan `233d9fbb-5993-41e5-9bf7-fe9a9e744366`
+has zero operations. Do not replay the earlier additions or cleanup.
 
 Final read-only checks preserved snapshot
 `dc96cc26-c917-4bb4-8a7f-4b3c5e836f66`, 22 playlists, 1,514 memberships, 387
@@ -265,11 +270,10 @@ manifest. `chordrift capabilities --require …` is the exact compatibility
 handshake; version strings are informational only. `chordrift intake audit`
 provides the recovered read-only current-intake join. Maintenance plans persist
 and print `plan_origin: maintenance`; unknown and future Spin origins fail
-closed. The complete intake wizard and its manual-placement, clustering, and
-single-phase helpers require capabilities before doing work and reject every
-non-maintenance plan. Fake-binary tests prove capability-first execution,
-review-only workflow compatibility, and `spin_publication` rejection before
-audit/apply. See
+closed. The unified maintenance wizard and its internal phase helper require
+capabilities before doing work and reject every non-maintenance plan.
+Fake-binary tests prove capability-first execution, review-only compatibility,
+and `spin_publication` rejection before audit/apply. See
 `docs/design/RECOVERED_INTAKE_COMPATIBILITY_V020_11R.md`.
 
 Compatibility remains subordinate to the v0.2 architecture: preserve safety

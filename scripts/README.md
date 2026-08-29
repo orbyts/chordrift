@@ -135,47 +135,38 @@ contents, not only the tracks supplied to this helper. Once the complete
 proposal is reviewed and approved, use `chordrift-workflow.sh` for the ordinary
 plan/readiness/confirm/apply/verify sequence.
 
-## V020-11R mixed-intake workflow
+## Unified ordinary maintenance
 
 The following helpers require a compatible v0.2.0 binary. They call
 `chordrift capabilities --require …` before operational commands and fail
 closed when the installed binary lacks the exact workflow, enumerated-addition,
 or plan-origin contract. A version string alone is never treated as proof.
 
-Run the complete guided workflow with:
+Run the one user-facing daily workflow with:
 
 ```console
 $ CHORDRIFT_BIN=/path/to/chordrift \
-    scripts/chordrift-intake-wizard.sh --account personal
+    scripts/chordrift-maintain.sh --account personal
 ```
 
-The wizard performs a fresh pull by default, requires every plan to report
-`plan_origin: maintenance`, audits current Liked Songs and named intake through
-the Rust `intake audit` query, isolates reversible exclusion intent, and walks
-through manual or reviewed automatic placement. After complete proposal and
-artwork review, it advances fresh plans through publish, pull/verification,
-reconciliation, and separately confirmed cleanup. It refuses unrelated
-unresolved tracks, new playlist/artwork design, retirement, repeated no-progress
-phases, and future Spin publication plans. `--review-only` stops after the
-read-only audit and may run without an interactive terminal.
+The wizard covers Likes, named intake, managed-playlist removals, exclusions,
+and Re-evaluate corrections. It observes Spotify, asks for an existing
+destination only when placement is ambiguous, prints the exact provider-visible
+net change, and asks once. It requires `plan_origin: maintenance` and refuses
+new playlist/artwork design, retirement, unexpected work, and Spin publication.
+`--review-only` never applies.
 
-Supporting adapters remain independently useful:
+The remaining helpers are developer recovery tools:
 
 ```console
-$ scripts/chordrift-manual-place.sh --account personal \
-    --to "Dakshina Pulse" --spotify-id SPOTIFY_TRACK_ID \
-    --reason "Reviewed South Indian discovery"
 $ scripts/chordrift-cluster-unresolved.sh --account personal
 $ scripts/chordrift-plan-phase.sh --account personal \
     --plan PLAN_ID --phase publish
 ```
 
-Manual placement changes editable Neon intent only. Clustering is read-only by
-default, reserves intake/Re-evaluate tracks unless `--include-intake` is
-explicit, and requires the exact proposal UUID for apply mode. The phase helper
-accepts only maintenance `publish` or `reconcile`, retains readiness and exact
-assessment confirmation, verifies delayed provider observation with bounded
-pulls, and refuses cleanup/retirement.
+Clustering is read-only by default. The phase helper retains readiness,
+verification, and receipts; cleanup is accepted only under the unified
+workflow's already-reviewed authorization, and retirement is always refused.
 
 The enumerated-write correction is below the scripts: ordinary `add_track` and
 `restore_track` operations append only their named IDs. They never replace the
@@ -184,49 +175,9 @@ manually removed track cannot return without its own explicit restoration.
 Only `reorder_playlist` may use complete replacement, after proving live and
 desired membership are identical.
 
-These are compatibility adapters around Rust-owned commands, not a second
-business path. Future clients may present the workflow differently while
-preserving the same safety outcomes.
-
-## Re-evaluate correction workflow
-
-Resolve provider-observed `Re-evaluate` tracks into existing canonical
-destinations with:
-
-```console
-$ scripts/chordrift-reevaluate-wizard.sh --account personal
-```
-
-Use `--review-only` for the fresh-pull and queue report without proposal intent,
-approval, or provider writes; use `--skip-pull` only when you have independently
-confirmed the current snapshot. The wizard prepares an editable proposal,
-records each explicit replacement through `chordrift-manual-place.sh`, refuses
-unrelated unresolved work, reuses only the unchanged approved artwork set, and
-allows only enumerated selected-track publication. After provider verification,
-it permits only snapshot-matched `managed_provider_drift` removals of those
-selected tracks from old incorrect destinations, verifies that phase, and then
-performs separately planned, snapshot-gated cleanup containing only selected
-removals from `Re-evaluate` under the same reviewed authorization.
-
-The complete correction is one operator action. After destinations are chosen,
-the wizard shows a short human-readable Spotify change summary and asks once for
-authorization. Plan IDs, readiness assessments, exact confirmations, phased
-ordering, retries, receipts, and fresh-snapshot checks remain enforced internally
-instead of being transcribed by the operator. Use the lower-level plan commands
-only for diagnosis or manual recovery.
-
-Use `--resume` only after placement review and proposal approval already
-completed but a later gate stopped. It reuses that exact approved proposal and
-any pending artwork batch; it does not ask for the destinations again. Artwork
-reuse writes only a temporary manifest beside the existing files, so it
-does not copy the 134 MB visual-system directory into another temporary tree.
-
-Do not use `chordrift-intake-wizard.sh` to choose Re-evaluate destinations. The
-intake wizard handles Liked Songs, named intake playlists, and verified managed-
-playlist removals. `chordrift-workflow.sh` and `chordrift-plan-phase.sh` are
-lower-level resume/recovery helpers, not the first command for queue review. A
-parent workflow may pass its already-reviewed, plan-bound authorization to the
-phase helper; a direct invocation retains the exact assessment-ID prompt.
+This script is a thin current CLI client, not a second business path. A future
+GUI will consume the same application behavior while presenting the same single
+review boundary.
 
 ## Artwork label renderer
 

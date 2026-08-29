@@ -767,7 +767,10 @@ async fn routing_surface_operations(
                    ON provider_track.track_id = desired.track_id
                   AND provider_track.provider = 'spotify'
                  JOIN LATERAL (
-                     SELECT event.observed_at,
+                     SELECT COALESCE(
+                                NULLIF(event.metadata->>'residency_started_at', '')::timestamptz,
+                                event.observed_at
+                            ) AS observed_at,
                             NULLIF(event.metadata->>'previous_concept_id', '')::uuid
                                 AS previous_concept_id
                      FROM reevaluation_events event
@@ -775,7 +778,15 @@ async fn routing_surface_operations(
                        AND event.playlist_id = $2
                        AND event.track_id = desired.track_id
                        AND event.event_type = 'entered'
-                     ORDER BY event.observed_at DESC, event.id DESC LIMIT 1
+                       AND event.observed_at > COALESCE((
+                           SELECT max(left_event.observed_at)
+                           FROM reevaluation_events left_event
+                           WHERE left_event.provider_account_id = event.provider_account_id
+                             AND left_event.playlist_id = event.playlist_id
+                             AND left_event.track_id = event.track_id
+                             AND left_event.event_type = 'left'
+                       ), '-infinity'::timestamptz)
+                     ORDER BY event.observed_at, event.id LIMIT 1
                  ) entry ON TRUE
                  JOIN track_playlist_assignment_revisions revision
                    ON revision.provider_account_id = $1
@@ -790,8 +801,8 @@ async fn routing_surface_operations(
                    ON placed.playlist_id = proposed.id
                   AND placed.track_id = desired.track_id
                  WHERE desired.playlist_id = $2
-                   AND entry.previous_concept_id IS NOT NULL
-                   AND revision.destination_concept_id <> entry.previous_concept_id
+                   AND (entry.previous_concept_id IS NULL
+                        OR revision.destination_concept_id <> entry.previous_concept_id)
                  ORDER BY desired.position",
             )
             .bind(account_id)

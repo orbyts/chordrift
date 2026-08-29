@@ -124,13 +124,15 @@ deterministic provider-free Spins.
   PostgreSQL integration tests, packaging, recovery documentation, GitHub
   release, and crates.io publication after the personal candidate is verified.
 
-Post-release daily-driver hardening enforces the product rule already recorded
-in the architecture: a reviewed Re-evaluate move is one user action with one
-provider authorization. Exact plans, readiness assessments, ordered
-publish/reconcile/cleanup phases, retries, and receipts remain internal. Publish
-verification is operation-scoped so an enumerated addition cannot wait on a
-later planned removal; complete-state verification is retained for the
-destructive cleanup gate.
+Post-release daily-driver hardening now exposes one ordinary maintenance wizard
+for Likes, named intake, managed-playlist edits, exclusions, and Re-evaluate.
+It observes provider changes, asks only for ambiguous destinations, summarizes
+the net Spotify effect, and accepts one authorization. Exact proposals, plans,
+readiness assessments, ordered publish/reconcile/cleanup phases, retries, and
+receipts remain internal. New playlist/artwork design, retirement, and Spin
+publication stay separate. Durable current-state comparisons prevent unchanged
+pulls from fabricating repeated Re-evaluate entry events, and cleanup keys off
+the start of the current queue stay rather than the latest observation.
 
 ### v0.2.1 — Hosted Rust authority
 

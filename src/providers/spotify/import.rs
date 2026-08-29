@@ -485,8 +485,9 @@ async fn persist(
     // entry/exit as an immutable event, then mirror only its current Spotify
     // membership into the operational queue. This prevents Chordrift from
     // re-adding a track after the user deliberately removes it from the queue.
-    sqlx::query(
-        "WITH queue AS (
+    if !reuse_materialized_inventory {
+        sqlx::query(
+            "WITH queue AS (
              SELECT route.playlist_id, provider.id AS provider_playlist_id
              FROM routing_surfaces route
              JOIN provider_playlists provider
@@ -497,11 +498,6 @@ async fn persist(
               AND observed.snapshot_id = $1
              WHERE route.provider_account_id = $2
                AND route.active AND route.purpose = 'reevaluate'
-         ), previous AS (
-             SELECT id
-             FROM provider_inventory_observations
-             WHERE provider_account_id = $2 AND id <> $1
-             ORDER BY captured_at DESC, id DESC LIMIT 1
          ), current_tracks AS (
              SELECT queue.playlist_id, provider_track.track_id
              FROM queue
@@ -513,27 +509,29 @@ async fn persist(
          ), previous_tracks AS (
              SELECT queue.playlist_id, provider_track.track_id
              FROM queue
-             CROSS JOIN previous
-             JOIN provider_inventory_import_playlist_tracks membership
-               ON membership.snapshot_id = previous.id
-              AND membership.provider_playlist_id = queue.provider_playlist_id
+             JOIN provider_current_playlists current_playlist
+               ON current_playlist.provider_account_id = $2
+              AND current_playlist.provider_playlist_id = queue.provider_playlist_id
+             JOIN provider_playlist_revision_tracks membership
+               ON membership.revision_id = current_playlist.revision_id
              JOIN provider_tracks provider_track
                ON provider_track.id = membership.provider_track_id
          ), changes AS (
              SELECT current.playlist_id, current.track_id, 'entered'::text AS event_type,
                     (
                         SELECT previous_provider.concept_id
-                        FROM previous prior_snapshot
+                        FROM provider_current_playlists prior_playlist
                         JOIN provider_playlists previous_provider
-                          ON previous_provider.provider = 'spotify'
+                          ON previous_provider.id = prior_playlist.provider_playlist_id
+                         AND previous_provider.provider = 'spotify'
                          AND previous_provider.concept_id IS NOT NULL
-                        JOIN provider_inventory_import_playlist_tracks prior_membership
-                          ON prior_membership.snapshot_id = prior_snapshot.id
-                         AND prior_membership.provider_playlist_id = previous_provider.id
+                        JOIN provider_playlist_revision_tracks prior_membership
+                          ON prior_membership.revision_id = prior_playlist.revision_id
                         JOIN provider_tracks prior_track
                           ON prior_track.id = prior_membership.provider_track_id
                          AND prior_track.track_id = current.track_id
-                        WHERE NOT EXISTS (
+                        WHERE prior_playlist.provider_account_id = $2
+                          AND NOT EXISTS (
                             SELECT 1
                             FROM provider_inventory_import_playlist_tracks current_membership
                             JOIN provider_tracks current_track
@@ -571,11 +569,68 @@ async fn persist(
                 )
          FROM changes change
          ON CONFLICT DO NOTHING",
-    )
-    .bind(snapshot_id)
-    .bind(account_id)
-    .execute(&mut *transaction)
-    .await?;
+        )
+        .bind(snapshot_id)
+        .bind(account_id)
+        .execute(&mut *transaction)
+        .await?;
+    } else {
+        sqlx::query(
+            "WITH queue_tracks AS (
+                 SELECT route.playlist_id, provider_track.track_id
+                 FROM routing_surfaces route
+                 JOIN provider_playlists provider
+                   ON provider.playlist_id = route.playlist_id
+                  AND provider.provider = 'spotify'
+                 JOIN provider_current_playlists current_playlist
+                   ON current_playlist.provider_account_id = $2
+                  AND current_playlist.provider_playlist_id = provider.id
+                 JOIN provider_playlist_revision_tracks membership
+                   ON membership.revision_id = current_playlist.revision_id
+                 JOIN provider_tracks provider_track
+                   ON provider_track.id = membership.provider_track_id
+                 WHERE route.provider_account_id = $2
+                   AND route.active AND route.purpose = 'reevaluate'
+             ), repairs AS (
+                 SELECT current.playlist_id, current.track_id,
+                        first_entry.observed_at AS residency_started_at
+                 FROM queue_tracks current
+                 JOIN provider_current_inventories inventory
+                   ON inventory.provider_account_id = $2
+                 JOIN LATERAL (
+                     SELECT event.event_type, event.provider_snapshot_id
+                     FROM reevaluation_events event
+                     WHERE event.provider_account_id = $2
+                       AND event.playlist_id = current.playlist_id
+                       AND event.track_id = current.track_id
+                     ORDER BY event.observed_at DESC, event.id DESC LIMIT 1
+                 ) latest ON latest.event_type = 'left'
+                          AND latest.provider_snapshot_id = inventory.source_snapshot_id
+                 JOIN LATERAL (
+                     SELECT event.observed_at
+                     FROM reevaluation_events event
+                     WHERE event.provider_account_id = $2
+                       AND event.playlist_id = current.playlist_id
+                       AND event.track_id = current.track_id
+                       AND event.event_type = 'entered'
+                     ORDER BY event.observed_at, event.id LIMIT 1
+                 ) first_entry ON TRUE
+             )
+             INSERT INTO reevaluation_events
+                 (provider_account_id, track_id, playlist_id,
+                  provider_snapshot_id, event_type, metadata)
+             SELECT $2, repair.track_id, repair.playlist_id, $1, 'entered',
+                    jsonb_build_object(
+                        'captured_via', 'spotify_sync_reuse_repair',
+                        'residency_started_at', repair.residency_started_at
+                    )
+             FROM repairs repair ON CONFLICT DO NOTHING",
+        )
+        .bind(snapshot_id)
+        .bind(account_id)
+        .execute(&mut *transaction)
+        .await?;
+    }
 
     sqlx::query(
         "DELETE FROM playlist_tracks desired
@@ -600,7 +655,7 @@ async fn persist(
     // this insert must not name the generated-membership partial index as an
     // ON CONFLICT target.
     sqlx::query(
-        "WITH queue_tracks AS (
+        "WITH imported_queue_tracks AS (
              SELECT route.playlist_id, provider_track.track_id,
                     membership.position,
                     provider_track.provider_track_id
@@ -615,6 +670,29 @@ async fn persist(
                ON provider_track.id = membership.provider_track_id
              WHERE route.provider_account_id = $2
                AND route.active AND route.purpose = 'reevaluate'
+               AND NOT $3
+         ), reused_queue_tracks AS (
+             SELECT route.playlist_id, provider_track.track_id,
+                    membership.position,
+                    provider_track.provider_track_id
+             FROM routing_surfaces route
+             JOIN provider_playlists provider
+               ON provider.playlist_id = route.playlist_id
+              AND provider.provider = 'spotify'
+             JOIN provider_current_playlists current_playlist
+               ON current_playlist.provider_account_id = $2
+              AND current_playlist.provider_playlist_id = provider.id
+             JOIN provider_playlist_revision_tracks membership
+               ON membership.revision_id = current_playlist.revision_id
+             JOIN provider_tracks provider_track
+               ON provider_track.id = membership.provider_track_id
+             WHERE route.provider_account_id = $2
+               AND route.active AND route.purpose = 'reevaluate'
+               AND $3
+         ), queue_tracks AS (
+             SELECT * FROM imported_queue_tracks
+             UNION ALL
+             SELECT * FROM reused_queue_tracks
          )
          INSERT INTO playlist_tracks
              (playlist_id, track_id, position, source, provenance)
@@ -628,6 +706,7 @@ async fn persist(
     )
     .bind(snapshot_id)
     .bind(account_id)
+    .bind(reuse_materialized_inventory)
     .execute(&mut *transaction)
     .await?;
 

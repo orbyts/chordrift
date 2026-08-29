@@ -176,6 +176,8 @@ pub type CapabilitySet = BTreeMap<String, CapabilityAvailability>;
 pub const BINARY_CAPABILITY_SCHEMA_VERSION: u16 = 1;
 /// Complete operator intake workflow with explicit review gates.
 pub const CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW: &str = "maintenance.intake-workflow.v1";
+/// One low-friction workflow for ordinary provider-side library changes.
+pub const CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW: &str = "maintenance.unified-workflow.v1";
 /// Read-only audit of current intake against durable intent and history.
 pub const CAPABILITY_MAINTENANCE_INTAKE_AUDIT: &str = "maintenance.intake-audit.v1";
 /// Ordinary playlist additions execute only their enumerated track operations.
