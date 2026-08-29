@@ -479,7 +479,9 @@ playlist. Move a misplaced track into it and remove the track from its current
 destination. Membership carries zero clustering, embedding, rotation, or
 preference weight. Chordrift records entry and exit events, suppresses both
 exclusion and source restoration while the track is present, and clears the
-queue only after a replacement destination is published and verified.
+queue only after a replacement destination is published and verified. `status`
+reports provider-observed membership from the latest imported snapshot rather
+than the queue's empty desired-membership placeholder.
 
 Create or update the queue in Neon with a label-free master and a
 deterministically labeled Spotify cover:
@@ -499,6 +501,12 @@ $ chordrift reevaluate status --account personal
 $ chordrift reevaluate export --account personal --file reevaluate.csv
 $ chordrift reevaluate retire-legacy --account personal \
     --confirm "RETIRE LEGACY ROUTES"
+```
+
+For the complete existing-destination correction workflow, use:
+
+```console
+$ scripts/chordrift-reevaluate-wizard.sh --account personal
 ```
 
 The CSV uses the same columns and safe import/approval flow as `classify

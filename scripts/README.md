@@ -188,6 +188,29 @@ These are compatibility adapters around Rust-owned commands, not a second
 business path. Future clients may present the workflow differently while
 preserving the same safety outcomes.
 
+## Re-evaluate correction workflow
+
+Resolve provider-observed `Re-evaluate` tracks into existing canonical
+destinations with:
+
+```console
+$ scripts/chordrift-reevaluate-wizard.sh --account personal
+```
+
+Use `--review-only` for the fresh-pull and queue report without proposal intent,
+approval, or provider writes; use `--skip-pull` only when you have independently
+confirmed the current snapshot. The wizard prepares an editable proposal,
+records each explicit replacement through `chordrift-manual-place.sh`, refuses
+unrelated unresolved work, reuses only the unchanged approved artwork set, and
+allows only enumerated selected-track publication. After provider verification,
+it presents a separate exact-confirmed destructive cleanup containing only
+selected removals from `Re-evaluate`.
+
+Do not use `chordrift-intake-wizard.sh` to choose Re-evaluate destinations. The
+intake wizard handles Liked Songs, named intake playlists, and verified managed-
+playlist removals. `chordrift-workflow.sh` and `chordrift-plan-phase.sh` are
+lower-level resume/recovery helpers, not the first command for queue review.
+
 ## Artwork label renderer
 
 `render_artwork_label.swift` is an internal macOS development helper for

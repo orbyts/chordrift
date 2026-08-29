@@ -36,6 +36,36 @@ Add only classifications you actually know, mark changed rows with
 `action=set`, and import/approve through the existing classification batch
 workflow.
 
+## Resolve the queue interactively
+
+Use the dedicated capability-checked wizard when the destination is an existing
+canonical playlist:
+
+```console
+$ scripts/chordrift-reevaluate-wizard.sh --account personal
+```
+
+It performs a fresh pull, lists the authoritative provider-observed queue,
+prepares an editable copy of the approved proposal, and asks you to choose an
+exact existing destination or defer each track. It records explicit assignment
+revisions first. Only after complete proposal and unchanged-artwork review does
+it offer to publish the selected additions, verify them, and separately remove
+those verified tracks from `Re-evaluate` with an exact destructive-cleanup
+confirmation.
+
+The wizard rejects unrelated unresolved tracks, new playlist or artwork design,
+retirement, non-maintenance plans, and unexpected publish or cleanup operations.
+Review without changing proposal intent or Spotify with:
+
+```console
+$ scripts/chordrift-reevaluate-wizard.sh \
+    --account personal --review-only
+```
+
+The general `chordrift-intake-wizard.sh` is not the Re-evaluate placement
+wizard. It handles Liked Songs, named intake, and verified removals from managed
+playlists.
+
 ## Create the queue
 
 The queue has one stable identity, a label-free artwork master, and a
@@ -72,8 +102,8 @@ assignment revision newer than the queue-entry event and a destination that is
 different from the rejected source. Merely regenerating a proposal cannot
 silently clear the queue.
 
-On the V020-11R development line, the general manual-placement helper can
-record the reviewed replacement while keeping publication separate:
+The general manual-placement helper remains available when the guided workflow
+must be resumed one step at a time:
 
 ```console
 $ scripts/chordrift-manual-place.sh --account personal \

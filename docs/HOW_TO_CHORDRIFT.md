@@ -52,7 +52,7 @@ is staged for inspection rather than silently guessed.
 | Review a mixed intake batch | [Add songs and preserve discovery context](how-to/ADDING_AND_DISCOVERY.md) | v0.2.0 capability-checked intake wizard. |
 | Inventory or retire saved albums | [Saved albums and album cleanup](how-to/SAVED_ALBUMS.md) | Archive-only retirement keeps immutable album and track history. |
 | Stop hearing a song | [Delete or exclude a track safely](how-to/DELETING_AND_EXCLUDING.md) | Remove it from its verified Chordrift playlist, then reconcile. |
-| Keep a song but reject its current vibe | [Re-evaluate and reclassify a track](how-to/ROUTING_AND_RECLASSIFYING.md) | Move it to `Re-evaluate` and remove the wrong destination. |
+| Keep a song but reject its current vibe | [Re-evaluate and reclassify a track](how-to/ROUTING_AND_RECLASSIFYING.md) | Move it to `Re-evaluate`, remove the wrong destination, then use `chordrift-reevaluate-wizard.sh`. |
 | Add private region, tradition, language, or cohort facts | [Classify tracks with user dimensions](how-to/CLASSIFICATION_DIMENSIONS.md) | Review one track/a small group directly, or approve a CSV batch. |
 | Bring Neon up to date | [Synchronize and prove convergence](how-to/SYNC_AND_CONVERGENCE.md) | Run a pull after provider changes. |
 | Understand how the product interprets provider intent | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Keep using Spotify; Chordrift interprets bounded changes. |
@@ -181,6 +181,15 @@ Use `Re-evaluate` differently: it means “keep this track, but its current
 Chordrift destination needs correction.” Move the track into Re-evaluate and
 remove it from the wrong destination. Chordrift retains the event and will not
 restore the rejected membership while the track remains in the queue.
+
+When ready to choose the corrected existing destination, run:
+
+```console
+$ scripts/chordrift-reevaluate-wizard.sh --account personal
+```
+
+This is separate from `chordrift-intake-wizard.sh`, which handles Likes, named
+intake, and verified removals/exclusions.
 
 Spotify's Like button is the primary lightweight intake action. It means
 “keep and classify.” `Inbox` is the stronger high-interest variant; the other

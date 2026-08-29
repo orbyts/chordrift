@@ -103,10 +103,61 @@ esac
 }
 
 #[test]
+fn reevaluate_review_only_uses_observed_playlist_tracks_without_apply() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let work = temporary_work("reevaluate-review-only");
+    let fake = work.join("chordrift-fake");
+    let log = work.join("commands.log");
+    write_fake(
+        &fake,
+        r##"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"$FAKE_CHORDRIFT_LOG"
+case "$*" in
+  capabilities*) printf '%s\n' '{"schema_version":1}' ;;
+  "sync pull --account personal") printf '%s\n' 'sync: current' ;;
+  "reevaluate status --account personal")
+    printf '%s\n' 'queue: Re-evaluate' 'active: true' 'tracks: 1'
+    ;;
+  "playlists tracks --account personal --name Re-evaluate")
+    printf '%s\n' \
+      'playlist: Re-evaluate' \
+      'tracks: 1' \
+      'position	track	artists	album	spotify_track_id' \
+      '1	Fixture Song	Fixture Artist	Fixture Album	fixture123'
+    ;;
+  *) printf 'unexpected fake command: %s\n' "$*" >&2; exit 90 ;;
+esac
+"##,
+    );
+
+    let output = Command::new(root.join("scripts/chordrift-reevaluate-wizard.sh"))
+        .arg("--review-only")
+        .env("CHORDRIFT_BIN", &fake)
+        .env("FAKE_CHORDRIFT_LOG", &log)
+        .output()
+        .expect("Re-evaluate review-only wizard executes");
+    assert!(
+        output.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let commands = fs::read_to_string(&log).expect("fake command log exists");
+    assert!(commands.contains("reevaluate status --account personal"));
+    assert!(commands.contains("playlists tracks --account personal --name Re-evaluate"));
+    assert!(!commands.contains("proposals extend"));
+    assert!(!commands.contains("sync apply"));
+    assert!(!commands.contains("tracks exclude"));
+    fs::remove_dir_all(work).expect("temporary test directory is removed");
+}
+
+#[test]
 fn every_recovered_helper_fails_closed_on_missing_capability() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for (script, arguments) in [
         ("chordrift-intake-wizard.sh", vec!["--review-only"]),
+        ("chordrift-reevaluate-wizard.sh", vec!["--review-only"]),
         ("chordrift-cluster-unresolved.sh", vec![]),
         (
             "chordrift-manual-place.sh",

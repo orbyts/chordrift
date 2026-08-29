@@ -308,7 +308,7 @@ pub enum ReevaluateCommand {
         #[arg(long)]
         artwork: PathBuf,
     },
-    /// Show current queue configuration and desired membership.
+    /// Show current queue configuration and observed provider membership.
     Status {
         /// Local label for this Spotify account.
         #[arg(long, default_value = "personal")]
@@ -2250,9 +2250,25 @@ async fn run_reevaluate_command(
         }
         ReevaluateCommand::Status { account } => {
             let queue = routes::reevaluate(database, &account).await?;
+            let observed_tracks = if queue.spotify_playlist_id.is_some() {
+                playlists::tracks(
+                    database,
+                    &account,
+                    &playlists::PlaylistSelector::Name(queue.name.clone()),
+                )
+                .await?
+                .tracks
+                .len()
+            } else {
+                usize::try_from(queue.track_count).map_err(|_| {
+                    ChordriftError::Configuration(
+                        "Re-evaluate desired membership count is invalid".to_owned(),
+                    )
+                })?
+            };
             writeln!(output, "queue: {}", queue.name)?;
             writeln!(output, "active: {}", queue.active)?;
-            writeln!(output, "tracks: {}", queue.track_count)?;
+            writeln!(output, "tracks: {observed_tracks}")?;
             writeln!(
                 output,
                 "spotify_playlist_id: {}",
