@@ -1,6 +1,6 @@
 # Re-evaluate and reclassify a track
 
-Applies to the released v0.1.4 workflow. The former multi-route workflow has
+Applies to the released v0.2.0 workflow. The former multi-route workflow has
 already been retired; `Re-evaluate` is the one current correction surface.
 
 Use the single `Re-evaluate` playlist when you want to keep a track but reject

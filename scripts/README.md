@@ -3,8 +3,9 @@
 This directory contains operator and development conveniences around the
 installed Chordrift application. These scripts are not part of the Rust CLI's
 public product surface, and the future UI does not depend on them. The workflow
-wrapper remains a supported operator convenience for the installed v0.1.4
-daily driver while `main` advances through the v0.2 application-facade work.
+wrapper remains a supported operator convenience for the v0.2.0 maintenance
+surface. It retains the proven v0.1.4 safety outcomes while using the current
+application facade and explicit plan-origin checks.
 
 ## Safe synchronization workflow
 
@@ -66,7 +67,7 @@ pull reports still use Chordrift's normal formatted terminal presentation.
 
 ## Provider-free v0.2 product rehearsal
 
-`chordrift-product-rehearsal.sh` uses an installed development-line binary to
+`chordrift-product-rehearsal.sh` uses an installed v0.2.0 binary to
 exercise the V020-06 through V020-10 application boundaries as one workflow:
 
 ```console
@@ -136,7 +137,7 @@ plan/readiness/confirm/apply/verify sequence.
 
 ## V020-11R mixed-intake workflow
 
-The following helpers require a compatible development-line binary. They call
+The following helpers require a compatible v0.2.0 binary. They call
 `chordrift capabilities --require …` before operational commands and fail
 closed when the installed binary lacks the exact workflow, enumerated-addition,
 or plan-origin contract. A version string alone is never treated as proof.
@@ -144,7 +145,7 @@ or plan-origin contract. A version string alone is never treated as proof.
 Run the complete guided workflow with:
 
 ```console
-$ CHORDRIFT_BIN=/path/to/development/chordrift \
+$ CHORDRIFT_BIN=/path/to/chordrift \
     scripts/chordrift-intake-wizard.sh --account personal
 ```
 

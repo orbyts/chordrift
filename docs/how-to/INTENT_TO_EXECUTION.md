@@ -1,9 +1,8 @@
 # From intent to verified execution
 
-This is the plain-language map for the maintenance safety workflow retained on
-the v0.2 development line. The released v0.1.4 tag remains the authority for
-that installed binary; the capability handshake and explicit plan origin below
-arrive with V020-11R on `main`.
+This is the plain-language map for the v0.2.0 maintenance safety workflow. The
+capability handshake and explicit plan origin are part of the current release;
+the `v0.1.4` tag remains the authority for that historical binary.
 
 ![Chordrift intent-to-execution lifecycle](../diagrams/intent-to-execution.svg)
 

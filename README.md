@@ -16,19 +16,32 @@ archaeology, curation, and orchestration: explain where music came from,
 preserve what mattered, separate external bookmarks from personal intent, and
 make the active library enjoyable again without silently losing history.
 
-## Development status
+## Release status
 
-The released daily-use application is **v0.1.4**. Its CLI commands, Spotify
-workflow, Neon schema, configuration, and plan/readiness/apply safety model
-remain supported and are documented in the task-oriented and command-reference
-guides linked below.
+**v0.2.0 is the current release.** It preserves the proven maintenance CLI
+through one application facade and adds the provider-neutral product domain,
+onboarding and audit boundaries, deterministic recipe/Spin previews, explicit
+plan origins, and additive schema migrations 0046 and 0047. The personal
+cutover pairs the v0.2.0 binary with the verified 47/47 database candidate;
+mixing a v0.1.4 binary with that database is not a supported operating mode.
+The `v0.1.4` tag remains the exact historical reference and rollback source.
 
-The `main` branch is now the **v0.2.0 development line**. V020-01 established a
+Install the locked release with:
+
+```console
+$ cargo install chordrift --version 0.2.0 --locked --force
+```
+
+Read the [v0.2.0 release notes](docs/releases/V0.2.0.md) and
+[recovery procedure](docs/how-to/RECOVERY_AND_ROLLBACK.md) before changing an
+existing database-backed installation.
+
+The v0.2.0 development sequence established a
 public, transport-neutral Rust application contract for commands, queries,
 immutable views, lifecycle events, progress, cancellation, structured errors,
 and compatibility/capability negotiation. V020-02 now routes the existing CLI
 through one application facade with exact behavioral and output parity.
-Neither slice changes how an installed v0.1.4 binary is used. V020-03 adds
+Both preserve the established command behavior. V020-03 adds
 provider-neutral ownership, identity, capability, collection, surface, recipe-
 v1, and Spin value types. V020-04 now proves account/provider isolation,
 deterministic fake generation, idempotency, cancellation, bounded retry, and
@@ -71,22 +84,21 @@ with explicit `spin_publication` origin. A provider-neutral fake execution path
 proves readiness, enumerated additions, replay, preservation of unrelated live
 membership, active-exclusion safety, and verification without wiring Spotify.
 Migration 0047 adds only the missing surface-to-recipe and Spin-plan identity
-links and remains unapplied to production Neon. V020-13 now proves a fresh
+links. V020-13 proves a fresh
 45-migration production backup restores locally, advances to 47/47, preserves
 the complete invariant report and exact required-domain hashes, passes
 `pg_amcheck`, and retains honest absence of newer plan-origin/capability rows.
 V020-14 has now created and independently verified a fresh Neon PostgreSQL 18
 candidate at 47/47 with exact newest-state invariant and durable-domain parity,
 the capability handshake, and the complete compatibility/origin test suite.
-V020-14 is complete because candidate verification and presentation of the
-separately gated plans are complete. The installed v0.1.4 binary and production
-connection remain unchanged; atomic database cutover is still unapproved. No
-Spotify call or provider write occurred. V020-15 release work is next; hosted
-transport and native clients remain later work.
+V020-14 completed candidate verification and exact cutover planning. V020-15
+packages and publishes v0.2.0 with an explicit recovery procedure. Hosted
+transport and native clients remain later work. The v0.2.0 release does not add
+a production Spotify adapter for Spin publication and never makes an implicit
+provider write.
 
-Documentation on `main` follows the same split: how-to and CLI-reference pages
-describe the working v0.1.4 surface unless marked otherwise, while design pages
-describe the implemented v0.2 foundation and the architecture being built.
+Documentation on `main` describes v0.2.0. Use the `v0.1.4` tag when exact
+historical commands or behavior are needed.
 
 Its longer-term form is a personal listening-system designer. Chordrift should
 inspect a library, propose a coherent organization, explain every
@@ -178,11 +190,11 @@ and synchronization will not wait for it; when available, the export will add
 signals such as play counts, listening duration, first play, and last play.
 
 > [!WARNING]
-> Chordrift is in early development. v0.1.4 permits remote Spotify
+> Chordrift is in early development. v0.2.0 permits remote Spotify
 > mutation only through exact, audited, resumable phase confirmations. Never
 > run an apply command without inspecting its immutable plan and readiness ID.
 
-## Released CLI foundation (v0.1.4)
+## Released CLI foundation (v0.2.0)
 
 - Storexa-backed Neon PostgreSQL connection management
 - an application-owned canonical music-library schema

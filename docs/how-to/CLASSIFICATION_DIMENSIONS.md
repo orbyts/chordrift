@@ -1,7 +1,7 @@
 # Classify tracks with user dimensions
 
-Applies to the released v0.1.4 CLI. These revisioned facts remain durable input
-to the provider-neutral collection and recipe model planned for v0.2.
+Applies to v0.2.0. These revisioned facts remain durable input to its
+provider-neutral collection and recipe model.
 
 Chordrift keeps three kinds of knowledge separate:
 

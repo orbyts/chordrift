@@ -3,8 +3,10 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the released **v0.1.4** CLI. The `main`
-branch is developing v0.2.0. V020-01 added the Rust application-contract module,
+Command status: this page documents the released **v0.2.0** CLI. It retains the
+maintenance surface from v0.1.4 through the Rust application facade and adds
+the capability, intake, and provider-free product commands described below.
+V020-01 added the Rust application-contract module,
 and V020-02 routed this complete command surface through one application facade.
 Both preserve redirected bytes, interactive presentation, database behavior,
 provider behavior, and every user-facing command exactly. V020-03 adds only
@@ -17,10 +19,10 @@ provider-neutral deterministic recipe selection as an unordered Rust value;
 V020-10 now assigns and persists the exact provider-free Spin order with typed
 reasons and an application query view. V020-11 exposes those development
 boundaries under the opt-in `product` namespace described below. V020-11R adds
-the development-only capability handshake, intake audit, explicit maintenance
+the capability handshake, intake audit, explicit maintenance
 plan origin, and enumerated playlist-write correction described below. These
-are not commands in the released v0.1.4 binary; migration 0046 is not applied
-to production Neon.
+require the v0.2 schema where stated. Use the `v0.1.4` tag for the exact older
+command reference.
 
 Chordrift reads Spotify state into Neon and changes Spotify only through an
 exact inspected plan, readiness assessment, and explicitly confirmed apply
@@ -77,10 +79,9 @@ Ordinary playlist additions append only their enumerated operation IDs. Full
 replacement is reserved for `reorder_playlist` after identical-membership
 validation; an addition cannot restore a manually removed track implicitly.
 
-## Development-line product rehearsal
+## Provider-free product rehearsal
 
-These commands exist on `main` after V020-11; they are not available in the
-released v0.1.4 binary. Database-backed commands refuse to run unless
+These commands are included in v0.2.0. Database-backed commands refuse to run unless
 `CHORDRIFT_PRODUCT_REHEARSAL=1` is set. That opt-in must be paired with an
 isolated `CHORDRIFT_DATABASE_URL` whose schema already includes migration 0046.
 The commands never run a migration or call a provider.
@@ -230,9 +231,9 @@ those variables through Apogee rather than editing shell initialization files.
 
 ### Database-v2 diagnostics and historical operator commands
 
-Database-v2 migration, cutover, cleanup, and former-project retirement are
-complete for the released v0.1.4 runtime. Do not rerun their mutating commands
-as routine maintenance. These read-only diagnostics remain useful:
+Database-v2 migration, cleanup, and former-project retirement are historical
+operations. Do not rerun their mutating commands as routine maintenance. These
+read-only diagnostics remain useful in v0.2.0:
 
 ```console
 $ chordrift db invariant-report --account personal

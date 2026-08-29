@@ -1,8 +1,7 @@
 # Add songs and preserve discovery context
 
-The capture semantics apply to released v0.1.4. The V020-11R commands and
-helpers below require a compatible development-line binary; the v0.1.4 tag
-remains the reference for that installed release.
+These capture semantics and the V020-11R capability-checked helpers apply to
+v0.2.0. The `v0.1.4` tag remains the exact historical reference.
 
 Use this workflow when you find a song you want Chordrift to remember and
 eventually place into the right listening playlist.

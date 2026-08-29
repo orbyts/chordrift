@@ -1,8 +1,8 @@
 # Synchronize and prove convergence
 
-This is the released v0.1.4 safety workflow and remains the daily operational
-path during v0.2 development. The v0.2 application facade preserves it
-exactly before any new product workflow is added.
+This is the released v0.2.0 safety workflow and remains the daily operational
+path. The application facade preserves the proven maintenance behavior while
+making plan origin and enumerated writes explicit.
 
 Use this workflow after provider edits or whenever Chordrift needs to publish an
 approved Neon change.

@@ -1,8 +1,8 @@
 # Delete or exclude a track safely
 
-Applies to the released v0.1.4 plan/readiness/apply workflow. V0.2 preserves
-this safety boundary and will expose the same lifecycle through structured
-application events.
+Applies to the v0.2.0 plan/readiness/apply workflow. The application facade
+preserves this safety boundary and exposes the lifecycle through structured
+events.
 
 Use this workflow when a resurfaced track is something you no longer want in
 active Chordrift listening playlists. In Chordrift terminology this is an
