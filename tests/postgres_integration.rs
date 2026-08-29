@@ -161,6 +161,15 @@ async fn seed_inventory_checkpoint(
         .bind(format!("playlist-{index}"))
         .fetch_one(database.pool())
         .await?;
+        sqlx::query(
+            "INSERT INTO provider_account_playlists
+             (provider_account_id, provider_playlist_id)
+             VALUES ($1, $2)",
+        )
+        .bind(provider_account_id)
+        .bind(provider_playlist_id)
+        .execute(database.pool())
+        .await?;
         let revision_id: Uuid = sqlx::query_scalar(
             "INSERT INTO provider_playlist_revisions
              (provider_playlist_id, content_sha256, item_count)
