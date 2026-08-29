@@ -25,17 +25,26 @@ fn reevaluate_reconcile_audit_allows_only_selected_old_placement_drift() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let work = temporary_work("reevaluate-reconcile-audit");
     let selected = work.join("selected.txt");
-    let expected = work.join("expected.tsv");
+    let expected_human = work.join("expected-human.tsv");
+    let expected_json = work.join("expected-json.tsv");
     let unexpected = work.join("unexpected.tsv");
     fs::write(&selected, "selected-track\n").expect("selected fixture is written");
     fs::write(
-        &expected,
+        &expected_human,
         concat!(
             "sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety\n",
             "0\treconcile\tremove_track\tOld Wrong Playlist\told-playlist\tselected-track\tExpected snapshot id=fixture · Reason=managed_provider_drift\tDestructive · Requires snapshot match\n",
         ),
     )
-    .expect("expected plan fixture is written");
+    .expect("human plan fixture is written");
+    fs::write(
+        &expected_json,
+        concat!(
+            "sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety\n",
+            "0\treconcile\tremove_track\tOld Wrong Playlist\told-playlist\tselected-track\t{\"expected_snapshot_id\":\"fixture\",\"position\":6,\"reason\":\"managed_provider_drift\"}\t{\"creates_exclusion\":false,\"destructive\":true,\"requires_snapshot_match\":true}\n",
+        ),
+    )
+    .expect("machine-readable plan fixture is written");
     fs::write(
         &unexpected,
         concat!(
@@ -60,9 +69,11 @@ fn reevaluate_reconcile_audit_allows_only_selected_old_placement_drift() {
             .expect("plan audit executes")
     };
 
-    let accepted = run_audit(&expected);
-    assert!(accepted.status.success());
-    assert!(accepted.stdout.is_empty());
+    for expected in [&expected_human, &expected_json] {
+        let accepted = run_audit(expected);
+        assert!(accepted.status.success());
+        assert!(accepted.stdout.is_empty());
+    }
     let rejected = run_audit(&unexpected);
     assert!(rejected.status.success());
     assert!(String::from_utf8_lossy(&rejected.stdout).contains("other-track"));
