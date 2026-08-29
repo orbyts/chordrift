@@ -4,6 +4,21 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.2] - 2026-08-29
+
+- Fix direct managed-playlist moves that initially appear as new-destination
+  provider drift: Chordrift now records the new canonical destination instead
+  of removing the track from it.
+- Bind one maintenance confirmation to only the reviewed plan phase. Any work
+  discovered after provider verification requires a fresh wizard review and
+  can no longer inherit the earlier confirmation.
+- Show track titles, artists, and playlist names in the ordinary-maintenance
+  summary while keeping Spotify IDs, plan IDs, and assessments as internal
+  diagnostic evidence.
+- Add fake-binary shell regressions for the recovered Dakshina Pulse → Uttara
+  Glow failure shape and for newly generated exclusion work never being
+  applied under an earlier confirmation.
+
 ## [0.2.1-alpha.1] - 2026-08-29
 
 - Replace separate intake and correction scripts with one capability-checked

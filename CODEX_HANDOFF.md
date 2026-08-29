@@ -63,21 +63,27 @@ The macOS application follows only after v0.2.1 final, the separate Classificati
 Authority contract, and a further Chordrift client-boundary refactor are proven.
 Its slices are intentionally not numbered yet.
 
-The published v0.2.1 alpha plus the verified 47/47 account database is the current
-daily-driver pair; neither hosted authority nor the separate classifier is
-required for normal CLI maintenance. Finish retiring the empty historical
-`Re-evaluate` surface. The alpha passed CI run `33275624573`, was published to
-crates.io, and was independently installed from the registry with its exact
-capability handshake. It is
-an installable checkpoint before V021-01, not a replacement for the v0.2.1
-hosted-authority sequence.
+The published v0.2.1 alpha plus the verified 47/47 account database is the
+current daily-driver pair; neither hosted authority nor the separate classifier
+is required for normal CLI maintenance. Alpha.1 passed CI run `33275624573`, was
+published to crates.io, and was independently installed from the registry with
+its exact capability handshake. Daily testing exposed a direct-move defect now
+targeted by alpha.2: new membership was treated as drift removal, then a later
+exclusion plan inherited the earlier confirmation. The affected six tracks
+were restored to Uttara Glow, verified present in Spotify and Neon, and are not
+excluded. Alpha.2 recognizes that drift shape before apply, scopes confirmation
+to the displayed plan phase only, and uses human track/playlist names in the
+wizard. These alphas are installable checkpoints before V021-01, not a
+replacement for the v0.2.1 hosted-authority sequence.
 
 ## Start the next task here: finish alpha, then V021-01
 
 V020-01 through V020-15 are complete. v0.2.0 is released and the separately
 approved personal binary/database cutover is complete. `v0.2.1-alpha.1` is
-published and locally installed. Finish the exact historical queue retirement. After that checkpoint,
-the next implementation slice is `V021-01 — Authenticated service transport`.
+published and locally installed; alpha.2 is the current corrective release
+task. Publish and install alpha.2 through CI, then optionally finish the exact
+historical queue retirement. After that checkpoint, the next implementation
+slice is `V021-01 — Authenticated service transport`.
 Do not pull product identity, credential relocation, durable jobs, deployment,
 a native client, or the separate Classification Authority into V021-01. Never
 call or write Spotify without the user-authorized exact maintenance or

@@ -142,7 +142,11 @@ field() {
     sed -n "s/^${key}: //p" "$file" | tail -n 1
 }
 
-stage "Review" "inspect exact plan $PLAN_ID"
+if [ "$CONCISE" = true ]; then
+    stage "Review" "verify the confirmed maintenance changes"
+else
+    stage "Review" "inspect exact plan $PLAN_ID"
+fi
 run_chordrift sync plan-show --account "$ACCOUNT" --plan "$PLAN_ID" --details >"$DETAIL_FILE"
 PARSED_PLAN_ID=$(field plan_id "$DETAIL_FILE")
 PLAN_ORIGIN=$(field plan_origin "$DETAIL_FILE")

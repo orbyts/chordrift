@@ -152,6 +152,12 @@ are checkpoints, not replacements for the hosted-authority goal.
   `v0.2.1-alpha.1`, then increment only for real fixes found through daily use.
   Every alpha must pass CI and install from crates.io with the capability
   handshake; never rely on the ambiguous v0.2.0 version string.
+- [x] **A021-04 — Direct-move and confirmation repair.** Recover the six tracks
+  affected by the alpha.1 Dakshina Pulse → Uttara Glow incident; recognize a
+  new-destination drift removal as canonical reassignment before provider
+  apply; bind authorization to only the reviewed plan phase; and replace opaque
+  track and plan identifiers in the ordinary wizard with human names. Publish
+  the regressions as `v0.2.1-alpha.2` through the normal CI/crates.io path.
 
 ### v0.2.1 — Hosted Rust authority
 
@@ -241,10 +247,11 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** complete `A021-02` and publish `v0.2.1-alpha.1` through CI and
-crates.io. After that installable checkpoint, begin `V021-01 — Authenticated
-service transport` without redefining domain behavior. The separate
-Classification Authority is not part of that slice.
+**Next gate:** finish the separately authorized `A021-02` empty-playlist
+retirement when desired. Alpha.2 otherwise restores safe daily maintenance;
+after that operational checkpoint, begin `V021-01 — Authenticated service
+transport` without redefining domain behavior. The separate Classification
+Authority is not part of that slice.
 
 ## Portable core and native clients
 

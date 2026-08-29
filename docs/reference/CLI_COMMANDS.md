@@ -3,7 +3,7 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the **v0.2.1-alpha.1** daily-driver CLI. It retains the
+Command status: this page documents the **v0.2.1-alpha.2** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
@@ -482,9 +482,13 @@ $ scripts/chordrift-maintain.sh --account personal
 ```
 
 Exactly one new managed destination is inferred as reclassification. Several
-destinations cause one concise question. The confirmed correction remains in
-Neon as evidence and may later be exported through a versioned Classification
-Authority contract.
+destinations cause one concise question. Ordinary output names the track,
+artist, source, and destination and hides internal Spotify and plan IDs. A move
+already completed in Spotify updates Chordrift intent without deleting the new
+membership. Any different operations discovered after verification require a
+fresh run and confirmation. The confirmed correction remains in Neon as
+evidence and may later be exported through a versioned Classification Authority
+contract.
 
 The top-level `reevaluate` command family is hidden and retained only for
 historical migration, inspection, export, and one-time retirement. Do not run

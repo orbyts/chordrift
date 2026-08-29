@@ -4,7 +4,7 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.1-alpha.1**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-alpha.2**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
 and verified 47/47 database together; see
@@ -69,10 +69,13 @@ $ scripts/chordrift-maintain.sh --account personal
 It observes Spotify once, infers unambiguous exclusions, intake cleanup, and
 already-reviewed reassignment. A direct move from one managed playlist to one
 other managed playlist is inferred as reclassification; only multiple possible
-destinations require a choice. It shows the exact provider-visible net change and asks once for
+destinations require a choice. The summary uses track, artist, and playlist
+names rather than internal identifiers. It shows the exact provider-visible net change and asks once for
 authorization. Internal proposal revisions, plans, readiness assessments,
 receipts, bounded verification retries, and Neon evidence remain enforced but
-are not values the user copies. `--review-only` never writes to Spotify.
+are not values the user copies. The authorization covers only that reviewed
+plan phase; newly observed follow-up work requires another run. `--review-only`
+never writes to Spotify.
 
 The v0.2.0 output groups the result into provider, current-library, and
 listening-evidence tables and reports elapsed time for each phase. The provider

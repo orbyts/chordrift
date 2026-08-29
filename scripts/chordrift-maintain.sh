@@ -11,6 +11,7 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 ACCOUNT=personal
 SKIP_PULL=false
 REVIEW_ONLY=false
+CONFIRMED_PLAN=
 ARTWORK_MANIFEST=$REPO_ROOT/artwork/canonical/drift-atlas-v4/manifest.json
 ARTWORK_REVIEW_MANIFEST=
 
@@ -29,6 +30,7 @@ while [ "$#" -gt 0 ]; do
         --account) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; ACCOUNT=$2; shift 2 ;;
         --skip-pull) SKIP_PULL=true; shift ;;
         --review-only) REVIEW_ONLY=true; shift ;;
+        --confirmed-plan) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; CONFIRMED_PLAN=$2; shift 2 ;;
         --artwork-manifest) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; ARTWORK_MANIFEST=$2; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) printf 'Unknown option: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
@@ -36,7 +38,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$ACCOUNT" in ''|*[!A-Za-z0-9_-]*) printf 'Invalid account label.\n' >&2; exit 2 ;; esac
-[ "$REVIEW_ONLY" = true ] || { [ -t 0 ] && [ -t 1 ]; } || {
+[ "$REVIEW_ONLY" = true ] || [ -n "$CONFIRMED_PLAN" ] || { [ -t 0 ] && [ -t 1 ]; } || {
     printf 'Maintenance requires an interactive terminal.\n' >&2
     exit 2
 }
@@ -106,27 +108,65 @@ find_ambiguous() {
 find_managed_moves() {
     : >"$AUTO_MOVES_FILE"
     : >"$MOVE_AMBIGUOUS_FILE"
-    awk -F '\t' '$1 ~ /^[0-9]+$/ && $3 == "exclude_track" { print $4 "\t" $6 }' \
-        "$DETAIL_FILE" | while IFS="$(printf '\t')" read -r old_destination spotify_id; do
+    awk -F '\t' '$1 ~ /^[0-9]+$/ &&
+        ($3 == "exclude_track" ||
+         ($3 == "remove_track" && $7 ~ /"reason":"managed_provider_drift"/)) {
+            print $3 "\t" $4 "\t" $6
+        }' "$DETAIL_FILE" |
+        while IFS="$(printf '\t')" read -r operation plan_destination spotify_id; do
         INSPECTION_FILE=$WORK_DIR/inspect-$spotify_id.txt
         CANDIDATES_FILE=$WORK_DIR/candidates-$spotify_id.txt
         run tracks inspect --account "$ACCOUNT" --spotify-id "$spotify_id" >"$INSPECTION_FILE"
-        awk -v old="$old_destination" '
-            /^  - .* \(position [0-9]+, role .* signal canonical\)$/ {
-                value = $0
-                sub(/^  - /, "", value)
-                sub(/ \(position .*/, "", value)
-                if (tolower(value) != tolower(old)) print value
-            }
-        ' "$INSPECTION_FILE" | sort -u >"$CANDIDATES_FILE"
+        if [ "$operation" = remove_track ]; then
+            # A newly observed managed membership can first appear as provider
+            # drift. If the same track left an approved canonical placement,
+            # the provider already completed a direct move: update intent and
+            # never "correct" Spotify by deleting the new membership.
+            if ! awk -v destination="$plan_destination" '
+                /^  - .* \(position [0-9]+, role .* signal canonical\)$/ {
+                    value = $0
+                    sub(/^  - /, "", value)
+                    sub(/ \(position .*/, "", value)
+                    if (tolower(value) == tolower(destination)) found = 1
+                }
+                END { exit !found }
+            ' "$INSPECTION_FILE"; then
+                continue
+            fi
+            awk -v destination="$plan_destination" '
+                /^  - .* \(position [0-9]+, key .* source .*\)$/ {
+                    value = $0
+                    sub(/^  - /, "", value)
+                    sub(/ \(position .*/, "", value)
+                    if (tolower(value) != tolower(destination)) print value
+                }
+            ' "$INSPECTION_FILE" | sort -u >"$CANDIDATES_FILE"
+        else
+            awk -v old="$plan_destination" '
+                /^  - .* \(position [0-9]+, role .* signal canonical\)$/ {
+                    value = $0
+                    sub(/^  - /, "", value)
+                    sub(/ \(position .*/, "", value)
+                    if (tolower(value) != tolower(old)) print value
+                }
+            ' "$INSPECTION_FILE" | sort -u >"$CANDIDATES_FILE"
+        fi
         candidate_count=$(wc -l <"$CANDIDATES_FILE" | tr -d ' ')
         track=$(sed -n 's/^track: //p' "$INSPECTION_FILE" | tail -n 1)
         title=${track%% — *}
         artists=${track#* — }
         case "$candidate_count" in
             1)
-                destination=$(sed -n '1p' "$CANDIDATES_FILE")
-                printf '%s\t%s\t%s\t%s\n' "$title" "$artists" "$spotify_id" "$destination" \
+                candidate=$(sed -n '1p' "$CANDIDATES_FILE")
+                if [ "$operation" = remove_track ]; then
+                    old_destination=$candidate
+                    destination=$plan_destination
+                else
+                    old_destination=$plan_destination
+                    destination=$candidate
+                fi
+                printf '%s\t%s\t%s\t%s\t%s\n' \
+                    "$title" "$artists" "$spotify_id" "$old_destination" "$destination" \
                     >>"$AUTO_MOVES_FILE"
                 ;;
             0) ;;
@@ -158,14 +198,15 @@ resolve_ambiguous() {
     [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || return 0
     [ "$REVIEW_ONLY" = false ] || return 0
     ensure_editable_proposal
-    while IFS="$(printf '\t')" read -r title artists spotify_id destination; do
+    while IFS="$(printf '\t')" read -r title artists spotify_id old_destination destination; do
         stable_key=$(resolve_destination "$destination") || {
             printf 'Inferred destination "%s" is no longer unique.\n' "$destination" >&2
             exit 3
         }
         run proposals assign --account "$ACCOUNT" --spotify-id "$spotify_id" \
             --playlist "$stable_key" --reason "Inferred from direct provider move" >/dev/null
-        printf 'Inferred move: %s — %s → %s\n' "$title" "$artists" "$destination"
+        printf 'Recorded move: %s — %s · %s → %s\n' \
+            "$title" "$artists" "$old_destination" "$destination"
     done <"$AUTO_MOVES_FILE"
     [ ! -s "$AMBIGUOUS_FILE" ] || printf '\nChordrift needs one decision for each track below.\n'
     while IFS="$(printf '\t')" read -r source title artists spotify_id; do
@@ -239,7 +280,7 @@ if [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ]; then
     if [ "$REVIEW_ONLY" = true ]; then
         if [ -s "$AUTO_MOVES_FILE" ]; then
             printf 'Inferred moves:\n'
-            awk -F '\t' '{ print $1 " — " $2 " → " $4 }' "$AUTO_MOVES_FILE"
+            awk -F '\t' '{ print $1 " — " $2 " · " $4 " → " $5 }' "$AUTO_MOVES_FILE"
         fi
         if [ -s "$AMBIGUOUS_FILE" ]; then
             printf 'Needs a destination:\n'
@@ -272,30 +313,40 @@ OPERATIONS=$(awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" { count++ } END 
 }
 
 printf '\nChordrift will make these Spotify changes:\n'
-awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" {
-    action = $3
-    if (action == "add_track") action = "add"
-    else if (action == "remove_track") action = "remove"
-    else if (action == "exclude_track") action = "remember removal"
-    else if (action == "restore_track") action = "restore"
-    printf "  %s: %s%s%s\n", action, $4, ($6 == "-" ? "" : " · "), ($6 == "-" ? "" : $6)
-}' "$DETAIL_FILE"
-
-[ "$REVIEW_ONLY" = false ] || { printf 'Review only; Spotify unchanged.\n'; exit 0; }
-printf '\nApply these changes? [y/N] ' >/dev/tty
-IFS= read -r answer </dev/tty
-case "$answer" in y|Y|yes|YES|Yes) ;; *) printf 'Cancelled; Spotify unchanged.\n'; exit 0 ;; esac
-
-iterations=0
-while [ "$iterations" -lt 8 ]; do
-    iterations=$((iterations + 1))
-    create_plan
-    phase=$(awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" { print $2; exit }' "$DETAIL_FILE")
-    [ -n "$phase" ] || { printf 'Done. Ordinary maintenance is in sync; separate retirement remains pending.\n'; exit 0; }
-    case "$phase" in publish|reconcile|cleanup) ;; *) printf 'Stopped before unsupported phase %s.\n' "$phase" >&2; exit 3 ;; esac
-    "$SCRIPT_DIR/chordrift-plan-phase.sh" --account "$ACCOUNT" --plan "$PLAN_ID" \
-        --phase "$phase" --workflow-confirmation "$PLAN_ID" --concise
+awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" { print $3 "\t" $4 "\t" $6 }' \
+    "$DETAIL_FILE" | while IFS="$(printf '\t')" read -r action playlist spotify_id; do
+    label=
+    if [ "$spotify_id" != - ]; then
+        INSPECTION_FILE=$WORK_DIR/summary-$spotify_id.txt
+        run tracks inspect --account "$ACCOUNT" --spotify-id "$spotify_id" >"$INSPECTION_FILE"
+        label=$(sed -n 's/^track: //p' "$INSPECTION_FILE" | tail -n 1)
+    fi
+    [ -n "$label" ] || label='Track'
+    case "$action" in
+        add_track) printf '  Add: %s → %s\n' "$label" "$playlist" ;;
+        restore_track) printf '  Restore: %s → %s\n' "$label" "$playlist" ;;
+        remove_track) printf '  Remove: %s from %s\n' "$label" "$playlist" ;;
+        exclude_track) printf '  Remember removal: %s from %s\n' "$label" "$playlist" ;;
+        remove_saved_track) printf '  Remove from Likes: %s\n' "$label" ;;
+        *) printf '  %s: %s\n' "$action" "$playlist" ;;
+    esac
 done
 
-printf 'Stopped after eight convergence steps; inspect unexpected provider churn.\n' >&2
-exit 3
+[ "$REVIEW_ONLY" = false ] || { printf 'Review only; Spotify unchanged.\n'; exit 0; }
+if [ -n "$CONFIRMED_PLAN" ]; then
+    [ "$CONFIRMED_PLAN" = "$PLAN_ID" ] || {
+        printf 'The confirmed maintenance plan changed; nothing was applied.\n' >&2
+        exit 3
+    }
+else
+    printf '\nApply these changes? [y/N] ' >/dev/tty
+    IFS= read -r answer </dev/tty
+    case "$answer" in y|Y|yes|YES|Yes) ;; *) printf 'Cancelled; Spotify unchanged.\n'; exit 0 ;; esac
+fi
+
+phase=$(awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" { print $2; exit }' "$DETAIL_FILE")
+case "$phase" in publish|reconcile|cleanup) ;; *) printf 'Stopped before unsupported phase %s.\n' "$phase" >&2; exit 3 ;; esac
+"$SCRIPT_DIR/chordrift-plan-phase.sh" --account "$ACCOUNT" --plan "$PLAN_ID" \
+    --phase "$phase" --workflow-confirmation "$PLAN_ID" --concise
+
+printf 'Done with the confirmed changes. Run maintenance again to review any newly observed work.\n'

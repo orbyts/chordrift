@@ -274,7 +274,7 @@ esac
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Fixture Song — Fixture Artist → New Vibe"));
+    assert!(stdout.contains("Fixture Song — Fixture Artist · Old Vibe → New Vibe"));
     assert!(!stdout.contains("Needs a destination"));
     assert!(
         !fs::read_to_string(&log)
@@ -282,5 +282,222 @@ esac
             .contains("proposals assign")
     );
     assert!(!fs::read_to_string(&log).unwrap().contains("reevaluate"));
+    fs::remove_dir_all(work).unwrap();
+}
+
+#[test]
+fn provider_drift_removal_is_recognized_as_a_direct_move_before_apply() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let work = temporary_work("unified-provider-drift-move");
+    let fake = work.join("chordrift-fake");
+    let log = work.join("commands.log");
+    write_fake(
+        &fake,
+        r##"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"$FAKE_CHORDRIFT_LOG"
+case "$*" in
+  capabilities*) printf '%s\n' '{"schema_version":1}' ;;
+  "sync pull --account personal") printf '%s\n' 'sync: current' ;;
+  "sync plan --account personal") printf '%s\n' 'plan_id: 00000000-0000-0000-0000-000000000041' 'operations: 1' ;;
+  "sync plan-show --account personal --plan 00000000-0000-0000-0000-000000000041 --details")
+    printf '%b\n' 'plan_id: 00000000-0000-0000-0000-000000000041' \
+      'plan_origin: maintenance' 'snapshot_current: true' \
+      'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety' \
+      '0\treconcile\tremove_track\tNew Vibe\tnew\tfixture-track\t{"reason":"managed_provider_drift"}\t{}'
+    ;;
+  "tracks inspect --account personal --spotify-id fixture-track")
+    printf '%s\n' 'track: Fixture Song — Fixture Artist' 'current_playlists: 1' \
+      '  - New Vibe (position 1, role managed, signal canonical)' \
+      'canonical_placements: 1' \
+      '  - Old Vibe (position 4, key playlist-old, source approved)'
+    ;;
+  "intake audit --account personal")
+    printf '%b\n' 'state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id'
+    ;;
+  *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
+esac
+"##,
+    );
+
+    let output = Command::new(root.join("scripts/chordrift-maintain.sh"))
+        .arg("--review-only")
+        .env("CHORDRIFT_BIN", &fake)
+        .env("FAKE_CHORDRIFT_LOG", &log)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Fixture Song — Fixture Artist · Old Vibe → New Vibe"));
+    assert!(!stdout.contains("fixture-track"));
+    assert!(!fs::read_to_string(&log).unwrap().contains("sync apply"));
+    fs::remove_dir_all(work).unwrap();
+}
+
+#[test]
+fn provider_drift_move_updates_intent_without_a_provider_apply() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let work = temporary_work("unified-provider-drift-intent");
+    let fake = work.join("chordrift-fake");
+    let log = work.join("commands.log");
+    let first_plan = "00000000-0000-0000-0000-000000000061";
+    let second_plan = "00000000-0000-0000-0000-000000000062";
+    let proposal = "00000000-0000-0000-0000-000000000063";
+    write_fake(
+        &fake,
+        &format!(
+            r##"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"$FAKE_CHORDRIFT_LOG"
+case "$*" in
+  capabilities*) printf '%s\n' '{{"schema_version":1}}' ;;
+  "sync pull --account personal") printf '%s\n' 'sync: current' ;;
+  "sync plan --account personal")
+    count=$(grep -c '^sync plan --account personal$' "$FAKE_CHORDRIFT_LOG")
+    if [ "$count" -eq 1 ]; then
+      printf '%s\n' 'plan_id: {first_plan}' 'operations: 1'
+    else
+      printf '%s\n' 'plan_id: {second_plan}' 'operations: 0'
+    fi
+    ;;
+  "sync plan-show --account personal --plan {first_plan} --details")
+    printf '%b\n' 'plan_id: {first_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
+      'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety' \
+      '0\treconcile\tremove_track\tNew Vibe\tnew\tfixture-track\t{{"reason":"managed_provider_drift"}}\t{{}}'
+    ;;
+  "sync plan-show --account personal --plan {second_plan} --details")
+    printf '%b\n' 'plan_id: {second_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
+      'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety'
+    ;;
+  "tracks inspect --account personal --spotify-id fixture-track")
+    printf '%s\n' 'track: Fixture Song — Fixture Artist' 'current_playlists: 1' \
+      '  - New Vibe (position 1, role managed, signal canonical)' \
+      'canonical_placements: 1' \
+      '  - Old Vibe (position 4, key playlist-old, source approved)'
+    ;;
+  "intake audit --account personal")
+    printf '%b\n' 'state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id'
+    ;;
+  "proposals status --account personal")
+    printf '%s\n' 'proposal: proposed' 'generation_id: {proposal}' 'coverage_complete: true'
+    ;;
+  "proposals list --account personal")
+    printf '%b\n' 'position\tcount\tstable_key\tname' '1\t1\tplaylist-new\tNew Vibe'
+    ;;
+  "proposals assign --account personal --spotify-id fixture-track --playlist playlist-new --reason Inferred from direct provider move")
+    printf '%s\n' 'proposal: proposed'
+    ;;
+  "proposals approve --account personal --confirm {proposal}") printf '%s\n' 'proposal: approved' ;;
+  "artwork status --account personal") printf '%s\n' 'proposal_generation_id: {proposal}' ;;
+  *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
+esac
+"##
+        ),
+    );
+
+    let output = Command::new(root.join("scripts/chordrift-maintain.sh"))
+        .args(["--confirmed-plan", first_plan])
+        .env("CHORDRIFT_BIN", &fake)
+        .env("FAKE_CHORDRIFT_LOG", &log)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let commands = fs::read_to_string(&log).unwrap();
+    assert!(commands.contains(
+        "proposals assign --account personal --spotify-id fixture-track --playlist playlist-new"
+    ));
+    assert!(!commands.contains("sync readiness"));
+    assert!(!commands.contains("sync apply"));
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Recorded move: Fixture Song — Fixture Artist · Old Vibe → New Vibe")
+    );
+    fs::remove_dir_all(work).unwrap();
+}
+
+#[test]
+fn one_confirmation_never_applies_work_from_the_next_plan() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let work = temporary_work("unified-confirmation-boundary");
+    let fake = work.join("chordrift-fake");
+    let log = work.join("commands.log");
+    let first_plan = "00000000-0000-0000-0000-000000000051";
+    let second_plan = "00000000-0000-0000-0000-000000000052";
+    let assessment = "00000000-0000-0000-0000-000000000053";
+    let apply = "00000000-0000-0000-0000-000000000054";
+    write_fake(
+        &fake,
+        &format!(
+            r##"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"$FAKE_CHORDRIFT_LOG"
+case "$*" in
+  capabilities*) printf '%s\n' '{{"schema_version":1}}' ;;
+  "sync pull --account personal") printf '%s\n' 'sync: current' ;;
+  "sync plan --account personal")
+    count=$(grep -c '^sync plan --account personal$' "$FAKE_CHORDRIFT_LOG")
+    if [ "$count" -eq 1 ]; then
+      printf '%s\n' 'plan_id: {first_plan}' 'operations: 1'
+    else
+      printf '%s\n' 'plan_id: {second_plan}' 'operations: 1'
+    fi
+    ;;
+  "sync plan-show --account personal --plan {first_plan} --details")
+    printf '%b\n' 'plan_id: {first_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
+      'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety' \
+      '0\treconcile\texclude_track\tOld Vibe\told\tfixture-track\t{{}}\t{{}}'
+    ;;
+  "tracks inspect --account personal --spotify-id fixture-track")
+    printf '%s\n' 'track: Fixture Song — Fixture Artist' 'current_playlists: 0' 'canonical_placements: 0'
+    ;;
+  "intake audit --account personal")
+    printf '%b\n' 'state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id'
+    ;;
+  "sync readiness --account personal --plan {first_plan} --probe")
+    printf '%s\n' 'assessment_id: {assessment}' 'apply_readiness: ready'
+    ;;
+  "sync apply --account personal --assessment {assessment} --phase reconcile --confirm {assessment}")
+    printf '%s\n' 'apply_run_id: {apply}'
+    ;;
+  "sync apply-show --account personal --run {apply}") printf '%s\n' 'spotify_apply: succeeded' ;;
+  *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
+esac
+"##
+        ),
+    );
+
+    let output = Command::new(root.join("scripts/chordrift-maintain.sh"))
+        .args(["--confirmed-plan", first_plan])
+        .env("CHORDRIFT_BIN", &fake)
+        .env("FAKE_CHORDRIFT_LOG", &log)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let commands = fs::read_to_string(&log).unwrap();
+    assert_eq!(commands.matches("sync apply --account personal").count(), 1);
+    assert_eq!(commands.matches("sync plan --account personal").count(), 2);
+    assert!(
+        !commands.contains(
+            "sync plan-show --account personal --plan 00000000-0000-0000-0000-000000000052"
+        )
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Fixture Song — Fixture Artist"));
+    assert!(!stdout.contains("fixture-track"));
+    assert!(!stdout.contains(first_plan));
     fs::remove_dir_all(work).unwrap();
 }

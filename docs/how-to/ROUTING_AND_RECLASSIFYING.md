@@ -17,6 +17,11 @@ paired provider edits as one reclassification and shows it in the review as
 managed destinations, the wizard asks which one is canonical. It then shows
 one net-change summary and asks once before any provider write.
 
+A direct move already completed in Spotify changes only Chordrift's canonical
+intent; the wizard must not remove the track from its new destination. If
+verification reveals different follow-up work, the wizard stops and requires a
+new review instead of reusing the earlier confirmation.
+
 The correction remains durable evidence in Neon. Today it changes canonical
 placement without retraining a model. A future Classification Authority may
 consume confirmed movement as reviewed training evidence through a separate,

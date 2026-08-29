@@ -152,8 +152,11 @@ $ CHORDRIFT_BIN=/path/to/chordrift \
 The wizard covers Likes, named intake, managed-playlist removals, exclusions,
 and direct moves between managed playlists. It observes Spotify, infers a
 reclassification when exactly one new managed destination is visible, asks for
-an existing destination only when placement is ambiguous, prints the exact
-provider-visible net change, and asks once. It requires
+an existing destination only when placement is ambiguous, prints track, artist,
+and playlist names for the exact net change, and asks once. That confirmation
+authorizes only the displayed plan phase; newly observed work requires another
+run. A provider move already completed by the user updates canonical intent and
+does not remove the track from its new destination. It requires
 `plan_origin: maintenance` and refuses new playlist/artwork design, retirement,
 unexpected work, and Spin publication. `--review-only` never applies. It never
 queries or populates the retired `Re-evaluate` surface.
