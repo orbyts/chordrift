@@ -23,6 +23,17 @@ as part of upgrade verification.
 
 After switching the binary and connection together, run only read-only checks:
 
+For the current personal CLI deployment only, Apogee selects
+`~/.config/apogee/secrets.env` through
+`~/.config/apogee/config.toml`. An already-running shell may still inherit the
+former exported URL. Open a fresh terminal, or explicitly run
+`unset CHORDRIFT_DATABASE_URL` before reloading `eval "$(apogee)"`; otherwise a
+status check can misleadingly reach the former database.
+
+Apogee is not part of Chordrift's product architecture. Hosted and GUI clients
+must use authenticated Chordrift sessions and must never load environment files
+or connect directly to Neon.
+
 ```console
 $ chordrift --version
 $ chordrift capabilities

@@ -5,15 +5,13 @@ shows the first-run journey, the intended database boundaries, and the matching
 Rust domain types. The companion
 [portable core and native clients overview](client-core-platform-architecture.svg)
 shows how the CLI and future native applications consume the same Rust-owned
-behavior. Existing database-v2 names remain unchanged. Migration 0046 now
-implements the additive recipe, collection, surface, onboarding, and Spin table
-names shown here, but remains isolated from production Neon.
+behavior. Existing database-v2 names remain unchanged. Migrations 0046 and 0047
+implement the additive recipe, collection, surface, onboarding, Spin, and
+publication-plan names shown here and are active in the v0.2.0 database.
 
-Status: active v0.2 architecture, updated 2026-08-28. V020-01 through V020-14
-are complete; release work is next, while atomic database cutover still awaits
-separate approval. This
-document is a design contract, not authorization to apply a production
-migration, cut over a connection, or write to a provider.
+Status: active v0.2 architecture, updated 2026-08-29. V020-01 through V020-15
+and the separately approved personal cutover are complete. This document is a
+design contract, not authorization to write to a provider.
 
 ## Current implementation status
 
@@ -79,13 +77,13 @@ migration, cut over a connection, or write to a provider.
   invariants, exact required-domain hashes, idempotent migration replay,
   `pg_amcheck`, and the complete intake fake-binary suite. No candidate,
   production migration, connection cutover, or provider action occurred.
-- **Complete — V020-14:** the newest-state backup restored into a
+- **Complete — V020-14/V020-15:** the newest-state backup restored into a
   fresh Neon PostgreSQL 18 candidate, advanced to 47/47, and retained exact
   invariant plus 21-table durable-domain parity. The current-main capability,
   maintenance/intake, Spin-origin, fake-provider, and disposable PostgreSQL
-  gates pass. The installed v0.1.4 binary and production connection remain
-  unchanged while the exact atomic cutover plan awaits approval; Spotify was
-  not invoked and no provider write is proposed.
+  gates pass. The released v0.2.0 binary is now paired with the refreshed 47/47
+  database; the final read-only gates preserved current inventory, exclusions,
+  and Re-evaluate state. Spotify was not invoked during cutover.
 - **Not implemented yet:** approved collection authoring,
   real-provider Spin execution, hosted transport, and native clients.
   Those remain separate roadmap slices and must not be inferred from the

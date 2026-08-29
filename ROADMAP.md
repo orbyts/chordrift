@@ -15,12 +15,13 @@ the one slice that is currently allowed to start. Later narrative sections
 preserve design rationale and completed migration history; they do not override
 this order.
 
-Normal use of released v0.1.4 continues throughout v0.2 development. The live
-`chordrift` database remains authoritative for listening evidence, configured
-intake, exclusions, Re-evaluate state, classifications, and verified sync
-history. v0.2 development uses isolated local PostgreSQL rehearsals. It must not
-dual-write experimental state into the live database or change Spotify unless a
-later exact plan receives separate approval.
+Released v0.2.0 is now the daily-use CLI, paired with the verified 47/47 Neon
+database. It remains authoritative for listening evidence, configured intake,
+exclusions, Re-evaluate state, classifications, and verified sync history. The
+former v0.1.4 binary/config/database pair and final pre-cutover backup are
+retained only for controlled recovery. No development slice may dual-write
+experimental state or change Spotify unless an exact plan receives separate
+approval.
 
 ### v0.1.x maintenance line
 
@@ -118,7 +119,7 @@ deterministic provider-free Spins.
   migration, exact parity, runtime, capability, compatibility verification,
   and presentation of both plans are complete. Connection cutover remains a
   separate ungranted approval; no Spotify write is currently proposed.
-- [ ] **V020-15 — Release v0.2.0.** Complete formatting, strict Clippy, unit/doc/
+- [x] **V020-15 — Release v0.2.0.** Complete formatting, strict Clippy, unit/doc/
   PostgreSQL integration tests, packaging, recovery documentation, GitHub
   release, and crates.io publication after the personal candidate is verified.
 
@@ -204,9 +205,9 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next slice:** `V020-15 — Release v0.2.0`. The separately documented database
-cutover remains unapproved and release work must not treat it—or any Spotify
-access/write—as implicitly authorized.
+**Next slice:** `V021-01 — Authenticated service transport`. v0.2.0 is released
+and the separately approved personal binary/database cutover is complete. It
+performed no Spotify call or provider write; those remain separately gated.
 
 ## Portable core and native clients
 

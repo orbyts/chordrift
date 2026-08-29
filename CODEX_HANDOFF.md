@@ -6,7 +6,7 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-08-28.
+Last updated: 2026-08-29.
 
 ## Product-experience rule for every task
 
@@ -38,27 +38,71 @@ must not download provider audio, flatten explicit language/region/tradition
 facts into opaque similarity, or train on private corrections without consent.
 See `docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md`.
 
-## Start the next task here: V020-15 release v0.2.0
+## Start the next task here: V021-01 authenticated service transport
 
-V020-01 through V020-14 are complete. Implement only `V020-15 — Release
-v0.2.0` from the authoritative execution map. Complete formatting, strict
-Clippy, unit/doc/PostgreSQL integration tests, packaging, recovery documentation,
-the GitHub release, and crates.io publication. Verify the candidate evidence is
-still internally consistent, but do not repeat production or provider work
-merely to release.
+V020-01 through V020-15 are complete. v0.2.0 is released and the separately
+approved personal binary/database cutover is complete. Implement only
+`V021-01 — Authenticated service transport` from the authoritative execution
+map. Expose the existing command/query/event contract without redefining domain
+behavior. Do not infer authority for a Spotify write, old-project deletion, or
+rollback-copy deletion.
 
-V020-15 does not authorize the separately documented database/binary cutover,
-Spotify access, or a provider write. The installed v0.1.4 binary and production
-connection remain unchanged unless the user separately and explicitly approves
-the exact cutover plan. Release approval and database cutover approval are
-different decisions.
+## Released v0.2.0 and current personal deployment
+
+Release commit `a079eba0eb71955969cf29186e9d73cffae1cd82` is annotated as
+`v0.2.0`. CI run `33262366722` passed formatting, strict Clippy, all targets,
+documentation tests, fresh/upgrade PostgreSQL 18 integration, Spotify
+persistence round-trip, and clean packaging. The GitHub release and crates.io
+package are public. The crate installed from crates.io reports `chordrift 0.2.0`
+and advertises all required maintenance intake, enumerated-addition,
+plan-origin, and Spin-publication-plan capabilities.
+
+The user separately approved the personal cutover after a final read-only
+Spotify pull, backup, candidate refresh, and exact parity proof. The installed
+v0.2.0 binary is paired with database `chordrift_cutover` in verified Neon
+project `royal-snow-31539822`; it is healthy at 47/47 migrations. Apogee selects
+`~/.config/apogee/secrets.env` through `~/.config/apogee/config.toml`. An
+already-running shell can retain the old exported URL, so open a fresh terminal
+or unset `CHORDRIFT_DATABASE_URL` before `eval "$(apogee)"` when verifying a
+connection change. This is current operator plumbing only. Never make Apogee a
+Chordrift dependency, product contract, installer requirement, or GUI setting;
+hosted/native clients authenticate to the Rust authority and retain only a
+revocable Chordrift session in the OS credential store.
+
+Final read-only checks preserved snapshot
+`dc96cc26-c917-4bb4-8a7f-4b3c5e836f66`, 22 playlists, 1,514 memberships, 387
+active exclusions, 1,718 canonical assignments, 149,419 listening events,
+15,606 historical identities, and the exact three-track `Re-evaluate` queue.
+The latest plan `060bdf95-3781-431a-b6a4-658e3e57b92b` is current,
+zero-operation, and `maintenance`; intake audit has zero items. Canonicalized
+data across all 21 durable-domain tables matched the final source exactly at
+SHA-256
+`589a14de30552589c50a88a9e2bcefc7ace0c63cbf7aa15cc3cc3e061273ef03`.
+
+The final pre-cutover backup is preserved at
+`$DROPBOX/Music/Chordrift/Backups/2026-08-29-v020-14-final-cutover/`; its custom
+dump is 22,688,076 bytes with SHA-256
+`2410b5107eb3d68e13c60bcef8b2ddbfce091a83f2c9182dd5c7b3569611dede`.
+Mode-preserving local rollback copies are
+`~/.cargo/bin/chordrift-v0.1.4-pre-v020` and
+`~/.config/apogee/secrets.env.pre-v020-cutover-20260829`. Retain the former
+45/45 Neon project. After any v0.2 database write, never point v0.1.4 at the old
+database without an explicit reconciliation; see
+`docs/how-to/RECOVERY_AND_ROLLBACK.md`.
+
+No Spotify write occurred. The final pull before backup was read-only and made
+six Spotify requests; the release and database cutover invoked no Spotify
+command. Spin publication still has no production Spotify mutation adapter.
 
 ## V020-14 completed candidate evidence
 
 V020-14 completed candidate creation, verification, and presentation of the
 exact plans. See `docs/design/CANDIDATE_CUTOVER_GATE_V020_14.md`.
 
-## Separate unapproved database cutover gate
+## Historical database cutover plan — completed 2026-08-29
+
+The following plan is retained as the approval record. Its gate has been
+executed successfully; the current state is the v0.2.0 deployment above.
 
 If approved, take another final read-only production status, invariant, and
 logical backup before changing anything. If production advanced after the
@@ -78,8 +122,9 @@ write can be approved or performed in V020-14.
 The verified candidate is Neon project `royal-snow-31539822`, named
 `chordrift-v020-candidate-20260828`, in `aws-us-west-2` on PostgreSQL 18.6. It
 is healthy at 47/47 migrations and uses 184,295,424 synthetic bytes against a
-536,870,912-byte branch limit. The installed v0.1.4 binary and production
-connection remain unchanged; production remains 45/45.
+536,870,912-byte branch limit. At the V020-14 gate, the installed v0.1.4 binary
+and production connection were still unchanged at 45/45; the later completed
+V020-15 state is recorded above.
 
 The newest read-only source backup is preserved under
 `$DROPBOX/Music/Chordrift/Backups/2026-08-28-v020-14-candidate-source/`; its
@@ -297,18 +342,14 @@ all-zero recipe is rejected. Validated deserialization cannot bypass provider-
 namespace, confidence, recipe, membership, or Spin ownership invariants. The
 module contains no SQL, provider payload, terminal, platform, or transport type.
 
-Documentation on `main` now uses one explicit status convention. `README.md`,
-`docs/HOW_TO_CHORDRIFT.md`, the focused how-to pages, and the CLI reference
-document the working v0.1.4 daily driver. V0.2 design documents state which
-foundation is implemented, which slice is next, and which parts remain planned.
-The database-v2 design is labeled as a completed foundation plus chronological
-historical execution record; intermediate migration gates are not current
-operator instructions. Preserve this distinction as later slices land.
+Documentation on `main` now describes released v0.2.0 and the architecture
+ahead. The `v0.1.4` tag is the exact authority for that historical release.
+Completed slice documents retain chronological evidence but must label old
+approval gates as historical rather than current operator instructions.
 
-The user continues normal cleanup and listening with released v0.1.4 while
-v0.2.0 is built. Treat any real v0.1.4 defect as event-driven `release/0.1`
-maintenance; do not retrofit v0.2 features into that line. Experimental v0.2
-database work remains local until the separately approved candidate gate.
+The user now performs normal cleanup and listening with released v0.2.0. Treat
+v0.1.4 only as a controlled recovery source; do not retrofit v0.2 features into
+that line or run the two database generations as concurrent authorities.
 
 The repository also includes `scripts/chordrift-intake-move.sh` for the current
 daily-driver transition. It uses the installed binary to record one or more

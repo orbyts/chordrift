@@ -47,8 +47,8 @@ v1, and Spin value types. V020-04 now proves account/provider isolation,
 deterministic fake generation, idempotency, cancellation, bounded retry, and
 visible capability failure entirely in tests. V020-05 adds migration 0046's
 provider-neutral ownership, collection, surface, recipe, onboarding, Spin, and
-publication-link schema after fresh and migration-45 PostgreSQL 18 rehearsals.
-It remains unapplied to production Neon. V020-06 now adds the provider-read-only
+publication-link schema after fresh and migration-45 PostgreSQL 18 rehearsals;
+it is now active in the 47/47 v0.2.0 database. V020-06 adds the provider-read-only
 onboarding boundary: one selected immutable inventory and optional extended
 evidence are content-addressed through the shared facade, while account
 ownership, capability failure, idempotent replay, ignored existing intent, and
@@ -92,10 +92,10 @@ V020-14 has now created and independently verified a fresh Neon PostgreSQL 18
 candidate at 47/47 with exact newest-state invariant and durable-domain parity,
 the capability handshake, and the complete compatibility/origin test suite.
 V020-14 completed candidate verification and exact cutover planning. V020-15
-packages and publishes v0.2.0 with an explicit recovery procedure. Hosted
-transport and native clients remain later work. The v0.2.0 release does not add
-a production Spotify adapter for Spin publication and never makes an implicit
-provider write.
+packaged and published v0.2.0 with an explicit recovery procedure, then paired
+the released binary with the parity-checked 47/47 candidate. Hosted transport
+and native clients remain later work. The release and cutover made no Spotify
+write; v0.2.0 still has no production Spotify adapter for Spin publication.
 
 Documentation on `main` describes v0.2.0. Use the `v0.1.4` tag when exact
 historical commands or behavior are needed.
@@ -167,10 +167,14 @@ application owns scheduling, progress, notifications, and recovery without
 opening surprise Terminal windows, spawning visible helper shells, or repeating
 browser/OAuth prompts. OAuth uses the system browser only when consent is
 actually required. Secrets remain in 1Password and the operating-system
-credential store, with Apogee providing approved environment configuration for
-development; they never belong in project files, logs, command history, or
-shell startup files. Long work reports useful progress, can be cancelled, and
-resumes safely after interruption.
+credential store. Apogee is only an optional local CLI/development environment
+loader; it is not a Chordrift dependency, application contract, installation
+requirement, or GUI configuration mechanism. Shipped clients authenticate to
+the hosted Rust authority and keep only a revocable Chordrift session in the OS
+credential store; they never receive Neon or provider credentials. Secrets
+never belong in project files, logs, command history, or shell startup files.
+Long work reports useful progress, can be cancelled, and resumes safely after
+interruption.
 
 Existing immutable plans, readiness assessments, resumable apply history,
 post-write pulls, and zero-operation convergence remain the execution

@@ -31,7 +31,7 @@ and verified 47/47 database together; see
 | Review recovered intake/apply compatibility | [Recovered intake compatibility](design/RECOVERED_INTAKE_COMPATIBILITY_V020_11R.md) | Enumerated writes, capability handshake, complete intake adapter, and maintenance/Spin origin separation. |
 | Review approved Spin publication planning | [Spin publication-plan integration](design/SPIN_PUBLICATION_PLAN_V020_12.md) | Checkpoint-bound immutable plan plus fake-provider readiness/replay/verification; no production provider write path. |
 | Review the newest live-state migration proof | [Latest-state migration rehearsal](design/LATEST_STATE_MIGRATION_REHEARSAL_V020_13.md) | Fresh read-only backup restored and migrated locally from 45/47 to 47/47 with exact invariant/domain parity; no candidate or cutover. |
-| Review the verified candidate and exact cutover gates | [Candidate and personal cutover gate](design/CANDIDATE_CUTOVER_GATE_V020_14.md) | Fresh Neon candidate verified at 47/47 with exact parity; installed v0.1.4 and production connection unchanged; database approval pending and no Spotify write proposed. |
+| Review the verified candidate and cutover evidence | [Candidate and personal cutover gate](design/CANDIDATE_CUTOVER_GATE_V020_14.md) | Historical gate plus the completed v0.2.0 binary/database outcome; no Spotify write occurred. |
 | Review the long-term classification/model vision | [Classification knowledge foundation](design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md) | Future shared canonical knowledge and versioned vectors plus an isolated private account overlay; lawful-input, consent, and evaluation prerequisites are explicit. |
 | Review database-v2 decisions | [Database architecture v2](design/DATABASE_ARCHITECTURE_V2.md) | Completed v0.1.4 foundation and labeled historical execution record. |
 | Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
@@ -260,8 +260,8 @@ a provider action. V020-11R now adds the capability-checked intake adapter,
 enumerated playlist writes, and explicit maintenance plan origins. V020-12 adds
 approved, checkpoint-bound Spin plans and fake-provider verification without a
 production mutation adapter. V020-13 proves the newest live state migrates
-cleanly on an isolated restore. V020-14's fresh Neon candidate now passes exact
-parity and runtime gates, completing the slice; the installed v0.1.4 binary
-remains active because atomic database cutover is separately unapproved. See the
+cleanly on an isolated restore. V020-14's fresh Neon candidate passed exact
+parity and runtime gates, and V020-15 paired it with the released v0.2.0 binary
+after preserving the former deployment for rollback. See the
 [playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) for
 the complete staged direction.

@@ -5,16 +5,17 @@ This document records the exact additive schema introduced by migration
 the provider-neutral Rust domain model and the
 [playlist product architecture](PLAYLIST_PRODUCT_ARCHITECTURE.md).
 
-Status: implemented and rehearsed on isolated PostgreSQL 18 on 2026-08-27.
-Migration 0046 is present on the v0.2 development line only. It has not been
-applied to production Neon and does not change the released v0.1.4 runtime.
+Status: implemented and first rehearsed on isolated PostgreSQL 18 on
+2026-08-27. Migration 0046 is now part of released v0.2.0 and active in the
+verified 47/47 personal database. The remainder of this page preserves the
+original additive-schema rationale and rehearsal evidence.
 
 V020-12 adds the narrowly scoped
 `0047_spin_publication_plans.sql` evolution. It adds an optional account-safe
 recipe link to `playlist_surfaces` and allows a `sync_runs` dry-run to bind
 either the existing maintenance proposal or an explicit checkpoint-backed
-`spin_publication` origin. It creates no second publication ledger and remains
-unapplied to production. See
+`spin_publication` origin. It creates no second publication ledger and is also
+active in the v0.2.0 database. See
 [Spin publication-plan integration](SPIN_PUBLICATION_PLAN_V020_12.md).
 
 V020-13 subsequently restored a fresh 45-migration production backup into

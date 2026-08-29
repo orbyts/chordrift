@@ -1,9 +1,23 @@
 # Candidate and personal cutover gate — V020-14
 
-Status: V020-14 complete on 2026-08-28; database cutover is
-awaiting separate explicit approval. No production database mutation,
-connection change, installed-binary change, Spotify access, or provider write
-has occurred.
+Status: V020-14 completed on 2026-08-28 as an approval gate. The user later
+approved cutover, and V020-15 completed it on 2026-08-29 using a newer final
+backup and the released v0.2.0 binary. No Spotify write occurred.
+
+## Post-gate outcome
+
+The final source snapshot was `dc96cc26-c917-4bb4-8a7f-4b3c5e836f66`.
+Production and the refreshed `chordrift_cutover` database had byte-identical
+canonicalized data across all 21 durable-domain tables, SHA-256
+`589a14de30552589c50a88a9e2bcefc7ace0c63cbf7aa15cc3cc3e061273ef03`.
+The released v0.2.0 binary and 47/47 database were switched as one pair after
+preserving the v0.1.4 binary/config pair. Read-only verification preserved 22
+playlists, 1,514 memberships, 387 active exclusions, and all three
+`Re-evaluate` tracks; the latest plan was current, zero-operation, and
+`maintenance`. No Spotify command was invoked during cutover.
+
+This page otherwise retains the V020-14 evidence and approval plan as a
+historical execution record.
 
 ## Verified candidate
 
