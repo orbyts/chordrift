@@ -155,11 +155,19 @@ ask_value() {
 require_exact() {
     label=$1
     expected=$2
-    entered=$(ask_value "Type the exact $label $expected: ")
-    [ "$entered" = "$expected" ] || {
-        printf 'Confirmation did not match. Nothing after this gate was changed.\n' >&2
-        exit 1
-    }
+    while true; do
+        entered=$(ask_value "Type the exact $label $expected (or 'cancel'): ")
+        if [ "$entered" = "$expected" ]; then
+            return 0
+        fi
+        case "$entered" in
+            cancel|CANCEL|Cancel)
+                printf 'Cancelled. Nothing after this gate was changed.\n'
+                exit 0
+                ;;
+        esac
+        printf 'Confirmation did not match; please copy the complete value and try again.\n' >&2
+    done
 }
 
 create_plan() {

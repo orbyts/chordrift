@@ -209,12 +209,21 @@ READINESS_STATUS=$(field apply_readiness "$READINESS_FILE" | sed 's/ (already cu
 run_chordrift sync readiness-show --account "$ACCOUNT" --assessment "$ASSESSMENT_ID"
 
 printf '\nPlan %s is ready for phase %s.\n' "$PLAN_ID" "$PHASE"
-printf 'Type the assessment UUID to apply it: '
-IFS= read -r CONFIRMATION </dev/tty
-[ "$CONFIRMATION" = "$ASSESSMENT_ID" ] || {
-    printf 'Confirmation did not match. No apply was attempted.\n' >&2
-    exit 1
-}
+while true; do
+    printf "Type the assessment UUID %s to apply it (or 'cancel'): " \
+        "$ASSESSMENT_ID" >/dev/tty
+    IFS= read -r CONFIRMATION </dev/tty
+    if [ "$CONFIRMATION" = "$ASSESSMENT_ID" ]; then
+        break
+    fi
+    case "$CONFIRMATION" in
+        cancel|CANCEL|Cancel)
+            printf 'Cancelled. No apply was attempted.\n'
+            exit 0
+            ;;
+    esac
+    printf 'Confirmation did not match; please copy the complete value and try again.\n' >&2
+done
 
 stage "Apply" "execute the exact confirmed $PHASE phase"
 run_chordrift sync apply \
