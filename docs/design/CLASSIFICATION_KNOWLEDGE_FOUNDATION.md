@@ -30,6 +30,14 @@ playlist label. It has several independently supported dimensions, including:
 The result should be a multidimensional evidence profile, not one opaque genre
 or vibe assignment.
 
+The complete inventory of private behavior, lifecycle and preference signals;
+shared candidate evidence; negative evidence; promotion boundaries; and
+evaluation obligations lives in
+[`LEARNING_SIGNAL_TAXONOMY.md`](LEARNING_SIGNAL_TAXONOMY.md). Its separation is
+normative: shared classification describes the recording, Chordrift's private
+model describes the listener's relationship to it, and placement/recipe policy
+decides where it should appear now.
+
 The authority never turns that profile directly into a fixed playlist
 taxonomy. Chordrift may combine or split the same rich claims differently for
 each account according to collection depth and explicit preference. A large

@@ -316,6 +316,10 @@ model artifacts, evaluation gates, and developer Classification Lab. It is not
 a Chordrift database module or a v0.2.1 implementation slice. Its complete
 architectural brief is preserved in
 `docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md` for the new project task.
+The complete learning inventory and evidence-promotion rules are preserved in
+`docs/design/LEARNING_SIGNAL_TAXONOMY.md`: private listener behavior and
+lifecycle, shared lawful classification evidence, and Chordrift placement and
+recipe policy remain three separate planes.
 
 Chordrift will eventually consume its versioned classification contract like
 any other external dependency. Chordrift owns private provider/account state,

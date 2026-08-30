@@ -154,6 +154,10 @@ developer Classification Lab. Chordrift will own only the narrow query adapter,
 private exact-fingerprint cache, account-specific placement policy, and provider
 operations. The complete project brief is preserved in the
 [classification knowledge foundation](docs/design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md).
+The accompanying
+[learning-signal taxonomy](docs/design/LEARNING_SIGNAL_TAXONOMY.md) separates
+private listening and lifecycle evidence, shared lawful classification inputs,
+and account-specific placement/recipe decisions.
 The classifier is expected to generalize to unseen recordings from compact
 reviewed knowledge—not store one final answer for every song—and return ranked
 claims, calibrated confidence, alternatives, evidence, and unknown/conflict

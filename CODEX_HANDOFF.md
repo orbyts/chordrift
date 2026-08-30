@@ -245,6 +245,14 @@ placement evidence; Chordrift must not scrape unselected recommendations.
 
 ## Current checkpoint: begin V021-05
 
+The future Classification Authority signal inventory is explicit in
+`docs/design/LEARNING_SIGNAL_TAXONOMY.md`. Read it with
+`CLASSIFICATION_KNOWLEDGE_FOUNDATION.md` before planning that separate project.
+Do not collapse private preference/lifecycle evidence, shared classification,
+and Chordrift placement policy into one model or store. Raw provider/account
+behavior is private by default; shared learning requires a minimized explicit
+contribution plus provenance, rights, privacy, review, and evaluation.
+
 Daily-driver UX findings that do not invalidate the current safety contract are
 batched in `docs/design/DAILY_DRIVER_EDGE_CASE_LEDGER.md`. The first queued
 refinement is rediscovered-favorite context: when a Like is already represented
