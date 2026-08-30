@@ -55,6 +55,7 @@ done
     --require maintenance.unified-workflow.v1 \
     --require maintenance.intake-audit.v1 \
     --require maintenance.enumerated-playlist-additions.v1 \
+    --require maintenance.bulk-plan-preview.v1 \
     --require plan-origin.v1
 
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chordrift-maintain.XXXXXX")
@@ -109,72 +110,14 @@ find_ambiguous() {
 find_managed_moves() {
     : >"$AUTO_MOVES_FILE"
     : >"$MOVE_AMBIGUOUS_FILE"
-    awk -F '\t' '$1 ~ /^[0-9]+$/ &&
-        ($3 == "exclude_track" ||
-         ($3 == "remove_track" && $7 ~ /"reason":"managed_provider_drift"/)) {
-            print $3 "\t" $4 "\t" $6
-        }' "$DETAIL_FILE" |
-        while IFS="$(printf '\t')" read -r operation plan_destination spotify_id; do
-        INSPECTION_FILE=$WORK_DIR/inspect-$spotify_id.txt
-        CANDIDATES_FILE=$WORK_DIR/candidates-$spotify_id.txt
-        run tracks inspect --account "$ACCOUNT" --spotify-id "$spotify_id" >"$INSPECTION_FILE"
-        if [ "$operation" = remove_track ]; then
-            # A newly observed managed membership can first appear as provider
-            # drift. If the same track left an approved canonical placement,
-            # the provider already completed a direct move: update intent and
-            # never "correct" Spotify by deleting the new membership.
-            if ! awk -v destination="$plan_destination" '
-                /^  - .* \(position [0-9]+, role .* signal canonical\)$/ {
-                    value = $0
-                    sub(/^  - /, "", value)
-                    sub(/ \(position .*/, "", value)
-                    if (tolower(value) == tolower(destination)) found = 1
-                }
-                END { exit !found }
-            ' "$INSPECTION_FILE"; then
-                continue
-            fi
-            awk -v destination="$plan_destination" '
-                /^  - .* \(position [0-9]+, key .* source .*\)$/ {
-                    value = $0
-                    sub(/^  - /, "", value)
-                    sub(/ \(position .*/, "", value)
-                    if (tolower(value) != tolower(destination)) print value
-                }
-            ' "$INSPECTION_FILE" | sort -u >"$CANDIDATES_FILE"
-        else
-            awk -v old="$plan_destination" '
-                /^  - .* \(position [0-9]+, role .* signal canonical\)$/ {
-                    value = $0
-                    sub(/^  - /, "", value)
-                    sub(/ \(position .*/, "", value)
-                    if (tolower(value) != tolower(old)) print value
-                }
-            ' "$INSPECTION_FILE" | sort -u >"$CANDIDATES_FILE"
-        fi
-        candidate_count=$(wc -l <"$CANDIDATES_FILE" | tr -d ' ')
-        track=$(sed -n 's/^track: //p' "$INSPECTION_FILE" | tail -n 1)
-        title=${track%% — *}
-        artists=${track#* — }
-        case "$candidate_count" in
-            1)
-                candidate=$(sed -n '1p' "$CANDIDATES_FILE")
-                if [ "$operation" = remove_track ]; then
-                    old_destination=$candidate
-                    destination=$plan_destination
-                else
-                    old_destination=$plan_destination
-                    destination=$candidate
-                fi
-                printf '%s\t%s\t%s\t%s\t%s\n' \
-                    "$title" "$artists" "$spotify_id" "$old_destination" "$destination" \
-                    >>"$AUTO_MOVES_FILE"
-                ;;
-            0) ;;
-            *) printf 'managed_move\t%s\t%s\t%s\n' "$title" "$artists" "$spotify_id" \
-                >>"$MOVE_AMBIGUOUS_FILE" ;;
-        esac
-    done
+    awk -F '\t' '$1 ~ /^[0-9]+$/ && $11 == "direct_move" {
+            print $9 "\t" $10 "\t" $6 "\t" $12 "\t" $13
+        }
+        $1 ~ /^[0-9]+$/ && $11 == "ambiguous_move" {
+            print "managed_move\t" $9 "\t" $10 "\t" $6
+        }' "$DETAIL_FILE" >"$WORK_DIR/managed-moves.tsv"
+    awk -F '\t' 'NF == 5 { print }' "$WORK_DIR/managed-moves.tsv" >"$AUTO_MOVES_FILE"
+    awk -F '\t' 'NF == 4 { print }' "$WORK_DIR/managed-moves.tsv" >"$MOVE_AMBIGUOUS_FILE"
 }
 
 ensure_editable_proposal() {
@@ -292,6 +235,7 @@ if [ "$SKIP_PULL" = false ]; then
     run sync pull --account "$ACCOUNT" >/dev/null
 fi
 
+printf 'Analyzing observed changes…\n'
 create_plan
 find_managed_moves
 find_ambiguous
@@ -332,15 +276,14 @@ OPERATIONS=$(awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" { count++ } END 
 }
 
 printf '\nChordrift will make these Spotify changes:\n'
-awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" { print $3 "\t" $4 "\t" $6 }' \
-    "$DETAIL_FILE" | while IFS="$(printf '\t')" read -r action playlist spotify_id; do
-    label=
-    if [ "$spotify_id" != - ]; then
-        INSPECTION_FILE=$WORK_DIR/summary-$spotify_id.txt
-        run tracks inspect --account "$ACCOUNT" --spotify-id "$spotify_id" >"$INSPECTION_FILE"
-        label=$(sed -n 's/^track: //p' "$INSPECTION_FILE" | tail -n 1)
+awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" { print $3 "\t" $4 "\t" $9 "\t" $10 }' \
+    "$DETAIL_FILE" | while IFS="$(printf '\t')" read -r action playlist title artists; do
+    if [ -n "$title" ] && [ "$title" != - ]; then
+        label=$title
+        [ -z "$artists" ] || [ "$artists" = - ] || label="$label — $artists"
+    else
+        label=Track
     fi
-    [ -n "$label" ] || label='Track'
     case "$action" in
         add_track) printf '  Add: %s → %s\n' "$label" "$playlist" ;;
         restore_track) printf '  Restore: %s → %s\n' "$label" "$playlist" ;;

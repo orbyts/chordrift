@@ -3,7 +3,7 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the **v0.2.1-alpha.4** daily-driver CLI. It retains the
+Command status: this page documents the **v0.2.1-alpha.5** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
@@ -46,6 +46,7 @@ Inspect or require exact installed-binary features as one JSON object:
 $ chordrift capabilities
 $ chordrift capabilities \
     --require maintenance.intake-workflow.v1 \
+    --require maintenance.bulk-plan-preview.v1 \
     --require maintenance.enumerated-playlist-additions.v1 \
     --require plan-origin.v1 \
     --require spin-publication-plan.v1
@@ -1124,6 +1125,11 @@ $ chordrift sync plan-show --account personal
 $ chordrift sync plan-show --account personal --details
 $ chordrift sync plan-show --account personal --plan PLAN_UUID --details
 ```
+
+`--details` preserves its original eight TSV columns and appends track title,
+artists, maintenance interpretation, old destination, and destination. The
+ordinary wizard consumes these set-based annotations instead of launching a
+separate Neon-backed track inspection for every operation.
 
 Operations run through ordered safety phases: publish approved destinations,
 reconcile managed drift, consume eligible inbox entries, then retire legacy

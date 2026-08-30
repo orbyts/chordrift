@@ -124,6 +124,29 @@ pub struct PlannedOperation {
     pub safety: Value,
 }
 
+/// Human-facing context and ordinary-maintenance interpretation for one plan row.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MaintenanceAnnotation {
+    /// Track title, when the operation targets a track.
+    pub title: Option<String>,
+    /// Display artists, when the operation targets a track.
+    pub artists: Option<String>,
+    /// `ordinary`, `direct_move`, or `ambiguous_move`.
+    pub interpretation: String,
+    /// Previous canonical destination for an inferred move.
+    pub old_destination: Option<String>,
+    /// Newly observed canonical destination for an inferred move.
+    pub destination: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MaintenanceTrackContext {
+    title: String,
+    artists: String,
+    current_canonical_playlists: Vec<String>,
+    canonical_placements: Vec<String>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct PlanOperationInput {
     phase: String,
@@ -969,6 +992,173 @@ pub async fn show(
         })
         .collect::<Result<Vec<_>>>()?;
     Ok((report, row.try_get("snapshot_current")?, operations))
+}
+
+/// Loads all human labels and direct-move evidence for a plan in one set-based query.
+pub async fn maintenance_annotations(
+    database: &Database,
+    account_label: &str,
+    operations: &[PlannedOperation],
+) -> Result<BTreeMap<i32, MaintenanceAnnotation>> {
+    let spotify_ids = operations
+        .iter()
+        .filter_map(|operation| operation.spotify_track_id.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if spotify_ids.is_empty() {
+        return Ok(operations
+            .iter()
+            .map(|operation| (operation.sequence, ordinary_annotation(None)))
+            .collect());
+    }
+    let rows = sqlx::query(
+        "WITH selected(provider_track_id) AS (
+             SELECT DISTINCT unnest($2::text[])
+         )
+         SELECT selected.provider_track_id, track.title,
+                COALESCE((
+                    SELECT string_agg(artist.name, ', ' ORDER BY link.position)
+                    FROM track_artists link
+                    JOIN artists artist ON artist.id = link.artist_id
+                    WHERE link.track_id = track.id
+                ), '') AS artists,
+                ARRAY(
+                    SELECT current.name
+                    FROM current_spotify_playlists current
+                    JOIN provider_observed_playlist_tracks membership
+                      ON membership.snapshot_id = current.snapshot_id
+                     AND membership.provider_playlist_id = current.provider_playlist_id
+                    JOIN provider_tracks observed
+                      ON observed.id = membership.provider_track_id
+                    WHERE current.provider_account_id = account.id
+                      AND observed.track_id = track.id
+                      AND current.signal_class = 'canonical'
+                    ORDER BY lower(current.name), membership.position
+                ) AS current_canonical_playlists,
+                ARRAY(
+                    SELECT revision.name
+                    FROM playlist_generations generation
+                    JOIN playlists playlist ON playlist.generation_id = generation.id
+                    JOIN playlist_name_revisions revision
+                      ON revision.playlist_id = playlist.id AND revision.selected
+                    JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+                    WHERE generation.id = (
+                        SELECT newest.id FROM playlist_generations newest
+                        WHERE newest.provider_account_id = account.id
+                        ORDER BY newest.created_at DESC, newest.id DESC LIMIT 1
+                    ) AND membership.track_id = track.id
+                    ORDER BY lower(revision.name), membership.position
+                ) AS canonical_placements
+         FROM selected
+         CROSS JOIN LATERAL (
+             SELECT id FROM provider_accounts
+             WHERE provider = 'spotify' AND account_label = $1
+         ) account
+         JOIN provider_tracks provider
+           ON provider.provider = 'spotify'
+          AND provider.provider_track_id = selected.provider_track_id
+         JOIN tracks track ON track.id = provider.track_id
+         ORDER BY selected.provider_track_id",
+    )
+    .bind(account_label)
+    .bind(&spotify_ids)
+    .fetch_all(database.pool())
+    .await?;
+    let contexts = rows
+        .into_iter()
+        .map(|row| {
+            Ok((
+                row.try_get::<String, _>("provider_track_id")?,
+                MaintenanceTrackContext {
+                    title: row.try_get("title")?,
+                    artists: row.try_get("artists")?,
+                    current_canonical_playlists: row.try_get("current_canonical_playlists")?,
+                    canonical_placements: row.try_get("canonical_placements")?,
+                },
+            ))
+        })
+        .collect::<Result<BTreeMap<_, _>>>()?;
+    Ok(operations
+        .iter()
+        .map(|operation| {
+            let context = operation
+                .spotify_track_id
+                .as_ref()
+                .and_then(|spotify_id| contexts.get(spotify_id));
+            (
+                operation.sequence,
+                annotate_maintenance_operation(operation, context),
+            )
+        })
+        .collect())
+}
+
+fn annotate_maintenance_operation(
+    operation: &PlannedOperation,
+    context: Option<&MaintenanceTrackContext>,
+) -> MaintenanceAnnotation {
+    let Some(context) = context else {
+        return ordinary_annotation(None);
+    };
+    let mut annotation = ordinary_annotation(Some(context));
+    let candidates = match operation.operation_type.as_str() {
+        "remove_track"
+            if operation.payload.get("reason").and_then(Value::as_str)
+                == Some("managed_provider_drift")
+                && contains_name(
+                    &context.current_canonical_playlists,
+                    &operation.playlist_name,
+                ) =>
+        {
+            context
+                .canonical_placements
+                .iter()
+                .filter(|name| !name.eq_ignore_ascii_case(&operation.playlist_name))
+                .cloned()
+                .collect::<BTreeSet<_>>()
+        }
+        "exclude_track" => context
+            .current_canonical_playlists
+            .iter()
+            .filter(|name| !name.eq_ignore_ascii_case(&operation.playlist_name))
+            .cloned()
+            .collect::<BTreeSet<_>>(),
+        _ => return annotation,
+    };
+    match candidates.len() {
+        1 => {
+            let candidate = candidates
+                .into_iter()
+                .next()
+                .expect("one inferred destination candidate");
+            annotation.interpretation = "direct_move".to_owned();
+            if operation.operation_type == "remove_track" {
+                annotation.old_destination = Some(candidate);
+                annotation.destination = Some(operation.playlist_name.clone());
+            } else {
+                annotation.old_destination = Some(operation.playlist_name.clone());
+                annotation.destination = Some(candidate);
+            }
+        }
+        count if count > 1 => annotation.interpretation = "ambiguous_move".to_owned(),
+        _ => {}
+    }
+    annotation
+}
+
+fn ordinary_annotation(context: Option<&MaintenanceTrackContext>) -> MaintenanceAnnotation {
+    MaintenanceAnnotation {
+        title: context.map(|value| value.title.clone()),
+        artists: context.map(|value| value.artists.clone()),
+        interpretation: "ordinary".to_owned(),
+        old_destination: None,
+        destination: None,
+    }
+}
+
+fn contains_name(names: &[String], expected: &str) -> bool {
+    names.iter().any(|name| name.eq_ignore_ascii_case(expected))
 }
 
 fn playlist_diff(
@@ -1974,7 +2164,8 @@ fn json_string(value: &Value, key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CurrentPlaylist, DesiredPlaylist, DesiredTrack, PlanOperationInput,
+        CurrentPlaylist, DesiredPlaylist, DesiredTrack, MaintenanceTrackContext,
+        PlanOperationInput, PlannedOperation, annotate_maintenance_operation,
         canonical_retirement_operations, count_kind, hex_sha256, operation_position,
         operation_rank, phase_rank, playlist_diff, stored_plan_origin, summarize,
     };
@@ -1995,6 +2186,69 @@ mod tests {
             payload: json!({}),
             safety: json!({"deferred": deferred}),
         }
+    }
+
+    fn planned_operation(kind: &str, playlist: &str, reason: &str) -> PlannedOperation {
+        PlannedOperation {
+            sequence: 0,
+            phase: "reconcile".to_owned(),
+            operation_type: kind.to_owned(),
+            operation_key: "fixture".to_owned(),
+            playlist_name: playlist.to_owned(),
+            spotify_playlist_id: Some("playlist".to_owned()),
+            spotify_track_id: Some("track".to_owned()),
+            payload: json!({"reason": reason}),
+            safety: json!({}),
+        }
+    }
+
+    #[test]
+    fn bulk_preview_recognizes_both_direct_move_shapes() {
+        let context = MaintenanceTrackContext {
+            title: "Fixture Song".to_owned(),
+            artists: "Fixture Artist".to_owned(),
+            current_canonical_playlists: vec!["New Vibe".to_owned()],
+            canonical_placements: vec!["Old Vibe".to_owned()],
+        };
+        let drift = annotate_maintenance_operation(
+            &planned_operation("remove_track", "New Vibe", "managed_provider_drift"),
+            Some(&context),
+        );
+        assert_eq!(drift.interpretation, "direct_move");
+        assert_eq!(drift.old_destination.as_deref(), Some("Old Vibe"));
+        assert_eq!(drift.destination.as_deref(), Some("New Vibe"));
+
+        let exclusion = annotate_maintenance_operation(
+            &planned_operation("exclude_track", "Old Vibe", "removed"),
+            Some(&context),
+        );
+        assert_eq!(exclusion.interpretation, "direct_move");
+        assert_eq!(exclusion.old_destination.as_deref(), Some("Old Vibe"));
+        assert_eq!(exclusion.destination.as_deref(), Some("New Vibe"));
+    }
+
+    #[test]
+    fn bulk_preview_preserves_ambiguous_and_ordinary_removals() {
+        let ambiguous = MaintenanceTrackContext {
+            title: "Fixture Song".to_owned(),
+            artists: "Fixture Artist".to_owned(),
+            current_canonical_playlists: vec!["New Vibe".to_owned(), "Third Vibe".to_owned()],
+            canonical_placements: vec!["Old Vibe".to_owned()],
+        };
+        let annotation = annotate_maintenance_operation(
+            &planned_operation("exclude_track", "Old Vibe", "removed"),
+            Some(&ambiguous),
+        );
+        assert_eq!(annotation.interpretation, "ambiguous_move");
+
+        let ordinary = annotate_maintenance_operation(
+            &planned_operation("remove_track", "New Vibe", "managed_provider_drift"),
+            Some(&MaintenanceTrackContext {
+                current_canonical_playlists: Vec::new(),
+                ..ambiguous
+            }),
+        );
+        assert_eq!(ordinary.interpretation, "ordinary");
     }
 
     #[test]

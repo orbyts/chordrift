@@ -1868,14 +1868,26 @@ async fn execute_cli_handlers(cli: Cli, output: &mut impl Write) -> Result<()> {
                         )?;
                     }
                     if details {
+                        let annotations = sync_plan::maintenance_annotations(
+                            &database,
+                            &account,
+                            &operations,
+                        )
+                        .await?;
                         writeln!(
                             output,
-                            "sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety"
+                            "sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety\ttrack\tartists\tmaintenance_interpretation\told_destination\tdestination"
                         )?;
                         for operation in operations {
+                            let annotation = annotations.get(&operation.sequence).ok_or_else(|| {
+                                ChordriftError::Configuration(format!(
+                                    "plan operation {} has no maintenance annotation",
+                                    operation.sequence
+                                ))
+                            })?;
                             writeln!(
                                 output,
-                                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
                                 operation.sequence,
                                 operation.phase,
                                 operation.operation_type,
@@ -1883,7 +1895,12 @@ async fn execute_cli_handlers(cli: Cli, output: &mut impl Write) -> Result<()> {
                                 operation.spotify_playlist_id.as_deref().unwrap_or("-"),
                                 operation.spotify_track_id.as_deref().unwrap_or("-"),
                                 clean_cell(&operation.payload.to_string()),
-                                clean_cell(&operation.safety.to_string())
+                                clean_cell(&operation.safety.to_string()),
+                                clean_cell(annotation.title.as_deref().unwrap_or("-")),
+                                clean_cell(annotation.artists.as_deref().unwrap_or("-")),
+                                annotation.interpretation,
+                                clean_cell(annotation.old_destination.as_deref().unwrap_or("-")),
+                                clean_cell(annotation.destination.as_deref().unwrap_or("-"))
                             )?;
                         }
                     }
@@ -6460,10 +6477,10 @@ fn write_status(output: &mut impl Write, status: &db::DatabaseStatus) -> Result<
 fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
     use crate::contract::{
         BINARY_CAPABILITY_SCHEMA_VERSION, BinaryCapabilityManifest,
-        CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS, CAPABILITY_MAINTENANCE_INTAKE_AUDIT,
-        CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW, CAPABILITY_PLAN_ORIGIN,
-        CAPABILITY_SPIN_PUBLICATION_PLAN, CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW,
-        CapabilityAvailability, ContractVersionRange,
+        CAPABILITY_BULK_MAINTENANCE_PREVIEW, CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS,
+        CAPABILITY_MAINTENANCE_INTAKE_AUDIT, CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW,
+        CAPABILITY_PLAN_ORIGIN, CAPABILITY_SPIN_PUBLICATION_PLAN,
+        CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW, CapabilityAvailability, ContractVersionRange,
     };
 
     BinaryCapabilityManifest {
@@ -6471,6 +6488,10 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
         binary_version: env!("CARGO_PKG_VERSION").to_owned(),
         contract_versions: ContractVersionRange::exact(crate::contract::CONTRACT_VERSION),
         capabilities: std::collections::BTreeMap::from([
+            (
+                CAPABILITY_BULK_MAINTENANCE_PREVIEW.to_owned(),
+                CapabilityAvailability::Available,
+            ),
             (
                 CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS.to_owned(),
                 CapabilityAvailability::Available,

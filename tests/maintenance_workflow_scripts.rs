@@ -34,6 +34,10 @@ fn installed_binary_advertises_unified_maintenance() {
         manifest["capabilities"]["maintenance.unified-workflow.v1"],
         "available"
     );
+    assert_eq!(
+        manifest["capabilities"]["maintenance.bulk-plan-preview.v1"],
+        "available"
+    );
 }
 
 #[test]
@@ -171,6 +175,7 @@ esac
             .contains("proposals extend")
     );
     assert!(!fs::read_to_string(&log).unwrap().contains("reevaluate"));
+    assert!(!fs::read_to_string(&log).unwrap().contains("tracks inspect"));
     fs::remove_dir_all(work).unwrap();
 }
 
@@ -253,7 +258,7 @@ case "$*" in
   "sync plan-show --account personal --plan 00000000-0000-0000-0000-000000000031 --details")
     printf '%s\n' 'plan_origin: maintenance' 'snapshot_current: true' \
       'sequence	phase	operation	playlist	spotify_playlist_id	spotify_track_id	payload	safety' \
-      '0	reconcile	exclude_track	Old Vibe	old	fixture-track	{}	{}'
+      '0	reconcile	exclude_track	Old Vibe	old	fixture-track	{}	{}	Fixture Song	Fixture Artist	direct_move	Old Vibe	New Vibe'
     ;;
   "tracks inspect --account personal --spotify-id fixture-track")
     printf '%s\n' 'track: Fixture Song — Fixture Artist' 'current_playlists: 1' \
@@ -304,7 +309,7 @@ case "$*" in
     printf '%b\n' 'plan_id: 00000000-0000-0000-0000-000000000041' \
       'plan_origin: maintenance' 'snapshot_current: true' \
       'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety' \
-      '0\treconcile\tremove_track\tNew Vibe\tnew\tfixture-track\t{"reason":"managed_provider_drift"}\t{}'
+      '0\treconcile\tremove_track\tNew Vibe\tnew\tfixture-track\t{"reason":"managed_provider_drift"}\t{}\tFixture Song\tFixture Artist\tdirect_move\tOld Vibe\tNew Vibe'
     ;;
   "tracks inspect --account personal --spotify-id fixture-track")
     printf '%s\n' 'track: Fixture Song — Fixture Artist' 'current_playlists: 1' \
@@ -335,6 +340,7 @@ esac
     assert!(stdout.contains("Fixture Song — Fixture Artist · Old Vibe → New Vibe"));
     assert!(!stdout.contains("fixture-track"));
     assert!(!fs::read_to_string(&log).unwrap().contains("sync apply"));
+    assert!(!fs::read_to_string(&log).unwrap().contains("tracks inspect"));
     fs::remove_dir_all(work).unwrap();
 }
 
@@ -367,8 +373,8 @@ case "$*" in
   "sync plan-show --account personal --plan {first_plan} --details")
     printf '%b\n' 'plan_id: {first_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
       'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety' \
-      '0\treconcile\tremove_track\tNew Vibe\tnew\tfixture-track\t{{"reason":"managed_provider_drift"}}\t{{}}' \
-      '1\treconcile\tremove_track\tNew Vibe\tnew\tfixture-track-2\t{{"reason":"managed_provider_drift"}}\t{{}}'
+      '0\treconcile\tremove_track\tNew Vibe\tnew\tfixture-track\t{{"reason":"managed_provider_drift"}}\t{{}}\tFixture Song\tFixture Artist\tdirect_move\tOld Vibe\tNew Vibe' \
+      '1\treconcile\tremove_track\tNew Vibe\tnew\tfixture-track-2\t{{"reason":"managed_provider_drift"}}\t{{}}\tSecond Song\tFixture Artist\tdirect_move\tOld Vibe\tNew Vibe'
     ;;
   "sync plan-show --account personal --plan {second_plan} --details")
     printf '%b\n' 'plan_id: {second_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
@@ -439,6 +445,7 @@ esac
             .contains("Recording 2 inferred move(s) in Chordrift")
     );
     assert!(String::from_utf8_lossy(&output.stdout).contains("Recorded 2 move(s) in Chordrift"));
+    assert!(!commands.contains("tracks inspect"));
     fs::remove_dir_all(work).unwrap();
 }
 
@@ -472,7 +479,7 @@ case "$*" in
   "sync plan-show --account personal --plan {first_plan} --details")
     printf '%b\n' 'plan_id: {first_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
       'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety' \
-      '0\treconcile\texclude_track\tOld Vibe\told\tfixture-track\t{{}}\t{{}}'
+      '0\treconcile\texclude_track\tOld Vibe\told\tfixture-track\t{{}}\t{{}}\tFixture Song\tFixture Artist\tordinary\t-\t-'
     ;;
   "tracks inspect --account personal --spotify-id fixture-track")
     printf '%s\n' 'track: Fixture Song — Fixture Artist' 'current_playlists: 0' 'canonical_placements: 0'
@@ -517,5 +524,6 @@ esac
     assert!(stdout.contains("Fixture Song — Fixture Artist"));
     assert!(!stdout.contains("fixture-track"));
     assert!(!stdout.contains(first_plan));
+    assert!(!commands.contains("tracks inspect"));
     fs::remove_dir_all(work).unwrap();
 }

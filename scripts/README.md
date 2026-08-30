@@ -137,10 +137,11 @@ plan/readiness/confirm/apply/verify sequence.
 
 ## Unified ordinary maintenance
 
-The following helpers require a compatible v0.2.0 binary. They call
+The following helpers require a compatible v0.2.1 alpha binary. They call
 `chordrift capabilities --require …` before operational commands and fail
-closed when the installed binary lacks the exact workflow, enumerated-addition,
-or plan-origin contract. A version string alone is never treated as proof.
+closed when the installed binary lacks the exact workflow, bulk-preview,
+enumerated-addition, or plan-origin contract. A version string alone is never
+treated as proof.
 
 Run the one user-facing daily workflow with:
 
@@ -159,7 +160,10 @@ run. A provider move already completed by the user updates canonical intent and
 does not remove the track from its new destination. It requires
 `plan_origin: maintenance` and refuses new playlist/artwork design, retirement,
 unexpected work, and Spin publication. `--review-only` never applies. It never
-queries or populates the retired `Re-evaluate` surface.
+queries or populates the retired `Re-evaluate` surface. Alpha.5 obtains labels
+and move evidence through one set-based plan preview instead of starting a new
+Neon-backed track inspection for every row, and it prints visible analysis
+progress immediately after observation.
 
 The remaining helpers are developer recovery tools:
 

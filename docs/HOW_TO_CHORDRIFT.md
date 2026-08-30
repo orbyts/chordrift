@@ -4,7 +4,7 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.1-alpha.4**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-alpha.5**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
 and verified 47/47 database together; see
@@ -153,6 +153,7 @@ v0.2.0 exposes an exact machine-readable handshake:
 ```console
 $ chordrift capabilities \
     --require maintenance.unified-workflow.v1 \
+    --require maintenance.bulk-plan-preview.v1 \
     --require maintenance.enumerated-playlist-additions.v1 \
     --require plan-origin.v1
 ```
@@ -168,7 +169,8 @@ It refuses new playlist design, artwork redesign, retirement, and every future
 Spin publication plan. Lower-level commands remain developer diagnostics and
 recovery tools, not alternate daily workflows. Ordinary additions append only
 enumerated track IDs; complete replacement remains exclusive to a verified
-membership-identical reorder.
+membership-identical reorder. After observation it prints visible analysis
+progress and obtains all plan labels and direct-move evidence in one bulk query.
 
 ## Semantic playlists used for capture
 

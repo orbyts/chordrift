@@ -118,12 +118,26 @@ observations; snapshot `b8bb2a83-eeac-4399-83ed-89fa9514ecff` then verified the
 receipt. Final plan `009ab341-a81f-47c7-8c88-611856fd0faf` contains zero
 operations. A021-06 is complete.
 
+Alpha.5 is the post-observation latency repair. The alpha.4 shell started a
+fresh Neon-backed `tracks inspect` process for every candidate during move
+inference and then repeated the same inspection for display. A review-only run
+of the reported 22-removal plan took 108.58 seconds after the Spotify pull was
+skipped. Main now appends title, artists, `ordinary`/`direct_move`/
+`ambiguous_move`, old destination, and destination to `sync plan-show
+--details` through one set-based query while preserving the original first
+eight TSV columns. `scripts/chordrift-maintain.sh` requires
+`maintenance.bulk-plan-preview.v1`, prints `Analyzing observed changes…`, and
+makes zero `tracks inspect` calls. The same stored 22-operation plan rendered in
+3.06 seconds; a complete current plan/audit review finished in 8.54 seconds.
+Both rehearsals were read-only. Direct managed-playlist intake is deliberately
+moved to A021-08/alpha.6.
+
 The user also identified Spotify's destination-native `Add` action as a lower-
-friction intake gesture. Alpha.4 does not yet safely interpret a previously
+friction intake gesture. Alpha.5 does not yet safely interpret a previously
 unknown track added only to a managed playlist; the current drift path could
-otherwise propose removing it. A021-07/alpha.5 must treat that shape as
+otherwise propose removing it. A021-08/alpha.6 must treat that shape as
 preserved intake plus explicit destination intent and prove through fake-binary
-tests that it cannot be deleted. Until alpha.5, direct moves of known tracks are
+tests that it cannot be deleted. Until alpha.6, direct moves of known tracks are
 safe, but genuinely new tracks must enter through Liked Songs or named intake.
 
 ## Start the next task here: direct managed-playlist intake, then V021-01
@@ -132,7 +146,8 @@ V020-01 through V020-15 are complete. v0.2.0 is released and the separately
 approved personal binary/database cutover is complete. `v0.2.1-alpha.4` is
 published and locally installed. The five reviewed Indian-library destinations
 are live with approved artwork, the exact post-apply plan is empty, and ordinary
-maintenance is in sync. Next complete A021-07 so a previously unknown track
+maintenance is in sync. Next complete A021-07's bulk-preview performance repair,
+then A021-08 so a previously unknown track
 added directly to a managed playlist is preserved as intake plus explicit
 destination intent, then begin `V021-01 — Authenticated service transport`.
 Do not pull product identity, credential relocation, durable jobs, deployment,

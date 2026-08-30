@@ -4,6 +4,19 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.5] - 2026-08-29
+
+- Replace two per-track inspection passes in the ordinary maintenance wizard
+  with one set-based plan annotation query.
+- Add track titles, artists, and direct-move interpretation to immutable plan
+  details while preserving the original eight machine-readable columns.
+- Print `Analyzing observed changes…` immediately after provider observation so
+  database-backed preparation is never a silent pause.
+- Add the `maintenance.bulk-plan-preview.v1` binary capability and fail closed
+  when a script is paired with an older binary.
+- Reduce the same 22-operation preview observed in daily use from 108.58 seconds
+  to 3.06 seconds; a complete current plan/audit review finishes in 8.54 seconds.
+
 ## [0.2.1-alpha.4] - 2026-08-29
 
 - Publish explicitly approved empty manual destinations so the listener can

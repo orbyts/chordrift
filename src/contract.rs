@@ -183,6 +183,8 @@ pub const CAPABILITY_MAINTENANCE_INTAKE_AUDIT: &str = "maintenance.intake-audit.
 /// Ordinary playlist additions execute only their enumerated track operations.
 pub const CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS: &str =
     "maintenance.enumerated-playlist-additions.v1";
+/// Plan details include set-based labels and direct-move interpretation.
+pub const CAPABILITY_BULK_MAINTENANCE_PREVIEW: &str = "maintenance.bulk-plan-preview.v1";
 /// Synchronization plans expose an origin that maintenance tools can reject.
 pub const CAPABILITY_PLAN_ORIGIN: &str = "plan-origin.v1";
 /// Approved Spins can become immutable, fake-provider-verified publication plans.
