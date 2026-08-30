@@ -215,7 +215,15 @@ the expected daily driver while the separate Classification Authority project
 and later Chordrift refactor begin.
 
 - [ ] **V021-01 — Authenticated service transport.** Expose the existing
-  command/query/event contract without redefining domain behavior.
+  command/query/event contract without redefining domain behavior. Move
+  ordinary maintenance orchestration out of shell-only sequencing into a
+  task-level Rust workflow DTO. Run the same cumulative-observation and
+  provider-safety scenarios through in-process and authenticated HTTP
+  transports, proving serialized round trips, idempotent retry, reconnect,
+  cancellation, stale-revision rejection, event ordering, secret-free errors,
+  and identical provider-call traces. Never expose a generic “run CLI command”
+  endpoint. The acceptance contract is
+  `docs/design/WEB_SERVICE_CONTRACT.md`.
 - [ ] **V021-02 — Product identity and authorization.** Implement sessions,
   account ownership, revocation, and tenant-safe authorization tests.
 - [ ] **V021-03 — Encrypted provider credential vault.** Keep refresh credentials

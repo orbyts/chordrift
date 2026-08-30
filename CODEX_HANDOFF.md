@@ -95,6 +95,13 @@ a private web beta and an explicit edge-case/auth/vault/jobs/backup/rate-limit
 launch gate.
 The durable sequence is `docs/design/WEB_PRODUCT_AND_LAUNCH_STRATEGY.md`.
 
+Web flexibility must not come from porting `chordrift-maintain.sh` to browser
+JavaScript. V021-01 must expose a Rust-owned task-level maintenance workflow and
+run the same edge-case scenarios through in-process and authenticated HTTP DTO
+transports with identical outcomes and provider-call traces. The acceptance
+contract is `docs/design/WEB_SERVICE_CONTRACT.md`; never add a generic “run CLI
+command” endpoint.
+
 The published v0.2.1 alpha plus the verified 47/47 account database is the
 current daily-driver pair; neither hosted authority nor the separate classifier
 is required for normal CLI maintenance. Alpha.1 passed CI run `33275624573`.

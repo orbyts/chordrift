@@ -35,6 +35,10 @@ Every client consumes the same command/query/event contract. Free and paid
 plans use the same safety and domain semantics; entitlements control capacity
 or service level, not correctness.
 
+Ordinary workflows must be Rust-owned task-level sessions rather than shell or
+browser orchestration. V021-01's transport conformance and simulated web-call
+requirements are defined in `WEB_SERVICE_CONTRACT.md`.
+
 ## Tier principles
 
 The commercial model begins with a genuinely useful free plan. Exact names,
