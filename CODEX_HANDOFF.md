@@ -211,16 +211,24 @@ client, or the separate Classification Authority into V021-01. Never call or
 write Spotify without the user-authorized exact maintenance or retirement
 operation.
 
+Alpha.8 implementation commit `f788a9be7761ad9e0fe1cffbdb686967c0cda67a`
+passed CI run `33285324445`, including strict Clippy, all targets, documentation
+tests, fresh/upgrade PostgreSQL integration, Spotify persistence round-trip,
+and package verification. The annotated `v0.2.1-alpha.8` tag, GitHub
+prerelease, and crates.io package are public. The exact crates.io artifact is
+installed locally, reports `chordrift 0.2.1-alpha.8`, advertises
+`maintenance.provider-order-intent.v1`, and does not rely on `CHORDRIFT_BIN`.
+
 ## Released v0.2.0 foundation and current v0.2.1 alpha deployment
 
 Release commit `a079eba0eb71955969cf29186e9d73cffae1cd82` is annotated as
 `v0.2.0`. CI run `33262366722` passed formatting, strict Clippy, all targets,
 documentation tests, fresh/upgrade PostgreSQL 18 integration, Spotify
 persistence round-trip, and clean packaging. The GitHub release and crates.io
-package are public. The crate installed from crates.io reports `chordrift 0.2.0`
-but predates the post-release maintenance capability command. For current
-`main`, install with `cargo install --path . --force`; the wizard deliberately
-trusts the machine-readable capability handshake rather than the ambiguous
+package are public. That v0.2.0 artifact predates the post-release maintenance
+capability command and must not be used with the current wizard. Install the
+current documented alpha from crates.io; the wizard deliberately trusts the
+machine-readable capability handshake rather than a potentially ambiguous
 version string.
 
 The user separately approved the personal cutover after a final read-only
