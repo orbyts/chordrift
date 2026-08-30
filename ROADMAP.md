@@ -386,8 +386,8 @@ slices at the preceding release boundary, after real use informs their shape:
 
 **Next gate:** begin `V021-05 — Remote CLI parity`. Make the installed CLI an
 authenticated client of the typed durable service while retaining an explicit
-local development transport. `v0.2.1-alpha.16` is the intended published
-daily-driver checkpoint. Do not pull hosting
+local development transport. `v0.2.1-alpha.16` is published and its exact
+locked crates.io artifact is the installed daily-driver checkpoint. Do not pull hosting
 selection, public deployment, a web UI, or the
 separate Classification Authority into V021-05.
 

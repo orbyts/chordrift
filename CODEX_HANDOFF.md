@@ -248,7 +248,7 @@ placement evidence; Chordrift must not scrape unselected recommendations.
 V020-01 through V020-15, A021-01 through A021-13, and V021-01 through V021-04
 are complete.
 v0.2.0 is released and the separately approved personal binary/database
-cutover is complete. `v0.2.1-alpha.15` is the installed daily-driver
+cutover is complete. `v0.2.1-alpha.16` is the installed daily-driver
 checkpoint. It retains alpha.13's two daily-use
 defects: assignment replay no longer turns revision chronology into provider
 playlist order, and every exactly converged record-only observation receives an
@@ -354,6 +354,18 @@ review; disposable PostgreSQL proves undecided safety, remembered keep,
 explicit clear, revision supersession, and direct-Unlike convergence. This
 feature uses schema 0047 already present in the personal database; it does not
 require or apply hosted migrations 0048 through 0050.
+
+Alpha.16 implementation commit `5631b502a78490739c9dcc8ab111eee8c699813e`
+passed CI run `33331740305`, including formatting, strict Clippy, all targets,
+documentation tests, every disposable PostgreSQL integration, Spotify
+persistence round-trip, and clean packaging. The annotated
+`v0.2.1-alpha.16` tag, GitHub prerelease, and crates.io package are public. The
+exact locked registry artifact is installed at `~/.cargo/bin/chordrift`,
+reports `chordrift 0.2.1-alpha.16`, satisfies
+`maintenance.saved-intake-disposition.v1`, exposes application contract 1.3,
+retains product-session schema 1, and has `CHORDRIFT_BIN` unset. No personal
+Spotify or Neon operation was used for implementation, testing, release, or
+installation verification.
 
 Begin `V021-05 — Remote CLI parity`. Make the installed CLI an authenticated
 client of the typed durable service while preserving an explicit local
@@ -1359,8 +1371,8 @@ proposals, readiness, apply receipts, and verification.
 - User's normal clone: `$CRATES/chordrift`, currently
   `/Users/suhail/Library/CloudStorage/Dropbox/matrix/crates/chordrift`
 - Local Storexa clone, if its source is needed: `$CRATES/storexa`
-- Current release line: `v0.2.1` prereleases; alpha.15 is the V021-04 durable-
-  operation checkpoint. Historical branches are recovery references, not pending
+- Current release line: `v0.2.1` prereleases; alpha.16 is the remembered saved-
+  intake checkpoint after V021-04. Historical branches are recovery references, not pending
   merge sources.
 
 Before editing, inspect `git status --short`, the current branch, this file,
