@@ -17,6 +17,14 @@ Spotify does not need duplicate approval merely to be remembered. Correlate a
 safe remove/add pair into placement intent and a surface-specific negative
 directive; leave ambiguous changes as reviewable suggestions.
 
+This observation-first rule includes provider order. A user reorder with exact
+unchanged membership is accepted into Neon as current order and must never
+produce a compensating Spotify reorder. Broader meaning—permanent cadence,
+classification, or learning evidence—is a separate inference. Chordrift may
+write a different order only for an explicitly requested and authorized
+Chordrift-authored operation such as Spin publication; that operation has a
+separate plan origin and authorization boundary.
+
 Batch IDs, plan IDs, readiness assessments, idempotency keys, receipts, and
 verification remain mandatory Rust-owned safety evidence, but clients should
 hide that machinery during ordinary use. Explicit consent is needed when

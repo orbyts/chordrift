@@ -2,10 +2,13 @@
 
 The product goal is for people to keep using Spotify or Apple Music while
 Chordrift operates as a preservation-first assistant behind the scenes. Neon is
-the durable interpretation ledger; provider changes are observations, not
-unquestioned commands.
+the durable interpretation ledger. A user action already completed on the
+provider is authoritative evidence of that exact action: Chordrift records it
+and does not ask to write it back. The action is not, by itself, authority for
+a broader semantic conclusion such as a permanent exclusion, classification
+rule, or reusable cadence policy.
 
-Status: active v0.2 interaction policy, updated 2026-08-27. The lifecycle,
+Status: active v0.2 interaction policy, updated 2026-08-29. The lifecycle,
 progress, cancellation, structured-error, and capability shapes needed to
 present this policy are implemented in V020-01; existing v0.1.4 CLI handlers
 now pass through the V020-02 application facade without behavioral change.
@@ -32,6 +35,29 @@ is now implemented in V020-10 as a provider-free immutable preview. Every track
 has structured selection and ordering reasons, and shortfalls remain warnings;
 approval, publication, and provider mutation remain later boundaries.
 
+## Observation is the default; provider mutation is explicit
+
+For user-owned, user-editable Spotify surfaces, ordinary maintenance follows
+one directional rule:
+
+1. the user edits membership, placement, metadata, or order in Spotify;
+2. Chordrift observes and records the resulting state and exact gesture in
+   Neon; and
+3. Chordrift performs no Spotify write merely to accept what the user already
+   did.
+
+This includes reordering. If exact playlist membership is unchanged, the
+observed Spotify order becomes current playlist intent under an exact
+membership-equality guard. Chordrift must not generate or apply a compensating
+`reorder_playlist` operation.
+
+The opposite direction is a separate product operation. A Spin, approved
+playlist design, restoration, or other Chordrift-authored change may propose a
+new membership or order. It may write to Spotify only after the person reviews
+and authorizes that understandable operation. Spin publication uses its
+distinct `spin_publication` plan origin and never borrows ordinary-maintenance
+authorization.
+
 ## Confidence policy
 
 Chordrift should automate only high-confidence, reversible interpretations.
@@ -43,11 +69,11 @@ Destructive or history-erasing interpretations are never inferred silently.
 | Add to a named intake | New discovery with explicit provenance | Capture automatically and later propose placement. |
 | Remove from one verified canonical playlist | Exclude, refile, or temporary edit | Stage interpretation; use surrounding actions to disambiguate. |
 | Remove from canonical and add to exactly one other managed playlist | Deliberate reclassification | Infer the move, show it in the maintenance review, and retain the confirmed correction as evidence. |
-| Add directly to a canonical playlist | Destination preference or one-off manual choice | Stage a preference; ask whether it should become a lock. |
-| Reorder a canonical playlist | Exact-order preference or casual queue editing | Ask whether to lock order; do not silently retrain vibe placement. |
+| Add directly to a canonical playlist | Explicit current placement | Preserve and record the destination automatically; treat any permanent lock or classification claim as a separate inference. |
+| Reorder a canonical playlist | Explicit current sequence | Accept the observed provider order in Neon when exact membership is equal; do not write a reorder back or silently infer a cadence/classification rule. |
 | Remove from Liked Songs | Unsave | Record saved-state change without implying exclusion. |
 | Delete or unfollow an external playlist | Remove library relationship | Preserve bookmark/history; never edit the external owner's source. |
-| Delete an entire owned playlist | Retirement, replacement, or accident | Require explicit bounded retirement/recovery decision. |
+| Delete an entire owned playlist | Explicit provider removal; possibly retirement, replacement, or accident | Record it as absent and do not recreate it automatically; offer a bounded recovery/retirement decision only if further Chordrift action is useful. |
 
 ## Context improves inference
 
@@ -64,7 +90,8 @@ The eventual UI should appear only when useful:
 
 - a passive “captured” acknowledgment for high-confidence intake and direct
   reclassification transitions;
-- a compact confirmation for ambiguous delete/move/order changes;
+- a compact question only when the broader meaning of an observed action is
+  ambiguous, never to duplicate-authorize the provider action itself;
 - an exact preview when a new poetic playlist, name, or artwork is proposed;
 - a reversible history view explaining why a track moved or disappeared;
 - a clear unresolved queue rather than silent drift.

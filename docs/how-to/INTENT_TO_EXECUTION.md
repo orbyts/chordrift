@@ -31,8 +31,15 @@ changes, infer only well-supported reversible intent, create plans, assess
 readiness, and verify receipts automatically. A normal user should approve an
 understandable provider mutation—not transcribe internal UUIDs. A change the
 user already made directly in Spotify can be remembered in Neon without asking
-for duplicate authorization; ambiguous interpretations stay proposed for
-review.
+for duplicate authorization. That includes membership and order: an
+unchanged-membership reorder is accepted as current provider order in Neon and
+must not become a compensating Spotify write. Ambiguous *meaning* may stay
+proposed for review, but the observed action itself is not disputed.
+
+Chordrift-authored ordering is a different boundary. An explicitly requested
+Spin or other reviewed design may propose a new order and write it only through
+its own authorization path. Ordinary maintenance must never reuse that intent
+or authorization.
 
 On mixed-authority surfaces, user-added or pinned membership is protected and
 Chordrift computes around it. A user removal becomes a surface-specific
