@@ -2110,6 +2110,124 @@ pub async fn assign_many(
         .collect())
 }
 
+/// Result of accepting the exact current provider order for one proposal playlist.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProviderOrderReport {
+    /// Editable proposal whose order was updated.
+    pub generation_id: Uuid,
+    /// Stable destination key.
+    pub stable_key: String,
+    /// Human-facing destination name.
+    pub name: String,
+    /// Membership count proven equal on both sides.
+    pub track_count: usize,
+}
+
+/// Copies current provider ordering into an editable proposal only when exact
+/// membership equality proves that no track can be added or removed.
+pub async fn align_provider_order(
+    database: &Database,
+    account_label: &str,
+    stable_key: &str,
+) -> Result<ProviderOrderReport> {
+    let generation = status(database, account_label).await?;
+    require_editable(&generation)?;
+    let account_id = account_id(database, account_label).await?;
+    let row = sqlx::query(
+        "SELECT playlist.id, playlist.name, playlist.concept_id
+         FROM playlists playlist
+         JOIN playlist_concepts concept ON concept.id = playlist.concept_id
+         WHERE playlist.generation_id = $1
+           AND concept.provider_account_id = $2
+           AND concept.stable_key = $3",
+    )
+    .bind(generation.generation_id)
+    .bind(account_id)
+    .bind(stable_key)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(
+            "destination stable key is not in the latest proposal".to_owned(),
+        )
+    })?;
+    let playlist_id: Uuid = row.try_get("id")?;
+    let name: String = row.try_get("name")?;
+    let concept_id: Uuid = row.try_get("concept_id")?;
+    let provider_order = sqlx::query_scalar::<_, Uuid>(
+        "SELECT provider_track.track_id
+         FROM current_spotify_playlists current
+         JOIN provider_playlists provider_playlist
+           ON provider_playlist.id = current.provider_playlist_id
+         JOIN provider_observed_playlist_tracks membership
+           ON membership.snapshot_id = current.snapshot_id
+          AND membership.provider_playlist_id = current.provider_playlist_id
+         JOIN provider_tracks provider_track
+           ON provider_track.id = membership.provider_track_id
+         WHERE current.provider_account_id = $1
+           AND current.signal_class = 'canonical'
+           AND provider_playlist.concept_id = $2
+         ORDER BY membership.position",
+    )
+    .bind(account_id)
+    .bind(concept_id)
+    .fetch_all(database.pool())
+    .await?;
+    let proposal_order = sqlx::query_scalar::<_, Uuid>(
+        "SELECT track_id FROM playlist_tracks
+         WHERE playlist_id = $1 ORDER BY position",
+    )
+    .bind(playlist_id)
+    .fetch_all(database.pool())
+    .await?;
+    if !orders_have_equal_unique_membership(&provider_order, &proposal_order) {
+        return Err(ChordriftError::Configuration(format!(
+            "cannot accept provider order for `{stable_key}` unless provider and proposal memberships are exactly equal"
+        )));
+    }
+    let track_count = provider_order.len();
+    if provider_order != proposal_order {
+        let mut transaction = database.pool().begin().await?;
+        let offset = i32::try_from(track_count)
+            .ok()
+            .and_then(|count| count.checked_add(1_000_000))
+            .ok_or_else(|| {
+                ChordriftError::Configuration("playlist is too large to align safely".to_owned())
+            })?;
+        sqlx::query("UPDATE playlist_tracks SET position = position + $2 WHERE playlist_id = $1")
+            .bind(playlist_id)
+            .bind(offset)
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            "UPDATE playlist_tracks membership
+             SET position = ordered.position::integer - 1
+             FROM unnest($2::uuid[]) WITH ORDINALITY AS ordered(track_id, position)
+             WHERE membership.playlist_id = $1
+               AND membership.track_id = ordered.track_id",
+        )
+        .bind(playlist_id)
+        .bind(&provider_order)
+        .execute(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+    }
+    Ok(ProviderOrderReport {
+        generation_id: generation.generation_id,
+        stable_key: stable_key.to_owned(),
+        name,
+        track_count,
+    })
+}
+
+fn orders_have_equal_unique_membership(provider: &[Uuid], proposal: &[Uuid]) -> bool {
+    let provider_set = provider.iter().copied().collect::<HashSet<_>>();
+    let proposal_set = proposal.iter().copied().collect::<HashSet<_>>();
+    provider.len() == provider_set.len()
+        && proposal.len() == proposal_set.len()
+        && provider_set == proposal_set
+}
+
 /// Returns a track to the internal needs-review queue.
 pub async fn needs_review(
     database: &Database,
@@ -2958,6 +3076,24 @@ mod tests {
     fn accepts_complete_strict_results() {
         let current = vec![summary("playlist-a")];
         assert!(validate_results(&current, &[result("playlist-a", "Night Air")]).is_ok());
+    }
+
+    #[test]
+    fn provider_order_alignment_requires_exact_unique_membership() {
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        assert!(orders_have_equal_unique_membership(
+            &[first, second],
+            &[second, first]
+        ));
+        assert!(!orders_have_equal_unique_membership(
+            &[first, second],
+            &[first]
+        ));
+        assert!(!orders_have_equal_unique_membership(
+            &[first, first],
+            &[first, second]
+        ));
     }
 
     fn summary(key: &str) -> PlaylistSummary {

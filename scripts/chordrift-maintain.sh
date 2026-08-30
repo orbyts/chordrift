@@ -58,6 +58,7 @@ done
     --require maintenance.bulk-plan-preview.v1 \
     --require maintenance.direct-managed-intake.v1 \
     --require maintenance.artwork-carry-forward.v1 \
+    --require maintenance.provider-order-intent.v1 \
     --require plan-origin.v1
 
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chordrift-maintain.XXXXXX")
@@ -68,6 +69,7 @@ AMBIGUOUS_FILE=$WORK_DIR/ambiguous.tsv
 AUTO_MOVES_FILE=$WORK_DIR/automatic-moves.tsv
 RESOLVED_AUTO_MOVES_FILE=$WORK_DIR/resolved-automatic-moves.tsv
 MOVE_AMBIGUOUS_FILE=$WORK_DIR/ambiguous-moves.tsv
+ORDER_DRIFT_FILE=$WORK_DIR/provider-order.tsv
 DESTINATIONS_FILE=$WORK_DIR/destinations.tsv
 STATUS_FILE=$WORK_DIR/status.txt
 ARTWORK_FILE=$WORK_DIR/artwork.txt
@@ -129,6 +131,12 @@ find_managed_moves() {
     awk -F '\t' 'NF == 4 { print }' "$WORK_DIR/managed-moves.tsv" >"$MOVE_AMBIGUOUS_FILE"
 }
 
+find_provider_order_drift() {
+    awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 == "publish" && $3 == "reorder_playlist" {
+        print $4
+    }' "$DETAIL_FILE" | sort -u >"$ORDER_DRIFT_FILE"
+}
+
 ensure_editable_proposal() {
     run proposals status --account "$ACCOUNT" >"$STATUS_FILE"
     case "$(field proposal "$STATUS_FILE")" in
@@ -151,7 +159,7 @@ resolve_destination() {
 }
 
 resolve_ambiguous() {
-    [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || return 0
+    [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || [ -s "$ORDER_DRIFT_FILE" ] || return 0
     [ "$REVIEW_ONLY" = false ] || return 0
     ensure_editable_proposal
     : >"$RESOLVED_AUTO_MOVES_FILE"
@@ -184,6 +192,15 @@ resolve_ambiguous() {
         done
         printf 'Recorded %s move(s) in Chordrift.\n' "$move_count"
     fi
+    while IFS= read -r destination; do
+        stable_key=$(resolve_destination "$destination") || {
+            printf 'Provider-order destination "%s" is no longer unique.\n' "$destination" >&2
+            exit 3
+        }
+        printf 'Accepting current Spotify order: %s\n' "$destination"
+        run proposals align-provider-order --account "$ACCOUNT" \
+            --playlist "$stable_key" >/dev/null
+    done <"$ORDER_DRIFT_FILE"
     [ ! -s "$AMBIGUOUS_FILE" ] || printf '\nChordrift needs one decision for each track below.\n'
     while IFS="$(printf '\t')" read -r source title artists spotify_id; do
         printf '\n%s — %s\nSource: %s\n' "$title" "$artists" "$source"
@@ -252,8 +269,9 @@ fi
 printf 'Analyzing observed changes…\n'
 create_plan
 find_managed_moves
+find_provider_order_drift
 find_ambiguous
-if [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ]; then
+if [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || [ -s "$ORDER_DRIFT_FILE" ]; then
     if [ "$REVIEW_ONLY" = true ]; then
         if [ -s "$AUTO_MOVES_FILE" ]; then
             printf 'Inferred moves:\n'
@@ -262,6 +280,10 @@ if [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ]; then
         if [ -s "$AMBIGUOUS_FILE" ]; then
             printf 'Needs a destination:\n'
             cut -f2-3 "$AMBIGUOUS_FILE"
+        fi
+        if [ -s "$ORDER_DRIFT_FILE" ]; then
+            printf 'Provider order to accept:\n'
+            sed 's/^/  /' "$ORDER_DRIFT_FILE"
         fi
         printf 'Review only; Spotify unchanged.\n'
         exit 0

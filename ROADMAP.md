@@ -193,6 +193,11 @@ are checkpoints, not replacements for the hosted-authority goal.
   and prove an interruption after assignment resumes without repeating the
   Spotify gesture or applying membership work. Publish the repair as
   `v0.2.1-alpha.7`.
+- [x] **A021-10 — Provider-order intent without provider reorder.** When direct
+  intake leaves a membership-equal ordering difference, clone the approved
+  proposal and accept the exact observed order in Neon under an equality guard.
+  Never turn the repair into a Spotify reorder, addition, or removal. Publish
+  the fix as `v0.2.1-alpha.8`.
 
 ### v0.2.1 — Hosted Rust authority
 

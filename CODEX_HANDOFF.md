@@ -180,6 +180,15 @@ GitHub prerelease. The exact registry artifact is installed at
 The interrupted personal proposal has not been altered after the reported
 failure; rerun the ordinary wizard once to resume it.
 
+The next alpha.7 run successfully recorded two more Celluloid Mehfil direct
+intakes and carried artwork, then stopped because the seven-track provider and
+proposal memberships were equal but ordered differently. Alpha.8 adds the
+Neon-only `proposals align-provider-order` operation with exact unique
+membership equality. The wizard clones the approved proposal, accepts the
+observed order, approves/carries artwork, and rebuilds an empty provider plan;
+it never executes the planned Spotify reorder. The binary capability is
+`maintenance.provider-order-intent.v1`.
+
 The Classification Authority brief now records Spotify's client recommender as
 potential affinity evidence only. The exact “based on this playlist” panel has
 no public playlist-recommendation endpoint, new/development apps lost general
@@ -189,9 +198,9 @@ placement evidence; Chordrift must not scrape unselected recommendations.
 
 ## Start the next task here: V021-01 authenticated service transport
 
-V020-01 through V020-15 and A021-01 through A021-09 are complete. v0.2.0 is
+V020-01 through V020-15 and A021-01 through A021-10 are complete. v0.2.0 is
 released and the separately approved personal binary/database cutover is
-complete. `v0.2.1-alpha.7` is the current daily-driver prerelease. A previously
+complete. `v0.2.1-alpha.8` is the current daily-driver prerelease. A previously
 unknown track added directly to exactly one managed Spotify playlist is now
 preserved in place and recorded as canonical destination intent without a
 Spotify membership write. Multiple destinations remain ambiguous; active

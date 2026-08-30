@@ -189,6 +189,8 @@ pub const CAPABILITY_BULK_MAINTENANCE_PREVIEW: &str = "maintenance.bulk-plan-pre
 pub const CAPABILITY_DIRECT_MANAGED_INTAKE: &str = "maintenance.direct-managed-intake.v1";
 /// Interrupted maintenance can resume with the complete approved artwork set.
 pub const CAPABILITY_ARTWORK_CARRY_FORWARD: &str = "maintenance.artwork-carry-forward.v1";
+/// Membership-equal provider order can become Neon intent without provider writes.
+pub const CAPABILITY_PROVIDER_ORDER_INTENT: &str = "maintenance.provider-order-intent.v1";
 /// Synchronization plans expose an origin that maintenance tools can reject.
 pub const CAPABILITY_PLAN_ORIGIN: &str = "plan-origin.v1";
 /// Approved Spins can become immutable, fake-provider-verified publication plans.

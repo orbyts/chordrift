@@ -46,6 +46,10 @@ fn installed_binary_advertises_unified_maintenance() {
         manifest["capabilities"]["maintenance.artwork-carry-forward.v1"],
         "available"
     );
+    assert_eq!(
+        manifest["capabilities"]["maintenance.provider-order-intent.v1"],
+        "available"
+    );
 }
 
 #[test]
@@ -586,6 +590,85 @@ esac
     assert!(!commands.contains("tracks restore"));
     assert!(!commands.contains("sync apply"));
     assert!(String::from_utf8_lossy(&output.stdout).contains("Needs a destination"));
+    fs::remove_dir_all(work).unwrap();
+}
+
+#[test]
+fn membership_equal_reorder_is_accepted_in_neon_without_provider_apply() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let work = temporary_work("provider-order-intent");
+    let fake = work.join("chordrift-fake");
+    let log = work.join("commands.log");
+    let first_plan = "00000000-0000-0000-0000-000000000091";
+    let second_plan = "00000000-0000-0000-0000-000000000092";
+    let proposal = "00000000-0000-0000-0000-000000000093";
+    write_fake(
+        &fake,
+        &format!(
+            r##"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"$FAKE_CHORDRIFT_LOG"
+case "$*" in
+  capabilities*) printf '%s\n' '{{"schema_version":1}}' ;;
+  "sync pull --account personal") printf '%s\n' 'sync: current' ;;
+  "sync plan --account personal")
+    count=$(grep -c '^sync plan --account personal$' "$FAKE_CHORDRIFT_LOG")
+    if [ "$count" -eq 1 ]; then printf '%s\n' 'plan_id: {first_plan}' 'operations: 1';
+    else printf '%s\n' 'plan_id: {second_plan}' 'operations: 0'; fi
+    ;;
+  "sync plan-show --account personal --plan {first_plan} --details")
+    printf '%b\n' 'plan_id: {first_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
+      'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety' \
+      '0\tpublish\treorder_playlist\tCelluloid Mehfil\tplaylist\t-\t{{"track_count":7}}\t{{"membership_unchanged":true}}\t-\t-\tordinary\t-\t-'
+    ;;
+  "sync plan-show --account personal --plan {second_plan} --details")
+    printf '%b\n' 'plan_id: {second_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
+      'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety'
+    ;;
+  "intake audit --account personal")
+    printf '%b\n' 'state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id'
+    ;;
+  "proposals status --account personal")
+    count=$(grep -c '^proposals status --account personal$' "$FAKE_CHORDRIFT_LOG")
+    if [ "$count" -eq 1 ]; then
+      printf '%s\n' 'proposal: approved' 'generation_id: old-proposal' 'coverage_complete: true'
+    else
+      printf '%s\n' 'proposal: proposed' 'generation_id: {proposal}' 'coverage_complete: true'
+    fi
+    ;;
+  "proposals extend --account personal --min-similarity 1") printf '%s\n' 'proposal: proposed' ;;
+  "proposals list --account personal")
+    printf '%b\n' 'position\tcount\tstable_key\tname' '1\t7\tplaylist-celluloid\tCelluloid Mehfil'
+    ;;
+  "proposals align-provider-order --account personal --playlist playlist-celluloid")
+    printf '%s\n' 'proposal_order: aligned'
+    ;;
+  "proposals approve --account personal --confirm {proposal}") printf '%s\n' 'proposal: approved' ;;
+  "artwork status --account personal") printf '%s\n' 'proposal_generation_id: {proposal}' ;;
+  *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
+esac
+"##
+        ),
+    );
+    let output = Command::new(root.join("scripts/chordrift-maintain.sh"))
+        .args(["--confirmed-plan", first_plan])
+        .env("CHORDRIFT_BIN", &fake)
+        .env("FAKE_CHORDRIFT_LOG", &log)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let commands = fs::read_to_string(&log).unwrap();
+    assert!(commands.contains("proposals align-provider-order --account personal"));
+    assert!(!commands.contains("sync apply"));
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Accepting current Spotify order: Celluloid Mehfil")
+    );
     fs::remove_dir_all(work).unwrap();
 }
 

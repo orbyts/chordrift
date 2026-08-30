@@ -1350,6 +1350,15 @@ pub enum ProposalCommand {
         #[arg(long)]
         reason: String,
     },
+    /// Accept current provider order after proving exact membership equality.
+    AlignProviderOrder {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Stable destination key reported by `proposals list`.
+        #[arg(long)]
+        playlist: String,
+    },
     /// Remove one empty destination from the editable proposal.
     RetireEmpty {
         /// Local label for this Spotify account.
@@ -4652,6 +4661,16 @@ async fn run_proposal_command(
             }
             Ok(())
         }
+        ProposalCommand::AlignProviderOrder { account, playlist } => {
+            let report = proposals::align_provider_order(database, &account, &playlist).await?;
+            writeln!(output, "proposal_order: aligned")?;
+            writeln!(output, "generation_id: {}", report.generation_id)?;
+            writeln!(output, "stable_key: {}", report.stable_key)?;
+            writeln!(output, "playlist: {}", clean_cell(&report.name))?;
+            writeln!(output, "tracks: {}", report.track_count)?;
+            writeln!(output, "spotify_writes: disabled")?;
+            Ok(())
+        }
         ProposalCommand::RetireEmpty {
             account,
             playlist,
@@ -6480,7 +6499,7 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
         CAPABILITY_ARTWORK_CARRY_FORWARD, CAPABILITY_BULK_MAINTENANCE_PREVIEW,
         CAPABILITY_DIRECT_MANAGED_INTAKE, CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS,
         CAPABILITY_MAINTENANCE_INTAKE_AUDIT, CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW,
-        CAPABILITY_PLAN_ORIGIN, CAPABILITY_SPIN_PUBLICATION_PLAN,
+        CAPABILITY_PLAN_ORIGIN, CAPABILITY_PROVIDER_ORDER_INTENT, CAPABILITY_SPIN_PUBLICATION_PLAN,
         CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW, CapabilityAvailability, ContractVersionRange,
     };
 
@@ -6511,6 +6530,10 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
             ),
             (
                 CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
+                CAPABILITY_PROVIDER_ORDER_INTENT.to_owned(),
                 CapabilityAvailability::Available,
             ),
             (

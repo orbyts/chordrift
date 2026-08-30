@@ -3,7 +3,7 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the **v0.2.1-alpha.7** daily-driver CLI. It retains the
+Command status: this page documents the **v0.2.1-alpha.8** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
@@ -918,6 +918,7 @@ $ chordrift proposals group-tracks --account personal --cluster vibe-EXAMPLE --l
 $ chordrift proposals consensus-assign --account personal \
     --min-dominance 0.55 --min-evidence 10
 $ chordrift proposals centroid-assign --account personal --min-similarity 0.05
+$ chordrift proposals align-provider-order --account personal --playlist playlist-EXAMPLE
 ```
 
 The proposal copies cluster membership into canonical Neon rows without
@@ -927,6 +928,11 @@ its user-facing name. When a later cluster generation overlaps an earlier
 playlist by at least half of the smaller membership, Chordrift carries that
 stable identity forward. This gives future manual corrections and provider
 synchronization a durable target.
+
+`align-provider-order` is an internal ordinary-maintenance repair. It copies
+only the observed order into an editable proposal and refuses unless provider
+and proposal membership are exactly equal and duplicate-free. It never writes
+Spotify and cannot add or remove a track.
 
 `proposals inventory` is the complete preservation proof. Its deduplicated
 `complete_inventory` row includes current saved tracks plus tracks ever seen in

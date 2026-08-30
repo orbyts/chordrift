@@ -4,6 +4,18 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.8] - 2026-08-29
+
+- Interpret a membership-equal managed-playlist order difference as provider
+  ordering intent during ordinary maintenance instead of stopping on a
+  `reorder_playlist` operation.
+- Add a Neon-only `proposals align-provider-order` command guarded by exact,
+  duplicate-free provider/proposal membership equality.
+- Rebuild the approved proposal and artwork carry-forward without issuing a
+  Spotify reorder or any other provider membership write.
+- Add `maintenance.provider-order-intent.v1` plus unit and fake-binary
+  regressions for the exact seven-track Celluloid Mehfil failure shape.
+
 ## [0.2.1-alpha.7] - 2026-08-29
 
 - Carry the complete 25-cover Drift Atlas v5 artwork system onto ordinary
