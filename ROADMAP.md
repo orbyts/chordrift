@@ -171,7 +171,7 @@ are checkpoints, not replacements for the hosted-authority goal.
   present poetic names, exact membership changes, and artwork for approval,
   then apply only the separately approved design. Publish the implementation
   and reviewed asset set as `v0.2.1-alpha.4`.
-- [ ] **A021-07 — Fast bulk maintenance preview.** Replace the two per-track
+- [x] **A021-07 — Fast bulk maintenance preview.** Replace the two per-track
   inspection passes after provider observation with one set-based plan preview
   containing human labels and direct-move interpretation. Print visible
   analysis progress immediately, preserve the immutable plan and confirmation
@@ -276,11 +276,10 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** complete A021-07/alpha.5's bulk maintenance preview, then
-A021-08/alpha.6 so a new track added directly to a managed Spotify playlist is
-preserved as intake and destination intent. Then begin `V021-01 — Authenticated
-service transport` without redefining domain behavior. The separate
-Classification Authority is not part of that slice.
+**Next gate:** complete A021-08/alpha.6 so a new track added directly to a
+managed Spotify playlist is preserved as intake and destination intent. Then
+begin `V021-01 — Authenticated service transport` without redefining domain
+behavior. The separate Classification Authority is not part of that slice.
 
 ## Portable core and native clients
 

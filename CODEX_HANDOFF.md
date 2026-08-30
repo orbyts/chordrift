@@ -132,6 +132,16 @@ makes zero `tracks inspect` calls. The same stored 22-operation plan rendered in
 Both rehearsals were read-only. Direct managed-playlist intake is deliberately
 moved to A021-08/alpha.6.
 
+A021-07 is complete. Commit `27b89889cb0f492becce1ab1c75ec172f444cae5`
+passed CI run `33282706019`, including disposable PostgreSQL integration,
+Spotify persistence round-trip, strict Clippy, all targets, docs, and package
+verification. `v0.2.1-alpha.5` is published on crates.io and as a GitHub
+prerelease. The exact registry artifact is installed at
+`~/.cargo/bin/chordrift`; it reports `0.2.1-alpha.5`, advertises
+`maintenance.bulk-plan-preview.v1`, and runs with `CHORDRIFT_BIN` unset. Its
+installed-binary review-only check printed analysis progress immediately and
+completed in 9.57 seconds with the ordinary library already in sync.
+
 The user also identified Spotify's destination-native `Add` action as a lower-
 friction intake gesture. Alpha.5 does not yet safely interpret a previously
 unknown track added only to a managed playlist; the current drift path could
@@ -143,11 +153,10 @@ safe, but genuinely new tracks must enter through Liked Songs or named intake.
 ## Start the next task here: direct managed-playlist intake, then V021-01
 
 V020-01 through V020-15 are complete. v0.2.0 is released and the separately
-approved personal binary/database cutover is complete. `v0.2.1-alpha.4` is
+approved personal binary/database cutover is complete. `v0.2.1-alpha.5` is
 published and locally installed. The five reviewed Indian-library destinations
 are live with approved artwork, the exact post-apply plan is empty, and ordinary
-maintenance is in sync. Next complete A021-07's bulk-preview performance repair,
-then A021-08 so a previously unknown track
+maintenance is in sync. Next complete A021-08 so a previously unknown track
 added directly to a managed playlist is preserved as intake plus explicit
 destination intent, then begin `V021-01 — Authenticated service transport`.
 Do not pull product identity, credential relocation, durable jobs, deployment,
