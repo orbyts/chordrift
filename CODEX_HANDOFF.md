@@ -248,7 +248,7 @@ placement evidence; Chordrift must not scrape unselected recommendations.
 V020-01 through V020-15, A021-01 through A021-13, and V021-01 through V021-04
 are complete.
 v0.2.0 is released and the separately approved personal binary/database
-cutover is complete. `v0.2.1-alpha.14` is the installed daily-driver
+cutover is complete. `v0.2.1-alpha.15` is the installed daily-driver
 checkpoint. It retains alpha.13's two daily-use
 defects: assignment replay no longer turns revision chronology into provider
 playlist order, and every exactly converged record-only observation receives an
@@ -319,6 +319,19 @@ progress, stale-worker rejection, recovery, retry exhaustion, cancellation,
 tenant isolation, history, and cursor-contiguous events. Migration 0050 was not
 applied to the personal database. See
 `docs/design/DURABLE_BACKGROUND_OPERATIONS_V021_04.md`.
+
+V021-04 implementation commit `b02114b67b2b91cb14eb010f0aa4452aa4feb304`
+passed CI run `33329866917`, including formatting, strict Clippy, all targets,
+documentation tests, every disposable PostgreSQL integration (including
+restart-safe replay, concurrent claiming, lease recovery, bounded retry,
+cancellation, progress, and tenant isolation), Spotify persistence round-trip,
+and clean packaging. The annotated `v0.2.1-alpha.15` tag, GitHub prerelease,
+and crates.io package are public. The exact locked registry artifact is
+installed at `~/.cargo/bin/chordrift`, reports `chordrift 0.2.1-alpha.15`,
+satisfies `service.durable-operations.v1`, retains application contract 1.2 and
+product-session schema 1, and has `CHORDRIFT_BIN` unset. No personal Spotify or
+Neon operation was used for implementation, testing, release, or installation
+verification.
 
 Begin `V021-05 — Remote CLI parity`. Make the installed CLI an authenticated
 client of the typed durable service while preserving an explicit local
