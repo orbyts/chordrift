@@ -6499,7 +6499,8 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
         CAPABILITY_ARTWORK_CARRY_FORWARD, CAPABILITY_BULK_MAINTENANCE_PREVIEW,
         CAPABILITY_DIRECT_MANAGED_INTAKE, CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS,
         CAPABILITY_MAINTENANCE_INTAKE_AUDIT, CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW,
-        CAPABILITY_PLAN_ORIGIN, CAPABILITY_PROVIDER_ORDER_INTENT, CAPABILITY_SPIN_PUBLICATION_PLAN,
+        CAPABILITY_MAINTENANCE_TASK_SESSION, CAPABILITY_PLAN_ORIGIN,
+        CAPABILITY_PROVIDER_ORDER_INTENT, CAPABILITY_SPIN_PUBLICATION_PLAN,
         CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW, CapabilityAvailability, ContractVersionRange,
     };
 
@@ -6530,6 +6531,10 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
             ),
             (
                 CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
+                CAPABILITY_MAINTENANCE_TASK_SESSION.to_owned(),
                 CapabilityAvailability::Available,
             ),
             (

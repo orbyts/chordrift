@@ -4,6 +4,19 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.10] - 2026-08-30
+
+- Add wrapper-neutral maintenance session DTOs for typed start, refresh,
+  ambiguity resolution, exact authorization, and immutable session queries.
+- Keep maintenance workflow transitions, allowed actions, revision checks, and
+  client-safe error mapping in the Rust core rather than CLI or web adapters.
+- Add a Rust session router plus in-process and JSON-loopback conformance tests
+  proving identical behavior, record-only provider ordering, and cumulative
+  refresh invalidation of stale reviews.
+- Advance the additive application contract to 1.1 and advertise
+  `maintenance.task-session.v1`; authenticated HTTP and operational adapter
+  wiring remain V021-01.
+
 ## [0.2.1-alpha.9] - 2026-08-29
 
 - Re-scan a newly approved maintenance plan for record-only provider order

@@ -6,7 +6,7 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-08-29.
+Last updated: 2026-08-30.
 
 Every daily-driver failure and its permanent regression belongs in
 `docs/design/DAILY_DRIVER_EDGE_CASE_LEDGER.md`. Treat chaotic cumulative
@@ -101,6 +101,14 @@ run the same edge-case scenarios through in-process and authenticated HTTP DTO
 transports with identical outcomes and provider-call traces. The acceptance
 contract is `docs/design/WEB_SERVICE_CONTRACT.md`; never add a generic “run CLI
 command” endpoint.
+
+The wrapper boundary is now stricter than “shared behavior”: every web, CLI,
+iOS, and Android client must remain a lightweight adapter that authenticates,
+submits typed commands, reads immutable task views/events, captures decisions,
+and renders them. Provider observation, cumulative interpretation, ambiguity
+rules, authorization preconditions, durable evidence, execution, and
+verification belong to the Rust authority. No wrapper may assemble plans,
+choose allowed actions, or reproduce the maintenance state machine.
 
 The published v0.2.1 alpha plus the verified 47/47 account database is the
 current daily-driver pair; neither hosted authority nor the separate classifier
@@ -235,20 +243,33 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Start the next task here: V021-01 authenticated service transport
+## Current checkpoint: finish A021-12, then start V021-01
 
 V020-01 through V020-15 and A021-01 through A021-11 are complete. v0.2.0 is
 released and the separately approved personal binary/database cutover is
-complete. `v0.2.1-alpha.9` is the current daily-driver prerelease. A previously
+complete. `v0.2.1-alpha.9` remains the installed daily-driver while the
+`v0.2.1-alpha.10` A021-12 candidate passes release verification. A previously
 unknown track added directly to exactly one managed Spotify playlist is now
 preserved in place and recorded as canonical destination intent without a
 Spotify membership write. Multiple destinations remain ambiguous; active
 exclusions require explicit restoration. Known-track direct moves remain
-unchanged. Begin `V021-01 — Authenticated service transport`. Do not pull
+unchanged. Finish publishing A021-12, then begin `V021-01 — Authenticated
+service transport`. Do not pull
 product identity, credential relocation, durable jobs, deployment, a native
 client, or the separate Classification Authority into V021-01. Never call or
 write Spotify without the user-authorized exact maintenance or retirement
 operation.
+
+A021-12 introduces application contract 1.1, capability
+`maintenance.task-session.v1`, typed maintenance start/refresh/resolve/
+authorize/query DTOs, and a Rust-owned session reducer/router. The core owns
+revision checks, exact review binding, allowed actions, cumulative rebase, and
+secret-free workflow errors. Direct in-process and serialized JSON-loopback
+tests produce identical outcomes; a provider-authored reorder is record-only,
+and a newer complete provider snapshot invalidates an older review. This is the
+transport-neutral foundation only: the existing shell remains the daily-driver
+adapter until V021-01 supplies authenticated HTTP plus real database/provider
+execution adapters.
 
 Alpha.8 daily use exposed one more sequencing defect: after direct intake for
 `Tum Hi Ho Bandhu` was recorded, the newly approved proposal revealed the

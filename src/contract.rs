@@ -10,8 +10,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// The first stable application-contract version.
-pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 0);
+/// Current backward-compatible application-contract feature generation.
+pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 1);
 
 macro_rules! uuid_id {
     ($name:ident, $description:literal) => {
@@ -72,6 +72,18 @@ uuid_id!(
 uuid_id!(
     ResourceId,
     "Opaque contract identity for a domain resource."
+);
+uuid_id!(
+    MaintenanceSessionId,
+    "Identity of one wrapper-neutral ordinary-maintenance session."
+);
+uuid_id!(
+    MaintenanceChangeId,
+    "Identity of one observed provider change inside a maintenance session."
+);
+uuid_id!(
+    MaintenanceReviewId,
+    "Identity of one immutable human-readable maintenance review."
 );
 uuid_id!(
     ErrorId,
@@ -191,6 +203,8 @@ pub const CAPABILITY_DIRECT_MANAGED_INTAKE: &str = "maintenance.direct-managed-i
 pub const CAPABILITY_ARTWORK_CARRY_FORWARD: &str = "maintenance.artwork-carry-forward.v1";
 /// Membership-equal provider order can become Neon intent without provider writes.
 pub const CAPABILITY_PROVIDER_ORDER_INTENT: &str = "maintenance.provider-order-intent.v1";
+/// Wrapper-neutral maintenance task DTOs and Rust-owned transition rules.
+pub const CAPABILITY_MAINTENANCE_TASK_SESSION: &str = "maintenance.task-session.v1";
 /// Synchronization plans expose an origin that maintenance tools can reject.
 pub const CAPABILITY_PLAN_ORIGIN: &str = "plan-origin.v1";
 /// Approved Spins can become immutable, fake-provider-verified publication plans.
@@ -362,6 +376,38 @@ pub enum Command {
         /// Spin approved for later publication planning.
         spin_id: ResourceId,
     },
+    /// Start or resume cumulative ordinary maintenance for one provider connection.
+    StartMaintenance {
+        /// Client-generated identity used for idempotent query and reconnect.
+        session_id: MaintenanceSessionId,
+        /// Provider connection whose newest complete state becomes the baseline.
+        provider_connection_id: ResourceId,
+    },
+    /// Observe the provider again and rebase one maintenance session cumulatively.
+    RefreshMaintenance {
+        /// Existing maintenance session to refresh.
+        session_id: MaintenanceSessionId,
+        /// Exact session revision currently displayed to the client.
+        expected_revision: u64,
+    },
+    /// Resolve genuinely ambiguous meanings in one exact maintenance revision.
+    ResolveMaintenance {
+        /// Maintenance session receiving the decisions.
+        session_id: MaintenanceSessionId,
+        /// Exact session revision displayed to the client.
+        expected_revision: u64,
+        /// Decisions for observed changes that require human meaning.
+        decisions: Vec<MaintenanceDecision>,
+    },
+    /// Authorize one exact reviewed set of Chordrift-authored provider effects.
+    AuthorizeMaintenance {
+        /// Maintenance session containing the immutable review.
+        session_id: MaintenanceSessionId,
+        /// Exact session revision displayed to the client.
+        expected_revision: u64,
+        /// Immutable review being authorized.
+        review_id: MaintenanceReviewId,
+    },
     /// Request cooperative cancellation of an operation.
     CancelOperation(CancellationRequest),
 }
@@ -390,6 +436,11 @@ pub enum Query {
         /// Spin to inspect.
         spin_id: ResourceId,
     },
+    /// Read one wrapper-neutral ordinary-maintenance session.
+    MaintenanceSession {
+        /// Session to inspect.
+        session_id: MaintenanceSessionId,
+    },
     /// Read current lifecycle state for an operation.
     Operation {
         /// Operation to inspect.
@@ -405,6 +456,192 @@ pub enum Query {
         /// Optional operation that narrows the report.
         operation_id: Option<OperationId>,
     },
+}
+
+/// Provider action observed during ordinary maintenance.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MaintenanceChangeKind {
+    /// A previously unknown track was added directly to one managed destination.
+    DirectIntake,
+    /// A track moved from one managed destination to another.
+    Reclassification,
+    /// A track disappeared from a managed destination without a clear replacement.
+    Removal,
+    /// Exact provider membership stayed equal while order changed.
+    Reorder,
+    /// Saved/liked state changed.
+    SavedState,
+    /// Playlist name, description, or artwork changed on the provider.
+    PlaylistMetadata,
+    /// A provider playlist appeared.
+    PlaylistCreated,
+    /// A provider playlist disappeared.
+    PlaylistRemoved,
+}
+
+/// Client-safe track label used in a maintenance review.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaintenanceTrackView {
+    /// Opaque Chordrift track identity.
+    pub track_id: ResourceId,
+    /// Provider/catalog title suitable for display.
+    pub title: String,
+    /// Ordered display artist names.
+    pub artists: Vec<String>,
+}
+
+/// Client-safe playlist/surface label used in a maintenance review.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaintenanceSurfaceView {
+    /// Opaque Chordrift surface identity.
+    pub surface_id: ResourceId,
+    /// Current human-facing surface name.
+    pub name: String,
+}
+
+/// Human resolution for broader meaning that cannot be inferred safely.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", content = "parameters", rename_all = "snake_case")]
+pub enum MaintenanceResolution {
+    /// Keep the exact observed provider state without a broader directive.
+    KeepObserved,
+    /// Treat one existing surface as canonical placement.
+    Place {
+        /// Selected canonical destination.
+        destination: MaintenanceSurfaceView,
+    },
+    /// Record a surface-specific negative placement directive.
+    Exclude,
+    /// Supersede an active exclusion and retain the observed destination.
+    Restore {
+        /// Destination in which the track is explicitly restored.
+        destination: MaintenanceSurfaceView,
+    },
+}
+
+/// One decision submitted for an ambiguous observed change.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaintenanceDecision {
+    /// Observed change being resolved.
+    pub change_id: MaintenanceChangeId,
+    /// Human-selected broader meaning.
+    pub resolution: MaintenanceResolution,
+}
+
+/// One observed provider gesture and its current interpretation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaintenanceChangeView {
+    /// Stable identity within the maintenance session.
+    pub change_id: MaintenanceChangeId,
+    /// Exact kind of provider gesture observed.
+    pub kind: MaintenanceChangeKind,
+    /// Track involved when the change is track-specific.
+    pub track: Option<MaintenanceTrackView>,
+    /// Previous surface when one is known.
+    pub previous_surface: Option<MaintenanceSurfaceView>,
+    /// Current observed surface when one is known.
+    pub current_surface: Option<MaintenanceSurfaceView>,
+    /// Concise client-safe explanation.
+    pub summary: String,
+    /// Current broader interpretation; absent only when a decision is required.
+    pub resolution: Option<MaintenanceResolution>,
+}
+
+/// Chordrift-authored provider mutation shown for explicit authorization.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MaintenanceProviderEffectKind {
+    /// Add one enumerated track.
+    AddTrack,
+    /// Remove one enumerated track.
+    RemoveTrack,
+    /// Replace order only after proving identical membership.
+    ReorderPlaylist,
+    /// Create a new playlist container.
+    CreatePlaylist,
+    /// Rename or change the description of a playlist.
+    UpdatePlaylistMetadata,
+    /// Upload separately reviewed artwork.
+    UploadArtwork,
+    /// Remove an obsolete playlist relationship.
+    RetirePlaylist,
+    /// Change saved/liked state.
+    UpdateSavedState,
+}
+
+/// Exact human-readable provider effect in one immutable review.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaintenanceProviderEffectView {
+    /// Opaque effect identity.
+    pub effect_id: ResourceId,
+    /// Provider mutation kind.
+    pub kind: MaintenanceProviderEffectKind,
+    /// Track affected when applicable.
+    pub track: Option<MaintenanceTrackView>,
+    /// Surface affected when applicable.
+    pub surface: Option<MaintenanceSurfaceView>,
+    /// Concise provider-visible outcome.
+    pub summary: String,
+}
+
+/// Client action currently accepted by a maintenance session.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MaintenanceAllowedAction {
+    /// Observe the provider again and rebase cumulative intent.
+    Refresh,
+    /// Submit decisions for all currently ambiguous meanings.
+    Resolve,
+    /// Authorize the exact immutable provider-effect review.
+    Authorize,
+    /// Request cooperative cancellation of active work.
+    Cancel,
+    /// Resume recoverable work.
+    Resume,
+}
+
+/// Wrapper-neutral lifecycle state for ordinary maintenance.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MaintenanceSessionState {
+    /// Current provider state is being observed or record-only intent is converging.
+    Reconciling,
+    /// One or more observed gestures need broader human meaning.
+    NeedsDecision,
+    /// Chordrift-authored provider effects await one exact authorization.
+    ReadyForAuthorization,
+    /// The exact immutable review has been authorized but not yet verified.
+    Authorized,
+    /// Provider execution is in progress.
+    Applying,
+    /// Provider results are being observed and verified.
+    Verifying,
+    /// Current provider and durable intent require no further action.
+    InSync,
+    /// Work stopped safely and may be resumed.
+    Recoverable,
+}
+
+/// Immutable task-level view rendered by CLI, web, mobile, or another client.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaintenanceSessionView {
+    /// Maintenance session identity.
+    pub session_id: MaintenanceSessionId,
+    /// Monotonically increasing state revision used as a command precondition.
+    pub revision: u64,
+    /// Newest complete provider snapshot underlying this view.
+    pub provider_snapshot_id: ResourceId,
+    /// Current wrapper-neutral workflow state.
+    pub state: MaintenanceSessionState,
+    /// Exact provider gestures folded into the current baseline.
+    pub observed_changes: Vec<MaintenanceChangeView>,
+    /// Exact Chordrift-authored provider effects, if any.
+    pub provider_effects: Vec<MaintenanceProviderEffectView>,
+    /// Immutable review identity required for provider authorization.
+    pub review_id: Option<MaintenanceReviewId>,
+    /// Actions accepted at this revision.
+    pub allowed_actions: Vec<MaintenanceAllowedAction>,
 }
 
 /// Versioned command envelope with request and deduplication identity.

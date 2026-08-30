@@ -25,6 +25,8 @@ fn installed_binary_advertises_unified_maintenance() {
             "capabilities",
             "--require",
             "maintenance.unified-workflow.v1",
+            "--require",
+            "maintenance.task-session.v1",
         ])
         .output()
         .unwrap();
@@ -50,6 +52,13 @@ fn installed_binary_advertises_unified_maintenance() {
         manifest["capabilities"]["maintenance.provider-order-intent.v1"],
         "available"
     );
+    assert_eq!(
+        manifest["capabilities"]["maintenance.task-session.v1"],
+        "available"
+    );
+    assert_eq!(manifest["contract_versions"]["minimum"]["major"], 1);
+    assert_eq!(manifest["contract_versions"]["minimum"]["minor"], 1);
+    assert_eq!(manifest["contract_versions"]["maximum"]["minor"], 1);
 }
 
 #[test]

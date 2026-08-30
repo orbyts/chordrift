@@ -18,8 +18,8 @@ make the active library enjoyable again without silently losing history.
 
 ## Release status
 
-**v0.2.1-alpha.9 is the current daily-driver prerelease.** It preserves the proven maintenance CLI
-through one application facade and adds the provider-neutral product domain,
+**v0.2.1-alpha.10 is the current daily-driver prerelease.** It preserves the
+proven maintenance CLI through one application facade and adds the provider-neutral product domain,
 onboarding and audit boundaries, deterministic recipe/Spin previews, explicit
 plan origins, and additive schema migrations 0046 and 0047. The personal
 cutover pairs the v0.2.0 binary with the verified 47/47 database candidate;
@@ -30,18 +30,20 @@ The v0.2.1 alpha line provides official installable checkpoints on the path to
 the hosted-authority v0.2.1 final daily driver. The installed CLI and verified
 47/47 account database may continue handling ordinary maintenance while later
 architecture work is paused; no hosted service or Classification Authority is
-required for the current workflow. Authenticated transport remains V021-01 and
-the rest of the v0.2.1 hosted-authority sequence remains intact. The separate
+required for the current workflow. Alpha.10 adds the Rust-owned, wrapper-neutral
+maintenance task DTO and state machine under application contract 1.1; it does
+not replace the existing operator shell yet. Authenticated transport remains
+V021-01 and the rest of the v0.2.1 hosted-authority sequence remains intact. The separate
 Classification Authority project and a later Chordrift refactor follow v0.2.1
 final.
 
 Install the locked release with:
 
 ```console
-$ cargo install chordrift --version 0.2.1-alpha.9 --locked --force
+$ cargo install chordrift --version 0.2.1-alpha.10 --locked --force
 ```
 
-Read the [v0.2.1-alpha.9 release notes](docs/releases/V0.2.1-alpha.9.md) and
+Read the [v0.2.1-alpha.10 release notes](docs/releases/V0.2.1-alpha.10.md) and
 [recovery procedure](docs/how-to/RECOVERY_AND_ROLLBACK.md) before changing an
 existing database-backed installation.
 

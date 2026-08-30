@@ -50,6 +50,8 @@ pub mod enrichment;
 pub mod history;
 /// Read-only current-provider intake joined with durable intent and history.
 pub mod intake;
+/// Wrapper-neutral ordinary-maintenance workflow shared by every client.
+pub mod maintenance;
 /// Versioned pretrained audio-model inference artifacts.
 pub mod model_inference;
 /// Provider-read-only onboarding input capture and durable provenance.

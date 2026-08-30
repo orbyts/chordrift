@@ -1,8 +1,9 @@
 # Web service contract and transport conformance
 
-Status: acceptance direction for V021-01 and later web-client work, recorded
-2026-08-30. This document does not select hosting, expose a production endpoint,
-or authorize deployment.
+Status: the wrapper-neutral task DTO/reducer foundation is implemented by
+A021-12; authenticated HTTP, durable execution, and real infrastructure adapter
+wiring remain V021-01 and later. This document does not select hosting, expose a
+production endpoint, or authorize deployment.
 
 ## The boundary
 
@@ -10,6 +11,13 @@ The hardened CLI must not become the product API. Shell commands, flags,
 terminal tables, prompts, plan phases, and internal UUID ceremony are adapter
 details. The stable boundary is the Rust-owned, transport-neutral
 command/query/event contract in `src/contract.rs`.
+
+All consumer clients are deliberately thin. They may authenticate, submit a
+typed command, read task state/events, display the Rust-selected allowed
+actions, capture a decision, and render a result. They may not interpret
+provider deltas, assemble plans, decide whether authorization is required, or
+sequence internal safety phases. Those responsibilities stay in the Rust
+application core regardless of the wrapper or visual skin.
 
 That contract already provides useful primitives:
 
@@ -19,25 +27,26 @@ That contract already provides useful primitives:
 - structured progress, lifecycle events, cancellation, and recovery; and
 - fixed client-safe errors and capability reporting.
 
-The important remaining gap is ordinary workflow orchestration. Today
-`scripts/chordrift-maintain.sh` coordinates several CLI leaf commands. A web
-client must not port that shell state machine to JavaScript or reproduce its
+The task DTO/reducer now owns ordinary workflow transitions, but operational
+database/provider sequencing still lives in `scripts/chordrift-maintain.sh`.
+V021-01 must move that execution behind Rust infrastructure adapters. A web
+client must never port the shell state machine to JavaScript or reproduce its
 sequence with button-specific endpoints.
 
 ## Task-oriented application workflows
 
-Before a consumer web client, move ordinary maintenance orchestration behind a
-Rust application workflow such as a versioned `MaintenanceSession`. Its
-contract should support task-level operations equivalent to:
+Ordinary maintenance now has a Rust-owned, versioned `MaintenanceSession`
+contract. It supports task-level operations equivalent to:
 
-- start or resume observation and cumulative reconciliation;
+- start, reconnect to, or refresh observation and cumulative reconciliation;
 - read the current immutable review view;
 - resolve one or more genuinely ambiguous placement meanings;
 - approve one exact human-readable provider mutation, when any exists;
 - cancel long work; and
 - read progress, recovery state, receipt, and final convergence.
 
-These are illustrative use cases, not frozen wire names. One user action may
+The concrete 1.1 contract currently exposes typed start, refresh, resolve,
+authorize, and session-query DTOs. One user action may
 create several internal proposals, plans, assessments, and receipts. Those
 objects remain Rust-owned safety evidence and appear in advanced diagnostics,
 not as mandatory web ceremony.
@@ -75,7 +84,10 @@ Do not build a generic “run CLI command” endpoint.
 
 ## Required conformance matrix
 
-The same application scenarios must run against:
+The A021-12 foundation already runs start/query/decision/authorization,
+record-only provider order, stale revision, and cumulative refresh scenarios
+through both in-process values and a serialized JSON loopback. V021-01 must
+extend that same suite so application scenarios run against:
 
 1. the in-process transport used by local CLI development;
 2. an HTTP test server using serialized DTOs and an authenticated test session;

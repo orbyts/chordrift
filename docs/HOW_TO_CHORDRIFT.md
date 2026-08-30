@@ -4,7 +4,7 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.1-alpha.9**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-alpha.10**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
 and verified 47/47 database together; see
@@ -149,10 +149,11 @@ the guarded `--prepare` path when the previous proposal is already approved.
 
 ## Unified ordinary maintenance
 
-v0.2.0 exposes an exact machine-readable handshake:
+The current alpha exposes an exact machine-readable handshake:
 
 ```console
 $ chordrift capabilities \
+    --require maintenance.task-session.v1 \
     --require maintenance.unified-workflow.v1 \
     --require maintenance.bulk-plan-preview.v1 \
     --require maintenance.enumerated-playlist-additions.v1 \
@@ -165,6 +166,11 @@ exclusions, and direct reclassification moves is:
 ```console
 $ scripts/chordrift-maintain.sh --account personal
 ```
+
+Alpha.10 keeps this shell as the temporary CLI adapter while the same task-level
+state and authorization rules move into Rust. V021-01 will connect that Rust
+contract to authenticated HTTP and operational adapters; there is no web
+service to configure in this alpha.
 
 It refuses new playlist design, artwork redesign, retirement, and every future
 Spin publication plan. Lower-level commands remain developer diagnostics and

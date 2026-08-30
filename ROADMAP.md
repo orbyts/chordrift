@@ -206,6 +206,17 @@ are checkpoints, not replacements for the hosted-authority goal.
   absorb an order delta without stopping or calling provider apply. Record the
   daily-driver incidents in one edge-case ledger, prove the intake-then-reorder
   sequence with a fake binary, and publish the repair as `v0.2.1-alpha.9`.
+- [ ] **A021-12 — Wrapper-neutral maintenance task contract.** Move
+  task-level maintenance decisions and transitions into Rust-owned DTOs and a
+  session reducer; give clients typed start, refresh, resolve, authorize, and
+  query operations with revision-bound reviews and server-selected allowed
+  actions. Prove that in-process and JSON-loopback transports produce identical
+  outcomes, that provider-authored ordering converges without authorization,
+  and that a newer complete snapshot invalidates stale authorization. Advertise
+  `maintenance.task-session.v1` under application contract 1.1 and publish the
+  foundation as `v0.2.1-alpha.10`. The existing shell remains a temporary daily-
+  driver adapter; authenticated HTTP and operational database/provider wiring
+  remain V021-01.
 
 ### v0.2.1 — Hosted Rust authority
 
@@ -215,10 +226,10 @@ the expected daily driver while the separate Classification Authority project
 and later Chordrift refactor begin.
 
 - [ ] **V021-01 — Authenticated service transport.** Expose the existing
-  command/query/event contract without redefining domain behavior. Move
-  ordinary maintenance orchestration out of shell-only sequencing into a
-  task-level Rust workflow DTO. Run the same cumulative-observation and
-  provider-safety scenarios through in-process and authenticated HTTP
+  command/query/event contract without redefining domain behavior. Complete
+  operational database/provider adapters behind the Rust-owned maintenance
+  task contract and remove shell orchestration as the authority. Run the same
+  cumulative-observation and provider-safety scenarios through in-process and authenticated HTTP
   transports, proving serialized round trips, idempotent retry, reconnect,
   cancellation, stale-revision rejection, event ordering, secret-free errors,
   and identical provider-call traces. Never expose a generic “run CLI command”
