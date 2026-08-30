@@ -243,20 +243,18 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Current checkpoint: finish V021-01 release, then begin V021-02
+## Current checkpoint: begin V021-02
 
-V020-01 through V020-15, A021-01 through A021-12, and V021-01 implementation
-are complete. v0.2.0 is
-released and the separately approved personal binary/database cutover is
-complete. `v0.2.1-alpha.10` remains the installed daily-driver while the
-`v0.2.1-alpha.11` V021-01 candidate passes release verification. A previously
-unknown track added directly to exactly one managed Spotify playlist is now
-preserved in place and recorded as canonical destination intent without a
-Spotify membership write. Multiple destinations remain ambiguous; active
+V020-01 through V020-15, A021-01 through A021-12, and V021-01 are complete.
+v0.2.0 is released and the separately approved personal binary/database
+cutover is complete. `v0.2.1-alpha.11` is the installed daily-driver. A
+previously unknown track added directly to exactly one managed Spotify playlist
+is now preserved in place and recorded as canonical destination intent without
+a Spotify membership write. Multiple destinations remain ambiguous; active
 exclusions require explicit restoration. Known-track direct moves remain
-unchanged. Finish publishing V021-01, then begin `V021-02 — Product identity
-and authorization`. Never call or write Spotify without the user-authorized
-exact maintenance or retirement operation.
+unchanged. Begin `V021-02 — Product identity and authorization`. Never call or
+write Spotify without the user-authorized exact maintenance or retirement
+operation.
 
 V021-01 adds application contract 1.2 and capability
 `service.authenticated-transport.v1`. `MaintenanceApplication` is one
@@ -275,6 +273,16 @@ revocation, and the comprehensive tenant authorization matrix behind the
 existing async authenticator seam. Do not pull credential vaulting, durable job
 persistence, remote CLI migration, deployment, a web UI, or the separate
 Classification Authority into V021-02.
+
+Alpha.11 implementation commit `7bf39280b38b68fb658885b70b60fa23cf360373`
+passed CI run `33320863679`, including formatting, strict Clippy, all targets,
+documentation tests, fresh/upgrade PostgreSQL integration, Spotify persistence
+round-trip, and clean packaging. The annotated `v0.2.1-alpha.11` tag, GitHub
+prerelease, and crates.io package are public. The exact locked registry artifact
+is installed at `~/.cargo/bin/chordrift`, reports `chordrift 0.2.1-alpha.11`,
+satisfies `service.authenticated-transport.v1`, exposes application contract
+1.2, and has `CHORDRIFT_BIN` unset. No personal Spotify or Neon operation was
+used for this slice or its release verification.
 
 A021-12 introduces application contract 1.1, capability
 `maintenance.task-session.v1`, typed maintenance start/refresh/resolve/
