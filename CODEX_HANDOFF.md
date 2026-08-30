@@ -248,7 +248,7 @@ placement evidence; Chordrift must not scrape unselected recommendations.
 V020-01 through V020-15, A021-01 through A021-13, and V021-01 through V021-03
 are complete.
 v0.2.0 is released and the separately approved personal binary/database
-cutover is complete. `v0.2.1-alpha.14` is the intended installed daily-driver
+cutover is complete. `v0.2.1-alpha.14` is the installed daily-driver
 checkpoint. It retains alpha.13's two daily-use
 defects: assignment replay no longer turns revision chronology into provider
 playlist order, and every exactly converged record-only observation receives an
@@ -285,6 +285,19 @@ failure, and post-revocation denial. Migration 0049 was not applied to the
 personal database and no personal Neon or Spotify operation was used. Local
 maintenance still requires only migration 0047. See
 `docs/design/PROVIDER_CREDENTIAL_VAULT_V021_03.md`.
+
+V021-03 implementation commit `9ce536985ed575d208245177be15d1eaa7043e29`
+passed CI run `33328348984`, including formatting, strict Clippy, all targets,
+documentation tests, every disposable PostgreSQL integration (including
+migration 0049 encryption/rotation/revocation/tenant isolation), Spotify
+persistence round-trip, and clean packaging. The annotated
+`v0.2.1-alpha.14` tag, GitHub prerelease, and crates.io package are public. The
+exact locked registry artifact is installed at `~/.cargo/bin/chordrift`,
+reports `chordrift 0.2.1-alpha.14`, satisfies
+`service.provider-credential-vault.v1`, retains application contract 1.2 and
+product-session schema 1, and has `CHORDRIFT_BIN` unset. No personal Spotify or
+Neon operation was used for implementation, testing, release, or installation
+verification.
 
 Begin `V021-04 — Durable background operations`. Persist operation lifecycle,
 progress, cancellation, retry/recovery, and idempotent replay around the

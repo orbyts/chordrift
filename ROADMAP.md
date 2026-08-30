@@ -368,7 +368,8 @@ slices at the preceding release boundary, after real use informs their shape:
 
 **Next gate:** begin `V021-04 — Durable background operations` around the
 authenticated service and encrypted provider-credential boundaries.
-`v0.2.1-alpha.14` is the intended published checkpoint. Do not pull remote CLI
+`v0.2.1-alpha.14` is published and its exact registry artifact is installed.
+Do not pull remote CLI
 cutover, deployment, a web UI, or the separate Classification Authority into
 V021-04.
 
