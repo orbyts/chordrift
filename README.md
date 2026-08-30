@@ -102,8 +102,9 @@ candidate at 47/47 with exact newest-state invariant and durable-domain parity,
 the capability handshake, and the complete compatibility/origin test suite.
 V020-14 completed candidate verification and exact cutover planning. V020-15
 packaged and published v0.2.0 with an explicit recovery procedure, then paired
-the released binary with the parity-checked 47/47 candidate. Hosted transport
-and native clients remain later work. The release and cutover made no Spotify
+the released binary with the parity-checked 47/47 candidate. Hosted transport,
+the intended web client, and optional native clients remain later work. The
+release and cutover made no Spotify
 write; v0.2.0 still has no production Spotify adapter for Spin publication.
 
 Documentation on `main` describes v0.2.0. Use the `v0.1.4` tag when exact
@@ -207,7 +208,7 @@ interruption.
 
 Existing immutable plans, readiness assessments, resumable apply history,
 post-write pulls, and zero-operation convergence remain the execution
-foundation for the v0.2 application facade and later hosted/native clients.
+foundation for the v0.2 application facade and later hosted web/native clients.
 
 Neon PostgreSQL is the canonical ledger for the released CLI. In the shippable
 architecture, a hosted Rust service owns that connection and exposes the same

@@ -227,7 +227,8 @@ and later Chordrift refactor begin.
   service client while retaining an explicit local development transport.
 - [ ] **V021-06 — Service deployment and release.** Select hosting and product
   authentication with the user, verify backup/restore and observability, then
-  release without exposing Neon or provider secrets.
+  release the service foundation without exposing Neon or provider secrets.
+  This is not yet an unrestricted public web launch.
 
 ### Separate dependency — learned Classification Authority
 
@@ -253,15 +254,32 @@ evaluations. For an unseen recording it returns ranked multidimensional claims,
 calibrated confidence, alternatives, evidence, and unknown/conflict states.
 Weak evidence causes abstention or review rather than a forced answer.
 
-### Post-v0.2.1 refactor gate before native clients
+### Web-first client and public-launch gate
 
-Do not start the macOS application immediately after the hosted-authority
+The intended consumer product is a responsive web application over the hosted
+Rust authority. The CLI remains the first contract client, daily-driver proving
+ground, recovery tool, and automated edge-case harness; it is not the primary
+consumer interface. iOS and Android are the intended later mobile clients;
+macOS and Windows may also follow as optional thin clients. None is a
+prerequisite for the web launch.
+
+Do not start the public web application immediately after the hosted-authority
 release. First establish the separate Classification Authority project and its
-stable versioned consumer contract, then perform a focused Chordrift refactor
-that incorporates lessons from the hosted transport and keeps classification,
-placement, Spin eligibility, and provider execution separate. Number the macOS
-release slices only after that boundary is proven. Windows follows the same
-native-client contract after macOS proves it.
+stable versioned consumer contract, perform a focused Chordrift refactor that
+keeps classification, placement, Spin eligibility, and provider execution
+separate, and exhaust the cumulative-provider edge-case ledger with fake,
+isolated, and daily-driver testing. Then number web-client, private-beta,
+billing/entitlement, and public-launch slices from measured service behavior.
+The durable strategy and launch gate live in
+`docs/design/WEB_PRODUCT_AND_LAUNCH_STRATEGY.md`.
+
+The commercial model is multi-tier and starts with a genuinely useful free
+plan. Paid tiers may fund higher automation frequency, heavier Spin/classifier
+compute, longer recovery/history windows, and additional provider/account
+capacity. Exact limits and prices remain undecided until hosted cost and usage
+data exist. Safety, tenant isolation, credential protection, understandable
+approval, data export, and account deletion are product guarantees rather than
+paid features.
 
 ### v0.3.0 through v1.0.0
 
@@ -299,21 +317,22 @@ slices at the preceding release boundary, after real use informs their shape:
 redefining domain behavior. The separate Classification Authority is not part
 of that slice.
 
-## Portable core and native clients
+## Portable core and thin clients
 
 Chordrift is one portable Rust product with several thin clients. The CLI is
-the first client. A future macOS client is intentionally deferred until the
-hosted-authority work, separate Classification Authority contract, and
-post-hosting client-boundary refactor are proven; its release slices are not yet
-numbered. Windows follows the proven native-client contract, and Linux may gain
-a separate native shell later. Client code owns presentation and OS integration
-only. Accounts, provider inventory,
+the first client; a responsive web app is the intended consumer client. Native
+clients—including later iOS and Android apps—remain intentionally deferred
+until the hosted-authority work, separate Classification Authority contract,
+web experience, and
+post-hosting client-boundary refactor are proven. Client code owns presentation
+and platform integration only. Accounts, provider inventory,
 evidence, collections, recipes, Spins, publication safety, persistence,
 background work, and diagnostics remain Rust-owned.
 
-The shippable authority is a hosted Rust service. Native clients and the CLI
-consume one versioned command/query/event contract and never connect directly
-to Neon or hold provider refresh credentials. A development CLI may use an
+The shippable authority is a hosted Rust service. The web app, optional native
+clients, and the CLI consume one versioned command/query/event contract and
+never connect directly to Neon or hold provider refresh credentials. A
+development CLI may use an
 in-process transport for the same application service, but it must not gain a
 separate business path. Protocol negotiation reports API/schema compatibility,
 provider capabilities, evidence capabilities, and feature availability.
@@ -1128,16 +1147,16 @@ Implement the provider-neutral recipe domain before building elaborate UI:
 - deterministic preview with no provider writes;
 - an initial `New Discoveries + Rediscovery` recipe that can use Like/save time,
   recent observations, and optional extended history;
-- a thin native client that can inspect a proposal, adjust a small set of
+- a thin web client that can inspect a proposal, adjust a small set of
   meaningful controls, open a track in its provider, and approve through the
   existing immutable execution gates.
 
-The first client presents provider artwork, canonical title and artist, current
+The consumer web client presents provider artwork, canonical title and artist, current
 destination, listening evidence, and a provider deep link. Double-click opens
 the installed provider client; playback and catalog ownership remain with the
 provider. The Rust core remains authoritative for identity, recipes,
-classification, proposals, history, commands, and diagnostics. A thin native
-bridge exposes typed query/command DTOs; provider adapters own OAuth, inventory,
+classification, proposals, history, commands, and diagnostics. The authenticated
+web transport exposes typed query/command DTOs; provider adapters own OAuth, inventory,
 publication, capability reporting, and deep-link construction.
 
 This milestone also owns configurable terminal presentation, the complete

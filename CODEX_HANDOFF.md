@@ -78,9 +78,22 @@ catalog metadata, never the Like, listener/account identity, playlists, play
 counts, listening history, or private behavior. Do not create that project or
 its Neon store from a Chordrift task.
 
-The macOS application follows only after v0.2.1 final, the separate Classification
-Authority contract, and a further Chordrift client-boundary refactor are proven.
-Its slices are intentionally not numbered yet.
+The intended consumer client is now a responsive web application, not a
+macOS-first product. It follows only after v0.2.1 final, the separate
+Classification Authority contract, a further Chordrift client-boundary
+refactor, and exhaustive cumulative-provider edge-case testing are proven. The
+CLI remains the contract proving ground and recovery tool. Native clients are
+later work: iOS and Android are the intended mobile clients, while macOS and
+Windows may also follow. None of these client slices are numbered yet.
+
+The product will use multiple commercial tiers beginning with a genuinely
+useful free plan. Do not invent prices or limits before hosted cost and usage
+measurements. Paid entitlements may scale automation, compute, history, and
+provider/account capacity, but safety, privacy, tenant isolation, export, and
+account deletion never become paid-only guarantees. Public deployment follows
+a private web beta and an explicit edge-case/auth/vault/jobs/backup/rate-limit
+launch gate.
+The durable sequence is `docs/design/WEB_PRODUCT_AND_LAUNCH_STRATEGY.md`.
 
 The published v0.2.1 alpha plus the verified 47/47 account database is the
 current daily-driver pair; neither hosted authority nor the separate classifier
@@ -2295,14 +2308,15 @@ surface axes, collection membership strengths, and recipe-v1 Rust types with
 unit tests; then prove isolation with a fake provider before designing an
 additive migration.
 
-## Portable-core and native-client decision (2026-08-26)
+## Historical portable-core client decision (2026-08-26; web-first update 2026-08-29)
 
-The user confirmed that the CLI is only the first client. Future macOS SwiftUI,
-Windows-native, and possible Linux clients are thin platform presentations over
-one Rust-owned product. The useful layered ideas from Photara are adopted—
-portable core, typed client boundary, native clients, explicit capabilities,
-and cross-cutting contracts—without importing its node packages, proxy graph,
-or general runtime registry.
+The user confirmed that the CLI is only the first client. The later decision is
+web-first: a responsive web application is the intended consumer product, with
+iOS and Android intended afterward and macOS, Windows, or Linux optional later.
+Every client remains a thin presentation over one Rust-owned product. The useful layered ideas from
+Photara are adopted—portable core, typed client boundary, thin clients,
+explicit capabilities, and cross-cutting contracts—without importing its node
+packages, proxy graph, or general runtime registry.
 
 `docs/design/client-core-platform-architecture.svg` records the approved high-
 level shape. The shippable authority is a hosted Rust service. It owns the Neon

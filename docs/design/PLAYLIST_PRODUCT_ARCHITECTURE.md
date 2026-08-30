@@ -3,9 +3,10 @@
 The zoomable [product architecture overview](playlist-product-architecture.svg)
 shows the first-run journey, the intended database boundaries, and the matching
 Rust domain types. The companion
-[portable core and native clients overview](client-core-platform-architecture.svg)
-shows how the CLI and future native applications consume the same Rust-owned
-behavior. Existing database-v2 names remain unchanged. Migrations 0046 and 0047
+[portable core and thin clients overview](client-core-platform-architecture.svg)
+shows how the CLI, intended web application, and optional native applications
+consume the same Rust-owned behavior. Existing database-v2 names remain
+unchanged. Migrations 0046 and 0047
 implement the additive recipe, collection, surface, onboarding, Spin, and
 publication-plan names shown here and are active in the v0.2.0 database.
 
@@ -87,7 +88,8 @@ design contract, not authorization to write to a provider.
   The holding queue was subsequently superseded by direct moves between managed
   playlists; its Neon history remains compatible with database-v2.
 - **Not implemented yet:** approved collection authoring,
-  real-provider Spin execution, hosted transport, and native clients.
+  real-provider Spin execution, hosted transport, the consumer web app, and
+  optional native clients.
   Those remain separate roadmap slices and must not be inferred from the
   existence of contract or domain types.
 
@@ -219,7 +221,7 @@ They are optional, revisioned, and approved independently from the recipe.
 An LLM may propose language and art direction, but it never owns collection
 membership, eligibility, ordering, or publication authority.
 
-## Portable core and native clients
+## Portable core and thin clients
 
 Chordrift adopts the useful layers from Photara's architecture without its
 node packages, proxy graph, or exact third-party runtime registry. Chordrift
@@ -229,20 +231,21 @@ so a plugin runtime would add complexity without solving a current problem.
 The architectural rule is **one portable Rust product, several thin clients**:
 
 - the CLI is the first client, not the product core;
-- the macOS client uses native SwiftUI and the current native Apple design
-  language, including Liquid Glass where the running OS supports it;
-- the Windows client uses its own native Windows presentation and integration;
-- a future Linux client may use a separate native shell without changing
+- the responsive web application is the intended consumer client and owns
+  presentation, accessibility, navigation, OAuth handoff, browser-session
+  handling, and notifications;
+- iOS and Android clients are intended after the web experience is proven;
+  optional macOS, Windows, or Linux clients may also follow without changing
   recipes, persistence rules, or provider behavior;
-- native clients own presentation, accessibility, navigation, platform window
-  behavior, OAuth handoff, notifications, and secure storage of their Chordrift
-  session credential;
+- every shipped client stores only a revocable Chordrift session and never
+  receives provider refresh credentials or a Neon connection;
 - Rust owns accounts, identity, inventory, evidence, collections, recipes,
   Spins, publication safety, migrations, background work, and diagnostics.
 
 The shippable authority is a hosted Rust service. It owns the Neon connection
-and encrypted provider authorization; neither is distributed in a desktop
-binary. Native applications and the installed CLI authenticate to that service.
+and encrypted provider authorization; neither is distributed to a browser or
+desktop binary. The web application, optional native applications, and the
+installed CLI authenticate to that service.
 During development, the CLI may invoke the same application service through an
 in-process transport, but it receives no separate business path.
 
@@ -297,20 +300,19 @@ Cross-cutting contracts cover account isolation, secret handling, structured
 diagnostics, tracing, cancellation, idempotency, deterministic generation,
 schema/API compatibility, performance budgets, backup, and recovery.
 
-### Native client boundary
+### Client boundary
 
-The platform shells do not decide which tracks qualify, calculate weights,
+Client presentations do not decide which tracks qualify, calculate weights,
 order a Spin, interpret a provider deletion, or generate a provider mutation.
 They render Rust-supplied views and issue Rust-defined commands. Platform-only
 code is expected for:
 
-- SwiftUI/AppKit presentation and Liquid Glass availability on macOS;
-- Windows-native presentation and lifecycle integration;
+- responsive web presentation, accessibility, navigation, and browser-session
+  lifecycle;
 - OAuth browser launch and callback routing;
-- application session storage in Keychain, Windows Credential Manager, or a
-  future Linux secret service;
+- optional native secure session storage and platform lifecycle integration;
 - provider deep links, file pickers, notifications, accessibility, and updater
-  integration.
+  integration where applicable.
 
 The service stores provider refresh credentials in its encrypted server-side
 vault. The client credential store contains only the user's Chordrift session;
@@ -513,8 +515,8 @@ tests at every step.
   statistics, embeddings, and unreferenced candidate generations remain
   rebuildable.
 - Unsupported provider capabilities degrade visibly and safely.
-- CLI and native clients receive identical decisions through the same versioned
-  application contract.
+- CLI, web, and optional native clients receive identical decisions through the
+  same versioned application contract.
 - No shipped client contains a Neon connection or provider refresh credential.
 - Client disconnect, retry, or duplicate submission cannot duplicate a Spin or
   provider apply; commands are idempotent and resumable.
@@ -566,5 +568,6 @@ an honest usable experience.
    boundary.
 12. Introduce the hosted Rust service and authenticated client transport without
    distributing Neon or provider refresh credentials.
-13. Build native clients over the stable contract only after isolation,
-   compatibility, and deterministic-preview tests pass.
+13. Build the web client over the stable contract only after isolation,
+   compatibility, cumulative-provider, and deterministic-preview tests pass;
+   add optional native clients later through the same contract.

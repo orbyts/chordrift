@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1280" viewBox="0 0 1800 1280" role="img" aria-labelledby="title desc">
-  <title id="title">Chordrift portable core and native client architecture</title>
-  <desc id="desc">A layered architecture with native clients, a versioned client contract, portable Rust domain and application layers, an authoritative Rust service host, infrastructure adapters, and cross-cutting concerns.</desc>
+  <title id="title">Chordrift portable core and thin client architecture</title>
+  <desc id="desc">A layered web-first architecture with a CLI proving client, optional native clients, a versioned client contract, portable Rust domain and application layers, an authoritative Rust service host, infrastructure adapters, and cross-cutting concerns.</desc>
   <defs>
     <style>
       text { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17202a; }
@@ -29,10 +29,10 @@
 
   <rect width="1800" height="1280" fill="#f7f9fc"/>
   <text x="70" y="60" class="title">Chordrift Architecture</text>
-  <text x="70" y="90" class="subtitle">Portable Rust product · versioned client contract · native experiences · hosted authority</text>
+  <text x="70" y="90" class="subtitle">Portable Rust product · versioned client contract · web-first experience · hosted authority</text>
 
   <rect x="65" y="125" width="150" height="185" class="node client"/>
-  <text x="140" y="175" class="layer-label">NATIVE</text>
+  <text x="140" y="175" class="layer-label">THIN</text>
   <text x="140" y="198" class="layer-label">CLIENTS</text>
   <text x="140" y="232" class="small" text-anchor="middle">Platform presentation</text>
   <text x="140" y="251" class="small" text-anchor="middle">and OS integration</text>
@@ -45,23 +45,23 @@
   <text x="267" y="262" class="small">No separate playlist or provider policy</text>
 
   <rect x="600" y="125" width="330" height="185" class="node client"/>
-  <text x="622" y="157" class="label">macOS · SwiftUI</text>
-  <text x="622" y="184" class="body">Native navigation and accessibility</text>
-  <text x="622" y="207" class="body">Liquid Glass where OS-supported</text>
-  <text x="622" y="230" class="body">OAuth handoff · deep links · notifications</text>
-  <text x="622" y="262" class="small">Chordrift session stored in Keychain</text>
+  <text x="622" y="157" class="label">Web app · primary client</text>
+  <text x="622" y="184" class="body">Responsive navigation and accessibility</text>
+  <text x="622" y="207" class="body">Onboarding · review · Spins · recovery</text>
+  <text x="622" y="230" class="body">OAuth handoff · browser session · notifications</text>
+  <text x="622" y="262" class="small">No Neon or provider refresh credential</text>
 
   <rect x="955" y="125" width="330" height="185" class="node client"/>
-  <text x="977" y="157" class="label">Windows · native client</text>
-  <text x="977" y="184" class="body">Windows-native design and lifecycle</text>
-  <text x="977" y="207" class="body">Accessibility · links · notifications</text>
-  <text x="977" y="230" class="body">No shared cross-platform UI toolkit</text>
-  <text x="977" y="262" class="small">Chordrift session in Credential Manager</text>
+  <text x="977" y="157" class="label">Optional native clients</text>
+  <text x="977" y="184" class="body">iOS · Android · macOS · Windows</text>
+  <text x="977" y="207" class="body">Platform lifecycle and integration</text>
+  <text x="977" y="230" class="body">Same contract after web proves it</text>
+  <text x="977" y="262" class="small">Only a revocable Chordrift session</text>
 
   <rect x="1310" y="125" width="280" height="185" class="node client"/>
   <text x="1332" y="157" class="label">Future clients</text>
-  <text x="1332" y="184" class="body">Linux native shell</text>
-  <text x="1332" y="207" class="body">Web or mobile if justified</text>
+  <text x="1332" y="184" class="body">Partner or assistive clients</text>
+  <text x="1332" y="207" class="body">New surfaces if justified</text>
   <text x="1332" y="230" class="body">Same versioned contract</text>
   <text x="1332" y="262" class="small">New presentation, unchanged policy</text>
 
@@ -78,7 +78,7 @@
   <text x="270" y="408" class="body">Commands · immutable query views · lifecycle events · structured errors · progress · cancellation · recovery</text>
   <text x="270" y="435" class="body">Negotiates API version · schema version · provider capabilities · evidence capabilities · feature availability</text>
   <text x="270" y="468" class="small">CLI may call in process; shipped clients use authenticated service transport. Clients never parse terminal output or access SQL.</text>
-  <text x="270" y="489" class="small">Status: V020-01–14 complete · fresh 47/47 candidate verified · v0.2 release next · cutover separately gated</text>
+  <text x="270" y="489" class="small">Status: v0.2 released · alpha daily-driver hardening active · v0.2.1 hosted authority next · web client later</text>
 
   <path d="M900 500 V535" class="both"/>
 
