@@ -4,7 +4,7 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.1-alpha.14**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-alpha.15**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
 and verified 47/47 database together; see
@@ -36,6 +36,7 @@ and verified 47/47 database together; see
 | Review database-v2 decisions | [Database architecture v2](design/DATABASE_ARCHITECTURE_V2.md) | Completed v0.1.4 foundation and labeled historical execution record. |
 | Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
 | Review hosted credential safety | [Provider credential vault](design/PROVIDER_CREDENTIAL_VAULT_V021_03.md) | Encrypted server-side refresh credentials, external keys, tenant authorization, rotation, and revocation; not required by local maintenance. |
+| Review hosted background work | [Durable background operations](design/DURABLE_BACKGROUND_OPERATIONS_V021_04.md) | Restart-safe typed jobs, progress, cancellation, retry, recovery, and replay; not required by local maintenance. |
 
 If a historical release detail is needed, use the corresponding Git tag. The
 documents on `main` prioritize unambiguous v0.2.0 operation and forward design.
@@ -163,6 +164,7 @@ $ chordrift capabilities \
     --require service.authenticated-transport.v1 \
     --require service.product-identity.v1 \
     --require service.provider-credential-vault.v1 \
+    --require service.durable-operations.v1 \
     --require maintenance.task-session.v1 \
     --require maintenance.provider-baseline.v1 \
     --require maintenance.unified-workflow.v1 \
@@ -178,19 +180,21 @@ exclusions, and direct reclassification moves is:
 $ scripts/chordrift-maintain.sh --account personal
 ```
 
-Alpha.14 keeps this shell as the temporary local CLI adapter while the same
+Alpha.15 keeps this shell as the temporary local CLI adapter while the same
 task-level state and authorization rules are now available through the Rust
 service contract. Product identity/session machinery is implemented, but there
-is still no hosted URL or identity vendor to configure. V021-03 now adds the
-internal encrypted credential vault; V021-04 through V021-06 add durable jobs,
-remote CLI parity, and deployment. Migrations 0048 and 0049 are hosted identity
-and encrypted-credential storage; ordinary local maintenance continues to
+is still no hosted URL or identity vendor to configure. V021-03 adds the
+internal encrypted credential vault and V021-04 adds restart-safe durable
+operations; V021-05/V021-06 add remote CLI parity and deployment. Migrations
+0048 through 0050 are hosted identity, encrypted-credential, and durable-job
+storage; ordinary local maintenance continues to
 require only the already verified schema through migration 0047.
 
-Consequently, `chordrift db status` may show `47/49` and two pending migrations
+Consequently, `chordrift db status` may show `47/50` and three pending migrations
 while you are using only the local maintenance client. That is expected and is
 not a reason to run `db migrate`. A hosted deployment must instead show
-migrations 0048 and 0049 applied before it accepts provider-backed traffic.
+migrations 0048 through 0050 applied before it accepts durable provider-backed
+traffic.
 
 It refuses new playlist design, artwork redesign, retirement, and every future
 Spin publication plan. Lower-level commands remain developer diagnostics and

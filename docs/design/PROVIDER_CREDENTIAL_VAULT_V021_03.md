@@ -74,8 +74,8 @@ plaintext token and no encryption key.
 The hosted authority must verify migration 0049 before enabling provider-backed
 work. Local daily-driver maintenance still requires only migration 0047, so the
 personal 47-migration music database does not need migrations 0048 or 0049.
-Seeing `47/49` in local status is therefore expected while hosted slices remain
-undeployed.
+Seeing `47/50` in local status is therefore expected now that the later durable-
+operation migration is also present but hosted slices remain undeployed.
 
 ## Verification
 
@@ -91,7 +91,7 @@ The permanent test matrix proves:
 - immediate post-revocation denial; and
 - a complete migration-0049 rehearsal on disposable PostgreSQL.
 
-V021-04 may persist jobs and resumable operation state around this boundary.
+V021-04 now persists jobs and resumable operation state around this boundary.
 V021-05 may make the CLI a remote Chordrift-session client. V021-06 selects the
 deployment key/KMS source, provider OAuth redirect policy, backup/restore,
 observability, and production rotation runbook.

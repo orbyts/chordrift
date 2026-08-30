@@ -1,11 +1,13 @@
 # Web service contract and transport conformance
 
-Status: A021-12 and V021-01 through V021-03 are implemented. The asynchronous Rust
+Status: A021-12 and V021-01 through V021-04 are implemented. The asynchronous Rust
 authority is available through typed HTTP routes using persisted, revocable
 Chordrift product sessions and is tested over a real loopback TCP server.
-Provider refresh credentials now remain behind an encrypted internal vault;
-there is no raw-token route. Durable execution, hosting, and deployment remain later
-V021 slices. This document does not expose a production endpoint or authorize
+Provider refresh credentials remain behind an encrypted internal vault; there
+is no raw-token route. Typed command acceptance, operation state, ordered
+events, cancellation, retry, and recovery now have restart-safe PostgreSQL
+persistence. Remote CLI parity, hosting, and deployment remain later V021
+slices. This document does not expose a production endpoint or authorize
 deployment.
 
 ## The boundary
@@ -105,8 +107,8 @@ rejection, capability failure, and secret-free errors. The matrix is:
 2. real loopback HTTP using serialized DTOs and authenticated test sessions —
    implemented;
 3. fake provider plus the existing disposable PostgreSQL integration suite —
-   implemented, with durable service persistence deliberately reserved for
-   V021-04; and
+   implemented, including restart-safe durable operation persistence, exact
+   replay, concurrent worker claim, recovery, retry, and cancellation; and
 4. deployed read-only/synthetic smoke tests — required by V021-06.
 
 The HTTP harness is the early web simulation. It tests JSON round trips,

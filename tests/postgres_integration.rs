@@ -1,10 +1,12 @@
-use std::{cell::Cell, collections::BTreeMap, future, num::NonZeroU16};
+use std::{cell::Cell, collections::BTreeMap, future, num::NonZeroU16, sync::Arc, time::Duration};
 
 use chordrift::{
     application::ApplicationFacade,
     apply, config,
     contract::{
-        CONTRACT_VERSION, Command, CommandRequest, IdempotencyKey, Query, QueryRequest, ResourceId,
+        CONTRACT_VERSION, CancellationOutcome, CancellationRequest, ClientError, Command,
+        CommandRequest, ErrorCode, IdempotencyKey, OperationState, Progress, ProgressUnit, Query,
+        QueryRequest, RequestId, ResourceId,
     },
     db, db_reports,
     domain::{
@@ -15,6 +17,9 @@ use chordrift::{
         ProviderConnectionIdentity, ProviderNamespace, RecipeId, RecipeRevisionId,
         RecipeRevisionIdentity, RecipeSection, RecipeSource, RecipeV1, SourceAllocation,
         SourceLane,
+    },
+    durable_operations::{
+        DurableOperationQueue, OperationRetryPolicy, PostgresDurableOperationStore,
     },
     identity::{
         NewProductSession, PostgresProductIdentityStore, ProductIdentityStore,
@@ -40,12 +45,13 @@ use chordrift::{
         CandidateEligibility, RecipeCandidate, RecipeExecutionRequest, RecipeExecutor,
         SelectionBudgets,
     },
+    service::ServiceClock,
     spin_preview::{SpinPreviewBoundary, SpinPreviewInput},
     spin_publication::{SpinPublicationBoundary, SpinPublicationRequest},
     sync_plan::{self, PlanOrigin},
     tracks as track_ops,
 };
-use chrono::{TimeDelta, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use serde_json::json;
 use storexa::{Database, DatabaseConfig, PostgresProvider};
 use uuid::Uuid;
@@ -2763,6 +2769,285 @@ async fn encrypts_rotates_and_revokes_provider_credentials_with_tenant_isolation
             .expect("revoked credential unavailable")
             .code,
         chordrift::contract::ErrorCode::PermissionDenied
+    );
+
+    database.close().await;
+    Ok(())
+}
+
+#[derive(Clone)]
+struct DurableFixedClock(DateTime<Utc>);
+
+impl ServiceClock for DurableFixedClock {
+    fn now(&self) -> DateTime<Utc> {
+        self.0
+    }
+}
+
+fn durable_request(idempotency_key: IdempotencyKey) -> CommandRequest {
+    CommandRequest {
+        contract_version: CONTRACT_VERSION,
+        request_id: RequestId::new(),
+        idempotency_key,
+        command: Command::StartMaintenance {
+            session_id: Default::default(),
+            provider_connection_id: ResourceId::new(),
+        },
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for a disposable PostgreSQL database"]
+async fn persists_restart_safe_operation_replay_recovery_retry_and_cancellation()
+-> chordrift::Result<()> {
+    let config = DatabaseConfig::from_env_var("CHORDRIFT_TEST_DATABASE_URL")?
+        .with_name("chordrift-durable-operations-test")?
+        .with_provider(PostgresProvider::Neon)?
+        .with_min_connections(0)
+        .with_max_connections(3);
+    let database = db::connect(config).await?;
+    db::migrate(&database).await?;
+    let account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name)
+         VALUES ('Durable Operation Fixture') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let other_account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name)
+         VALUES ('Durable Other Tenant') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let identity_store = PostgresProductIdentityStore::new(database.pool().clone());
+    let owner = identity_store
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "durable-owner").unwrap(),
+            ResourceId::from_uuid(account_id),
+        )
+        .await
+        .unwrap();
+    let other_owner = identity_store
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "durable-other").unwrap(),
+            ResourceId::from_uuid(other_account_id),
+        )
+        .await
+        .unwrap();
+    let store = Arc::new(PostgresDurableOperationStore::new(database.pool().clone()));
+    store.verify_schema().await.unwrap();
+    let started_at: DateTime<Utc> = "2026-08-30T20:00:00Z".parse().unwrap();
+    let first_queue = DurableOperationQueue::with_clock(
+        Arc::clone(&store),
+        Arc::new(DurableFixedClock(started_at)),
+    );
+    let idempotency_key = IdempotencyKey::new();
+    let request = durable_request(idempotency_key);
+    let policy = OperationRetryPolicy::new(3, Duration::ZERO).unwrap();
+    let accepted = first_queue
+        .accept(owner, request.clone(), policy)
+        .await
+        .unwrap();
+    assert!(!accepted.replayed);
+    assert_eq!(
+        first_queue
+            .operation(owner, accepted.receipt.operation_id)
+            .await
+            .unwrap()
+            .state,
+        OperationState::Queued
+    );
+
+    // A new queue instance simulates another service process. The exact
+    // idempotent receipt and queued operation survive the restart.
+    let restarted_queue = DurableOperationQueue::with_clock(
+        Arc::new(PostgresDurableOperationStore::new(database.pool().clone())),
+        Arc::new(DurableFixedClock(started_at)),
+    );
+    let replay = restarted_queue
+        .accept(owner, request.clone(), policy)
+        .await
+        .unwrap();
+    assert!(replay.replayed);
+    assert_eq!(replay.receipt, accepted.receipt);
+    let mut collision = request.clone();
+    collision.command = Command::RefreshMaintenance {
+        session_id: Default::default(),
+        expected_revision: 1,
+    };
+    assert_eq!(
+        restarted_queue
+            .accept(owner, collision, policy)
+            .await
+            .expect_err("idempotency collision fails closed")
+            .code,
+        ErrorCode::StateConflict
+    );
+    assert_eq!(
+        restarted_queue
+            .operation(other_owner, accepted.receipt.operation_id)
+            .await
+            .expect_err("other tenant cannot read operation")
+            .code,
+        ErrorCode::ResourceNotFound
+    );
+
+    let competing_queue = DurableOperationQueue::with_clock(
+        Arc::new(PostgresDurableOperationStore::new(database.pool().clone())),
+        Arc::new(DurableFixedClock(started_at)),
+    );
+    let (claim_a, claim_b) = tokio::join!(
+        restarted_queue.claim_next("worker-a", Duration::from_secs(1)),
+        competing_queue.claim_next("worker-b", Duration::from_secs(1))
+    );
+    let claims = [claim_a.unwrap(), claim_b.unwrap()]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    assert_eq!(claims.len(), 1, "only one worker obtains the command");
+    let first_lease = claims.into_iter().next().unwrap();
+    assert_eq!(first_lease.attempt, 1);
+    restarted_queue
+        .renew_lease(&first_lease, Duration::from_secs(1))
+        .await
+        .unwrap();
+    restarted_queue
+        .record_progress(
+            &first_lease,
+            Progress::new("observe_provider", 2, Some(5), ProgressUnit::Playlists).unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // After the lease expires, a third process recovers and reclaims it. The
+    // stale worker capability can no longer append progress or complete work.
+    let recovery_time = started_at + TimeDelta::seconds(2);
+    let recovery_queue = DurableOperationQueue::with_clock(
+        Arc::new(PostgresDurableOperationStore::new(database.pool().clone())),
+        Arc::new(DurableFixedClock(recovery_time)),
+    );
+    let second_lease = recovery_queue
+        .claim_next("worker-b", Duration::from_secs(30))
+        .await
+        .unwrap()
+        .expect("expired lease is recovered");
+    assert_eq!(second_lease.operation_id, first_lease.operation_id);
+    assert_eq!(second_lease.attempt, 2);
+    assert_eq!(
+        recovery_queue
+            .complete(&first_lease, None)
+            .await
+            .expect_err("stale lease cannot complete")
+            .code,
+        ErrorCode::StateConflict
+    );
+    let retry_state = recovery_queue
+        .fail(
+            &second_lease,
+            ClientError::new(ErrorCode::DependencyUnavailable, true),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(retry_state, OperationState::Recoverable { .. }));
+    let third_lease = recovery_queue
+        .claim_next("worker-c", Duration::from_secs(30))
+        .await
+        .unwrap()
+        .expect("recoverable work is retried");
+    assert_eq!(third_lease.attempt, 3);
+    assert_eq!(
+        recovery_queue
+            .request_cancellation(
+                owner,
+                CancellationRequest {
+                    operation_id: accepted.receipt.operation_id,
+                    cancellation_id: accepted.receipt.cancellation_id,
+                },
+            )
+            .await
+            .unwrap(),
+        CancellationOutcome::Requested
+    );
+    assert!(
+        recovery_queue
+            .cancellation_requested(&third_lease)
+            .await
+            .unwrap()
+    );
+    recovery_queue
+        .acknowledge_cancellation(&third_lease)
+        .await
+        .unwrap();
+    assert_eq!(
+        recovery_queue
+            .operation(owner, accepted.receipt.operation_id)
+            .await
+            .unwrap()
+            .state,
+        OperationState::Cancelled
+    );
+    let events = recovery_queue
+        .events(owner, accepted.receipt.operation_id, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        events
+            .events
+            .iter()
+            .map(|event| event.sequence)
+            .collect::<Vec<_>>(),
+        (1_u64..=events.events.len() as u64).collect::<Vec<_>>()
+    );
+    assert!(events.events.iter().any(|event| matches!(
+        event.state,
+        OperationState::Running {
+            progress: Some(ref progress)
+        } if progress.phase == "observe_provider" && progress.completed == 2
+    )));
+
+    let terminal_request = durable_request(IdempotencyKey::new());
+    let terminal = recovery_queue
+        .accept(
+            owner,
+            terminal_request,
+            OperationRetryPolicy::new(1, Duration::ZERO).unwrap(),
+        )
+        .await
+        .unwrap();
+    let terminal_lease = recovery_queue
+        .claim_next("worker-terminal", Duration::from_secs(30))
+        .await
+        .unwrap()
+        .expect("terminal fixture claimed");
+    let terminal_state = recovery_queue
+        .fail(
+            &terminal_lease,
+            ClientError::new(ErrorCode::DependencyUnavailable, true),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(terminal_state, OperationState::Failed { .. }));
+    assert_eq!(
+        recovery_queue
+            .request_cancellation(
+                owner,
+                CancellationRequest {
+                    operation_id: terminal.receipt.operation_id,
+                    cancellation_id: terminal.receipt.cancellation_id,
+                },
+            )
+            .await
+            .unwrap(),
+        CancellationOutcome::TooLate
+    );
+    assert_eq!(
+        recovery_queue
+            .history(owner)
+            .await
+            .unwrap()
+            .operations
+            .len(),
+        2
     );
 
     database.close().await;

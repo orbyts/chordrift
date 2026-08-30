@@ -243,9 +243,9 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Current checkpoint: begin V021-04
+## Current checkpoint: begin V021-05
 
-V020-01 through V020-15, A021-01 through A021-13, and V021-01 through V021-03
+V020-01 through V020-15, A021-01 through A021-13, and V021-01 through V021-04
 are complete.
 v0.2.0 is released and the separately approved personal binary/database
 cutover is complete. `v0.2.1-alpha.14` is the installed daily-driver
@@ -299,12 +299,32 @@ product-session schema 1, and has `CHORDRIFT_BIN` unset. No personal Spotify or
 Neon operation was used for implementation, testing, release, or installation
 verification.
 
-Begin `V021-04 — Durable background operations`. Persist operation lifecycle,
-progress, cancellation, retry/recovery, and idempotent replay around the
-existing authenticated application and credential boundaries. Do not pull
-remote CLI cutover, hosting/deployment, a web UI, or the separate Classification
-Authority into V021-04. Never call or write Spotify without an exact separately
-authorized provider operation.
+V021-04 adds `DurableOperationQueue` and additive migration 0050. A typed
+application command, its account/subject-scoped idempotency key, canonical
+fingerprint, exact receipt, retry policy, and queued event commit before worker
+execution. Identical replay across fresh service instances returns the original
+receipt; key reuse for different intent fails closed. PostgreSQL `SKIP LOCKED`
+claims issue one random expiring lease generation, explicit heartbeat supports
+long work, and every worker update requires the current unexpired lease.
+
+Lifecycle/progress events are immutable and operation-local ordered. Queued and
+recoverable cancellation is immediate; running cancellation persists until a
+safe worker acknowledgement. Retryable failure and abandoned leases become
+recoverable within a fixed attempt budget, then terminal. Current V021-02
+authorization is rechecked for acceptance, cancellation, queries/history, and
+worker eligibility. Queue payloads are typed command DTOs, never CLI/shell/SQL,
+provider credentials, or provider-write authority. Unit and disposable-
+PostgreSQL tests prove restart replay, concurrent single claim, heartbeat,
+progress, stale-worker rejection, recovery, retry exhaustion, cancellation,
+tenant isolation, history, and cursor-contiguous events. Migration 0050 was not
+applied to the personal database. See
+`docs/design/DURABLE_BACKGROUND_OPERATIONS_V021_04.md`.
+
+Begin `V021-05 — Remote CLI parity`. Make the installed CLI an authenticated
+client of the typed durable service while preserving an explicit local
+development transport. Do not pull hosting selection/public deployment, a web
+UI, or the separate Classification Authority into V021-05. Never call or write
+Spotify without an exact separately authorized provider operation.
 
 Alpha.13 implementation commit `ff425146e89d177f4bc9828c7784e3322f5fe9a3`
 passed CI run `33325908241`, including formatting, strict Clippy, all targets,
@@ -1304,8 +1324,8 @@ proposals, readiness, apply receipts, and verification.
 - User's normal clone: `$CRATES/chordrift`, currently
   `/Users/suhail/Library/CloudStorage/Dropbox/matrix/crates/chordrift`
 - Local Storexa clone, if its source is needed: `$CRATES/storexa`
-- Current release line: `v0.2.1` prereleases; alpha.14 is the V021-03 encrypted-
-  credential checkpoint. Historical branches are recovery references, not pending
+- Current release line: `v0.2.1` prereleases; alpha.15 is the V021-04 durable-
+  operation checkpoint. Historical branches are recovery references, not pending
   merge sources.
 
 Before editing, inspect `git status --short`, the current branch, this file,

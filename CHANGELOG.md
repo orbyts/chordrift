@@ -4,6 +4,25 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.15] - 2026-08-30
+
+- Add a restart-safe typed application command queue with exact durable
+  account/subject-scoped idempotent receipts and collision rejection.
+- Add exclusive expiring PostgreSQL worker leases, explicit heartbeat, atomic
+  concurrent claim, stale-worker rejection, and append-only ordered lifecycle
+  and structured-progress events.
+- Persist cooperative cancellation through service restarts, cancelling queued
+  work immediately and running work only at a safe worker checkpoint.
+- Add bounded retry and abandoned-lease recovery with durable recoverable and
+  terminal client-safe failure states.
+- Add migration 0050 for current operation state plus immutable event streams;
+  payloads contain typed application DTOs and never provider credentials.
+- Prove process restart, exact replay, concurrent claim, progress, tenant
+  isolation, lease expiry, retry exhaustion, cancellation, history, and event
+  cursors on disposable PostgreSQL.
+- Advertise `service.durable-operations.v1` while retaining application
+  contract 1.2 and local maintenance compatibility with migration 0047.
+
 ## [0.2.1-alpha.14] - 2026-08-30
 
 - Add a server-side XChaCha20-Poly1305 provider refresh-credential vault whose

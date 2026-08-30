@@ -42,6 +42,8 @@ pub mod db_reports;
 pub mod db_v2_migration;
 /// Provider-neutral product-domain identities, values, and invariants.
 pub mod domain;
+/// Restart-safe authenticated operation queue and lifecycle persistence.
+pub mod durable_operations;
 /// Deterministic, versioned semantic track embeddings.
 pub mod embeddings;
 /// Cache-first, provenance-aware semantic metadata enrichment.

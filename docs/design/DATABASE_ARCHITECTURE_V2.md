@@ -18,7 +18,10 @@ music, inventory, intent, evidence, or publication model. Hosted identity must
 verify 0048 before accepting traffic. V021-03 adds migration 0049's encrypted
 provider-credential envelopes on that same ownership edge. Encryption keys and
 plaintext credentials remain outside PostgreSQL. Hosted provider work must
-verify 0049. The local maintenance client explicitly requires only schema
+verify 0049. V021-04 adds migration 0050's typed durable operation ledger and
+append-only event stream; it stores application DTOs, leases, retry, and
+cancellation state but no provider credential. Hosted workers must verify 0050.
+The local maintenance client explicitly requires only schema
 through 0047, so ordinary personal use does not force either hosted schema into
 the existing database.
 
@@ -37,11 +40,11 @@ are not current instructions. For routine operation use the
 | Boundary | Current status |
 | --- | --- |
 | Released runtime | v0.2.1 alpha is the local daily driver; the hosted authority is under construction. |
-| Schema | The verified personal music database is at 47 migrations. Migrations 0048–0049 are additive hosted identity/session and encrypted-credential storage and are not required by local maintenance. |
+| Schema | The verified personal music database is at 47 migrations. Migrations 0048–0050 are additive hosted identity/session, encrypted-credential, and durable-operation storage and are not required by local maintenance. |
 | Legacy storage | Database-v1 physical tables and the former rollback project are gone after independently verified exact-confirmed cleanup. |
 | Recovery | The verified pre-compaction dump remains the historical recovery baseline; V020-13 adds its local-rehearsal dump and V020-14 adds the newer verified candidate-source dump. Immutable Spotify archives remain independent evidence sources. |
 | Routine operation | Use `scripts/chordrift-maintain.sh --account personal`; do not replay historical migration or cleanup applies. |
-| v0.2/v0.2.1 relationship | Migrations 0046–0047 are the active product/Spin foundation. Migration 0048 adds hosted product identity/sessions; migration 0049 adds server-side encrypted provider credentials. |
+| v0.2/v0.2.1 relationship | Migrations 0046–0047 are the active product/Spin foundation. Migration 0048 adds hosted product identity/sessions; 0049 adds encrypted provider credentials; 0050 adds durable operations/events. |
 
 The exact migration-0046 reconciliation and ownership model is documented in
 the [V020-05 product schema foundation](PRODUCT_SCHEMA_V020_05.md). It adds

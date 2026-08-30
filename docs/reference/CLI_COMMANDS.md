@@ -3,7 +3,7 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the **v0.2.1-alpha.14** daily-driver CLI. It retains the
+Command status: this page documents the **v0.2.1-alpha.15** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
@@ -48,6 +48,7 @@ $ chordrift capabilities \
     --require service.authenticated-transport.v1 \
     --require service.product-identity.v1 \
     --require service.provider-credential-vault.v1 \
+    --require service.durable-operations.v1 \
     --require maintenance.task-session.v1 \
     --require maintenance.intake-workflow.v1 \
     --require maintenance.bulk-plan-preview.v1 \
@@ -61,14 +62,15 @@ with a nonzero status. Scripts use feature names—not `--version` parsing—to
 detect compatibility.
 
 `maintenance.task-session.v1`, `service.authenticated-transport.v1`,
-`service.product-identity.v1`, and `service.provider-credential-vault.v1`
-report the Rust-owned task, transport, product-session, and encrypted provider-
-credential boundaries used by future clients. They do not add a second user-
+`service.product-identity.v1`, `service.provider-credential-vault.v1`, and
+`service.durable-operations.v1` report the Rust-owned task, transport, product-
+session, encrypted provider-credential, and restart-safe operation boundaries
+used by future clients. They do not add a second user-
 facing maintenance command or hosted URL; the ordinary shell below remains the
-current CLI adapter. Hosted identity/provider work needs migrations 0048–0049,
+current CLI adapter. Hosted identity/provider work needs migrations 0048–0050,
 while local maintenance intentionally requires only schema through migration
 0047. On the personal local deployment, `db status` may therefore report
-`47/49` with two pending hosted migrations; do not apply them merely to clear
+`47/50` with three pending hosted migrations; do not apply them merely to clear
 that counter. Ordinary maintenance validates its required schema through 0047.
 
 After a current pull, audit exact intake membership against durable coverage,

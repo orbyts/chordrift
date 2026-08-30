@@ -68,6 +68,7 @@ in-process Rust service. Acceptance proves:
 - malformed or incompatible requests return secret-free structured errors.
 
 The fake backend is the deliberate V021-01 proof adapter. V021-03 supplies the
-server-side credential boundary, V021-04 persists operations and replay state,
-V021-05 moves the installed CLI onto the service while retaining an explicit
+server-side credential boundary, and V021-04 now persists typed operations,
+events, cancellation, retry, recovery, and replay state. V021-05 moves the
+installed CLI onto the service while retaining an explicit
 local development transport, and V021-06 selects and rehearses deployment.

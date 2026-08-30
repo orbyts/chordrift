@@ -274,8 +274,16 @@ and later Chordrift refactor begin.
   PostgreSQL. Clients retain only Chordrift sessions, and no raw-credential
   route exists. Publish the checkpoint as `v0.2.1-alpha.14` with additive
   migration 0049 and capability `service.provider-credential-vault.v1`.
-- [ ] **V021-04 — Durable background operations.** Add job persistence,
-  progress, cancellation, retry, recovery, and idempotent replay.
+- [x] **V021-04 — Durable background operations.** Persist typed commands and
+  exact account/subject-scoped idempotent receipts before execution. Add
+  exclusive expiring worker leases with heartbeat, immutable ordered progress
+  events, durable cooperative cancellation, bounded retry, abandoned-lease
+  recovery, stale-worker rejection, and reconnectable operation/history/event
+  queries. Prove exact replay and collision rejection across fresh service
+  instances, one winner under concurrent claim, tenant isolation, cancellation,
+  recovery, and retry exhaustion on disposable PostgreSQL. Publish the
+  checkpoint as `v0.2.1-alpha.15` with additive migration 0050 and capability
+  `service.durable-operations.v1`.
 - [ ] **V021-05 — Remote CLI parity.** Make the installed CLI an authenticated
   service client while retaining an explicit local development transport.
 - [ ] **V021-06 — Service deployment and release.** Select hosting and product
@@ -366,12 +374,11 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** begin `V021-04 — Durable background operations` around the
-authenticated service and encrypted provider-credential boundaries.
-`v0.2.1-alpha.14` is published and its exact registry artifact is installed.
-Do not pull remote CLI
-cutover, deployment, a web UI, or the separate Classification Authority into
-V021-04.
+**Next gate:** begin `V021-05 — Remote CLI parity`. Make the installed CLI an
+authenticated client of the typed durable service while retaining an explicit
+local development transport. `v0.2.1-alpha.15` is the intended published
+checkpoint. Do not pull hosting selection, public deployment, a web UI, or the
+separate Classification Authority into V021-05.
 
 ## Portable core and thin clients
 
