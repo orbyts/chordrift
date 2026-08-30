@@ -7,7 +7,7 @@ use chordrift::{
         MaintenanceSessionView, MaintenanceSurfaceView, MaintenanceTrackView, OperationId, Query,
         QueryRequest, RequestId, ResourceId, View,
     },
-    maintenance::{MaintenanceProjection, MaintenanceSessions},
+    maintenance::{MaintenanceDecisionProjection, MaintenanceProjection, MaintenanceSessions},
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -171,7 +171,14 @@ impl ScenarioApplication {
                                     expected_revision,
                                     decisions,
                                 },
-                                Some(self.fixture.next_review_id),
+                                Some(MaintenanceDecisionProjection {
+                                    provider_effects: self
+                                        .fixture
+                                        .projection
+                                        .provider_effects
+                                        .clone(),
+                                    review_id: Some(self.fixture.next_review_id),
+                                }),
                             )
                             .map(|_| ())
                             .map_err(|error| error.client_error())

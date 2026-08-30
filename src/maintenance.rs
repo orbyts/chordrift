@@ -30,6 +30,15 @@ pub struct MaintenanceProjection {
     pub review_id: Option<MaintenanceReviewId>,
 }
 
+/// Recomputed provider review after all ambiguity decisions are accepted.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MaintenanceDecisionProjection {
+    /// Exact provider effects implied by the accepted decisions.
+    pub provider_effects: Vec<MaintenanceProviderEffectView>,
+    /// Immutable review identity when the effects are nonempty.
+    pub review_id: Option<MaintenanceReviewId>,
+}
+
 /// Wrapper-neutral state machine for one ordinary-maintenance task.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MaintenanceWorkflow {
@@ -94,18 +103,22 @@ impl MaintenanceSessions {
     pub fn execute(
         &mut self,
         command: &Command,
-        next_review_id: Option<MaintenanceReviewId>,
+        decision_projection: Option<MaintenanceDecisionProjection>,
     ) -> Result<MaintenanceSessionView, MaintenanceWorkflowError> {
         match command {
             Command::ResolveMaintenance {
                 session_id,
                 expected_revision,
                 decisions,
-            } => self.session_mut(*session_id)?.resolve(
-                *expected_revision,
-                decisions.clone(),
-                next_review_id,
-            ),
+            } => {
+                let projection = decision_projection
+                    .ok_or(MaintenanceWorkflowError::MissingDecisionProjection)?;
+                self.session_mut(*session_id)?.resolve(
+                    *expected_revision,
+                    decisions.clone(),
+                    projection,
+                )
+            }
             Command::AuthorizeMaintenance {
                 session_id,
                 expected_revision,
@@ -181,7 +194,7 @@ impl MaintenanceWorkflow {
         &mut self,
         expected_revision: u64,
         decisions: Vec<MaintenanceDecision>,
-        next_review_id: Option<MaintenanceReviewId>,
+        decision_projection: MaintenanceDecisionProjection,
     ) -> Result<MaintenanceSessionView, MaintenanceWorkflowError> {
         self.require_revision(expected_revision)?;
         if self.view.state != MaintenanceSessionState::NeedsDecision {
@@ -216,7 +229,8 @@ impl MaintenanceWorkflow {
             change.resolution = Some(decision.resolution);
         }
         self.view.revision += 1;
-        self.view.review_id = next_review_id;
+        self.view.provider_effects = decision_projection.provider_effects;
+        self.view.review_id = decision_projection.review_id;
         self.refresh_derived_state()?;
         Ok(self.view())
     }
@@ -418,6 +432,9 @@ pub enum MaintenanceWorkflowError {
     /// The adapter submitted a query owned by a different application workflow.
     #[error("query is not supported by ordinary maintenance")]
     UnsupportedQuery,
+    /// A resolve command omitted its recomputed provider-effect review.
+    #[error("maintenance resolution requires a recomputed decision projection")]
+    MissingDecisionProjection,
     /// No maintenance session exists for the supplied opaque identity.
     #[error("maintenance session was not found")]
     SessionNotFound,
@@ -445,7 +462,8 @@ impl MaintenanceWorkflowError {
             | Self::ReviewWithoutEffects
             | Self::EffectsWithoutReview
             | Self::UnsupportedCommand
-            | Self::UnsupportedQuery => ErrorCode::InvalidRequest,
+            | Self::UnsupportedQuery
+            | Self::MissingDecisionProjection => ErrorCode::InvalidRequest,
             Self::SessionNotFound => ErrorCode::ResourceNotFound,
             Self::DuplicateSession => ErrorCode::StateConflict,
         };
@@ -524,7 +542,10 @@ mod tests {
                     change_id: change.change_id,
                     resolution: MaintenanceResolution::Exclude,
                 }],
-                Some(review_id),
+                MaintenanceDecisionProjection {
+                    provider_effects: vec![effect()],
+                    review_id: Some(review_id),
+                },
             )
             .expect("exact decision accepted");
         assert_eq!(resolved.revision, 2);
@@ -543,6 +564,46 @@ mod tests {
         ));
         let authorized = workflow.authorize(2, review_id).expect("review accepted");
         assert_eq!(authorized.state, MaintenanceSessionState::Authorized);
+    }
+
+    #[test]
+    fn accepted_decision_replaces_predecision_provider_effects() {
+        let change = ambiguous_change();
+        let review_id = MaintenanceReviewId::new();
+        let replacement = MaintenanceProviderEffectView {
+            effect_id: ResourceId::new(),
+            kind: MaintenanceProviderEffectKind::AddTrack,
+            track: Some(track()),
+            surface: Some(surface("Restored Vibe")),
+            summary: "Restore Fixture Song to Restored Vibe".to_owned(),
+        };
+        let mut workflow = MaintenanceWorkflow::new(
+            MaintenanceSessionId::new(),
+            MaintenanceProjection {
+                provider_snapshot_id: ResourceId::new(),
+                observed_changes: vec![change.clone()],
+                provider_effects: vec![effect()],
+                review_id: None,
+            },
+        )
+        .unwrap();
+        let resolved = workflow
+            .resolve(
+                1,
+                vec![MaintenanceDecision {
+                    change_id: change.change_id,
+                    resolution: MaintenanceResolution::Restore {
+                        destination: surface("Restored Vibe"),
+                    },
+                }],
+                MaintenanceDecisionProjection {
+                    provider_effects: vec![replacement.clone()],
+                    review_id: Some(review_id),
+                },
+            )
+            .unwrap();
+        assert_eq!(resolved.provider_effects, vec![replacement]);
+        assert_eq!(resolved.review_id, Some(review_id));
     }
 
     #[test]

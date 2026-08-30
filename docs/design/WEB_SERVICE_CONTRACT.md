@@ -1,9 +1,10 @@
 # Web service contract and transport conformance
 
-Status: the wrapper-neutral task DTO/reducer foundation is implemented by
-A021-12; authenticated HTTP, durable execution, and real infrastructure adapter
-wiring remain V021-01 and later. This document does not select hosting, expose a
-production endpoint, or authorize deployment.
+Status: A021-12 and V021-01 are implemented. The asynchronous Rust authority is
+available through authenticated typed HTTP routes and tested over a real
+loopback TCP server. Product sessions, durable execution, credential vaulting,
+hosting, and deployment remain later V021 slices. This document does not expose
+a production endpoint or authorize deployment.
 
 ## The boundary
 
@@ -27,11 +28,12 @@ That contract already provides useful primitives:
 - structured progress, lifecycle events, cancellation, and recovery; and
 - fixed client-safe errors and capability reporting.
 
-The task DTO/reducer now owns ordinary workflow transitions, but operational
-database/provider sequencing still lives in `scripts/chordrift-maintain.sh`.
-V021-01 must move that execution behind Rust infrastructure adapters. A web
-client must never port the shell state machine to JavaScript or reproduce its
-sequence with button-specific endpoints.
+The task DTO/reducer and asynchronous application service own ordinary workflow
+transitions and orchestration behind typed backend ports. The published local
+daily-driver still invokes the established shell until remote CLI parity in
+V021-05; that compatibility shell is not the service contract. A web client
+must never port it to JavaScript or reproduce its sequence with button-specific
+endpoints.
 
 ## Task-oriented application workflows
 
@@ -45,7 +47,7 @@ contract. It supports task-level operations equivalent to:
 - cancel long work; and
 - read progress, recovery state, receipt, and final convergence.
 
-The concrete 1.1 contract currently exposes typed start, refresh, resolve,
+The concrete 1.2 contract exposes typed start, refresh, resolve,
 authorize, and session-query DTOs. One user action may
 create several internal proposals, plans, assessments, and receipts. Those
 objects remain Rust-owned safety evidence and appear in advanced diagnostics,
@@ -84,17 +86,22 @@ Do not build a generic “run CLI command” endpoint.
 
 ## Required conformance matrix
 
-The A021-12 foundation already runs start/query/decision/authorization,
-record-only provider order, stale revision, and cumulative refresh scenarios
-through both in-process values and a serialized JSON loopback. V021-01 must
-extend that same suite so application scenarios run against:
+The conformance suite runs start/query/decision/authorization, record-only
+provider order, stale revision, and cumulative refresh scenarios through both
+in-process calls and authenticated HTTP over a real loopback server. It also
+proves account isolation, idempotent replay and collision rejection, reconnect,
+cancellation, ordered event cursors, request budgeting, incompatible-contract
+rejection, capability failure, and secret-free errors. The matrix is:
 
-1. the in-process transport used by local CLI development;
-2. an HTTP test server using serialized DTOs and an authenticated test session;
-3. fake provider and isolated database adapters; and
-4. later, the deployed service in read-only/synthetic smoke tests.
+1. in-process application transport — implemented;
+2. real loopback HTTP using serialized DTOs and authenticated test sessions —
+   implemented;
+3. fake provider plus the existing disposable PostgreSQL integration suite —
+   implemented, with durable service persistence deliberately reserved for
+   V021-04; and
+4. deployed read-only/synthetic smoke tests — required by V021-06.
 
-The HTTP harness is the early web simulation. It should test JSON round trips,
+The HTTP harness is the early web simulation. It tests JSON round trips,
 authentication, tenant isolation, idempotent retries, duplicate submission,
 stale revisions, reconnect/resume, cancellation, event ordering, pagination,
 capability degradation, rate limiting, and secret-free errors. Every scenario

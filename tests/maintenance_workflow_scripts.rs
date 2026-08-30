@@ -27,6 +27,8 @@ fn installed_binary_advertises_unified_maintenance() {
             "maintenance.unified-workflow.v1",
             "--require",
             "maintenance.task-session.v1",
+            "--require",
+            "service.authenticated-transport.v1",
         ])
         .output()
         .unwrap();
@@ -57,8 +59,12 @@ fn installed_binary_advertises_unified_maintenance() {
         "available"
     );
     assert_eq!(manifest["contract_versions"]["minimum"]["major"], 1);
-    assert_eq!(manifest["contract_versions"]["minimum"]["minor"], 1);
-    assert_eq!(manifest["contract_versions"]["maximum"]["minor"], 1);
+    assert_eq!(manifest["contract_versions"]["minimum"]["minor"], 2);
+    assert_eq!(manifest["contract_versions"]["maximum"]["minor"], 2);
+    assert_eq!(
+        manifest["capabilities"]["service.authenticated-transport.v1"],
+        "available"
+    );
 }
 
 #[test]

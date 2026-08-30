@@ -48,6 +48,8 @@ pub mod embeddings;
 pub mod enrichment;
 /// Privacy-conscious Spotify archive inspection and listening-history import.
 pub mod history;
+/// Authenticated HTTP adapter for typed application commands and queries.
+pub mod http_transport;
 /// Read-only current-provider intake joined with durable intent and history.
 pub mod intake;
 /// Wrapper-neutral ordinary-maintenance workflow shared by every client.
@@ -71,6 +73,8 @@ pub mod providers;
 pub mod recipe_execution;
 /// Durable zero-signal routing playlists for ongoing listening review.
 pub mod routes;
+/// Authenticated transport-neutral Rust application authority.
+pub mod service;
 /// Versioned account-specific preference and lifecycle signals.
 pub mod signals;
 /// Deterministic ordered Spin previews and migration-0046 persistence.

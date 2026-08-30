@@ -96,11 +96,11 @@ launch gate.
 The durable sequence is `docs/design/WEB_PRODUCT_AND_LAUNCH_STRATEGY.md`.
 
 Web flexibility must not come from porting `chordrift-maintain.sh` to browser
-JavaScript. V021-01 must expose a Rust-owned task-level maintenance workflow and
-run the same edge-case scenarios through in-process and authenticated HTTP DTO
-transports with identical outcomes and provider-call traces. The acceptance
-contract is `docs/design/WEB_SERVICE_CONTRACT.md`; never add a generic “run CLI
-command” endpoint.
+JavaScript. V021-01 now exposes the Rust-owned task-level maintenance workflow
+through in-process and authenticated HTTP DTO transports with identical
+outcomes and provider-call traces. The acceptance contract is
+`docs/design/WEB_SERVICE_CONTRACT.md`; never add a generic “run CLI command”
+endpoint.
 
 The wrapper boundary is now stricter than “shared behavior”: every web, CLI,
 iOS, and Android client must remain a lightweight adapter that authenticates,
@@ -122,8 +122,8 @@ human track/playlist names in the wizard. Commit `115e41d` passed CI run
 `33277340929`; `v0.2.1-alpha.2` is published on crates.io and GitHub and the
 exact registry artifact is installed at `~/.cargo/bin/chordrift`. Its version,
 capability handshake, and read-only live maintenance review passed. These
-alphas are installable checkpoints before V021-01, not a replacement for the
-v0.2.1 hosted-authority sequence.
+alphas are installable checkpoints during the v0.2.1 hosted-authority sequence,
+not a replacement for it.
 
 Alpha.3 removes the whole-library maintenance bottleneck: commit `85d2795`
 passed CI run `33279291297`, and `v0.2.1-alpha.3` is published on crates.io and
@@ -243,20 +243,38 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Start the next task here: V021-01 authenticated service transport
+## Current checkpoint: finish V021-01 release, then begin V021-02
 
-V020-01 through V020-15 and A021-01 through A021-12 are complete. v0.2.0 is
+V020-01 through V020-15, A021-01 through A021-12, and V021-01 implementation
+are complete. v0.2.0 is
 released and the separately approved personal binary/database cutover is
-complete. `v0.2.1-alpha.10` is the installed daily-driver. A previously
+complete. `v0.2.1-alpha.10` remains the installed daily-driver while the
+`v0.2.1-alpha.11` V021-01 candidate passes release verification. A previously
 unknown track added directly to exactly one managed Spotify playlist is now
 preserved in place and recorded as canonical destination intent without a
 Spotify membership write. Multiple destinations remain ambiguous; active
 exclusions require explicit restoration. Known-track direct moves remain
-unchanged. Begin `V021-01 — Authenticated service transport`. Do not pull
-product identity, credential relocation, durable jobs, deployment, a native
-client, or the separate Classification Authority into V021-01. Never call or
-write Spotify without the user-authorized exact maintenance or retirement
-operation.
+unchanged. Finish publishing V021-01, then begin `V021-02 — Product identity
+and authorization`. Never call or write Spotify without the user-authorized
+exact maintenance or retirement operation.
+
+V021-01 adds application contract 1.2 and capability
+`service.authenticated-transport.v1`. `MaintenanceApplication` is one
+asynchronous Rust command/query authority behind typed async backend ports. The
+Axum adapter exposes only `POST /v1/commands` and `POST /v1/queries`; there is
+no CLI/shell/SQL/provider escape hatch. A real loopback TCP suite proves
+in-process/HTTP parity, identical provider traces, authenticated account
+isolation, idempotent replay and collision rejection, reconnect, cancellation,
+ordered event cursors, cumulative provider-order refresh, stale-review
+rejection, request budgeting, contract rejection, and secret-free errors. No
+public listener, product token store, Neon URL, or provider credential is
+included. See `docs/design/AUTHENTICATED_SERVICE_TRANSPORT_V021_01.md`.
+
+V021-02 must implement real product sessions, persisted account ownership,
+revocation, and the comprehensive tenant authorization matrix behind the
+existing async authenticator seam. Do not pull credential vaulting, durable job
+persistence, remote CLI migration, deployment, a web UI, or the separate
+Classification Authority into V021-02.
 
 A021-12 introduces application contract 1.1, capability
 `maintenance.task-session.v1`, typed maintenance start/refresh/resolve/
@@ -266,8 +284,8 @@ secret-free workflow errors. Direct in-process and serialized JSON-loopback
 tests produce identical outcomes; a provider-authored reorder is record-only,
 and a newer complete provider snapshot invalidates an older review. This is the
 transport-neutral foundation only: the existing shell remains the daily-driver
-adapter until V021-01 supplies authenticated HTTP plus real database/provider
-execution adapters.
+adapter. V021-01 now supplies authenticated HTTP plus asynchronous
+database/provider ports; V021-05 moves the installed CLI onto that service.
 
 Alpha.10 implementation commit `12f39c26d6f5fc71fb9776370dc005db5cdec11a`
 passed CI run `33318686812`, including strict Clippy, all targets,

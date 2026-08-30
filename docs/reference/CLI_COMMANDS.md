@@ -3,7 +3,7 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the **v0.2.1-alpha.10** daily-driver CLI. It retains the
+Command status: this page documents the **v0.2.1-alpha.11** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
@@ -45,6 +45,7 @@ Inspect or require exact installed-binary features as one JSON object:
 ```console
 $ chordrift capabilities
 $ chordrift capabilities \
+    --require service.authenticated-transport.v1 \
     --require maintenance.task-session.v1 \
     --require maintenance.intake-workflow.v1 \
     --require maintenance.bulk-plan-preview.v1 \
@@ -57,10 +58,10 @@ The command performs no database or provider access. Unknown requirements fail
 with a nonzero status. Scripts use feature names—not `--version` parsing—to
 detect compatibility.
 
-`maintenance.task-session.v1` reports the Rust-owned DTO/state-machine
-foundation used by future service clients. It does not add a second user-facing
-maintenance command in alpha.10; the ordinary shell below remains the current
-CLI adapter.
+`maintenance.task-session.v1` and `service.authenticated-transport.v1` report
+the Rust-owned task/service boundary used by future clients. They do not add a
+second user-facing maintenance command or hosted URL in alpha.11; the ordinary
+shell below remains the current CLI adapter.
 
 After a current pull, audit exact intake membership against durable coverage,
 exclusions, proposal intent, and normalized listening history:

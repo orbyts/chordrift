@@ -6496,11 +6496,11 @@ fn write_status(output: &mut impl Write, status: &db::DatabaseStatus) -> Result<
 fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
     use crate::contract::{
         BINARY_CAPABILITY_SCHEMA_VERSION, BinaryCapabilityManifest,
-        CAPABILITY_ARTWORK_CARRY_FORWARD, CAPABILITY_BULK_MAINTENANCE_PREVIEW,
-        CAPABILITY_DIRECT_MANAGED_INTAKE, CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS,
-        CAPABILITY_MAINTENANCE_INTAKE_AUDIT, CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW,
-        CAPABILITY_MAINTENANCE_TASK_SESSION, CAPABILITY_PLAN_ORIGIN,
-        CAPABILITY_PROVIDER_ORDER_INTENT, CAPABILITY_SPIN_PUBLICATION_PLAN,
+        CAPABILITY_ARTWORK_CARRY_FORWARD, CAPABILITY_AUTHENTICATED_SERVICE_TRANSPORT,
+        CAPABILITY_BULK_MAINTENANCE_PREVIEW, CAPABILITY_DIRECT_MANAGED_INTAKE,
+        CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS, CAPABILITY_MAINTENANCE_INTAKE_AUDIT,
+        CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW, CAPABILITY_MAINTENANCE_TASK_SESSION,
+        CAPABILITY_PLAN_ORIGIN, CAPABILITY_PROVIDER_ORDER_INTENT, CAPABILITY_SPIN_PUBLICATION_PLAN,
         CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW, CapabilityAvailability, ContractVersionRange,
     };
 
@@ -6509,6 +6509,10 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
         binary_version: env!("CARGO_PKG_VERSION").to_owned(),
         contract_versions: ContractVersionRange::exact(crate::contract::CONTRACT_VERSION),
         capabilities: std::collections::BTreeMap::from([
+            (
+                CAPABILITY_AUTHENTICATED_SERVICE_TRANSPORT.to_owned(),
+                CapabilityAvailability::Available,
+            ),
             (
                 CAPABILITY_ARTWORK_CARRY_FORWARD.to_owned(),
                 CapabilityAvailability::Available,

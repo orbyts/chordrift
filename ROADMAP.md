@@ -215,8 +215,8 @@ are checkpoints, not replacements for the hosted-authority goal.
   and that a newer complete snapshot invalidates stale authorization. Advertise
   `maintenance.task-session.v1` under application contract 1.1 and publish the
   foundation as `v0.2.1-alpha.10`. The existing shell remains a temporary daily-
-  driver adapter; authenticated HTTP and operational database/provider wiring
-  remain V021-01.
+  driver adapter; authenticated HTTP and typed database/provider execution
+  ports remain V021-01.
 
 ### v0.2.1 — Hosted Rust authority
 
@@ -225,16 +225,20 @@ without distributing database or provider credentials. v0.2.1 final remains
 the expected daily driver while the separate Classification Authority project
 and later Chordrift refactor begin.
 
-- [ ] **V021-01 — Authenticated service transport.** Expose the existing
-  command/query/event contract without redefining domain behavior. Complete
-  operational database/provider adapters behind the Rust-owned maintenance
-  task contract and remove shell orchestration as the authority. Run the same
-  cumulative-observation and provider-safety scenarios through in-process and authenticated HTTP
+- [x] **V021-01 — Authenticated service transport.** Expose the existing
+  command/query/event contract without redefining domain behavior. Place
+  maintenance orchestration behind one asynchronous Rust application service
+  and typed database/provider ports; clients never invoke CLI commands. Run the
+  same cumulative-observation and provider-safety scenarios through in-process
+  and authenticated HTTP
   transports, proving serialized round trips, idempotent retry, reconnect,
   cancellation, stale-revision rejection, event ordering, secret-free errors,
   and identical provider-call traces. Never expose a generic “run CLI command”
   endpoint. The acceptance contract is
-  `docs/design/WEB_SERVICE_CONTRACT.md`.
+  `docs/design/WEB_SERVICE_CONTRACT.md`. The real product-session
+  authenticator is V021-02, provider credential storage is V021-03, durable
+  operation persistence is V021-04, and the current CLI moves onto this service
+  in V021-05. Publish the transport checkpoint as `v0.2.1-alpha.11`.
 - [ ] **V021-02 — Product identity and authorization.** Implement sessions,
   account ownership, revocation, and tenant-safe authorization tests.
 - [ ] **V021-03 — Encrypted provider credential vault.** Keep refresh credentials
@@ -332,8 +336,8 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** begin `V021-01 — Authenticated service transport` without
-redefining domain behavior. The separate Classification Authority is not part
+**Next gate:** begin `V021-02 — Product identity and authorization` behind the
+V021-01 authenticator seam. The separate Classification Authority is not part
 of that slice.
 
 ## Portable core and thin clients

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Current backward-compatible application-contract feature generation.
-pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 1);
+pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 2);
 
 macro_rules! uuid_id {
     ($name:ident, $description:literal) => {
@@ -205,6 +205,8 @@ pub const CAPABILITY_ARTWORK_CARRY_FORWARD: &str = "maintenance.artwork-carry-fo
 pub const CAPABILITY_PROVIDER_ORDER_INTENT: &str = "maintenance.provider-order-intent.v1";
 /// Wrapper-neutral maintenance task DTOs and Rust-owned transition rules.
 pub const CAPABILITY_MAINTENANCE_TASK_SESSION: &str = "maintenance.task-session.v1";
+/// Authenticated HTTP transport over typed application commands and queries.
+pub const CAPABILITY_AUTHENTICATED_SERVICE_TRANSPORT: &str = "service.authenticated-transport.v1";
 /// Synchronization plans expose an origin that maintenance tools can reject.
 pub const CAPABILITY_PLAN_ORIGIN: &str = "plan-origin.v1";
 /// Approved Spins can become immutable, fake-provider-verified publication plans.
@@ -450,6 +452,13 @@ pub enum Query {
     OperationHistory {
         /// Account whose history is requested.
         account_id: ResourceId,
+    },
+    /// Read ordered lifecycle events after an optional operation-local cursor.
+    OperationEvents {
+        /// Operation whose events are requested.
+        operation_id: OperationId,
+        /// Return only events with a greater sequence number.
+        after_sequence: Option<u64>,
     },
     /// Read client-safe diagnostics.
     Diagnostics {
@@ -826,6 +835,8 @@ pub enum ErrorCode {
     CapabilityUnavailable,
     /// A dependency failed temporarily.
     DependencyUnavailable,
+    /// The authenticated caller exceeded a transport request budget.
+    RateLimited,
     /// The operation was cancelled.
     Cancelled,
     /// An unexpected internal failure occurred.
@@ -842,7 +853,7 @@ impl ErrorCode {
             Self::ResourceNotFound => ErrorCategory::NotFound,
             Self::StateConflict | Self::Cancelled => ErrorCategory::Conflict,
             Self::CapabilityUnavailable => ErrorCategory::Unsupported,
-            Self::DependencyUnavailable => ErrorCategory::Unavailable,
+            Self::DependencyUnavailable | Self::RateLimited => ErrorCategory::Unavailable,
             Self::Internal => ErrorCategory::Internal,
         }
     }
@@ -859,6 +870,7 @@ impl ErrorCode {
             Self::StateConflict => "The request conflicts with current state.",
             Self::CapabilityUnavailable => "A required capability is unavailable.",
             Self::DependencyUnavailable => "A dependency is temporarily unavailable.",
+            Self::RateLimited => "Too many requests were submitted.",
             Self::Cancelled => "The operation was cancelled.",
             Self::Internal => "Chordrift could not complete the operation.",
         }
@@ -962,6 +974,47 @@ pub struct OperationEvent {
     pub occurred_at: DateTime<Utc>,
     /// New lifecycle state.
     pub state: OperationState,
+}
+
+/// Reconnectable client view of one application operation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct OperationView {
+    /// Operation identity returned by the accepting command.
+    pub operation_id: OperationId,
+    /// Cancellation identity required for cooperative cancellation.
+    pub cancellation_id: CancellationId,
+    /// Latest recorded lifecycle state.
+    pub state: OperationState,
+}
+
+/// Account-scoped operation history visible to an authenticated caller.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct OperationHistoryView {
+    /// Operations in acceptance order.
+    pub operations: Vec<OperationView>,
+}
+
+/// Cursor-filtered ordered lifecycle events for one operation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct OperationEventsView {
+    /// Operation whose events are returned.
+    pub operation_id: OperationId,
+    /// Strictly ordered events after the requested cursor.
+    pub events: Vec<OperationEvent>,
+}
+
+/// Typed query result shared by in-process and serialized transports.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", content = "view", rename_all = "snake_case")]
+pub enum QueryResponse {
+    /// One ordinary-maintenance session.
+    MaintenanceSession(View<MaintenanceSessionView>),
+    /// Latest state of one operation.
+    Operation(View<OperationView>),
+    /// Authenticated subject's operation history.
+    OperationHistory(View<OperationHistoryView>),
+    /// Ordered operation lifecycle events.
+    OperationEvents(View<OperationEventsView>),
 }
 
 #[cfg(test)]

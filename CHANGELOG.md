@@ -4,6 +4,23 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.11] - 2026-08-30
+
+- Add one asynchronous Rust maintenance application authority behind typed
+  provider/database ports.
+- Add authenticated `/v1/commands` and `/v1/queries` HTTP routes with no CLI,
+  shell, SQL, or arbitrary provider execution endpoint.
+- Scope sessions, resources, operation history, and idempotency by authenticated
+  subject and Chordrift account.
+- Add reconnectable operation views and cursor-filtered lifecycle events,
+  cooperative cancellation, structured request budgeting, and fixed safe HTTP
+  error mapping.
+- Prove identical in-process and real loopback HTTP outcomes/provider traces,
+  cumulative refresh, stale-review rejection, auth isolation, retry/collision
+  handling, event ordering, cancellation, and secret-free failures.
+- Advance the additive application contract to 1.2 and advertise
+  `service.authenticated-transport.v1`.
+
 ## [0.2.1-alpha.10] - 2026-08-30
 
 - Add wrapper-neutral maintenance session DTOs for typed start, refresh,
