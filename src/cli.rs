@@ -1729,13 +1729,7 @@ async fn execute_cli_handlers(cli: Cli, output: &mut impl Write) -> Result<()> {
                 let config = config::database_config_from_env()?;
                 let database = db::connect(config).await?;
                 let result: Result<()> = async {
-                    let status = db::status(&database).await?;
-                    if status.pending_migrations != 0 || status.failed_migrations != 0 {
-                        return Err(ChordriftError::Configuration(
-                            "database migrations are not current; run `chordrift db migrate`"
-                                .to_owned(),
-                        ));
-                    }
+                    db::require_schema_through(&database, 47).await?;
                     let report = spotify::import(&account, &database).await?;
                     write_import_report(output, &report)
                 }
@@ -2630,12 +2624,9 @@ fn hours(milliseconds: i64) -> f64 {
 async fn connect_current_database() -> Result<storexa::Database> {
     let config = config::database_config_from_env()?;
     let database = db::connect(config).await?;
-    let status = db::status(&database).await?;
-    if status.pending_migrations != 0 || status.failed_migrations != 0 {
+    if let Err(error) = db::require_schema_through(&database, 47).await {
         database.close().await;
-        return Err(ChordriftError::Configuration(
-            "database migrations are not current; run `chordrift db migrate`".to_owned(),
-        ));
+        return Err(error);
     }
     Ok(database)
 }
@@ -6500,8 +6491,9 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
         CAPABILITY_BULK_MAINTENANCE_PREVIEW, CAPABILITY_DIRECT_MANAGED_INTAKE,
         CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS, CAPABILITY_MAINTENANCE_INTAKE_AUDIT,
         CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW, CAPABILITY_MAINTENANCE_TASK_SESSION,
-        CAPABILITY_PLAN_ORIGIN, CAPABILITY_PROVIDER_ORDER_INTENT, CAPABILITY_SPIN_PUBLICATION_PLAN,
-        CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW, CapabilityAvailability, ContractVersionRange,
+        CAPABILITY_PLAN_ORIGIN, CAPABILITY_PRODUCT_IDENTITY, CAPABILITY_PROVIDER_ORDER_INTENT,
+        CAPABILITY_SPIN_PUBLICATION_PLAN, CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW,
+        CapabilityAvailability, ContractVersionRange,
     };
 
     BinaryCapabilityManifest {
@@ -6511,6 +6503,10 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
         capabilities: std::collections::BTreeMap::from([
             (
                 CAPABILITY_AUTHENTICATED_SERVICE_TRANSPORT.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
+                CAPABILITY_PRODUCT_IDENTITY.to_owned(),
                 CapabilityAvailability::Available,
             ),
             (

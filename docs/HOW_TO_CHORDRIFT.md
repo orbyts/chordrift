@@ -4,7 +4,7 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.1-alpha.11**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-alpha.12**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
 and verified 47/47 database together; see
@@ -154,6 +154,7 @@ The current alpha exposes an exact machine-readable handshake:
 ```console
 $ chordrift capabilities \
     --require service.authenticated-transport.v1 \
+    --require service.product-identity.v1 \
     --require maintenance.task-session.v1 \
     --require maintenance.unified-workflow.v1 \
     --require maintenance.bulk-plan-preview.v1 \
@@ -168,11 +169,18 @@ exclusions, and direct reclassification moves is:
 $ scripts/chordrift-maintain.sh --account personal
 ```
 
-Alpha.11 keeps this shell as the temporary local CLI adapter while the same
+Alpha.12 keeps this shell as the temporary local CLI adapter while the same
 task-level state and authorization rules are now available through the Rust
-service contract. There is still no hosted URL or product login to configure;
-V021-02 through V021-06 add identity, credential vaulting, durable jobs, remote
-CLI parity, and deployment.
+service contract. Product identity/session machinery is implemented, but there
+is still no hosted URL or identity vendor to configure. V021-03 through V021-06
+add credential vaulting, durable jobs, remote CLI parity, and deployment.
+Migration 0048 is hosted-identity storage; ordinary local maintenance continues
+to require only the already verified schema through migration 0047.
+
+Consequently, `chordrift db status` may show `47/48` and one pending migration
+while you are using only the local maintenance client. That is expected and is
+not a reason to run `db migrate`. A hosted identity deployment must instead
+show migration 0048 applied before it accepts traffic.
 
 It refuses new playlist design, artwork redesign, retirement, and every future
 Spin publication plan. Lower-level commands remain developer diagnostics and

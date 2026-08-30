@@ -243,18 +243,20 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Current checkpoint: begin V021-02
+## Current checkpoint: finish V021-02 release, then begin V021-03
 
-V020-01 through V020-15, A021-01 through A021-12, and V021-01 are complete.
+V020-01 through V020-15, A021-01 through A021-12, V021-01, and the V021-02
+implementation are complete.
 v0.2.0 is released and the separately approved personal binary/database
-cutover is complete. `v0.2.1-alpha.11` is the installed daily-driver. A
+cutover is complete. `v0.2.1-alpha.11` remains the installed daily-driver while
+the `v0.2.1-alpha.12` V021-02 candidate passes release verification. A
 previously unknown track added directly to exactly one managed Spotify playlist
 is now preserved in place and recorded as canonical destination intent without
 a Spotify membership write. Multiple destinations remain ambiguous; active
 exclusions require explicit restoration. Known-track direct moves remain
-unchanged. Begin `V021-02 — Product identity and authorization`. Never call or
-write Spotify without the user-authorized exact maintenance or retirement
-operation.
+unchanged. Finish publishing V021-02, then begin `V021-03 — Encrypted provider
+credential vault`. Never call or write Spotify without the user-authorized
+exact maintenance or retirement operation.
 
 V021-01 adds application contract 1.2 and capability
 `service.authenticated-transport.v1`. `MaintenanceApplication` is one
@@ -268,11 +270,25 @@ rejection, request budgeting, contract rejection, and secret-free errors. No
 public listener, product token store, Neon URL, or provider credential is
 included. See `docs/design/AUTHENTICATED_SERVICE_TRANSPORT_V021_01.md`.
 
-V021-02 must implement real product sessions, persisted account ownership,
-revocation, and the comprehensive tenant authorization matrix behind the
-existing async authenticator seam. Do not pull credential vaulting, durable job
-persistence, remote CLI migration, deployment, a web UI, or the separate
-Classification Authority into V021-02.
+V021-02 keeps application contract 1.2 unchanged, adds product-session schema 1,
+capability `service.product-identity.v1`, and additive migration 0048. A
+pluggable external verifier returns stable issuer/subject claims; Chordrift validates persisted
+ownership, returns a 256-bit random opaque session token once, and stores only
+its SHA-256 digest. Every request rechecks session expiry/revocation, subject,
+membership, and account status. The real HTTP and PostgreSQL matrices cover
+cross-tenant denial, guessed/expired tokens, session and membership revocation,
+subject/account suspension, idempotent trusted owner provisioning, and owner-
+takeover refusal. There is no public provisioning, password, subject-selection,
+role-override, SQL, or CLI-command endpoint. Migration 0048 is required by the
+hosted identity service; local maintenance explicitly requires only schema
+through 0047 and therefore does not force a personal database migration. See
+`docs/design/PRODUCT_IDENTITY_AUTHORIZATION_V021_02.md`.
+
+V021-03 must encrypt provider refresh credentials server-side, bind them to the
+V021-02 account/provider ownership edge, support rotation and revocation, and
+ensure clients retain only Chordrift sessions. Do not pull durable background
+jobs, remote CLI migration, deployment, a web UI, or the separate
+Classification Authority into V021-03.
 
 Alpha.11 implementation commit `7bf39280b38b68fb658885b70b60fa23cf360373`
 passed CI run `33320863679`, including formatting, strict Clippy, all targets,

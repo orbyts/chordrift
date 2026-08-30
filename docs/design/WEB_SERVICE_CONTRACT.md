@@ -1,10 +1,11 @@
 # Web service contract and transport conformance
 
-Status: A021-12 and V021-01 are implemented. The asynchronous Rust authority is
-available through authenticated typed HTTP routes and tested over a real
-loopback TCP server. Product sessions, durable execution, credential vaulting,
-hosting, and deployment remain later V021 slices. This document does not expose
-a production endpoint or authorize deployment.
+Status: A021-12, V021-01, and V021-02 are implemented. The asynchronous Rust
+authority is available through typed HTTP routes using persisted, revocable
+Chordrift product sessions and is tested over a real loopback TCP server.
+Durable execution, credential vaulting, hosting, and deployment remain later
+V021 slices. This document does not expose a production endpoint or authorize
+deployment.
 
 ## The boundary
 
@@ -47,7 +48,7 @@ contract. It supports task-level operations equivalent to:
 - cancel long work; and
 - read progress, recovery state, receipt, and final convergence.
 
-The concrete 1.2 contract exposes typed start, refresh, resolve,
+The concrete 1.2 application contract exposes typed start, refresh, resolve,
 authorize, and session-query DTOs. One user action may
 create several internal proposals, plans, assessments, and receipts. Those
 objects remain Rust-owned safety evidence and appear in advanced diagnostics,

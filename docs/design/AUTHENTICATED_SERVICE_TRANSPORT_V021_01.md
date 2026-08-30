@@ -33,9 +33,9 @@ installs. Authorization can therefore never reuse an effect assembled before a
 different decision such as exclude versus restore.
 
 Every resource lookup and idempotency key is scoped by authenticated subject
-and selected Chordrift account. These checks are a transport foundation, not a
-replacement for V021-02 product sessions, ownership persistence, revocation,
-and comprehensive tenant authorization.
+and selected Chordrift account. V021-02 now supplies product sessions,
+ownership persistence, revocation, and comprehensive tenant authorization over
+this unchanged seam; see `PRODUCT_IDENTITY_AUTHORIZATION_V021_02.md`.
 
 ## HTTP safety
 

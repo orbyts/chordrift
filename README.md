@@ -18,7 +18,7 @@ make the active library enjoyable again without silently losing history.
 
 ## Release status
 
-**v0.2.1-alpha.11 is the current daily-driver prerelease.** It preserves the
+**v0.2.1-alpha.12 is the current daily-driver prerelease.** It preserves the
 proven maintenance CLI through one application facade and adds the provider-neutral product domain,
 onboarding and audit boundaries, deterministic recipe/Spin previews, explicit
 plan origins, and additive schema migrations 0046 and 0047. The personal
@@ -30,10 +30,13 @@ The v0.2.1 alpha line provides official installable checkpoints on the path to
 the hosted-authority v0.2.1 final daily driver. The installed CLI and verified
 47/47 account database may continue handling ordinary maintenance while later
 architecture work is paused; no hosted service or Classification Authority is
-required for the current workflow. Alpha.11 adds the asynchronous Rust
-maintenance authority and authenticated typed HTTP adapter under application
-contract 1.2; it does not expose or configure a hosted endpoint. Product
-identity remains V021-02, and the rest of the v0.2.1 hosted-authority sequence
+required for the current workflow. Alpha.12 adds persisted product identities,
+account ownership, and revocable digest-only Chordrift sessions under
+product-session schema 1 while leaving application contract 1.2 unchanged. It
+does not select an identity vendor or expose a hosted endpoint. Migration 0048
+belongs to the hosted identity deployment; the
+local maintenance client remains explicitly compatible with the verified
+47-migration music database. The rest of the v0.2.1 hosted-authority sequence
 remains intact. The separate
 Classification Authority project and a later Chordrift refactor follow v0.2.1
 final.
@@ -41,10 +44,10 @@ final.
 Install the locked release with:
 
 ```console
-$ cargo install chordrift --version 0.2.1-alpha.11 --locked --force
+$ cargo install chordrift --version 0.2.1-alpha.12 --locked --force
 ```
 
-Read the [v0.2.1-alpha.11 release notes](docs/releases/V0.2.1-alpha.11.md) and
+Read the [v0.2.1-alpha.12 release notes](docs/releases/V0.2.1-alpha.12.md) and
 [recovery procedure](docs/how-to/RECOVERY_AND_ROLLBACK.md) before changing an
 existing database-backed installation.
 

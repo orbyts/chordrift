@@ -16,6 +16,10 @@ use chordrift::{
         RecipeRevisionIdentity, RecipeSection, RecipeSource, RecipeV1, SourceAllocation,
         SourceLane,
     },
+    identity::{
+        NewProductSession, PostgresProductIdentityStore, ProductIdentityStore,
+        VerifiedExternalIdentity,
+    },
     intake::{self, IntakeState},
     onboarding::{
         ContentFingerprint, OnboardingEvidence, OnboardingInputs, OnboardingInventory,
@@ -35,6 +39,7 @@ use chordrift::{
     spin_publication::{SpinPublicationBoundary, SpinPublicationRequest},
     sync_plan::{self, PlanOrigin},
 };
+use chrono::{TimeDelta, Utc};
 use serde_json::json;
 use storexa::{Database, DatabaseConfig, PostgresProvider};
 use uuid::Uuid;
@@ -593,6 +598,7 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
     .await?;
     for expected in [
         "albums",
+        "chordrift_account_memberships",
         "chordrift_accounts",
         "collection_relationships",
         "collection_rule_revisions",
@@ -607,6 +613,9 @@ async fn migrates_and_reports_the_canonical_schema() -> chordrift::Result<()> {
         "playlist_surface_provider_links",
         "playlist_surfaces",
         "playlist_track_directives",
+        "product_external_identities",
+        "product_sessions",
+        "product_subjects",
         "provider_capability_observations",
         "track_collection_membership_revisions",
         "account_analysis_state",
@@ -2063,6 +2072,140 @@ async fn rehearses_v020_05_upgrade_from_migration_45() -> chordrift::Result<()> 
     assert_eq!(unowned_provider_accounts, 0);
 
     rehearsal.rollback().await?;
+    database.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for a disposable PostgreSQL database"]
+async fn persists_product_ownership_sessions_and_immediate_revocation() -> chordrift::Result<()> {
+    let config = DatabaseConfig::from_env_var("CHORDRIFT_TEST_DATABASE_URL")?
+        .with_name("chordrift-product-identity-test")?
+        .with_provider(PostgresProvider::Neon)?
+        .with_min_connections(0)
+        .with_max_connections(2);
+    let database = db::connect(config).await?;
+    db::migrate(&database).await?;
+
+    let account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name) VALUES ('Identity Fixture') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let other_account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name) VALUES ('Other Tenant') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let store = PostgresProductIdentityStore::new(database.pool().clone());
+    let identity =
+        VerifiedExternalIdentity::new("https://identity.test", "fixture-person").unwrap();
+    let provisioned = store
+        .provision_account_owner(&identity, ResourceId::from_uuid(account_id))
+        .await
+        .unwrap();
+    let replayed_provisioning = store
+        .provision_account_owner(&identity, ResourceId::from_uuid(account_id))
+        .await
+        .unwrap();
+    assert_eq!(replayed_provisioning, provisioned);
+    let subject_id = provisioned.subject_id.as_uuid();
+    let takeover = store
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "intruder").unwrap(),
+            ResourceId::from_uuid(account_id),
+        )
+        .await;
+    assert!(matches!(
+        takeover,
+        Err(chordrift::contract::ClientError {
+            code: chordrift::contract::ErrorCode::PermissionDenied,
+            ..
+        })
+    ));
+    let now = Utc::now();
+    let first_digest = [17_u8; 32];
+    let first = NewProductSession {
+        session_id: ResourceId::new(),
+        account_id: ResourceId::from_uuid(account_id),
+        token_sha256: first_digest,
+        created_at: now,
+        expires_at: now + TimeDelta::hours(1),
+    };
+    let subject = store.create_session(&identity, &first).await.unwrap();
+    assert_eq!(subject.subject_id, ResourceId::from_uuid(subject_id));
+    assert_eq!(subject.account_id, ResourceId::from_uuid(account_id));
+    assert_eq!(
+        store.authenticate_session(first_digest, now).await.unwrap(),
+        subject
+    );
+    let stored_digest: Vec<u8> =
+        sqlx::query_scalar("SELECT token_sha256 FROM product_sessions WHERE id = $1")
+            .bind(first.session_id.as_uuid())
+            .fetch_one(database.pool())
+            .await?;
+    assert_eq!(stored_digest, first_digest);
+
+    let cross_tenant = NewProductSession {
+        session_id: ResourceId::new(),
+        account_id: ResourceId::from_uuid(other_account_id),
+        token_sha256: [18_u8; 32],
+        created_at: now,
+        expires_at: now + TimeDelta::hours(1),
+    };
+    let cross_tenant = store.create_session(&identity, &cross_tenant).await;
+    assert!(matches!(
+        cross_tenant,
+        Err(chordrift::contract::ClientError {
+            code: chordrift::contract::ErrorCode::PermissionDenied,
+            ..
+        })
+    ));
+
+    store.revoke_session(first_digest, now).await.unwrap();
+    assert_eq!(
+        store
+            .authenticate_session(first_digest, now)
+            .await
+            .expect_err("revoked session fails immediately")
+            .code,
+        chordrift::contract::ErrorCode::AuthenticationRequired
+    );
+
+    let second_digest = [19_u8; 32];
+    let second = NewProductSession {
+        session_id: ResourceId::new(),
+        account_id: ResourceId::from_uuid(account_id),
+        token_sha256: second_digest,
+        created_at: now,
+        expires_at: now + TimeDelta::hours(1),
+    };
+    store.create_session(&identity, &second).await.unwrap();
+    sqlx::query(
+        "UPDATE chordrift_account_memberships SET status = 'revoked'
+         WHERE chordrift_account_id = $1 AND product_subject_id = $2",
+    )
+    .bind(account_id)
+    .bind(subject_id)
+    .execute(database.pool())
+    .await?;
+    assert_eq!(
+        store
+            .authenticate_session(second_digest, now)
+            .await
+            .expect_err("membership revocation invalidates existing sessions")
+            .code,
+        chordrift::contract::ErrorCode::AuthenticationRequired
+    );
+
+    sqlx::query("DELETE FROM chordrift_accounts WHERE id = ANY($1)")
+        .bind(vec![account_id, other_account_id])
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM product_subjects WHERE id = $1")
+        .bind(subject_id)
+        .execute(database.pool())
+        .await?;
     database.close().await;
     Ok(())
 }

@@ -5,52 +5,40 @@ implemented table groups, their main relationships, the clean runtime
 staging/recovery boundary, and the lifecycle of a manual Spotify playlist
 removal.
 
-The v0.2 product layer now under development is documented separately in
-[Playlist product architecture](PLAYLIST_PRODUCT_ARCHITECTURE.md). It builds
-account ownership, overlapping collections, versioned recipes, and reproducible
-Spins additively on this clean v2 foundation. Development migration 0046 now
-implements that product-schema foundation, V020-06 uses its onboarding tables,
-V020-07 reads the referenced immutable inventory revisions, and V020-08 reads
-one explicitly fingerprinted database-v2 listening import in isolated tests;
-V020-09 consumes prepared provider-neutral candidate facts entirely in memory
-and adds no schema or database access. V020-10 persists exact ordered previews
-in migration 0046's existing `playlist_spins` and `playlist_spin_tracks` tables
-without changing database-v2 or the migration. Migration 0046 is not applied to
-production Neon. V020-11 exposes these isolated consumers through an explicit
-development CLI opt-in; V020-11R restores the safe intake adapter. V020-12 adds
-migration 0047's narrow surface-to-recipe and checkpoint-bound Spin-plan
-identity reconciliation plus fake-provider publication verification. Neither
-development migration is applied to production. V020-13 proves both migrations
-against a fresh latest-state production backup restored only into isolated
-PostgreSQL 18, with exact invariant and durable-domain parity. V020-14 now
-proves the same 47-migration state on a fresh Neon candidate with exact
-newest-state parity; the production connection and installed v0.1.4 binary
-remain unchanged pending separate atomic cutover approval.
+The v0.2 product layer is documented separately in
+[Playlist product architecture](PLAYLIST_PRODUCT_ARCHITECTURE.md). Migrations
+0046 and 0047 add provider-neutral product/Spin state to this clean foundation.
+The separately approved cutover now pairs the local daily driver with the
+verified 47-migration personal music database.
 
-Status: database-v2 foundation complete in the released v0.1.4 runtime, updated
-2026-08-28. The live project uses content-addressed current provider state,
-normalized evidence, compact checkpoints, and the clean runtime schema. The
-legacy physical tables and former rollback project were retired only after the
-recorded exact-confirmed gates passed. This document preserves that chronology;
-it is not authorization to replay a migration, delete a database, or write to a
-provider.
+V021-02 adds migration 0048 for hosted product subjects, verified external
+identity bindings, account memberships, and digest-only revocable sessions.
+Those tables extend the ownership edge of database v2; they do not replace its
+music, inventory, intent, evidence, or publication model. Hosted identity must
+verify 0048 before accepting traffic. The local maintenance client explicitly
+requires only schema through 0047, so ordinary personal use does not force the
+hosted identity schema into the existing database.
+
+Status: database v2 is the current architecture. The legacy physical tables
+and former rollback project were retired only after the recorded exact-
+confirmed gates passed. This document preserves that chronology; it is not
+authorization to replay a migration, delete a database, or write to a provider.
 
 Sections below are a dated execution record. Statements such as “next gate” or
 “remains unapproved” describe the boundary at that historical checkpoint; they
-are not current instructions. For routine v0.1.4 operation use the
-[task-oriented guide](../HOW_TO_CHORDRIFT.md). V0.2 extends this completed
-foundation additively and does not reopen the migration.
+are not current instructions. For routine operation use the
+[task-oriented guide](../HOW_TO_CHORDRIFT.md).
 
 ## Current state at a glance
 
 | Boundary | Current status |
 | --- | --- |
-| Released runtime | v0.1.4 reads and writes only the database-v2 current-state and normalized-evidence surfaces. |
-| Schema | Production is healthy at 45/45 migrations; migration 0045 repairs the last stored function that referenced removed v1 relations. |
+| Released runtime | v0.2.1 alpha is the local daily driver; the hosted authority is under construction. |
+| Schema | The verified personal music database is at 47 migrations. Migration 0048 is additive hosted identity/session storage and is not required by local maintenance. |
 | Legacy storage | Database-v1 physical tables and the former rollback project are gone after independently verified exact-confirmed cleanup. |
 | Recovery | The verified pre-compaction dump remains the historical recovery baseline; V020-13 adds its local-rehearsal dump and V020-14 adds the newer verified candidate-source dump. Immutable Spotify archives remain independent evidence sources. |
-| Routine operation | Use `sync pull` and the normal plan/readiness/apply workflow; do not replay migration or cleanup applies. |
-| v0.2 relationship | Migration 0046 extends this foundation with the provider-neutral product schema; migration 0047 adds only the Spin publication-plan relationship required by V020-12. V020-14's fresh candidate is verified at 47/47; both migrations remain unapplied to production and connection cutover awaits approval. |
+| Routine operation | Use `scripts/chordrift-maintain.sh --account personal`; do not replay historical migration or cleanup applies. |
+| v0.2/v0.2.1 relationship | Migrations 0046–0047 are the active product/Spin foundation. Migration 0048 adds only hosted product identity and sessions. |
 
 The exact migration-0046 reconciliation and ownership model is documented in
 the [V020-05 product schema foundation](PRODUCT_SCHEMA_V020_05.md). It adds

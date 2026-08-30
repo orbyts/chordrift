@@ -157,7 +157,7 @@ async fn authenticate(
     state.authenticator.authenticate(token).await
 }
 
-fn error_response(error: ClientError) -> Response {
+pub(crate) fn error_response(error: ClientError) -> Response {
     let status = match error.code.category() {
         ErrorCategory::InvalidRequest => StatusCode::BAD_REQUEST,
         ErrorCategory::Authorization => {

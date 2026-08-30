@@ -4,6 +4,21 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.12] - 2026-08-30
+
+- Add provider-neutral external identity verification plus persisted product
+  subjects, account ownership, and revocable Chordrift bearer sessions.
+- Generate 256-bit opaque session tokens, return plaintext once, and store only
+  SHA-256 digests in additive migration 0048.
+- Add authenticated session exchange and exact current-session revocation
+  without exposing password, SQL, subject-selection, or role-override routes.
+- Invalidate access immediately on session revocation/expiry, subject or account
+  suspension, membership revocation, or cross-account use.
+- Keep local maintenance compatible with the verified migration-0047 music
+  database while requiring migration 0048 before hosted identity traffic.
+- Keep application contract 1.2 unchanged, version session exchange separately
+  as schema 1, and advertise `service.product-identity.v1`.
+
 ## [0.2.1-alpha.11] - 2026-08-30
 
 - Add one asynchronous Rust maintenance application authority behind typed

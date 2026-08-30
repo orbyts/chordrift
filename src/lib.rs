@@ -50,6 +50,8 @@ pub mod enrichment;
 pub mod history;
 /// Authenticated HTTP adapter for typed application commands and queries.
 pub mod http_transport;
+/// Product identities, account authorization, and revocable bearer sessions.
+pub mod identity;
 /// Read-only current-provider intake joined with durable intent and history.
 pub mod intake;
 /// Wrapper-neutral ordinary-maintenance workflow shared by every client.

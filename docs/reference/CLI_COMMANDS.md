@@ -3,7 +3,7 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the **v0.2.1-alpha.11** daily-driver CLI. It retains the
+Command status: this page documents the **v0.2.1-alpha.12** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
@@ -46,6 +46,7 @@ Inspect or require exact installed-binary features as one JSON object:
 $ chordrift capabilities
 $ chordrift capabilities \
     --require service.authenticated-transport.v1 \
+    --require service.product-identity.v1 \
     --require maintenance.task-session.v1 \
     --require maintenance.intake-workflow.v1 \
     --require maintenance.bulk-plan-preview.v1 \
@@ -58,10 +59,15 @@ The command performs no database or provider access. Unknown requirements fail
 with a nonzero status. Scripts use feature names—not `--version` parsing—to
 detect compatibility.
 
-`maintenance.task-session.v1` and `service.authenticated-transport.v1` report
-the Rust-owned task/service boundary used by future clients. They do not add a
-second user-facing maintenance command or hosted URL in alpha.11; the ordinary
-shell below remains the current CLI adapter.
+`maintenance.task-session.v1`, `service.authenticated-transport.v1`, and
+`service.product-identity.v1` report the Rust-owned task, transport, and product
+session boundaries used by future clients. They do not add a second user-facing
+maintenance command or hosted URL in alpha.12; the ordinary shell below remains
+the current CLI adapter. Hosted identity needs migration 0048, while local
+maintenance intentionally requires only schema through migration 0047.
+On the personal local deployment, `db status` may therefore report `47/48` with
+one pending hosted-identity migration; do not apply it merely to clear that
+counter. Ordinary maintenance validates its required schema through 0047.
 
 After a current pull, audit exact intake membership against durable coverage,
 exclusions, proposal intent, and normalized listening history:

@@ -239,8 +239,16 @@ and later Chordrift refactor begin.
   authenticator is V021-02, provider credential storage is V021-03, durable
   operation persistence is V021-04, and the current CLI moves onto this service
   in V021-05. Publish the transport checkpoint as `v0.2.1-alpha.11`.
-- [ ] **V021-02 — Product identity and authorization.** Implement sessions,
-  account ownership, revocation, and tenant-safe authorization tests.
+- [x] **V021-02 — Product identity and authorization.** Persist provider-neutral
+  product subjects, verified external-identity bindings, account ownership, and
+  revocable digest-only Chordrift sessions in additive migration 0048. Exchange
+  an upstream identity credential only through a pluggable verifier, never let
+  clients assert a subject or ownership relation, and resolve every request
+  through current session, subject, membership, and account state. Prove the
+  complete two-tenant denial matrix over real HTTP and PostgreSQL while keeping
+  local maintenance explicitly compatible with schema 0047. Publish the
+  checkpoint as `v0.2.1-alpha.12` with unchanged application contract 1.2,
+  product-session schema 1, and capability `service.product-identity.v1`.
 - [ ] **V021-03 — Encrypted provider credential vault.** Keep refresh credentials
   server-side with rotation and revocation; clients retain only Chordrift
   sessions.
@@ -336,9 +344,9 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** begin `V021-02 — Product identity and authorization` behind the
-V021-01 authenticator seam. The separate Classification Authority is not part
-of that slice.
+**Next gate:** begin `V021-03 — Encrypted provider credential vault` behind the
+V021-02 product-session boundary. The separate Classification Authority is not
+part of that slice.
 
 ## Portable core and thin clients
 
