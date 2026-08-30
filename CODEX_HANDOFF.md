@@ -243,20 +243,19 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Current checkpoint: finish V021-02 release, then begin V021-03
+## Current checkpoint: begin V021-03
 
-V020-01 through V020-15, A021-01 through A021-12, V021-01, and the V021-02
-implementation are complete.
+V020-01 through V020-15, A021-01 through A021-12, and V021-01 through V021-02
+are complete.
 v0.2.0 is released and the separately approved personal binary/database
-cutover is complete. `v0.2.1-alpha.11` remains the installed daily-driver while
-the `v0.2.1-alpha.12` V021-02 candidate passes release verification. A
+cutover is complete. `v0.2.1-alpha.12` is the installed daily-driver. A
 previously unknown track added directly to exactly one managed Spotify playlist
 is now preserved in place and recorded as canonical destination intent without
 a Spotify membership write. Multiple destinations remain ambiguous; active
 exclusions require explicit restoration. Known-track direct moves remain
-unchanged. Finish publishing V021-02, then begin `V021-03 — Encrypted provider
-credential vault`. Never call or write Spotify without the user-authorized
-exact maintenance or retirement operation.
+unchanged. Begin `V021-03 — Encrypted provider credential vault`. Never call or
+write Spotify without the user-authorized exact maintenance or retirement
+operation.
 
 V021-01 adds application contract 1.2 and capability
 `service.authenticated-transport.v1`. `MaintenanceApplication` is one
@@ -272,11 +271,12 @@ included. See `docs/design/AUTHENTICATED_SERVICE_TRANSPORT_V021_01.md`.
 
 V021-02 keeps application contract 1.2 unchanged, adds product-session schema 1,
 capability `service.product-identity.v1`, and additive migration 0048. A
-pluggable external verifier returns stable issuer/subject claims; Chordrift validates persisted
-ownership, returns a 256-bit random opaque session token once, and stores only
-its SHA-256 digest. Every request rechecks session expiry/revocation, subject,
-membership, and account status. The real HTTP and PostgreSQL matrices cover
-cross-tenant denial, guessed/expired tokens, session and membership revocation,
+pluggable external verifier returns stable issuer/subject claims; Chordrift
+validates persisted ownership, returns a 256-bit random opaque session token
+once, and stores only its SHA-256 digest. Every request rechecks session
+expiry/revocation, subject, membership, and account status. The real HTTP and
+PostgreSQL matrices cover cross-tenant denial, guessed/expired tokens, session
+and membership revocation,
 subject/account suspension, idempotent trusted owner provisioning, and owner-
 takeover refusal. There is no public provisioning, password, subject-selection,
 role-override, SQL, or CLI-command endpoint. Migration 0048 is required by the
@@ -289,6 +289,19 @@ V021-02 account/provider ownership edge, support rotation and revocation, and
 ensure clients retain only Chordrift sessions. Do not pull durable background
 jobs, remote CLI migration, deployment, a web UI, or the separate
 Classification Authority into V021-03.
+
+V021-02 implementation commit `e6ff3cae1be0f6bd10a015b4e8a74487ea86d4b8`
+passed CI run `33323175289`, including formatting, strict Clippy, all targets,
+documentation tests, fresh/upgrade PostgreSQL integration, the product identity
+and immediate-revocation persistence matrix, Spotify persistence round-trip,
+and clean packaging. The annotated `v0.2.1-alpha.12` tag, GitHub prerelease,
+and crates.io package are public. The exact locked registry artifact is
+installed at `~/.cargo/bin/chordrift`, reports `chordrift 0.2.1-alpha.12`,
+satisfies `service.authenticated-transport.v1` and
+`service.product-identity.v1`, exposes application contract 1.2 and session
+schema 1, and has `CHORDRIFT_BIN` unset. Migration 0048 was not applied to the
+personal database, and no personal Spotify or Neon operation was used for this
+slice or its release verification.
 
 Alpha.11 implementation commit `7bf39280b38b68fb658885b70b60fa23cf360373`
 passed CI run `33320863679`, including formatting, strict Clippy, all targets,
