@@ -4,6 +4,23 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.13] - 2026-08-30
+
+- Preserve accepted provider order when replaying an assignment that is already
+  satisfied in its requested destination instead of deleting and appending the
+  track by revision chronology.
+- Checkpoint every exactly converged ordinary-maintenance observation as the
+  next immutable managed baseline without contacting or writing Spotify.
+- Ensure a track removed after that baseline becomes an active exclusion and
+  cannot be restored from an older approved proposal.
+- Add `tracks exclusions` plus exact-confirmed `tracks empty-exclusions`; the
+  latter changes only Neon disposition, retains audit history and a hidden
+  replay-blocking forget tombstone, and refuses tracks still present in the
+  current provider observation.
+- Add the normative provider-first sequence and permanent regressions for
+  order stability, later removal, interrupted cumulative state, and the
+  exclusion lifecycle.
+
 ## [0.2.1-alpha.12] - 2026-08-30
 
 - Add provider-neutral external identity verification plus persisted product

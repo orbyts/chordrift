@@ -74,6 +74,18 @@ pub struct ApplyReport {
     pub started_at: DateTime<Utc>,
 }
 
+/// Immutable record that the approved Neon model exactly matched one observed
+/// provider snapshot without a Chordrift provider write.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProviderStateAcceptance {
+    /// Provider inventory observation accepted as current user intent.
+    pub snapshot_id: Uuid,
+    /// Approved proposal proven equal to that observation.
+    pub proposal_generation_id: Uuid,
+    /// Exact managed playlists included in the accepted checkpoint.
+    pub playlist_count: usize,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 /// Local validation and request estimate for one immutable publish plan.
 pub struct PublishPreflightReport {
@@ -651,6 +663,64 @@ pub async fn verify_pending_publications(
         }
     }
     Ok(verified)
+}
+
+/// Accepts the newest provider observation as the durable managed baseline only
+/// after proving exact ordered equality with the latest approved proposal.
+///
+/// This is the terminal step of record-only maintenance. It never contacts or
+/// writes the provider and cannot bless a partially converged model.
+pub async fn accept_current_provider_state(
+    database: &Database,
+    account_label: &str,
+) -> Result<ProviderStateAcceptance> {
+    let account_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM provider_accounts
+         WHERE provider = 'spotify' AND account_label = $1",
+    )
+    .bind(account_label)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("Spotify account is not imported"))?;
+    let snapshot_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM provider_inventory_observations
+         WHERE provider_account_id = $1
+         ORDER BY captured_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("no provider observation exists"))?;
+    let proposal_generation_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM playlist_generations
+         WHERE provider_account_id = $1 AND status = 'approved'
+         ORDER BY approved_at DESC NULLS LAST, created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("no approved playlist model exists"))?;
+    if !verify_publication(database, account_id, snapshot_id, proposal_generation_id).await? {
+        return Err(configuration(
+            "current provider state cannot be accepted until the approved playlist model has identical ordered membership",
+        ));
+    }
+    let playlist_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM managed_playlist_verifications
+         WHERE provider_account_id = $1 AND proposal_generation_id = $2
+           AND verified_snapshot_id = $3",
+    )
+    .bind(account_id)
+    .bind(proposal_generation_id)
+    .bind(snapshot_id)
+    .fetch_one(database.pool())
+    .await?;
+    Ok(ProviderStateAcceptance {
+        snapshot_id,
+        proposal_generation_id,
+        playlist_count: usize::try_from(playlist_count)
+            .map_err(|_| configuration("accepted playlist count exceeds usize"))?,
+    })
 }
 
 async fn verify_publish_operations(

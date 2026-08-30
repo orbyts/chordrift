@@ -243,19 +243,29 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Current checkpoint: begin V021-03
+## Current checkpoint: release alpha.13, then begin V021-03
 
-V020-01 through V020-15, A021-01 through A021-12, and V021-01 through V021-02
+V020-01 through V020-15, A021-01 through A021-13, and V021-01 through V021-02
 are complete.
 v0.2.0 is released and the separately approved personal binary/database
-cutover is complete. `v0.2.1-alpha.12` is the installed daily-driver. A
-previously unknown track added directly to exactly one managed Spotify playlist
+cutover is complete. `v0.2.1-alpha.12` remains installed until the alpha.13
+registry artifact is released and verified. Alpha.13 repairs two daily-use
+defects: assignment replay no longer turns revision chronology into provider
+playlist order, and every exactly converged record-only observation receives an
+immutable managed verification baseline. A later provider removal is therefore
+an exclusion and cannot be restored from an older proposal. The Rust core also
+exposes `tracks exclusions`, exact-confirmed `tracks empty-exclusions`, and the
+low-level exact-equality `sync accept-current` operation. See
+`docs/design/PROVIDER_FIRST_CONVERGENCE.md` and
+`docs/design/DAILY_DRIVER_EDGE_CASE_LEDGER.md`.
+
+A previously unknown track added directly to exactly one managed Spotify playlist
 is now preserved in place and recorded as canonical destination intent without
 a Spotify membership write. Multiple destinations remain ambiguous; active
 exclusions require explicit restoration. Known-track direct moves remain
-unchanged. Begin `V021-03 — Encrypted provider credential vault`. Never call or
-write Spotify without the user-authorized exact maintenance or retirement
-operation.
+unchanged. Release and install `v0.2.1-alpha.13`, then begin `V021-03 —
+Encrypted provider credential vault`. Never call or write Spotify without the
+user-authorized exact publication, maintenance, or retirement operation.
 
 V021-01 adds application contract 1.2 and capability
 `service.authenticated-transport.v1`. `MaintenanceApplication` is one
@@ -1250,19 +1260,22 @@ proposals, readiness, apply receipts, and verification.
 - User's normal clone: `$CRATES/chordrift`, currently
   `/Users/suhail/Library/CloudStorage/Dropbox/matrix/crates/chordrift`
 - Local Storexa clone, if its source is needed: `$CRATES/storexa`
-- Current release: `chordrift 0.1.2`
-- `main` is the Spotify-focused release line. The Apple foundation is isolated
-  on `codex/apple-music` and must not be merged until it can be tested with real
-  Apple credentials.
+- Current release line: `v0.2.1` prereleases; the alpha.13 repair is the next
+  artifact to publish. Historical branches are recovery references, not pending
+  merge sources.
 
 Before editing, inspect `git status --short`, the current branch, this file,
 `ROADMAP.md`, and `docs/HOW_TO_CHORDRIFT.md`. Preserve unrelated user changes.
 
 ## Durable architecture decisions
 
-- Neon PostgreSQL is the canonical and operational source of truth.
+- The newest complete provider observation is authoritative for ordinary
+  user-authored current membership and order.
+- Neon PostgreSQL is the canonical durable ledger for observations, exact
+  accepted baselines, history, exclusions, intent, and authorized publication.
 - Provider APIs are adapters. Current Spotify state is pulled into immutable
-  snapshots; provider state does not compete with Neon authority.
+  snapshots; provider-authored changes update the Neon model after bounded
+  interpretation rather than being reversed from an older model.
 - Chordrift can write to Spotify only through immutable inspected plans, exact
   readiness assessments, phase-scoped confirmation, resumable operation
   receipts, a post-write pull, and provider convergence verification. Preserve

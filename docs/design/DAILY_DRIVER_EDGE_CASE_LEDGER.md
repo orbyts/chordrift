@@ -5,7 +5,7 @@ rules and regression obligations. Read it with
 `PLATFORM_INTENT_MODEL.md`. It contains no credentials or private library
 inventory.
 
-Status: active through `v0.2.1-alpha.9`, updated 2026-08-29.
+Status: active through `v0.2.1-alpha.13`, updated 2026-08-30.
 
 ## Governing rule
 
@@ -29,6 +29,8 @@ provider write.
 | Alpha.6 → alpha.7 | A model-only proposal revision failed because the old artwork manifest had 20 covers while the approved system had 25. | Carry the complete unchanged reviewed artwork system across proposal-only revisions and resume interrupted intake. | Artwork carry-forward and resume regressions. Complete. |
 | Alpha.7 → alpha.8 | Membership-equal Celluloid Mehfil order drift was classified as an out-of-scope publication reorder. | Provider order is current order intent when exact unique membership is equal; update Neon only and never call provider apply. | Pure reorder fake-binary and membership-equality unit tests. Complete. |
 | Alpha.8 → alpha.9 | Recording `Tum Hi Ho Bandhu` as direct intake exposed the pre-existing Celluloid order delta only in the next plan, after the wizard's one reorder scan. | Record-only deltas must converge cumulatively to a bounded fixed point after every proposal revision. Rebuild stale plans from the newest complete pull. | Intake → newly exposed reorder → empty plan fake-binary regression. Complete. |
+| Alpha.12 → alpha.13 | Celluloid Mehfil and Kaveri Resonance alternated through repeated “Accepting current Spotify order” revisions and never stabilized. | Replaying historical assignment intent must be idempotent when the accepted provider membership already satisfies it; revision chronology must never become playlist order. | PostgreSQL regression preserves the exact provider order while extending an approved proposal; shell regression reaches one accepted baseline. Complete. |
+| Alpha.12 → alpha.13 | Tracks added and later removed returned because record-only convergence had not created the immutable managed verification used to interpret the later removal. | Every exactly converged ordinary pull becomes the next accepted baseline. A later removal becomes an active exclusion and an older proposal cannot produce an add/restore operation. | PostgreSQL baseline/removal regression plus exclusion-archive lifecycle proof. Complete. |
 
 ## How to add the next finding
 

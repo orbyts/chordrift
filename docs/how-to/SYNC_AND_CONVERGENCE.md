@@ -1,8 +1,9 @@
 # Synchronize and prove convergence
 
-This is the released v0.2.0 safety workflow and remains the daily operational
-path. The application facade preserves the proven maintenance behavior while
-making plan origin and enumerated writes explicit.
+This is the v0.2.1-alpha.13 safety workflow. The newest complete provider
+observation is ordinary user-state authority; Neon stores immutable observations,
+intent, exclusions, exact accepted baselines, and separately authorized
+publication history.
 
 Use this workflow after provider edits or whenever Chordrift needs to publish an
 approved Neon change.
@@ -17,6 +18,20 @@ Pull imports current provider state, reuses unchanged playlist bodies and saved
 tracks from Neon, collects incremental Recently Played observations, refreshes
 analysis/history links, and verifies awaiting apply runs. Pull itself does not
 silently approve ambiguous intent.
+
+For normal user-authored Spotify edits, run the single wrapper instead of the
+low-level leaves:
+
+```console
+$ scripts/chordrift-maintain.sh --account personal
+```
+
+Additions, direct moves, and membership-equal order changes are recorded without
+a provider write. A removal from the last accepted managed baseline becomes an
+active exclusion. Once the approved model has identical ordered membership, the
+Rust core records that observation as the next baseline. If a run stops, the
+next complete pull is cumulative; an intermediate plan never replaces newer
+provider state.
 
 When the saved-track count or leading membership changes, Spotify must be read
 far enough to prove the current complete membership. Chordrift then resolves
@@ -85,3 +100,21 @@ $ chordrift sync plan --account personal
 The apply run should be `succeeded`. The next plan should have zero operations
 for the surfaces just published. If an apply remains `awaiting_pull`, do not
 repeat it blindly; inspect provider and Neon state first.
+
+## Record-only acceptance
+
+The ordinary wrapper ends an exactly converged record-only run with:
+
+```console
+$ chordrift sync accept-current --account personal
+```
+
+This low-level command verifies exact managed membership and order before
+writing a Neon verification checkpoint. It neither reads nor writes Spotify and
+cannot accept an unresolved or partial model. User-facing web/mobile clients
+will call the equivalent typed Rust operation; they must not duplicate the SQL
+or equality rules.
+
+The normative cross-client sequence, including bounded provider observation lag
+after an explicit publication, is in
+[Provider-first convergence](../design/PROVIDER_FIRST_CONVERGENCE.md).

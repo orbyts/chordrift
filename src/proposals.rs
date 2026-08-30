@@ -2720,6 +2720,10 @@ async fn replay_assignment_overrides(
     for concept_id in destination_concepts {
         ensure_concept_playlist(transaction, generation_id, concept_id).await?;
     }
+    // A copied approved generation already contains the accepted provider
+    // order. Preserve an assignment that is already in its requested concept;
+    // deleting and appending it would turn revision chronology into playlist
+    // order and make provider-first convergence oscillate between playlists.
     sqlx::query(
         "DELETE FROM playlist_tracks membership USING playlists playlist
          WHERE membership.playlist_id = playlist.id
@@ -2729,6 +2733,8 @@ async fn replay_assignment_overrides(
                WHERE revision.provider_account_id = $2
                  AND revision.track_id = membership.track_id
                  AND revision.superseded_at IS NULL
+                 AND (revision.decision <> 'assign'
+                      OR revision.destination_concept_id IS DISTINCT FROM playlist.concept_id)
            )",
     )
     .bind(generation_id)
@@ -2747,6 +2753,10 @@ async fn replay_assignment_overrides(
               AND playlist.concept_id = revision.destination_concept_id
              WHERE revision.provider_account_id = $2
                AND revision.superseded_at IS NULL AND revision.decision = 'assign'
+               AND NOT EXISTS (
+                   SELECT 1 FROM playlist_tracks existing
+                   WHERE existing.playlist_id = playlist.id
+                     AND existing.track_id = revision.track_id)
          ), base_position AS (
              SELECT playlist.id AS playlist_id,
                     COALESCE(max(membership.position), -1)::integer AS value

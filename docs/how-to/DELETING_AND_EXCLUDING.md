@@ -1,8 +1,8 @@
 # Delete or exclude a track safely
 
-Applies to the v0.2.0 plan/readiness/apply workflow. The application facade
-preserves this safety boundary and exposes the lifecycle through structured
-events.
+Applies to the v0.2.1-alpha.13 provider-first maintenance workflow. The
+application facade preserves this safety boundary and exposes the lifecycle
+through structured events.
 
 Use this workflow when a resurfaced track is something you no longer want in
 active Chordrift listening playlists. In Chordrift terminology this is an
@@ -18,14 +18,20 @@ decision remains explainable and reversible.
 ## Remove it from a verified Chordrift playlist
 
 In Spotify, remove the track from the Chordrift-managed playlist where it is
-currently surfacing. Then pull:
+currently surfacing. Then run the ordinary wrapper:
 
 ```console
-$ chordrift sync pull --account personal
+$ scripts/chordrift-maintain.sh --account personal
 ```
 
-The pull records provider state. It does **not** immediately infer and commit an
-exclusion. Build and inspect the next immutable plan:
+The wrapper records the complete provider state, compares it with the last
+exactly accepted baseline, and records the missing managed membership as an
+active exclusion. It never restores the track from an older desired-state
+proposal. If the change is ambiguous, it stops for a bounded decision instead
+of guessing.
+
+The following low-level plan workflow remains a developer/recovery path. Build
+and inspect the immutable plan:
 
 ```console
 $ chordrift sync plan --account personal
@@ -61,6 +67,30 @@ $ chordrift tracks inspect --spotify-id SPOTIFY_TRACK_ID
 ```
 
 The report should show an active exclusion and retain its earlier history.
+
+List all active exclusions at any time without contacting Spotify:
+
+```console
+$ chordrift tracks exclusions --account personal
+```
+
+## Empty the exclusion archive
+
+The archive behaves like a reversible trash/archive disposition, not destructive
+database erasure. Once every excluded track is absent from the newest complete
+provider observation, clear all active dispositions with exact account
+confirmation:
+
+```console
+$ chordrift tracks empty-exclusions --account personal --confirm personal
+```
+
+This command performs no provider write. It retains the track, historical
+exclusion row, reason, and timestamps, resolves the visible archive item, and
+creates an internal forget tombstone while superseding stale placement intent.
+The old model therefore cannot replay it. The command is all-or-nothing and
+refuses if an excluded track still appears in a current playlist or saved
+tracks.
 
 On the V020-11R development line, ordinary publish additions can append only
 the track IDs enumerated by the reviewed plan. They cannot replace complete

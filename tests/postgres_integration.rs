@@ -2,7 +2,7 @@ use std::{cell::Cell, collections::BTreeMap, future, num::NonZeroU16};
 
 use chordrift::{
     application::ApplicationFacade,
-    config,
+    apply, config,
     contract::{
         CONTRACT_VERSION, Command, CommandRequest, IdempotencyKey, Query, QueryRequest, ResourceId,
     },
@@ -31,6 +31,7 @@ use chordrift::{
         StarterProposalConfidence, StrengthenedConclusionKind, inventory_findings_fingerprint,
     },
     product_rehearsal::{CollectionReviewBoundary, RecipeReviewBoundary},
+    proposals,
     recipe_execution::{
         CandidateEligibility, RecipeCandidate, RecipeExecutionRequest, RecipeExecutor,
         SelectionBudgets,
@@ -38,6 +39,7 @@ use chordrift::{
     spin_preview::{SpinPreviewBoundary, SpinPreviewInput},
     spin_publication::{SpinPublicationBoundary, SpinPublicationRequest},
     sync_plan::{self, PlanOrigin},
+    tracks as track_ops,
 };
 use chrono::{TimeDelta, Utc};
 use serde_json::json;
@@ -545,12 +547,338 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     assert_eq!(audit.items[2].state, IntakeState::KnownFromHistory);
     assert_eq!(audit.items[3].state, IntakeState::PreviouslyExcluded);
 
+    // Record-only convergence must preserve an already accepted provider order
+    // even when active assignment revisions are replayed into a new generation.
+    let ordered_revision_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_playlist_revisions
+         (provider_playlist_id, content_sha256, item_count)
+         VALUES ($1, $2, 3) RETURNING id",
+    )
+    .bind(provider_playlist_id)
+    .bind("e".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    for (position, track_index) in [0_usize, 2, 3].into_iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO provider_playlist_revision_tracks
+             (revision_id, provider_track_id, position) VALUES ($1, $2, $3)",
+        )
+        .bind(ordered_revision_id)
+        .bind(tracks[track_index].1)
+        .bind(i32::try_from(position).expect("fixture position fits i32"))
+        .execute(database.pool())
+        .await?;
+    }
+    sqlx::query(
+        "UPDATE provider_current_playlists
+         SET revision_id = $2, reported_item_count = 3
+         WHERE provider_account_id = $1 AND provider_playlist_id = $3",
+    )
+    .bind(account_id)
+    .bind(ordered_revision_id)
+    .bind(provider_playlist_id)
+    .execute(database.pool())
+    .await?;
+    let embedding_generation_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO embedding_generations
+         (provider_account_id, source_snapshot_id, model, model_version,
+          dimensions, seed, input_hash, track_count)
+         VALUES ($1, $2, 'fixture', '1', 16, 1, $3, 0) RETURNING id",
+    )
+    .bind(account_id)
+    .bind(snapshot_id)
+    .bind("f".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    let cluster_generation_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO cluster_generations
+         (embedding_model, embedding_version, algorithm, algorithm_version,
+          provider_account_id, embedding_generation_id, input_hash,
+          track_count, cluster_count, unassigned_count)
+         VALUES ('fixture', '1', 'fixture', '1', $1, $2, $3, 3, 1, 0)
+         RETURNING id",
+    )
+    .bind(account_id)
+    .bind(embedding_generation_id)
+    .bind("1".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    let concept_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlist_concepts
+         (provider_account_id, stable_key, origin, manual_name,
+          manual_description, manual_tags)
+         VALUES ($1, 'fixture-canonical', 'manual', 'Fixture Canonical',
+                 'Provider-first fixture', '[]') RETURNING id",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    sqlx::query("UPDATE provider_playlists SET concept_id = $2 WHERE id = $1")
+        .bind(provider_playlist_id)
+        .bind(concept_id)
+        .execute(database.pool())
+        .await?;
+    let generation_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlist_generations
+         (model, model_version, status, approved_at, provider_account_id,
+          cluster_generation_id, input_hash, coverage_complete,
+          required_track_count, represented_track_count, approved_by)
+         VALUES ('fixture', '1', 'approved', now(), $1, $2, $3,
+                 TRUE, 3, 3, 'fixture') RETURNING id",
+    )
+    .bind(account_id)
+    .bind(cluster_generation_id)
+    .bind("2".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    let proposed_playlist_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlists
+         (generation_id, concept_id, name, description, kind, machine_label)
+         VALUES ($1, $2, 'Fixture Canonical', 'Provider-first fixture',
+                 'manual', 'fixture-canonical') RETURNING id",
+    )
+    .bind(generation_id)
+    .bind(concept_id)
+    .fetch_one(database.pool())
+    .await?;
+    sqlx::query(
+        "INSERT INTO playlist_name_revisions
+         (playlist_id, name, description, generator_provider,
+          generator_model, generator_model_version, artifact_sha256)
+         VALUES ($1, 'Fixture Canonical', 'Provider-first fixture',
+                 'fixture', 'fixture', '1', $2)",
+    )
+    .bind(proposed_playlist_id)
+    .bind("3".repeat(64))
+    .execute(database.pool())
+    .await?;
+    for (position, track_index) in [0_usize, 2, 3].into_iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO playlist_tracks
+             (playlist_id, track_id, position, source)
+             VALUES ($1, $2, $3, 'manual')",
+        )
+        .bind(proposed_playlist_id)
+        .bind(tracks[track_index].0)
+        .bind(i32::try_from(position).expect("fixture position fits i32"))
+        .execute(database.pool())
+        .await?;
+    }
+    sqlx::query(
+        "INSERT INTO track_playlist_assignment_revisions
+         (provider_account_id, track_id, destination_concept_id, decision,
+          source_generation_id, reason)
+         VALUES ($1, $2, $3, 'assign', $4,
+                 'Inferred from direct provider move')",
+    )
+    .bind(account_id)
+    .bind(tracks[2].0)
+    .bind(concept_id)
+    .bind(generation_id)
+    .execute(database.pool())
+    .await?;
+
+    let extended = proposals::extend_approved(&database, &account_label, 1.0).await?;
+    let extended_order: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT membership.track_id
+         FROM playlists playlist
+         JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+         WHERE playlist.generation_id = $1 AND playlist.concept_id = $2
+         ORDER BY membership.position",
+    )
+    .bind(extended.generation_id)
+    .bind(concept_id)
+    .fetch_all(database.pool())
+    .await?;
+    assert_eq!(
+        extended_order,
+        vec![tracks[0].0, tracks[2].0, tracks[3].0],
+        "replaying an assignment already in its destination must preserve provider order"
+    );
+    proposals::approve(&database, &account_label, extended.generation_id).await?;
+    let accepted = apply::accept_current_provider_state(&database, &account_label).await?;
+    assert_eq!(accepted.snapshot_id, snapshot_id);
+    assert_eq!(accepted.playlist_count, 1);
+
+    // A later complete observation removes the formerly direct-intake track.
+    // The accepted baseline must turn that delta into an exclusion, never an add.
+    let removed_snapshot_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_library_snapshots
+         (provider, source, provider_account_id)
+         VALUES ('spotify', 'provider-removal-test', $1) RETURNING id",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    let removed_revision_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_playlist_revisions
+         (provider_playlist_id, content_sha256, item_count)
+         VALUES ($1, $2, 2) RETURNING id",
+    )
+    .bind(provider_playlist_id)
+    .bind("4".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    for (position, track_index) in [0_usize, 3].into_iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO provider_playlist_revision_tracks
+             (revision_id, provider_track_id, position) VALUES ($1, $2, $3)",
+        )
+        .bind(removed_revision_id)
+        .bind(tracks[track_index].1)
+        .bind(i32::try_from(position).expect("fixture position fits i32"))
+        .execute(database.pool())
+        .await?;
+    }
+    sqlx::query(
+        "UPDATE provider_current_inventories
+         SET source_snapshot_id = $2, captured_at = now()
+         WHERE provider_account_id = $1",
+    )
+    .bind(account_id)
+    .bind(removed_snapshot_id)
+    .execute(database.pool())
+    .await?;
+    sqlx::query(
+        "UPDATE provider_current_playlists
+         SET revision_id = $2, reported_item_count = 2
+         WHERE provider_account_id = $1 AND provider_playlist_id = $3",
+    )
+    .bind(account_id)
+    .bind(removed_revision_id)
+    .bind(provider_playlist_id)
+    .execute(database.pool())
+    .await?;
+    let plan = sync_plan::create(&database, &account_label, None).await?;
+    let (_, _, operations) = sync_plan::show(&database, &account_label, Some(plan.plan_id)).await?;
+    let removed_spotify_id = format!("intake-track-2-{suffix}");
+    assert!(operations.iter().any(|operation| {
+        operation.operation_type == "exclude_track"
+            && operation.spotify_track_id.as_deref() == Some(removed_spotify_id.as_str())
+    }));
+    assert!(!operations.iter().any(|operation| {
+        matches!(
+            operation.operation_type.as_str(),
+            "add_track" | "restore_track"
+        ) && operation.spotify_track_id.as_deref() == Some(removed_spotify_id.as_str())
+    }));
+
+    // Emptying the exclusion archive is a separate Neon-only lifecycle step.
+    // It is allowed only after the current provider observation no longer
+    // contains the excluded tracks and it supersedes stale placement intent.
+    let reduced_saved_revision_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_saved_track_revisions
+         (provider_account_id, content_sha256, item_count)
+         VALUES ($1, $2, 2) RETURNING id",
+    )
+    .bind(account_id)
+    .bind("5".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    for (position, track_index) in [0_usize, 3].into_iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO provider_saved_track_revision_tracks
+             (revision_id, provider_track_id, position) VALUES ($1, $2, $3)",
+        )
+        .bind(reduced_saved_revision_id)
+        .bind(tracks[track_index].1)
+        .bind(i32::try_from(position).expect("fixture position fits i32"))
+        .execute(database.pool())
+        .await?;
+    }
+    sqlx::query(
+        "UPDATE provider_current_inventories SET saved_track_revision_id = $2
+         WHERE provider_account_id = $1",
+    )
+    .bind(account_id)
+    .bind(reduced_saved_revision_id)
+    .execute(database.pool())
+    .await?;
+    track_ops::exclude(
+        &database,
+        &account_label,
+        &removed_spotify_id,
+        "Observed provider removal",
+        &removed_spotify_id,
+    )
+    .await?;
+    let accepted_removal = apply::accept_current_provider_state(&database, &account_label).await?;
+    assert_eq!(accepted_removal.snapshot_id, removed_snapshot_id);
+    assert_eq!(
+        track_ops::active_exclusions(&database, &account_label)
+            .await?
+            .len(),
+        2
+    );
+    let emptied = track_ops::empty_exclusions(&database, &account_label, &account_label).await?;
+    assert_eq!(emptied.cleared, 2);
+    assert!(
+        track_ops::active_exclusions(&database, &account_label)
+            .await?
+            .is_empty()
+    );
+    let post_empty_plan = sync_plan::create(&database, &account_label, None).await?;
+    let (_, _, post_empty_operations) =
+        sync_plan::show(&database, &account_label, Some(post_empty_plan.plan_id)).await?;
+    assert!(!post_empty_operations.iter().any(|operation| {
+        matches!(
+            operation.operation_type.as_str(),
+            "add_track" | "restore_track"
+        ) && operation.spotify_track_id.as_deref() == Some(removed_spotify_id.as_str())
+    }));
+    let assignment_still_active: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM track_playlist_assignment_revisions
+             WHERE provider_account_id = $1 AND track_id = $2
+               AND superseded_at IS NULL)",
+    )
+    .bind(account_id)
+    .bind(tracks[2].0)
+    .fetch_one(database.pool())
+    .await?;
+    assert!(!assignment_still_active);
+
     sqlx::query("DELETE FROM provider_current_inventories WHERE provider_account_id = $1")
         .bind(account_id)
         .execute(database.pool())
         .await?;
-    sqlx::query("DELETE FROM provider_library_snapshots WHERE id = $1")
-        .bind(snapshot_id)
+    sqlx::query("DELETE FROM managed_playlist_verifications WHERE provider_account_id = $1")
+        .bind(account_id)
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM sync_runs WHERE provider_account_id = $1")
+        .bind(account_id)
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM track_playlist_assignment_revisions WHERE provider_account_id = $1")
+        .bind(account_id)
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM playlist_generations WHERE provider_account_id = $1")
+        .bind(account_id)
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM cluster_generations WHERE provider_account_id = $1")
+        .bind(account_id)
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM embedding_generations WHERE provider_account_id = $1")
+        .bind(account_id)
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM provider_library_snapshots WHERE id = ANY($1)")
+        .bind(vec![snapshot_id, removed_snapshot_id])
+        .execute(database.pool())
+        .await?;
+    sqlx::query(
+        "UPDATE playlists SET concept_id = NULL
+         WHERE concept_id = $1 AND generation_id IS NULL",
+    )
+    .bind(concept_id)
+    .execute(database.pool())
+    .await?;
+    sqlx::query("UPDATE provider_playlists SET concept_id = NULL WHERE concept_id = $1")
+        .bind(concept_id)
         .execute(database.pool())
         .await?;
     sqlx::query("DELETE FROM provider_accounts WHERE id = $1")

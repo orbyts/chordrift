@@ -1,7 +1,10 @@
 # Roadmap
 
-Chordrift will be developed in small, auditable milestones. Neon is the source
-of truth throughout, while Spotify and Apple Music remain provider adapters.
+Chordrift will be developed in small, auditable milestones. The newest complete
+provider observation is the source of truth for ordinary user-authored library
+state. Neon is the durable history, intent, exclusion, and publication ledger;
+Spotify and later Apple Music remain provider adapters. Chordrift writes a
+provider only through a separately originated, exactly reviewed publication.
 
 The Spotify downloadable history archive is an optional, independently
 importable enrichment source. No other milestone is blocked on receiving it.
@@ -15,9 +18,12 @@ the one slice that is currently allowed to start. Later narrative sections
 preserve design rationale and completed migration history; they do not override
 this order.
 
-Released v0.2.0 is now the daily-use CLI, paired with the verified 47/47 Neon
-database. It remains authoritative for listening evidence, configured intake,
-exclusions, historical correction evidence, classifications, and verified sync history. The
+The v0.2.1 alpha is now the daily-use CLI, paired with the verified 47/47 Neon
+music database. Neon remains authoritative for durable listening evidence,
+configured intake, exclusions, historical correction evidence, classifications,
+accepted provider baselines, and verified publication history. The newest
+complete provider observation is authoritative for ordinary current membership
+and order. The
 former v0.1.4 binary/config/database pair and final pre-cutover backup are
 retained only for controlled recovery. No development slice may dual-write
 experimental state or change Spotify unless an exact plan receives separate
@@ -217,6 +223,15 @@ are checkpoints, not replacements for the hosted-authority goal.
   foundation as `v0.2.1-alpha.10`. The existing shell remains a temporary daily-
   driver adapter; authenticated HTTP and typed database/provider execution
   ports remain V021-01.
+- [x] **A021-13 — Provider-first convergence checkpoint.** Repair the
+  daily-driver loop in which replaying an already-satisfied assignment changed
+  accepted provider order, and record an immutable exact-membership-and-order
+  baseline after every successful record-only maintenance run. Prove that a
+  later removal becomes a durable exclusion and can never be restored from an
+  older proposal. Add explicit list/empty operations for the reversible
+  exclusion archive, retain its audit history, document the provider-first
+  sequence as a wrapper-neutral contract, and publish the repair as
+  `v0.2.1-alpha.13` before resuming V021-03.
 
 ### v0.2.1 — Hosted Rust authority
 
@@ -344,9 +359,10 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** begin `V021-03 — Encrypted provider credential vault` behind the
-V021-02 product-session boundary. The separate Classification Authority is not
-part of that slice.
+**Next gate:** publish and daily-driver verify `v0.2.1-alpha.13`, then begin
+`V021-03 — Encrypted provider credential vault` behind the V021-02 product-
+session boundary. The separate Classification Authority is not part of that
+slice.
 
 ## Portable core and thin clients
 

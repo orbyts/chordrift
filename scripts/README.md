@@ -163,7 +163,22 @@ unexpected work, and Spin publication. `--review-only` never applies. It never
 queries or populates the retired `Re-evaluate` surface. Alpha.5 obtains labels
 and move evidence through one set-based plan preview instead of starting a new
 Neon-backed track inspection for every row, and it prints visible analysis
-progress immediately after observation.
+progress immediately after observation. After every record-only run reaches
+exact ordered equality, the script asks the Rust core to checkpoint that
+provider observation as the next immutable baseline. The script does not infer
+or store equality itself. This prevents a later removal from being restored by
+an older approved proposal.
+
+Inspect or empty the reversible exclusion archive with the Rust-owned commands:
+
+```console
+$ chordrift tracks exclusions --account personal
+$ chordrift tracks empty-exclusions --account personal --confirm personal
+```
+
+Emptying resolves the visible archive entry, retains audit history plus an
+internal replay-blocking forget tombstone, changes only Neon disposition, and
+is refused while any excluded track remains in the current provider observation.
 
 The remaining helpers are developer recovery tools:
 

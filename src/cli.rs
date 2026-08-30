@@ -530,6 +530,12 @@ pub enum SyncCommand {
         #[arg(long, default_value = "personal")]
         account: String,
     },
+    /// Checkpoint an exactly converged provider observation without provider writes.
+    AcceptCurrent {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
     /// Build or reuse an immutable plan without contacting Spotify.
     Plan {
         /// Local label for this Spotify account.
@@ -925,6 +931,21 @@ pub enum TrackCommand {
         /// Include internal generation IDs, stable keys, and raw placement provenance.
         #[arg(long)]
         technical: bool,
+    },
+    /// List active reversible exclusions retained by Chordrift.
+    Exclusions {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
+    /// Empty the exclusion archive without deleting audit history or writing Spotify.
+    EmptyExclusions {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Must exactly repeat the account label.
+        #[arg(long)]
+        confirm: String,
     },
     /// Reversibly exclude one exact track from active Chordrift destinations.
     Exclude {
@@ -1837,6 +1858,25 @@ async fn execute_cli_handlers(cli: Cli, output: &mut impl Write) -> Result<()> {
                             output, &import, &summary, history, verified, &timings,
                         )?;
                     }
+                    Ok(())
+                }
+                .await;
+                database.close().await;
+                result?;
+            }
+            SyncCommand::AcceptCurrent { account } => {
+                let database = connect_current_database().await?;
+                let result: Result<()> = async {
+                    let report = apply::accept_current_provider_state(&database, &account).await?;
+                    writeln!(output, "provider_state: accepted")?;
+                    writeln!(output, "snapshot_id: {}", report.snapshot_id)?;
+                    writeln!(
+                        output,
+                        "proposal_generation_id: {}",
+                        report.proposal_generation_id
+                    )?;
+                    writeln!(output, "playlists: {}", report.playlist_count)?;
+                    writeln!(output, "spotify_writes: disabled")?;
                     Ok(())
                 }
                 .await;
@@ -3583,6 +3623,31 @@ async fn run_track_command(
                     .map(clean_cell)
                     .unwrap_or_else(|| "false".to_owned())
             )?;
+            Ok(())
+        }
+        TrackCommand::Exclusions { account } => {
+            let rows = tracks::active_exclusions(database, &account).await?;
+            writeln!(output, "track\tartists\texcluded_at\treason\tspotify_id")?;
+            for row in rows {
+                writeln!(
+                    output,
+                    "{}\t{}\t{}\t{}\t{}",
+                    clean_cell(&row.title),
+                    clean_cell(&row.artists),
+                    row.excluded_at.to_rfc3339(),
+                    clean_cell(&row.reason),
+                    row.spotify_id
+                )?;
+            }
+            Ok(())
+        }
+        TrackCommand::EmptyExclusions { account, confirm } => {
+            let report = tracks::empty_exclusions(database, &account, &confirm).await?;
+            writeln!(output, "exclusions: emptied")?;
+            writeln!(output, "cleared: {}", report.cleared)?;
+            writeln!(output, "history_retained: true")?;
+            writeln!(output, "replay_blocking_tombstones: retained")?;
+            writeln!(output, "spotify_writes: disabled")?;
             Ok(())
         }
         TrackCommand::Exclude {
@@ -6491,9 +6556,9 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
         CAPABILITY_BULK_MAINTENANCE_PREVIEW, CAPABILITY_DIRECT_MANAGED_INTAKE,
         CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS, CAPABILITY_MAINTENANCE_INTAKE_AUDIT,
         CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW, CAPABILITY_MAINTENANCE_TASK_SESSION,
-        CAPABILITY_PLAN_ORIGIN, CAPABILITY_PRODUCT_IDENTITY, CAPABILITY_PROVIDER_ORDER_INTENT,
-        CAPABILITY_SPIN_PUBLICATION_PLAN, CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW,
-        CapabilityAvailability, ContractVersionRange,
+        CAPABILITY_PLAN_ORIGIN, CAPABILITY_PRODUCT_IDENTITY, CAPABILITY_PROVIDER_BASELINE,
+        CAPABILITY_PROVIDER_ORDER_INTENT, CAPABILITY_SPIN_PUBLICATION_PLAN,
+        CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW, CapabilityAvailability, ContractVersionRange,
     };
 
     BinaryCapabilityManifest {
@@ -6539,6 +6604,10 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
             ),
             (
                 CAPABILITY_PROVIDER_ORDER_INTENT.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
+                CAPABILITY_PROVIDER_BASELINE.to_owned(),
                 CapabilityAvailability::Available,
             ),
             (
@@ -7086,6 +7155,18 @@ mod tests {
     }
 
     #[test]
+    fn parses_provider_state_acceptance() {
+        let cli =
+            Cli::try_parse_from(["chordrift", "sync", "accept-current"]).expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Sync {
+                command: SyncCommand::AcceptCurrent { account }
+            } if account == "personal"
+        ));
+    }
+
+    #[test]
     fn parses_neon_only_route_creation() {
         let cli = Cli::try_parse_from([
             "chordrift",
@@ -7363,6 +7444,32 @@ mod tests {
                     technical: false
                 }
             } if account == "personal" && name == "Do Your Best" && artist == "John Maus"
+        ));
+    }
+
+    #[test]
+    fn parses_exclusion_archive_commands() {
+        let list =
+            Cli::try_parse_from(["chordrift", "tracks", "exclusions"]).expect("valid command");
+        assert!(matches!(
+            list.command,
+            Command::Tracks {
+                command: TrackCommand::Exclusions { account }
+            } if account == "personal"
+        ));
+        let empty = Cli::try_parse_from([
+            "chordrift",
+            "tracks",
+            "empty-exclusions",
+            "--confirm",
+            "personal",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            empty.command,
+            Command::Tracks {
+                command: TrackCommand::EmptyExclusions { account, confirm }
+            } if account == "personal" && confirm == "personal"
         ));
     }
 

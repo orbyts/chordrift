@@ -3,7 +3,7 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the **v0.2.1-alpha.12** daily-driver CLI. It retains the
+Command status: this page documents the **v0.2.1-alpha.13** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
@@ -1351,6 +1351,40 @@ not enough evidence of an intentional removal. Active exclusions are durable
 track dispositions, so legacy retirement and inbox cleanup may preserve a
 track through either a verified canonical destination or that explicit
 exclusion—never by silently dropping it.
+
+List the current reversible exclusion archive without contacting Spotify:
+
+```console
+$ chordrift tracks exclusions --account personal
+```
+
+Clear every active exclusion only after its tracks are absent from the newest
+complete provider observation:
+
+```console
+$ chordrift tracks empty-exclusions --account personal --confirm personal
+```
+
+`--confirm` must exactly repeat the account label. Emptying changes only Neon
+disposition, resolves the visible exclusion, retains its audit history plus a
+hidden replay-blocking forget tombstone, supersedes stale placement revisions,
+and performs no provider write. It is all-or-nothing and refuses to run if any
+active exclusion is still present in a current provider playlist or saved
+tracks.
+
+The maintenance wrapper uses this low-level checkpoint after it has proved exact
+ordered convergence:
+
+```console
+$ chordrift sync accept-current --account personal
+```
+
+`sync accept-current` is an adapter/developer leaf, not an override. It refuses
+unless the newest complete provider observation and latest approved model have
+identical managed playlist membership and order. On success it records the
+immutable baseline used to interpret a later removal; it never contacts or
+writes the provider. Thin product clients invoke the typed Rust application
+operation rather than reimplementing this check.
 
 ## Analysis
 

@@ -57,6 +57,10 @@ fn installed_binary_advertises_unified_maintenance() {
         "available"
     );
     assert_eq!(
+        manifest["capabilities"]["maintenance.provider-baseline.v1"],
+        "available"
+    );
+    assert_eq!(
         manifest["capabilities"]["maintenance.task-session.v1"],
         "available"
     );
@@ -100,6 +104,7 @@ case "$*" in
   "intake audit --account personal")
     printf '%s\n' 'state	track	artists	sources	current_destinations	proposal_destinations	events	plays	exclusion_history	exclusion_reason	spotify_id'
     ;;
+  "sync accept-current --account personal") printf '%s\n' 'provider_state: accepted' ;;
   "reevaluate status --account personal") printf '%s\n' 'queue: Re-evaluate' 'tracks: 0' ;;
   "playlists tracks --account personal --name Re-evaluate")
     printf '%s\n' 'position	track	artists	album	spotify_track_id'
@@ -182,6 +187,7 @@ case "$*" in
       '0	retirement	archive_playlist	Re-evaluate	queue	-	{"surface":"retired_reevaluate"}	{"queue_empty":true}'
     ;;
   "intake audit --account personal") printf '%s\n' 'state	track	artists	sources	current_destinations	proposal_destinations	events	plays	exclusion_history	exclusion_reason	spotify_id' ;;
+  "sync accept-current --account personal") printf '%s\n' 'provider_state: accepted' ;;
   "reevaluate status --account personal") printf '%s\n' 'queue: Re-evaluate' 'tracks: 1' ;;
   "playlists tracks --account personal --name Re-evaluate")
     printf '%s\n' 'position	track	artists	album	spotify_track_id' \
@@ -239,6 +245,7 @@ case "$*" in
   "sync pull --account personal") printf '%s\n' 'sync: current' ;;
   "sync apply-show --account personal --run {apply}") printf '%s\n' 'spotify_apply: succeeded' ;;
   "sync plan --account personal") printf '%s\n' 'plan_id: 00000000-0000-0000-0000-000000000024' ;;
+  "sync accept-current --account personal") printf '%s\n' 'provider_state: accepted' ;;
   *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
 esac
 "##
@@ -300,6 +307,7 @@ case "$*" in
   "intake audit --account personal") printf '%s\n' 'state	track	artists	sources	current_destinations	proposal_destinations	events	plays	exclusion_history	exclusion_reason	spotify_id' ;;
   "reevaluate status --account personal") printf '%s\n' 'queue: Re-evaluate' 'tracks: 0' ;;
   "playlists tracks --account personal --name Re-evaluate") printf '%s\n' 'position	track	artists	album	spotify_track_id' ;;
+  "sync accept-current --account personal") printf '%s\n' 'provider_state: accepted' ;;
   *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
 esac
 "##,
@@ -353,6 +361,7 @@ case "$*" in
   "intake audit --account personal")
     printf '%b\n' 'state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id'
     ;;
+  "sync accept-current --account personal") printf '%s\n' 'provider_state: accepted' ;;
   *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
 esac
 "##,
@@ -439,6 +448,7 @@ case "$*" in
     ;;
   "proposals approve --account personal --confirm {proposal}") printf '%s\n' 'proposal: approved' ;;
   "artwork status --account personal") printf '%s\n' 'proposal_generation_id: {proposal}' ;;
+  "sync accept-current --account personal") printf '%s\n' 'provider_state: accepted' ;;
   *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
 esac
 "##
@@ -559,6 +569,7 @@ case "$*" in
   "artwork approve --account personal --confirm 00000000-0000-0000-0000-000000000074")
     printf '%s\n' 'artwork: approved'
     ;;
+  "sync accept-current --account personal") printf '%s\n' 'provider_state: accepted' ;;
   *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
 esac
 "##
@@ -623,6 +634,7 @@ case "$*" in
       'state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id' \
       'previously_excluded\tExcluded Song\tFixture Artist\tNew Vibe\tNew Vibe\t\t0\t0\ttrue\tuser exclusion\tfixture-excluded'
     ;;
+  "sync accept-current --account personal") printf '%s\n' 'provider_state: accepted' ;;
   *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
 esac
 "##,
@@ -694,6 +706,7 @@ case "$*" in
     ;;
   "proposals approve --account personal --confirm {proposal}") printf '%s\n' 'proposal: approved' ;;
   "artwork status --account personal") printf '%s\n' 'proposal_generation_id: {proposal}' ;;
+  "sync accept-current --account personal") printf '%s\n' 'provider_state: accepted' ;;
   *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
 esac
 "##
@@ -714,6 +727,12 @@ esac
     let commands = fs::read_to_string(&log).unwrap();
     assert!(commands.contains("proposals align-provider-order --account personal"));
     assert!(!commands.contains("sync apply"));
+    assert_eq!(
+        commands
+            .matches("sync accept-current --account personal")
+            .count(),
+        1
+    );
     assert!(
         String::from_utf8_lossy(&output.stdout)
             .contains("Accepting current Spotify order: Celluloid Mehfil")
@@ -766,6 +785,7 @@ case "$*" in
     printf '%s\n' 'apply_run_id: {apply}'
     ;;
   "sync apply-show --account personal --run {apply}") printf '%s\n' 'spotify_apply: succeeded' ;;
+  "sync accept-current --account personal") printf '%s\n' 'provider_state: accepted' ;;
   *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
 esac
 "##

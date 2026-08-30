@@ -203,6 +203,8 @@ pub const CAPABILITY_DIRECT_MANAGED_INTAKE: &str = "maintenance.direct-managed-i
 pub const CAPABILITY_ARTWORK_CARRY_FORWARD: &str = "maintenance.artwork-carry-forward.v1";
 /// Membership-equal provider order can become Neon intent without provider writes.
 pub const CAPABILITY_PROVIDER_ORDER_INTENT: &str = "maintenance.provider-order-intent.v1";
+/// Exact provider observations become durable record-only comparison baselines.
+pub const CAPABILITY_PROVIDER_BASELINE: &str = "maintenance.provider-baseline.v1";
 /// Wrapper-neutral maintenance task DTOs and Rust-owned transition rules.
 pub const CAPABILITY_MAINTENANCE_TASK_SESSION: &str = "maintenance.task-session.v1";
 /// Authenticated HTTP transport over typed application commands and queries.

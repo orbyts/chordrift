@@ -59,6 +59,7 @@ done
     --require maintenance.direct-managed-intake.v1 \
     --require maintenance.artwork-carry-forward.v1 \
     --require maintenance.provider-order-intent.v1 \
+    --require maintenance.provider-baseline.v1 \
     --require plan-origin.v1
 
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chordrift-maintain.XXXXXX")
@@ -332,6 +333,10 @@ UNSAFE=$(awk -F '\t' '$1 ~ /^[0-9]+$/ &&
 
 OPERATIONS=$(awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 != "retirement" { count++ } END { print count + 0 }' "$DETAIL_FILE")
 [ "$OPERATIONS" -gt 0 ] || {
+    # Record-only convergence is complete only after the exact ordered provider
+    # state is durable as the next comparison baseline. This is a Neon-only
+    # checkpoint and cannot write Spotify.
+    [ "$REVIEW_ONLY" = true ] || run sync accept-current --account "$ACCOUNT" >/dev/null
     if awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 == "retirement" { found = 1 } END { exit !found }' "$DETAIL_FILE"; then
         printf 'Ordinary maintenance is in sync. A separately reviewed retirement remains pending.\n'
     else

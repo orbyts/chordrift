@@ -4,7 +4,7 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.1-alpha.12**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-alpha.13**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
 and verified 47/47 database together; see
@@ -40,9 +40,12 @@ If a historical release detail is needed, use the corresponding Git tag. The
 documents on `main` prioritize unambiguous v0.2.0 operation and forward design.
 The `v0.1.4` tag preserves its former documentation.
 
-Chordrift treats Neon as the durable ledger and Spotify as the familiar
-listening surface. A normal pull observes Spotify changes, but ambiguous intent
-is staged for inspection rather than silently guessed.
+Chordrift treats Neon as the durable ledger and Spotify as the current source
+of truth for ordinary user-authored library state. A normal pull observes the
+complete Spotify state, records unambiguous additions, moves, removals, and
+order in Neon, then checkpoints that state only after exact ordered equality.
+Ambiguous intent is staged for inspection rather than silently guessed. See the
+[provider-first convergence contract](design/PROVIDER_FIRST_CONVERGENCE.md).
 
 ## Everyday actions
 
@@ -76,7 +79,10 @@ authorization. Internal proposal revisions, plans, readiness assessments,
 receipts, bounded verification retries, and Neon evidence remain enforced but
 are not values the user copies. The authorization covers only that reviewed
 plan phase; newly observed follow-up work requires another run. `--review-only`
-never writes to Spotify.
+never writes to Spotify. When the record-only model exactly matches Spotify,
+the core stores that observation as the next comparison baseline. This is what
+makes a later removal become an exclusion instead of allowing an older proposal
+to re-add the track.
 
 The v0.2.0 output groups the result into provider, current-library, and
 listening-evidence tables and reports elapsed time for each phase. The provider
@@ -156,6 +162,7 @@ $ chordrift capabilities \
     --require service.authenticated-transport.v1 \
     --require service.product-identity.v1 \
     --require maintenance.task-session.v1 \
+    --require maintenance.provider-baseline.v1 \
     --require maintenance.unified-workflow.v1 \
     --require maintenance.bulk-plan-preview.v1 \
     --require maintenance.enumerated-playlist-additions.v1 \
@@ -169,7 +176,7 @@ exclusions, and direct reclassification moves is:
 $ scripts/chordrift-maintain.sh --account personal
 ```
 
-Alpha.12 keeps this shell as the temporary local CLI adapter while the same
+Alpha.13 keeps this shell as the temporary local CLI adapter while the same
 task-level state and authorization rules are now available through the Rust
 service contract. Product identity/session machinery is implemented, but there
 is still no hosted URL or identity vendor to configure. V021-03 through V021-06
@@ -239,6 +246,11 @@ foundation.
   does not automatically teach a global preference.
 - Exclusion removes a track from active Chordrift listening surfaces; it does
   not erase listening history, provenance, or recoverability from Neon.
+- `chordrift tracks exclusions --account personal` lists the active exclusion
+  archive. `chordrift tracks empty-exclusions --account personal --confirm
+  personal` clears its visible archive items only after confirming none is in
+  the current provider library; audit history and a replay-blocking forget
+  tombstone remain.
 - Known provider-unavailable exceptions can use exact-confirmed `chordrift
   tracks exclude`; `chordrift tracks restore` is the reversible counterpart.
 

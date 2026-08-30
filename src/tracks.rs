@@ -176,6 +176,185 @@ pub struct ExclusionChange {
     pub proposal_generation_id: Option<Uuid>,
 }
 
+/// One active reversible exclusion retained as private account history.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActiveExclusion {
+    /// Stable Spotify track identity.
+    pub spotify_id: String,
+    /// Human-facing track title.
+    pub title: String,
+    /// Display artists.
+    pub artists: String,
+    /// Durable exclusion explanation.
+    pub reason: String,
+    /// When the exclusion became active.
+    pub excluded_at: DateTime<Utc>,
+}
+
+/// Result of emptying the account's exclusion archive.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmptyExclusionsReport {
+    /// Resolved exclusions; identity and audit history remain stored.
+    pub cleared: usize,
+}
+
+/// Lists active account exclusions without contacting the provider.
+pub async fn active_exclusions(
+    database: &Database,
+    account_label: &str,
+) -> Result<Vec<ActiveExclusion>> {
+    let account_id = account_id(database, account_label).await?;
+    let rows = sqlx::query(
+        "SELECT min(provider.provider_track_id) AS spotify_id, track.title,
+                COALESCE(string_agg(DISTINCT artist.name, ', '), '') AS artists,
+                exclusion.exclusion_reason, exclusion.excluded_at
+         FROM excluded_tracks exclusion
+         JOIN tracks track ON track.id = exclusion.track_id
+         JOIN provider_tracks provider
+           ON provider.track_id = track.id AND provider.provider = 'spotify'
+         LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
+         LEFT JOIN artists artist ON artist.id = track_artist.artist_id
+         WHERE exclusion.provider_account_id = $1
+           AND exclusion.restored_at IS NULL
+           AND exclusion.source_provider <> 'chordrift_forget'
+         GROUP BY exclusion.id, track.id, track.title,
+                  exclusion.exclusion_reason, exclusion.excluded_at
+         ORDER BY exclusion.excluded_at, exclusion.id",
+    )
+    .bind(account_id)
+    .fetch_all(database.pool())
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(ActiveExclusion {
+                spotify_id: row.try_get("spotify_id")?,
+                title: row.try_get("title")?,
+                artists: row.try_get("artists")?,
+                reason: row.try_get("exclusion_reason")?,
+                excluded_at: row.try_get("excluded_at")?,
+            })
+        })
+        .collect()
+}
+
+/// Empties the exclusion archive after proving none of its tracks is currently
+/// present in the provider library. This changes Neon intent only and retains
+/// immutable exclusion history.
+pub async fn empty_exclusions(
+    database: &Database,
+    account_label: &str,
+    confirm: &str,
+) -> Result<EmptyExclusionsReport> {
+    if confirm.trim() != account_label {
+        return Err(configuration(
+            "--confirm must exactly repeat the account label",
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let mut tx = database.pool().begin().await?;
+    let current_conflicts: i64 = sqlx::query_scalar(
+        "WITH latest AS (
+             SELECT id FROM provider_inventory_observations
+             WHERE provider_account_id = $1
+             ORDER BY captured_at DESC, id DESC LIMIT 1
+         ), current_tracks AS (
+             SELECT provider.track_id
+             FROM latest
+             JOIN provider_observed_playlist_tracks membership
+               ON membership.snapshot_id = latest.id
+             JOIN provider_tracks provider ON provider.id = membership.provider_track_id
+             UNION
+             SELECT provider.track_id
+             FROM latest
+             JOIN provider_observed_saved_tracks saved ON saved.snapshot_id = latest.id
+             JOIN provider_tracks provider ON provider.id = saved.provider_track_id
+         )
+         SELECT count(*)::bigint
+         FROM excluded_tracks exclusion
+         JOIN current_tracks current ON current.track_id = exclusion.track_id
+         WHERE exclusion.provider_account_id = $1
+           AND exclusion.restored_at IS NULL
+           AND exclusion.source_provider <> 'chordrift_forget'",
+    )
+    .bind(account_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if current_conflicts != 0 {
+        return Err(configuration(format!(
+            "cannot empty exclusions while {current_conflicts} excluded track(s) are present in the current provider library; run ordinary maintenance first"
+        )));
+    }
+    let track_ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT track_id FROM excluded_tracks
+         WHERE provider_account_id = $1 AND restored_at IS NULL
+           AND source_provider <> 'chordrift_forget'
+         ORDER BY excluded_at, id FOR UPDATE",
+    )
+    .bind(account_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    if track_ids.is_empty() {
+        tx.commit().await?;
+        return Ok(EmptyExclusionsReport { cleared: 0 });
+    }
+    sqlx::query(
+        "WITH cleared AS (
+             UPDATE excluded_tracks
+             SET restored_at = now(),
+                 restoration_reason = 'Cleared from exclusion archive; durable forget retained'
+             WHERE provider_account_id = $1 AND track_id = ANY($2)
+               AND restored_at IS NULL AND source_provider <> 'chordrift_forget'
+             RETURNING provider_account_id, track_id,
+                       source_provider_playlist_id, previous_concept_id
+         )
+         INSERT INTO excluded_tracks
+         (provider_account_id, track_id, source_provider,
+          source_provider_playlist_id, previous_concept_id, excluded_at,
+          exclusion_reason)
+         SELECT provider_account_id, track_id, 'chordrift_forget',
+                source_provider_playlist_id, previous_concept_id, now(),
+                'Cleared from visible exclusion archive; do not replay older placement'
+         FROM cleared",
+    )
+    .bind(account_id)
+    .bind(&track_ids)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE track_playlist_assignment_revisions SET superseded_at = now()
+         WHERE provider_account_id = $1 AND track_id = ANY($2)
+           AND superseded_at IS NULL",
+    )
+    .bind(account_id)
+    .bind(&track_ids)
+    .execute(&mut *tx)
+    .await?;
+    let proposed_generation: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM playlist_generations
+         WHERE provider_account_id = $1 AND status = 'proposed'
+         ORDER BY created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if let Some(generation_id) = proposed_generation {
+        sqlx::query(
+            "DELETE FROM playlist_tracks membership USING playlists playlist
+             WHERE membership.playlist_id = playlist.id
+               AND playlist.generation_id = $1 AND membership.track_id = ANY($2)",
+        )
+        .bind(generation_id)
+        .bind(&track_ids)
+        .execute(&mut *tx)
+        .await?;
+        refresh_proposal_coverage(&mut tx, account_id, generation_id).await?;
+    }
+    tx.commit().await?;
+    Ok(EmptyExclusionsReport {
+        cleared: track_ids.len(),
+    })
+}
+
 /// Explicitly excludes one known track while retaining identity and history.
 pub async fn exclude(
     database: &Database,
