@@ -4,6 +4,20 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.6] - 2026-08-29
+
+- Preserve a previously unknown track added directly to a managed Spotify
+  playlist instead of planning a provider-drift removal.
+- Extend the read-only intake audit with `direct_managed_addition` and the
+  exact observed destination.
+- Record an unambiguous existing destination in the approved Chordrift model
+  without removing or re-adding the provider track; batch assignments through
+  the ordinary maintenance workflow.
+- Keep multiple destinations ambiguous and require an explicit decision;
+  never restore an actively excluded track automatically.
+- Add the `maintenance.direct-managed-intake.v1` capability plus planner,
+  database, and fake-binary regressions.
+
 ## [0.2.1-alpha.5] - 2026-08-29
 
 - Replace two per-track inspection passes in the ordinary maintenance wizard

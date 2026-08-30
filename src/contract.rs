@@ -185,6 +185,8 @@ pub const CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS: &str =
     "maintenance.enumerated-playlist-additions.v1";
 /// Plan details include set-based labels and direct-move interpretation.
 pub const CAPABILITY_BULK_MAINTENANCE_PREVIEW: &str = "maintenance.bulk-plan-preview.v1";
+/// Direct additions to managed destinations are preserved and recorded as intake.
+pub const CAPABILITY_DIRECT_MANAGED_INTAKE: &str = "maintenance.direct-managed-intake.v1";
 /// Synchronization plans expose an origin that maintenance tools can reject.
 pub const CAPABILITY_PLAN_ORIGIN: &str = "plan-origin.v1";
 /// Approved Spins can become immutable, fake-provider-verified publication plans.

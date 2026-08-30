@@ -1,11 +1,9 @@
 # Add songs and preserve discovery context
 
-> **Alpha.5 limitation:** moving an existing managed track directly between
-> managed Spotify playlists is supported. Adding a previously unknown track
-> directly to a managed playlist is reserved for A021-08 / alpha.6. Until that
-> release, use Liked Songs or a named intake playlist for genuinely new tracks;
-> do not approve a plan that describes the new managed membership as drift to
-> remove.
+> **Alpha.6:** a new track may enter through Liked Songs, a named intake
+> playlist, or Spotify's Add action inside an existing managed playlist. A
+> direct managed addition is preserved in place and its observed destination is
+> recorded as canonical intent; it is never interpreted as drift to remove.
 
 These capture semantics and the V020-11R capability-checked helpers apply to
 v0.2.0. The `v0.1.4` tag remains the exact historical reference.
@@ -15,7 +13,7 @@ eventually place into the right listening playlist.
 
 ## Choose the smallest truthful signal
 
-The default and easiest intake action is Spotify's Like/Save button. It means:
+The default and easiest unclassified intake action is Spotify's Like/Save button. It means:
 “keep this track and let Chordrift classify it.” A normal pull records the
 track and its saved timestamp in Neon.
 
@@ -31,6 +29,13 @@ specific signal:
 other intake playlists retain discovery provenance that Like alone cannot.
 Do not add the same track to several intake playlists unless several origins are
 genuinely meaningful.
+
+When Spotify already shows the right Chordrift destination, use its Add action
+inside that managed playlist. This is both intake and an explicit placement
+decision. The maintenance wizard records the provider membership that already
+exists; it does not remove and re-add the track. If the same new track appears
+in several managed destinations, Chordrift asks which one is canonical. An
+actively excluded track is never restored from this gesture alone.
 
 ## Capture it in Neon
 
@@ -89,9 +94,10 @@ $ chordrift intake audit --account personal
 ```
 
 The audit labels exact provider identities as `already_covered`,
-`previously_excluded`, `assigned_approved`, `suggested_in_draft`,
-`known_from_history`, or `genuinely_new`. It makes no provider request and no
-database write. Use `--review-only` when that report is the desired endpoint.
+`direct_managed_addition`, `previously_excluded`, `assigned_approved`,
+`suggested_in_draft`, `known_from_history`, or `genuinely_new`. It makes no
+provider request and no database write. Use `--review-only` when that report is
+the desired endpoint.
 
 The interactive path asks for an existing destination only when placement is
 ambiguous, then shows one exact net-change summary and asks once. It refuses new
@@ -101,7 +107,7 @@ Lower-level proposal and clustering commands remain developer diagnostics.
 ## What not to do
 
 - Do not create an arbitrary permanent playlist merely to make Chordrift see a
-  new track; use an intake.
+  new track; use a reviewed managed destination, Like, or named intake.
 - Do not remove a track from its intake before Neon has captured it.
 - Do not assume saving alone communicates whether it came from a friend, radio,
   or a prompt.

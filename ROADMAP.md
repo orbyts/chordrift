@@ -179,7 +179,7 @@ are checkpoints, not replacements for the hosted-authority goal.
   regressions proving an ordinary review makes zero `tracks inspect` calls.
   Rehearse the reported 22-operation shape against Neon and publish the repair
   as `v0.2.1-alpha.5`.
-- [ ] **A021-08 — Direct managed-playlist intake.** Treat a previously unknown
+- [x] **A021-08 — Direct managed-playlist intake.** Treat a previously unknown
   track added directly to a managed provider playlist as preserved intake plus
   explicit destination intent, not provider drift to remove. Keep direct moves
   of known tracks unchanged, resolve active exclusions explicitly, batch the
@@ -276,10 +276,9 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** complete A021-08/alpha.6 so a new track added directly to a
-managed Spotify playlist is preserved as intake and destination intent. Then
-begin `V021-01 — Authenticated service transport` without redefining domain
-behavior. The separate Classification Authority is not part of that slice.
+**Next gate:** begin `V021-01 — Authenticated service transport` without
+redefining domain behavior. The separate Classification Authority is not part
+of that slice.
 
 ## Portable core and native clients
 

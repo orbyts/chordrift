@@ -4,7 +4,7 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.1-alpha.5**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-alpha.6**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
 and verified 47/47 database together; see
@@ -53,6 +53,7 @@ is staged for inspection rather than silently guessed.
 | Inventory or retire saved albums | [Saved albums and album cleanup](how-to/SAVED_ALBUMS.md) | Archive-only retirement keeps immutable album and track history. |
 | Stop hearing a song | [Delete or exclude a track safely](how-to/DELETING_AND_EXCLUDING.md) | Remove it from its verified Chordrift playlist, then reconcile. |
 | Keep a song but reject its current vibe | [Reclassify a track by moving it](how-to/ROUTING_AND_RECLASSIFYING.md) | Move it directly from the wrong managed playlist to the right one, then run maintenance. |
+| Add a new song directly to the right playlist | [Add songs and preserve discovery context](how-to/ADDING_AND_DISCOVERY.md) | Use Spotify's Add action in one existing managed playlist, then run maintenance; Chordrift records the placement without re-adding it. |
 | Add private region, tradition, language, or cohort facts | [Classify tracks with user dimensions](how-to/CLASSIFICATION_DIMENSIONS.md) | Review one track/a small group directly, or approve a CSV batch. |
 | Bring Neon up to date | [Synchronize and prove convergence](how-to/SYNC_AND_CONVERGENCE.md) | Run a pull after provider changes. |
 | Understand how the product interprets provider intent | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Keep using Spotify; Chordrift interprets bounded changes. |

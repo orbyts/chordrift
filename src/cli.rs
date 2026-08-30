@@ -6477,10 +6477,11 @@ fn write_status(output: &mut impl Write, status: &db::DatabaseStatus) -> Result<
 fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
     use crate::contract::{
         BINARY_CAPABILITY_SCHEMA_VERSION, BinaryCapabilityManifest,
-        CAPABILITY_BULK_MAINTENANCE_PREVIEW, CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS,
-        CAPABILITY_MAINTENANCE_INTAKE_AUDIT, CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW,
-        CAPABILITY_PLAN_ORIGIN, CAPABILITY_SPIN_PUBLICATION_PLAN,
-        CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW, CapabilityAvailability, ContractVersionRange,
+        CAPABILITY_BULK_MAINTENANCE_PREVIEW, CAPABILITY_DIRECT_MANAGED_INTAKE,
+        CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS, CAPABILITY_MAINTENANCE_INTAKE_AUDIT,
+        CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW, CAPABILITY_PLAN_ORIGIN,
+        CAPABILITY_SPIN_PUBLICATION_PLAN, CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW,
+        CapabilityAvailability, ContractVersionRange,
     };
 
     BinaryCapabilityManifest {
@@ -6494,6 +6495,10 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
             ),
             (
                 CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
+                CAPABILITY_DIRECT_MANAGED_INTAKE.to_owned(),
                 CapabilityAvailability::Available,
             ),
             (
@@ -6549,6 +6554,11 @@ fn write_intake_audit(output: &mut impl Write, report: &intake::IntakeAudit) -> 
         output,
         "already_covered: {}",
         count(IntakeState::AlreadyCovered)
+    )?;
+    writeln!(
+        output,
+        "direct_managed_addition: {}",
+        count(IntakeState::DirectManagedAddition)
     )?;
     writeln!(
         output,

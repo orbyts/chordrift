@@ -3,7 +3,7 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the **v0.2.1-alpha.5** daily-driver CLI. It retains the
+Command status: this page documents the **v0.2.1-alpha.6** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
@@ -64,8 +64,11 @@ $ chordrift intake audit --account personal
 ```
 
 The read-only report labels each provider identity `already_covered`,
-`previously_excluded`, `assigned_approved`, `suggested_in_draft`,
-`known_from_history`, or `genuinely_new` and emits stable redirected TSV.
+`direct_managed_addition`, `previously_excluded`, `assigned_approved`,
+`suggested_in_draft`, `known_from_history`, or `genuinely_new` and emits stable
+redirected TSV. A direct managed addition is preserved in its observed
+destination and recorded by the ordinary wizard without a Spotify membership
+write; several destinations or an active exclusion require an explicit choice.
 
 `sync plan` prints `plan_origin: maintenance`; `sync plan-show` exposes either
 `maintenance` or `spin_publication` from immutable plan preconditions. A Spin

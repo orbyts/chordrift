@@ -228,8 +228,10 @@ pub async fn create(
 
     let desired = desired_playlists(database, account_id, proposal_id).await?;
     let current = current_managed_playlists(database, account_id, snapshot_id).await?;
+    let direct_intake =
+        direct_managed_intake_tracks(database, account_id, &desired, &current).await?;
     let reevaluating = current_reevaluate_tracks(database, account_id, snapshot_id).await?;
-    let mut operations = playlist_diff(&desired, &current, &reevaluating);
+    let mut operations = playlist_diff(&desired, &current, &reevaluating, &direct_intake);
     operations.extend(canonical_retirement_operations(&desired, &current));
     operations.extend(artwork_operations(database, account_id, proposal_id, &current).await?);
     operations.extend(intake_surface_operations(database, account_id, snapshot_id).await?);
@@ -1165,6 +1167,7 @@ fn playlist_diff(
     desired: &[DesiredPlaylist],
     current: &BTreeMap<Uuid, CurrentPlaylist>,
     reevaluating: &BTreeSet<Uuid>,
+    direct_intake: &BTreeSet<Uuid>,
 ) -> Vec<PlanOperationInput> {
     let mut operations = Vec::new();
     for playlist in desired {
@@ -1298,6 +1301,13 @@ fn playlist_diff(
         if let Some(observed) = observed {
             for track in &observed.tracks {
                 if !desired_tracks.contains(&track.canonical_id) {
+                    // A track first introduced directly through this managed
+                    // provider playlist is intake, not provider drift. Leave
+                    // the provider membership untouched until the ordinary
+                    // workflow records its canonical destination.
+                    if direct_intake.contains(&track.canonical_id) {
+                        continue;
+                    }
                     operations.push(PlanOperationInput {
                         phase: "reconcile".to_owned(),
                         operation_type: "remove_track".to_owned(),
@@ -1320,6 +1330,41 @@ fn playlist_diff(
         }
     }
     operations
+}
+
+async fn direct_managed_intake_tracks(
+    database: &Database,
+    account_id: Uuid,
+    desired: &[DesiredPlaylist],
+    current: &BTreeMap<Uuid, CurrentPlaylist>,
+) -> Result<BTreeSet<Uuid>> {
+    let desired_tracks = desired
+        .iter()
+        .flat_map(|playlist| playlist.tracks.iter().map(|track| track.canonical_id))
+        .collect::<BTreeSet<_>>();
+    let candidates = current
+        .values()
+        .flat_map(|playlist| playlist.tracks.iter().map(|track| track.canonical_id))
+        .filter(|track_id| !desired_tracks.contains(track_id))
+        .collect::<BTreeSet<_>>();
+    if candidates.is_empty() {
+        return Ok(candidates);
+    }
+    let candidate_ids = candidates.iter().copied().collect::<Vec<_>>();
+    let excluded = sqlx::query_scalar::<_, Uuid>(
+        "SELECT DISTINCT track_id
+         FROM excluded_tracks
+         WHERE provider_account_id = $1
+           AND restored_at IS NULL
+           AND track_id = ANY($2::uuid[])",
+    )
+    .bind(account_id)
+    .bind(&candidate_ids)
+    .fetch_all(database.pool())
+    .await?
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+    Ok(candidates.difference(&excluded).copied().collect())
 }
 
 fn canonical_retirement_operations(
@@ -2164,7 +2209,7 @@ fn json_string(value: &Value, key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CurrentPlaylist, DesiredPlaylist, DesiredTrack, MaintenanceTrackContext,
+        CurrentPlaylist, CurrentTrack, DesiredPlaylist, DesiredTrack, MaintenanceTrackContext,
         PlanOperationInput, PlannedOperation, annotate_maintenance_operation,
         canonical_retirement_operations, count_kind, hex_sha256, operation_position,
         operation_rank, phase_rank, playlist_diff, stored_plan_origin, summarize,
@@ -2335,7 +2380,12 @@ mod tests {
             tracks: Vec::new(),
         };
 
-        let operations = playlist_diff(&[desired], &BTreeMap::new(), &BTreeSet::new());
+        let operations = playlist_diff(
+            &[desired],
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
 
         assert_eq!(count_kind(&operations, "create_playlist"), 1);
         assert_eq!(count_kind(&operations, "add_track"), 0);
@@ -2372,6 +2422,7 @@ mod tests {
             &[desired],
             &BTreeMap::from([(concept_id, current)]),
             &BTreeSet::new(),
+            &BTreeSet::new(),
         );
         assert_eq!(count_kind(&operations, "exclude_track"), 1);
         assert_eq!(count_kind(&operations, "add_track"), 0);
@@ -2407,9 +2458,44 @@ mod tests {
             &[desired],
             &BTreeMap::from([(concept_id, current)]),
             &BTreeSet::from([track_id]),
+            &BTreeSet::new(),
         );
         assert_eq!(count_kind(&operations, "exclude_track"), 0);
         assert_eq!(count_kind(&operations, "add_track"), 0);
+    }
+
+    #[test]
+    fn direct_managed_intake_is_never_planned_as_provider_drift_removal() {
+        let concept_id = Uuid::new_v4();
+        let track_id = Uuid::new_v4();
+        let desired = DesiredPlaylist {
+            playlist_id: Uuid::new_v4(),
+            concept_id,
+            stable_key: "playlist-test".to_owned(),
+            name: "Test".to_owned(),
+            description: "Test".to_owned(),
+            tracks: Vec::new(),
+        };
+        let current = CurrentPlaylist {
+            playlist_id: Uuid::new_v4(),
+            provider_playlist_id: Uuid::new_v4(),
+            spotify_id: "spotify-playlist".to_owned(),
+            name: "Test".to_owned(),
+            provider_snapshot_id: Some("snapshot".to_owned()),
+            tracks: vec![CurrentTrack {
+                canonical_id: track_id,
+                spotify_id: "spotify-track".to_owned(),
+                position: 0,
+            }],
+            verified_tracks: BTreeSet::new(),
+        };
+        let operations = playlist_diff(
+            &[desired],
+            &BTreeMap::from([(concept_id, current)]),
+            &BTreeSet::new(),
+            &BTreeSet::from([track_id]),
+        );
+        assert_eq!(count_kind(&operations, "remove_track"), 0);
     }
 
     #[test]

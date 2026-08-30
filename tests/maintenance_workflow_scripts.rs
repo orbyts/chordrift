@@ -38,6 +38,10 @@ fn installed_binary_advertises_unified_maintenance() {
         manifest["capabilities"]["maintenance.bulk-plan-preview.v1"],
         "available"
     );
+    assert_eq!(
+        manifest["capabilities"]["maintenance.direct-managed-intake.v1"],
+        "available"
+    );
 }
 
 #[test]
@@ -446,6 +450,131 @@ esac
     );
     assert!(String::from_utf8_lossy(&output.stdout).contains("Recorded 2 move(s) in Chordrift"));
     assert!(!commands.contains("tracks inspect"));
+    fs::remove_dir_all(work).unwrap();
+}
+
+#[test]
+fn direct_managed_addition_records_existing_destination_without_provider_apply() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let work = temporary_work("direct-managed-intake");
+    let fake = work.join("chordrift-fake");
+    let log = work.join("commands.log");
+    let first_plan = "00000000-0000-0000-0000-000000000071";
+    let second_plan = "00000000-0000-0000-0000-000000000072";
+    let proposal = "00000000-0000-0000-0000-000000000073";
+    write_fake(
+        &fake,
+        &format!(
+            r##"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"$FAKE_CHORDRIFT_LOG"
+case "$*" in
+  capabilities*) printf '%s\n' '{{"schema_version":1}}' ;;
+  "sync pull --account personal") printf '%s\n' 'sync: current' ;;
+  "sync plan --account personal")
+    count=$(grep -c '^sync plan --account personal$' "$FAKE_CHORDRIFT_LOG")
+    if [ "$count" -eq 1 ]; then
+      printf '%s\n' 'plan_id: {first_plan}' 'operations: 0'
+    else
+      printf '%s\n' 'plan_id: {second_plan}' 'operations: 0'
+    fi
+    ;;
+  "sync plan-show --account personal --plan {first_plan} --details")
+    printf '%b\n' 'plan_id: {first_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
+      'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety'
+    ;;
+  "sync plan-show --account personal --plan {second_plan} --details")
+    printf '%b\n' 'plan_id: {second_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
+      'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety'
+    ;;
+  "intake audit --account personal")
+    printf '%b\n' \
+      'state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id' \
+      'direct_managed_addition\tNew Song\tFixture Artist\tNew Vibe\tNew Vibe\t\t0\t0\tfalse\t-\tfixture-new-track'
+    ;;
+  "proposals status --account personal")
+    printf '%s\n' 'proposal: proposed' 'generation_id: {proposal}' 'coverage_complete: true'
+    ;;
+  "proposals list --account personal")
+    printf '%b\n' 'position\tcount\tstable_key\tname' '1\t1\tplaylist-new\tNew Vibe'
+    ;;
+  "proposals assign --account personal --spotify-id fixture-new-track --playlist playlist-new --reason Inferred from direct provider move")
+    printf '%s\n' 'proposal: proposed'
+    ;;
+  "proposals approve --account personal --confirm {proposal}") printf '%s\n' 'proposal: approved' ;;
+  "artwork status --account personal") printf '%s\n' 'proposal_generation_id: {proposal}' ;;
+  *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
+esac
+"##
+        ),
+    );
+
+    let output = Command::new(root.join("scripts/chordrift-maintain.sh"))
+        .args(["--confirmed-plan", first_plan])
+        .env("CHORDRIFT_BIN", &fake)
+        .env("FAKE_CHORDRIFT_LOG", &log)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let commands = fs::read_to_string(&log).unwrap();
+    assert!(commands.contains(
+        "proposals assign --account personal --spotify-id fixture-new-track --playlist playlist-new"
+    ));
+    assert!(!commands.contains("sync apply"));
+    assert!(!commands.contains("tracks restore"));
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Detected direct intake: New Song — Fixture Artist → New Vibe")
+    );
+    fs::remove_dir_all(work).unwrap();
+}
+
+#[test]
+fn excluded_track_in_managed_destination_is_not_restored_automatically() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let work = temporary_work("excluded-managed-intake");
+    let fake = work.join("chordrift-fake");
+    let log = work.join("commands.log");
+    write_fake(
+        &fake,
+        r##"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"$FAKE_CHORDRIFT_LOG"
+case "$*" in
+  capabilities*) printf '%s\n' '{"schema_version":1}' ;;
+  "sync pull --account personal") printf '%s\n' 'sync: current' ;;
+  "sync plan --account personal") printf '%s\n' 'plan_id: 00000000-0000-0000-0000-000000000081' 'operations: 1' ;;
+  "sync plan-show --account personal --plan 00000000-0000-0000-0000-000000000081 --details")
+    printf '%b\n' 'plan_origin: maintenance' 'snapshot_current: true' \
+      'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety' \
+      '0\treconcile\tremove_track\tNew Vibe\tnew\tfixture-excluded\t{}\t{}\tExcluded Song\tFixture Artist\tordinary\t-\t-'
+    ;;
+  "intake audit --account personal")
+    printf '%b\n' \
+      'state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id' \
+      'previously_excluded\tExcluded Song\tFixture Artist\tNew Vibe\tNew Vibe\t\t0\t0\ttrue\tuser exclusion\tfixture-excluded'
+    ;;
+  *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
+esac
+"##,
+    );
+    let output = Command::new(root.join("scripts/chordrift-maintain.sh"))
+        .arg("--review-only")
+        .env("CHORDRIFT_BIN", &fake)
+        .env("FAKE_CHORDRIFT_LOG", &log)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let commands = fs::read_to_string(&log).unwrap();
+    assert!(!commands.contains("proposals assign"));
+    assert!(!commands.contains("tracks restore"));
+    assert!(!commands.contains("sync apply"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Needs a destination"));
     fs::remove_dir_all(work).unwrap();
 }
 

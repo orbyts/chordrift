@@ -56,6 +56,7 @@ done
     --require maintenance.intake-audit.v1 \
     --require maintenance.enumerated-playlist-additions.v1 \
     --require maintenance.bulk-plan-preview.v1 \
+    --require maintenance.direct-managed-intake.v1 \
     --require plan-origin.v1
 
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chordrift-maintain.XXXXXX")
@@ -101,7 +102,14 @@ find_ambiguous() {
         $1 == "previously_excluded" || $1 == "known_from_history" || $1 == "genuinely_new" {
             print $1 "\t" $2 "\t" $3 "\t" $11
         }
+        $1 == "direct_managed_addition" && index($5, " / ") > 0 {
+            print $1 "\t" $2 "\t" $3 "\t" $11
+        }
     ' "$AUDIT_FILE" >>"$AMBIGUOUS_FILE"
+
+    awk -F '\t' '$1 == "direct_managed_addition" && index($5, " / ") == 0 {
+        print $2 "\t" $3 "\t" $11 "\tNew intake\t" $5
+    }' "$AUDIT_FILE" >>"$AUTO_MOVES_FILE"
 
     cat "$MOVE_AMBIGUOUS_FILE" >>"$AMBIGUOUS_FILE"
     sort -u "$AMBIGUOUS_FILE" -o "$AMBIGUOUS_FILE"
@@ -154,8 +162,13 @@ resolve_ambiguous() {
         printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
             "$stable_key" "$title" "$artists" "$spotify_id" "$old_destination" "$destination" \
             >>"$RESOLVED_AUTO_MOVES_FILE"
-        printf 'Detected move: %s — %s · %s → %s\n' \
-            "$title" "$artists" "$old_destination" "$destination"
+        if [ "$old_destination" = "New intake" ]; then
+            printf 'Detected direct intake: %s — %s → %s\n' \
+                "$title" "$artists" "$destination"
+        else
+            printf 'Detected move: %s — %s · %s → %s\n' \
+                "$title" "$artists" "$old_destination" "$destination"
+        fi
     done <"$AUTO_MOVES_FILE"
     move_count=$(wc -l <"$RESOLVED_AUTO_MOVES_FILE" | tr -d ' ')
     if [ "$move_count" -gt 0 ]; then

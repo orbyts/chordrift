@@ -129,8 +129,7 @@ eight TSV columns. `scripts/chordrift-maintain.sh` requires
 `maintenance.bulk-plan-preview.v1`, prints `Analyzing observed changes…`, and
 makes zero `tracks inspect` calls. The same stored 22-operation plan rendered in
 3.06 seconds; a complete current plan/audit review finished in 8.54 seconds.
-Both rehearsals were read-only. Direct managed-playlist intake is deliberately
-moved to A021-08/alpha.6.
+Both rehearsals were read-only.
 
 A021-07 is complete. Commit `27b89889cb0f492becce1ab1c75ec172f444cae5`
 passed CI run `33282706019`, including disposable PostgreSQL integration,
@@ -142,27 +141,37 @@ prerelease. The exact registry artifact is installed at
 installed-binary review-only check printed analysis progress immediately and
 completed in 9.57 seconds with the ordinary library already in sync.
 
-The user also identified Spotify's destination-native `Add` action as a lower-
-friction intake gesture. Alpha.5 does not yet safely interpret a previously
-unknown track added only to a managed playlist; the current drift path could
-otherwise propose removing it. A021-08/alpha.6 must treat that shape as
-preserved intake plus explicit destination intent and prove through fake-binary
-tests that it cannot be deleted. Until alpha.6, direct moves of known tracks are
-safe, but genuinely new tracks must enter through Liked Songs or named intake.
+Alpha.6 makes Spotify's destination-native `Add` action a supported intake
+gesture. The planner suppresses provider-drift removal when a current managed
+membership is absent from the approved model everywhere and is not actively
+excluded. The intake audit emits `direct_managed_addition`; the ordinary wizard
+batches an unambiguous existing destination into the editable proposal and
+rebuilds an empty plan without a Spotify apply. Multiple destinations require
+a decision, and an active exclusion cannot be restored automatically. The
+binary advertises `maintenance.direct-managed-intake.v1`, and planner plus
+fake-binary regressions prove the provider membership cannot be deleted.
 
-## Start the next task here: direct managed-playlist intake, then V021-01
+The Classification Authority brief now records Spotify's client recommender as
+potential affinity evidence only. The exact “based on this playlist” panel has
+no public playlist-recommendation endpoint, new/development apps lost general
+Recommendations access in 2024, and current Spotify API terms forbid using
+Spotify Platform content to train ML/AI. An explicit user Add remains private
+placement evidence; Chordrift must not scrape unselected recommendations.
 
-V020-01 through V020-15 are complete. v0.2.0 is released and the separately
-approved personal binary/database cutover is complete. `v0.2.1-alpha.5` is
-published and locally installed. The five reviewed Indian-library destinations
-are live with approved artwork, the exact post-apply plan is empty, and ordinary
-maintenance is in sync. Next complete A021-08 so a previously unknown track
-added directly to a managed playlist is preserved as intake plus explicit
-destination intent, then begin `V021-01 — Authenticated service transport`.
-Do not pull product identity, credential relocation, durable jobs, deployment,
-a native client, or the separate Classification Authority into V021-01. Never
-call or write Spotify without the user-authorized exact maintenance or
-retirement operation.
+## Start the next task here: V021-01 authenticated service transport
+
+V020-01 through V020-15 and A021-01 through A021-08 are complete. v0.2.0 is
+released and the separately approved personal binary/database cutover is
+complete. `v0.2.1-alpha.6` is the current daily-driver prerelease. A previously
+unknown track added directly to exactly one managed Spotify playlist is now
+preserved in place and recorded as canonical destination intent without a
+Spotify membership write. Multiple destinations remain ambiguous; active
+exclusions require explicit restoration. Known-track direct moves remain
+unchanged. Begin `V021-01 — Authenticated service transport`. Do not pull
+product identity, credential relocation, durable jobs, deployment, a native
+client, or the separate Classification Authority into V021-01. Never call or
+write Spotify without the user-authorized exact maintenance or retirement
+operation.
 
 ## Released v0.2.0 foundation and current v0.2.1 alpha deployment
 

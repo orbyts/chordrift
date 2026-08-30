@@ -18,7 +18,7 @@ make the active library enjoyable again without silently losing history.
 
 ## Release status
 
-**v0.2.1-alpha.5 is the current daily-driver prerelease.** It preserves the proven maintenance CLI
+**v0.2.1-alpha.6 is the current daily-driver prerelease.** It preserves the proven maintenance CLI
 through one application facade and adds the provider-neutral product domain,
 onboarding and audit boundaries, deterministic recipe/Spin previews, explicit
 plan origins, and additive schema migrations 0046 and 0047. The personal
@@ -38,10 +38,10 @@ final.
 Install the locked release with:
 
 ```console
-$ cargo install chordrift --version 0.2.1-alpha.5 --locked --force
+$ cargo install chordrift --version 0.2.1-alpha.6 --locked --force
 ```
 
-Read the [v0.2.1-alpha.5 release notes](docs/releases/V0.2.1-alpha.5.md) and
+Read the [v0.2.1-alpha.6 release notes](docs/releases/V0.2.1-alpha.6.md) and
 [recovery procedure](docs/how-to/RECOVERY_AND_ROLLBACK.md) before changing an
 existing database-backed installation.
 

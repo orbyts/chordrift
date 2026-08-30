@@ -178,6 +178,34 @@ against lawful metadata, existing examples, conflicts, and held-out tests
 before it can influence a published shared release. Chordrift never streams raw
 playlist activity into shared training automatically.
 
+### Provider recommendations are optional affinity evidence
+
+Spotify's client may show recommendations “based on what's in this playlist.”
+That proves the provider has useful internal affinity models, but the visible
+client surface is not a public playlist-recommendations contract. Spotify also
+stopped granting its general Recommendations, Audio Features, and Audio
+Analysis Web API functionality to new and development-mode applications in
+November 2024. Chordrift must not scrape the client or depend on grandfathered
+access as a product foundation.
+
+The provider adapter may later expose a licensed recommendation or similarity
+capability when a provider offers one under stable commercial terms. Such a
+result is a ranked, provenance-bearing affinity signal—not canonical genre,
+language, region, era, or playlist membership. The Classification Authority
+may consume only evidence whose license permits that use. Current Spotify API
+policy explicitly forbids using Spotify Platform or Spotify Content to train a
+machine-learning or AI model.
+
+A listener explicitly selecting **Add** beside a Spotify recommendation is a
+different event: Chordrift observes the resulting membership as the listener's
+private placement decision. Alpha.6 records that decision without copying the
+unselected recommendation list. It can inform the private overlay and a later
+explicit, minimized contribution path, subject to the boundaries above.
+
+References: [Spotify Web API changes, 2024-11-27](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api),
+[Spotify playlist API policy](https://developer.spotify.com/documentation/web-api/reference/get-playlist),
+and [Spotify development access update, 2026-02-06](https://developer.spotify.com/blog/2026-02-06-update-on-developer-access-and-platform-security).
+
 ## One logical knowledge authority, several physical stores
 
 The intended “master” is a versioned classification knowledge authority—not a

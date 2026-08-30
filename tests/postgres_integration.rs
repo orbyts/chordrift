@@ -535,7 +535,7 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     assert_eq!(before, after, "intake audit must be read-only");
     assert_eq!(audit.snapshot_id, snapshot_id);
     assert_eq!(audit.items.len(), 4);
-    assert_eq!(audit.items[0].state, IntakeState::AlreadyCovered);
+    assert_eq!(audit.items[0].state, IntakeState::DirectManagedAddition);
     assert_eq!(audit.items[1].state, IntakeState::GenuinelyNew);
     assert_eq!(audit.items[2].state, IntakeState::KnownFromHistory);
     assert_eq!(audit.items[3].state, IntakeState::PreviouslyExcluded);

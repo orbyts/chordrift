@@ -40,6 +40,9 @@ pub struct IntakeItem {
 pub enum IntakeState {
     /// The provider currently shows the track in a canonical Chordrift playlist.
     AlreadyCovered,
+    /// The track was introduced through a managed destination and needs its
+    /// already-observed placement recorded as canonical intent.
+    DirectManagedAddition,
     /// A durable active exclusion exists and must be kept or explicitly restored.
     PreviouslyExcluded,
     /// The latest approved proposal assigns the track, but provider publication is pending.
@@ -57,6 +60,7 @@ impl IntakeState {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::AlreadyCovered => "already_covered",
+            Self::DirectManagedAddition => "direct_managed_addition",
             Self::PreviouslyExcluded => "previously_excluded",
             Self::AssignedApproved => "assigned_approved",
             Self::SuggestedInDraft => "suggested_in_draft",
@@ -132,6 +136,15 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
              WHERE current.provider_account_id = $1
                AND current.snapshot_id = $2
                AND current.signal_class = 'intake'
+             UNION ALL
+             SELECT membership.provider_track_id, current.name AS source
+             FROM current_spotify_playlists current
+             JOIN provider_observed_playlist_tracks membership
+               ON membership.snapshot_id = current.snapshot_id
+              AND membership.provider_playlist_id = current.provider_playlist_id
+             WHERE current.provider_account_id = $1
+               AND current.snapshot_id = $2
+               AND current.signal_class = 'canonical'
          ), candidates AS (
              SELECT provider_track_id,
                     array_agg(DISTINCT source ORDER BY source) AS sources
@@ -254,8 +267,10 @@ fn classify(
 ) -> IntakeState {
     if excluded {
         IntakeState::PreviouslyExcluded
-    } else if current {
+    } else if current && proposed {
         IntakeState::AlreadyCovered
+    } else if current {
+        IntakeState::DirectManagedAddition
     } else if proposed && proposal_state == Some("approved") {
         IntakeState::AssignedApproved
     } else if proposed {
@@ -286,6 +301,10 @@ mod tests {
         assert_eq!(
             classify(true, false, true, Some("approved"), 8),
             IntakeState::AlreadyCovered
+        );
+        assert_eq!(
+            classify(true, false, false, Some("approved"), 0),
+            IntakeState::DirectManagedAddition
         );
         assert_eq!(
             classify(false, false, true, Some("approved"), 8),
