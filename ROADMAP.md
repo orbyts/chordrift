@@ -206,7 +206,7 @@ are checkpoints, not replacements for the hosted-authority goal.
   absorb an order delta without stopping or calling provider apply. Record the
   daily-driver incidents in one edge-case ledger, prove the intake-then-reorder
   sequence with a fake binary, and publish the repair as `v0.2.1-alpha.9`.
-- [ ] **A021-12 — Wrapper-neutral maintenance task contract.** Move
+- [x] **A021-12 — Wrapper-neutral maintenance task contract.** Move
   task-level maintenance decisions and transitions into Rust-owned DTOs and a
   session reducer; give clients typed start, refresh, resolve, authorize, and
   query operations with revision-bound reviews and server-selected allowed

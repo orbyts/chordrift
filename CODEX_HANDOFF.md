@@ -243,18 +243,16 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Current checkpoint: finish A021-12, then start V021-01
+## Start the next task here: V021-01 authenticated service transport
 
-V020-01 through V020-15 and A021-01 through A021-11 are complete. v0.2.0 is
+V020-01 through V020-15 and A021-01 through A021-12 are complete. v0.2.0 is
 released and the separately approved personal binary/database cutover is
-complete. `v0.2.1-alpha.9` remains the installed daily-driver while the
-`v0.2.1-alpha.10` A021-12 candidate passes release verification. A previously
+complete. `v0.2.1-alpha.10` is the installed daily-driver. A previously
 unknown track added directly to exactly one managed Spotify playlist is now
 preserved in place and recorded as canonical destination intent without a
 Spotify membership write. Multiple destinations remain ambiguous; active
 exclusions require explicit restoration. Known-track direct moves remain
-unchanged. Finish publishing A021-12, then begin `V021-01 — Authenticated
-service transport`. Do not pull
+unchanged. Begin `V021-01 — Authenticated service transport`. Do not pull
 product identity, credential relocation, durable jobs, deployment, a native
 client, or the separate Classification Authority into V021-01. Never call or
 write Spotify without the user-authorized exact maintenance or retirement
@@ -270,6 +268,15 @@ and a newer complete provider snapshot invalidates an older review. This is the
 transport-neutral foundation only: the existing shell remains the daily-driver
 adapter until V021-01 supplies authenticated HTTP plus real database/provider
 execution adapters.
+
+Alpha.10 implementation commit `12f39c26d6f5fc71fb9776370dc005db5cdec11a`
+passed CI run `33318686812`, including strict Clippy, all targets,
+documentation tests, fresh/upgrade PostgreSQL integration, Spotify persistence
+round-trip, and clean packaging. The annotated `v0.2.1-alpha.10` tag, GitHub
+prerelease, and crates.io package are public. The exact locked registry artifact
+is installed at `~/.cargo/bin/chordrift`, reports `chordrift 0.2.1-alpha.10`,
+satisfies `maintenance.task-session.v1`, exposes application contract 1.1, and
+has `CHORDRIFT_BIN` unset.
 
 Alpha.8 daily use exposed one more sequencing defect: after direct intake for
 `Tum Hi Ho Bandhu` was recorded, the newly approved proposal revealed the
