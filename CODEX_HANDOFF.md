@@ -245,6 +245,13 @@ placement evidence; Chordrift must not scrape unselected recommendations.
 
 ## Current checkpoint: begin V021-05
 
+Daily-driver UX findings that do not invalidate the current safety contract are
+batched in `docs/design/DAILY_DRIVER_EDGE_CASE_LEDGER.md`. The first queued
+refinement is rediscovered-favorite context: when a Like is already represented
+in a managed playlist, show the destination and canonical occurrence position,
+and later consider a separately authorized move-to-top choice. Do not infer a
+reorder from the Like or from the keep/clear saved-state answer.
+
 V020-01 through V020-15, A021-01 through A021-13, and V021-01 through V021-04
 are complete.
 v0.2.0 is released and the separately approved personal binary/database

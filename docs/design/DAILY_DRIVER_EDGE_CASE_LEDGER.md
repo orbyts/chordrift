@@ -33,6 +33,28 @@ provider write.
 | Alpha.12 → alpha.13 | Tracks added and later removed returned because record-only convergence had not created the immutable managed verification used to interpret the later removal. | Every exactly converged ordinary pull becomes the next accepted baseline. A later removal becomes an active exclusion and an older proposal cannot produce an add/restore operation. | PostgreSQL baseline/removal regression plus exclusion-archive lifecycle proof. Complete. |
 | Alpha.15 → alpha.16 | A newly liked track already present in a managed playlist was silently summarized only as “Remove from Likes,” without naming its destination or remembering whether the user wanted both memberships. | Liked Songs is a virtual intake surface. Name every verified destination, require and revision a per-track keep/clear decision, default to no cleanup when undecided, and treat a later direct Unlike as superseding an older keep directive. | Fake-binary human-review regression plus disposable-PostgreSQL keep, clear, undecided, and direct-Unlike proof. Complete. |
 
+## Batched experience-refinement queue
+
+These are usability improvements discovered during daily-driver testing that do
+not invalidate the completed provider-first safety contract. Keep them together
+until there is enough evidence to design and test one coherent interaction
+checkpoint.
+
+- **Rediscovered-favorite context.** When a newly liked track already exists in
+  a managed playlist, show its destination, current one-based occurrence
+  position, and playlist length. Treat the Like as a rediscovery signal rather
+  than describing it only as redundant intake.
+- **Optional resurfacing.** Offer `keep current position` or `move to top` after
+  identifying a rediscovered favorite. The default is no reorder. Moving to the
+  top must be a separately reviewed, snapshot-bound provider operation and must
+  not be implied by the keep/clear Liked Songs answer.
+- **Duplicate occurrences.** If the destination contains the same track more
+  than once, show every occurrence or ask which occurrence should move; never
+  silently collapse duplicates into one position.
+- **Presentation sorting boundary.** Report canonical provider positions only.
+  A temporary Spotify client sort by title, artist, album, or date added is not
+  playlist order intent and is not currently part of the provider contract.
+
 ## How to add the next finding
 
 For every new failure, record:

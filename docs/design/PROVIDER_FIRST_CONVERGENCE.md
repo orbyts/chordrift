@@ -34,10 +34,13 @@ sequenceDiagram
 
     alt Liked intake is already in a managed destination
         Core->>Neon: Read prior keep/clear directive for virtual Liked Songs surface
+        Core->>Neon: Read current destination position and track count
         alt A prior decision exists
             Neon-->>Core: Reuse remembered keep or clear intent
         else No prior decision exists
-            Core-->>Client: Already in Destination X; keep it in Likes too?
+            Core-->>Client: Rediscovered favorite; already in Destination X at position P of N
+            Note over Client,Core: Future refinement may offer Keep position or Move to top
+            Core-->>Client: Keep it in Likes too?
             User->>Client: Keep or clear after verified placement
             Client->>Core: Resolve exact saved-intake decision
             Core->>Neon: Persist revisioned surface directive
@@ -90,6 +93,19 @@ sequenceDiagram
         Core-->>Client: Publication verified or safely pending
     end
 ```
+
+An already-placed track entering Liked Songs is not merely redundant intake. It
+is also a **rediscovery signal**. Human-facing clients should therefore name the
+managed destination and report the track's current one-based position and the
+playlist length, for example `Neon Affection — position 37 of 92`. The position
+is the provider's canonical playlist occurrence, not a temporary title, artist,
+album, or date-added sort selected in a Spotify client.
+
+The current contract remembers only whether to keep or clear the saved state.
+A later, batched experience refinement may additionally offer **keep current
+position** or **move this occurrence to the top**. Moving it is a distinct,
+explicitly reviewed provider reorder; the Like itself is useful evidence but
+does not authorize Chordrift to reorder anything automatically.
 
 ## Convergence rules
 

@@ -243,6 +243,13 @@ are checkpoints, not replacements for the hosted-authority goal.
   sequence diagram, prove wrapper output plus disposable-PostgreSQL behavior,
   and publish `v0.2.1-alpha.16` before V021-05.
 
+**Daily-driver experience refinement queue (non-blocking):** batch the active
+items in `docs/design/DAILY_DRIVER_EDGE_CASE_LEDGER.md` into a later coherent
+checkpoint. The first recorded case treats a newly liked track that is already
+managed as a rediscovered favorite: display its destination and canonical
+position, then eventually offer a separately authorized move-to-top action.
+This queue does not reopen A021-14 or delay V021-05.
+
 ### v0.2.1 — Hosted Rust authority
 
 Goal: make the same application contract safely consumable by shipped clients
