@@ -151,6 +151,16 @@ a decision, and an active exclusion cannot be restored automatically. The
 binary advertises `maintenance.direct-managed-intake.v1`, and planner plus
 fake-binary regressions prove the provider membership cannot be deleted.
 
+A021-08 is complete. Commit `000fb77f388996685119351d7749c210affb5c8c`
+passed CI run `33283841228`, including strict Clippy, every target, docs,
+disposable PostgreSQL 18 intake/migration tests, Spotify persistence round-trip,
+and package verification. `v0.2.1-alpha.6` is published on crates.io and as a
+GitHub prerelease. The exact registry artifact is installed at
+`~/.cargo/bin/chordrift`; it reports `0.2.1-alpha.6`, advertises
+`maintenance.direct-managed-intake.v1`, and runs with `CHORDRIFT_BIN` unset.
+No production Neon or Spotify write was made while implementing or releasing
+this checkpoint.
+
 The Classification Authority brief now records Spotify's client recommender as
 potential affinity evidence only. The exact “based on this playlist” panel has
 no public playlist-recommendation endpoint, new/development apps lost general
