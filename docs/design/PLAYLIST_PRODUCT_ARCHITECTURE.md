@@ -87,8 +87,14 @@ design contract, not authorization to write to a provider.
   and historical Re-evaluate state. Spotify was not invoked during cutover.
   The holding queue was subsequently superseded by direct moves between managed
   playlists; its Neon history remains compatible with database-v2.
+- **Implemented — V021-01 through V021-03:** the wrapper-neutral maintenance
+  authority is available through authenticated typed HTTP using revocable
+  Chordrift product sessions. Provider refresh credentials are now encrypted
+  behind an internal Rust vault, bound to the account/provider ownership edge,
+  and never exposed to a thin client. Hosted jobs, remote CLI parity, and
+  deployment remain V021-04 through V021-06.
 - **Not implemented yet:** approved collection authoring,
-  real-provider Spin execution, hosted transport, the consumer web app, and
+  real-provider Spin execution, deployed hosting, the consumer web app, and
   optional native clients.
   Those remain separate roadmap slices and must not be inferred from the
   existence of contract or domain types.

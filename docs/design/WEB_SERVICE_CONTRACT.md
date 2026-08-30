@@ -1,9 +1,10 @@
 # Web service contract and transport conformance
 
-Status: A021-12, V021-01, and V021-02 are implemented. The asynchronous Rust
+Status: A021-12 and V021-01 through V021-03 are implemented. The asynchronous Rust
 authority is available through typed HTTP routes using persisted, revocable
 Chordrift product sessions and is tested over a real loopback TCP server.
-Durable execution, credential vaulting, hosting, and deployment remain later
+Provider refresh credentials now remain behind an encrypted internal vault;
+there is no raw-token route. Durable execution, hosting, and deployment remain later
 V021 slices. This document does not expose a production endpoint or authorize
 deployment.
 
@@ -71,6 +72,12 @@ than applying an old plan.
 Authentication establishes the product identity and tenant context. Resource
 IDs in a DTO never grant authority by themselves, and a client-supplied account
 ID cannot override the authenticated owner.
+
+Provider adapters obtain a short-lived plaintext credential lease only inside
+the Rust authority after current tenant authorization. Thin clients never send,
+receive, persist, or inspect provider refresh credentials. The vault contract is
+documented in
+[Provider credential vault](PROVIDER_CREDENTIAL_VAULT_V021_03.md).
 
 ## Initial web transport
 

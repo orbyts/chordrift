@@ -5,7 +5,7 @@ rules and regression obligations. Read it with
 `PLATFORM_INTENT_MODEL.md`. It contains no credentials or private library
 inventory.
 
-Status: active through `v0.2.1-alpha.13`, updated 2026-08-30.
+Status: active through `v0.2.1-alpha.14`, updated 2026-08-30.
 
 ## Governing rule
 

@@ -4,6 +4,24 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.14] - 2026-08-30
+
+- Add a server-side XChaCha20-Poly1305 provider refresh-credential vault whose
+  root keys remain outside PostgreSQL and whose plaintext values are zeroized.
+- Bind every authenticated ciphertext revision to its Chordrift account,
+  provider account, provider namespace, credential kind, algorithm, and
+  external key ID so tampering or identity substitution fails closed.
+- Recheck current product membership and ownership on every operation; allow
+  internal credential leasing to active members while limiting atomic rotation
+  and revocation to the active owner.
+- Add migration 0049 with one active encrypted generation per provider account,
+  retained rotation/revocation history, and no plaintext token or key material.
+- Prove round-trip encryption, key rollover, tenant isolation, authorization,
+  tamper failure, rotation, and revocation in memory and on disposable
+  PostgreSQL without contacting Spotify or the personal Neon database.
+- Advertise `service.provider-credential-vault.v1` while retaining application
+  contract 1.2 and local maintenance compatibility with migration 0047.
+
 ## [0.2.1-alpha.13] - 2026-08-30
 
 - Preserve accepted provider order when replaying an assignment that is already

@@ -1,6 +1,6 @@
 # Provider-first convergence
 
-Status: normative ordinary-maintenance design as of v0.2.1-alpha.13.
+Status: normative ordinary-maintenance design as of v0.2.1-alpha.14.
 
 Spotify is the first provider implementation, not a special source of domain
 behavior. For ordinary maintenance, the newest complete provider observation is
@@ -97,3 +97,12 @@ $ chordrift tracks empty-exclusions --account personal --confirm personal
 `chordrift sync accept-current` is the low-level adapter used by the maintenance
 wrapper after exact convergence. Web and mobile clients must invoke the typed
 application operation rather than reproduce this orchestration.
+
+## Diagram evolution
+
+This provider-first sequence remains the canonical ordinary-maintenance flow.
+Future diagrams may expand the optional publication branch into named Create,
+Restore, Retire, and Spin lifecycles, but those branches must retain a separate
+operation origin, exact review, idempotent apply, bounded observation lag, and
+verified result. They must never turn an ordinary pull into implicit provider
+write authority.

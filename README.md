@@ -18,7 +18,7 @@ make the active library enjoyable again without silently losing history.
 
 ## Release status
 
-**v0.2.1-alpha.13 is the current daily-driver prerelease.** It preserves the
+**v0.2.1-alpha.14 is the current daily-driver prerelease.** It preserves the
 proven maintenance CLI through one application facade and adds the provider-
 neutral product domain, onboarding and audit boundaries, deterministic recipe/
 Spin previews, explicit plan origins, and additive schema migrations 0046 and
@@ -31,7 +31,11 @@ The v0.2.1 alpha line provides official installable checkpoints on the path to
 the hosted-authority v0.2.1 final daily driver. The installed CLI and verified
 47/47 account database may continue handling ordinary maintenance while later
 architecture work is paused; no hosted service or Classification Authority is
-required for the current workflow. Alpha.13 also makes every exactly converged
+required for the current workflow. Alpha.14 adds the encrypted hosted provider-
+credential vault: authenticated ciphertext stays server-side, encryption keys
+stay outside PostgreSQL, and clients retain only Chordrift sessions. It adds no
+provider-token route and does not require the personal database to migrate.
+Alpha.13 also makes every exactly converged
 provider observation the durable ordinary-maintenance baseline, preserves
 provider-authored order while replaying assignment evidence, and adds explicit
 inspection/emptying of the reversible exclusion archive. Alpha.12 added
@@ -40,7 +44,8 @@ product-session schema 1 while leaving application contract 1.2 unchanged. It
 does not select an identity vendor or expose a hosted endpoint. Migration 0048
 belongs to the hosted identity deployment; the
 local maintenance client remains explicitly compatible with the verified
-47-migration music database. The rest of the v0.2.1 hosted-authority sequence
+47-migration music database. Hosted identity and credential work use additive
+migrations 0048 and 0049 only when deployed. The rest of the v0.2.1 hosted-authority sequence
 remains intact. The separate
 Classification Authority project and a later Chordrift refactor follow v0.2.1
 final.
@@ -48,11 +53,12 @@ final.
 Install the locked release with:
 
 ```console
-$ cargo install chordrift --version 0.2.1-alpha.13 --locked --force
+$ cargo install chordrift --version 0.2.1-alpha.14 --locked --force
 ```
 
-Read the [v0.2.1-alpha.13 release notes](docs/releases/V0.2.1-alpha.13.md), the
+Read the [v0.2.1-alpha.14 release notes](docs/releases/V0.2.1-alpha.14.md), the
 [provider-first convergence contract](docs/design/PROVIDER_FIRST_CONVERGENCE.md),
+the [provider credential vault contract](docs/design/PROVIDER_CREDENTIAL_VAULT_V021_03.md),
 and the
 [recovery procedure](docs/how-to/RECOVERY_AND_ROLLBACK.md) before changing an
 existing database-backed installation.

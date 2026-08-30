@@ -6557,8 +6557,9 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
         CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS, CAPABILITY_MAINTENANCE_INTAKE_AUDIT,
         CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW, CAPABILITY_MAINTENANCE_TASK_SESSION,
         CAPABILITY_PLAN_ORIGIN, CAPABILITY_PRODUCT_IDENTITY, CAPABILITY_PROVIDER_BASELINE,
-        CAPABILITY_PROVIDER_ORDER_INTENT, CAPABILITY_SPIN_PUBLICATION_PLAN,
-        CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW, CapabilityAvailability, ContractVersionRange,
+        CAPABILITY_PROVIDER_CREDENTIAL_VAULT, CAPABILITY_PROVIDER_ORDER_INTENT,
+        CAPABILITY_SPIN_PUBLICATION_PLAN, CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW,
+        CapabilityAvailability, ContractVersionRange,
     };
 
     BinaryCapabilityManifest {
@@ -6572,6 +6573,10 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
             ),
             (
                 CAPABILITY_PRODUCT_IDENTITY.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
+                CAPABILITY_PROVIDER_CREDENTIAL_VAULT.to_owned(),
                 CapabilityAvailability::Available,
             ),
             (

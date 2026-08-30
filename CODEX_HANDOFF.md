@@ -243,12 +243,13 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Current checkpoint: begin V021-03
+## Current checkpoint: begin V021-04
 
-V020-01 through V020-15, A021-01 through A021-13, and V021-01 through V021-02
+V020-01 through V020-15, A021-01 through A021-13, and V021-01 through V021-03
 are complete.
 v0.2.0 is released and the separately approved personal binary/database
-cutover is complete. `v0.2.1-alpha.13` is the installed daily-driver. It repairs two daily-use
+cutover is complete. `v0.2.1-alpha.14` is the intended installed daily-driver
+checkpoint. It retains alpha.13's two daily-use
 defects: assignment replay no longer turns revision chronology into provider
 playlist order, and every exactly converged record-only observation receives an
 immutable managed verification baseline. A later provider removal is therefore
@@ -262,8 +263,35 @@ A previously unknown track added directly to exactly one managed Spotify playlis
 is now preserved in place and recorded as canonical destination intent without
 a Spotify membership write. Multiple destinations remain ambiguous; active
 exclusions require explicit restoration. Known-track direct moves remain
-unchanged. Begin `V021-03 — Encrypted provider credential vault`. Never call or write Spotify without the
-user-authorized exact publication, maintenance, or retirement operation.
+unchanged. Never call or write Spotify without the user-authorized exact
+publication, maintenance, or retirement operation.
+
+V021-03 keeps provider OAuth refresh credentials inside the hosted Rust
+authority. `ProviderCredentialVault` encrypts plaintext with XChaCha20-Poly1305
+before persistence; AEAD metadata binds each immutable revision to its
+Chordrift account, provider account, provider namespace, credential kind,
+algorithm, revision ID, and external key ID. Keys remain in an external key
+ring and never enter PostgreSQL. Plaintext values are non-debuggable,
+non-serializable, zeroized leases used only by an internal provider adapter.
+There is no command/query or HTTP route that returns a provider token.
+
+Additive migration 0049 stores only encrypted envelopes, generations, key
+selectors, and rotation/revocation evidence. Every operation rechecks current
+V021-02 subject/membership/account/provider ownership. Active members may lease;
+only the active owner may rotate or revoke. Unit and disposable-PostgreSQL
+tests prove ciphertext round-trip, no plaintext persistence, key rollover,
+one-active-generation rotation, tenant denial, identity-substitution and tamper
+failure, and post-revocation denial. Migration 0049 was not applied to the
+personal database and no personal Neon or Spotify operation was used. Local
+maintenance still requires only migration 0047. See
+`docs/design/PROVIDER_CREDENTIAL_VAULT_V021_03.md`.
+
+Begin `V021-04 — Durable background operations`. Persist operation lifecycle,
+progress, cancellation, retry/recovery, and idempotent replay around the
+existing authenticated application and credential boundaries. Do not pull
+remote CLI cutover, hosting/deployment, a web UI, or the separate Classification
+Authority into V021-04. Never call or write Spotify without an exact separately
+authorized provider operation.
 
 Alpha.13 implementation commit `ff425146e89d177f4bc9828c7784e3322f5fe9a3`
 passed CI run `33325908241`, including formatting, strict Clippy, all targets,
@@ -302,12 +330,6 @@ role-override, SQL, or CLI-command endpoint. Migration 0048 is required by the
 hosted identity service; local maintenance explicitly requires only schema
 through 0047 and therefore does not force a personal database migration. See
 `docs/design/PRODUCT_IDENTITY_AUTHORIZATION_V021_02.md`.
-
-V021-03 must encrypt provider refresh credentials server-side, bind them to the
-V021-02 account/provider ownership edge, support rotation and revocation, and
-ensure clients retain only Chordrift sessions. Do not pull durable background
-jobs, remote CLI migration, deployment, a web UI, or the separate
-Classification Authority into V021-03.
 
 V021-02 implementation commit `e6ff3cae1be0f6bd10a015b4e8a74487ea86d4b8`
 passed CI run `33323175289`, including formatting, strict Clippy, all targets,
@@ -1269,8 +1291,8 @@ proposals, readiness, apply receipts, and verification.
 - User's normal clone: `$CRATES/chordrift`, currently
   `/Users/suhail/Library/CloudStorage/Dropbox/matrix/crates/chordrift`
 - Local Storexa clone, if its source is needed: `$CRATES/storexa`
-- Current release line: `v0.2.1` prereleases; the alpha.13 repair is the next
-  artifact to publish. Historical branches are recovery references, not pending
+- Current release line: `v0.2.1` prereleases; alpha.14 is the V021-03 encrypted-
+  credential checkpoint. Historical branches are recovery references, not pending
   merge sources.
 
 Before editing, inspect `git status --short`, the current branch, this file,

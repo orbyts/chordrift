@@ -32,6 +32,10 @@ use chordrift::{
     },
     product_rehearsal::{CollectionReviewBoundary, RecipeReviewBoundary},
     proposals,
+    provider_vault::{
+        PostgresProviderCredentialStore, ProviderCredentialIdentity, ProviderCredentialVault,
+        ProviderRefreshCredential, ProviderVaultKeyring,
+    },
     recipe_execution::{
         CandidateEligibility, RecipeCandidate, RecipeExecutionRequest, RecipeExecutor,
         SelectionBudgets,
@@ -2534,6 +2538,233 @@ async fn persists_product_ownership_sessions_and_immediate_revocation() -> chord
         .bind(subject_id)
         .execute(database.pool())
         .await?;
+    database.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for a disposable PostgreSQL database"]
+async fn encrypts_rotates_and_revokes_provider_credentials_with_tenant_isolation()
+-> chordrift::Result<()> {
+    let config = DatabaseConfig::from_env_var("CHORDRIFT_TEST_DATABASE_URL")?
+        .with_name("chordrift-provider-vault-test")?
+        .with_provider(PostgresProvider::Neon)?
+        .with_min_connections(0)
+        .with_max_connections(2);
+    let database = db::connect(config).await?;
+    db::migrate(&database).await?;
+
+    let account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name) VALUES ('Vault Fixture') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let other_account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name) VALUES ('Vault Other Tenant') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let identity_store = PostgresProductIdentityStore::new(database.pool().clone());
+    let owner = identity_store
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "vault-owner").unwrap(),
+            ResourceId::from_uuid(account_id),
+        )
+        .await
+        .unwrap();
+    let other_owner = identity_store
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "vault-other-owner").unwrap(),
+            ResourceId::from_uuid(other_account_id),
+        )
+        .await
+        .unwrap();
+    let member_subject_id: Uuid =
+        sqlx::query_scalar("INSERT INTO product_subjects DEFAULT VALUES RETURNING id")
+            .fetch_one(database.pool())
+            .await?;
+    sqlx::query(
+        "INSERT INTO chordrift_account_memberships
+         (chordrift_account_id, product_subject_id, role)
+         VALUES ($1, $2, 'member')",
+    )
+    .bind(account_id)
+    .bind(member_subject_id)
+    .execute(database.pool())
+    .await?;
+    let member = chordrift::service::AuthenticatedSubject {
+        subject_id: ResourceId::from_uuid(member_subject_id),
+        account_id: ResourceId::from_uuid(account_id),
+    };
+    let provider_account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_accounts
+         (provider, provider_account_id, account_label, chordrift_account_id)
+         VALUES ('spotify', $1, $2, $3) RETURNING id",
+    )
+    .bind(format!("vault-provider-{account_id}"))
+    .bind(format!("vault-{account_id}"))
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    let credential_identity = ProviderCredentialIdentity::new(
+        ResourceId::from_uuid(account_id),
+        ResourceId::from_uuid(provider_account_id),
+        "spotify",
+    )
+    .unwrap();
+    let key_material = vec![41_u8; 32];
+    let keyring = ProviderVaultKeyring::new(
+        "vault-key-2026-08",
+        [("vault-key-2026-08".to_owned(), key_material.clone())],
+    )
+    .unwrap();
+    let store = PostgresProviderCredentialStore::new(database.pool().clone());
+    store.verify_schema().await.unwrap();
+    let vault = ProviderCredentialVault::new(store, keyring);
+    let now = Utc::now();
+    let first_secret = "database-must-only-see-ciphertext";
+    let first = vault
+        .rotate(
+            owner,
+            credential_identity.clone(),
+            &ProviderRefreshCredential::new(first_secret, ["playlist-read-private".to_owned()])
+                .unwrap(),
+            now,
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.generation, 1);
+    assert!(!first.rotated);
+    let (ciphertext, stored_key_id): (Vec<u8>, String) =
+        sqlx::query_as("SELECT ciphertext, key_id FROM provider_credential_vault WHERE id = $1")
+            .bind(first.revision_id.as_uuid())
+            .fetch_one(database.pool())
+            .await?;
+    assert_eq!(stored_key_id, "vault-key-2026-08");
+    assert!(
+        !ciphertext
+            .windows(first_secret.len())
+            .any(|window| window == first_secret.as_bytes())
+    );
+    assert!(
+        !ciphertext
+            .windows(key_material.len())
+            .any(|window| window == key_material.as_slice())
+    );
+    assert_eq!(
+        vault
+            .lease(member, &credential_identity)
+            .await
+            .unwrap()
+            .refresh_token(),
+        first_secret
+    );
+    assert_eq!(
+        vault
+            .rotate(
+                member,
+                credential_identity.clone(),
+                &ProviderRefreshCredential::new("member-write", Vec::<String>::new()).unwrap(),
+                now + TimeDelta::seconds(1),
+            )
+            .await
+            .expect_err("member cannot rotate")
+            .code,
+        chordrift::contract::ErrorCode::PermissionDenied
+    );
+    let spoofed_other_tenant = chordrift::service::AuthenticatedSubject {
+        subject_id: other_owner.subject_id,
+        account_id: ResourceId::from_uuid(account_id),
+    };
+    assert_eq!(
+        vault
+            .lease(spoofed_other_tenant, &credential_identity)
+            .await
+            .err()
+            .expect("other tenant cannot lease")
+            .code,
+        chordrift::contract::ErrorCode::PermissionDenied
+    );
+
+    let second = vault
+        .rotate(
+            owner,
+            credential_identity.clone(),
+            &ProviderRefreshCredential::new(
+                "rotated-provider-secret",
+                ["playlist-modify-private".to_owned()],
+            )
+            .unwrap(),
+            now + TimeDelta::seconds(2),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.generation, 2);
+    assert!(second.rotated);
+    let active_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM provider_credential_vault
+         WHERE provider_account_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(provider_account_id)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(active_count, 1);
+    let revoked_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM provider_credential_vault
+         WHERE provider_account_id = $1 AND revoked_at IS NOT NULL",
+    )
+    .bind(provider_account_id)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(revoked_count, 1);
+
+    sqlx::query(
+        "UPDATE provider_credential_vault
+         SET ciphertext = set_byte(ciphertext, 0, get_byte(ciphertext, 0) # 128)
+         WHERE id = $1",
+    )
+    .bind(second.revision_id.as_uuid())
+    .execute(database.pool())
+    .await?;
+    assert_eq!(
+        vault
+            .lease(owner, &credential_identity)
+            .await
+            .err()
+            .expect("tampered ciphertext fails closed")
+            .code,
+        chordrift::contract::ErrorCode::DependencyUnavailable
+    );
+    let third = vault
+        .rotate(
+            owner,
+            credential_identity.clone(),
+            &ProviderRefreshCredential::new("final-provider-secret", Vec::<String>::new()).unwrap(),
+            now + TimeDelta::seconds(3),
+        )
+        .await
+        .unwrap();
+    assert_eq!(third.generation, 3);
+    let revoked = vault
+        .revoke(
+            owner,
+            &credential_identity,
+            "provider disconnected",
+            now + TimeDelta::seconds(4),
+        )
+        .await
+        .unwrap();
+    assert_eq!(revoked.generation, 3);
+    assert_eq!(
+        vault
+            .lease(owner, &credential_identity)
+            .await
+            .err()
+            .expect("revoked credential unavailable")
+            .code,
+        chordrift::contract::ErrorCode::PermissionDenied
+    );
+
     database.close().await;
     Ok(())
 }

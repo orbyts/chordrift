@@ -211,6 +211,8 @@ pub const CAPABILITY_MAINTENANCE_TASK_SESSION: &str = "maintenance.task-session.
 pub const CAPABILITY_AUTHENTICATED_SERVICE_TRANSPORT: &str = "service.authenticated-transport.v1";
 /// Persisted product identity, account ownership, and revocable sessions.
 pub const CAPABILITY_PRODUCT_IDENTITY: &str = "service.product-identity.v1";
+/// Server-side encrypted provider credential vault with rotation and revocation.
+pub const CAPABILITY_PROVIDER_CREDENTIAL_VAULT: &str = "service.provider-credential-vault.v1";
 /// Synchronization plans expose an origin that maintenance tools can reject.
 pub const CAPABILITY_PLAN_ORIGIN: &str = "plan-origin.v1";
 /// Approved Spins can become immutable, fake-provider-verified publication plans.

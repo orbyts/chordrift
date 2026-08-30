@@ -69,6 +69,8 @@ mod presentation;
 pub mod product_rehearsal;
 /// Non-destructive, account-scoped proposed playlist libraries.
 pub mod proposals;
+/// Encrypted server-side provider credential storage and lifecycle.
+pub mod provider_vault;
 /// Streaming-provider adapters.
 pub mod providers;
 /// Provider-neutral Discovery + Rediscovery recipe execution draft.

@@ -73,6 +73,7 @@ The real HTTP and repository matrix covers:
 - idempotent trusted owner provisioning and active-owner takeover refusal; and
 - PostgreSQL persistence of a digest rather than plaintext session material.
 
-V021-03 adds only the encrypted provider credential vault. V021-04 owns durable
+V021-03 has added the encrypted provider credential vault without changing this
+session contract or exposing provider secrets. V021-04 owns durable
 background operations; V021-05 moves the CLI to remote sessions; V021-06 picks
 the identity provider, hosting, TLS/origin policy, and public deployment.

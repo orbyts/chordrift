@@ -15,9 +15,12 @@ V021-02 adds migration 0048 for hosted product subjects, verified external
 identity bindings, account memberships, and digest-only revocable sessions.
 Those tables extend the ownership edge of database v2; they do not replace its
 music, inventory, intent, evidence, or publication model. Hosted identity must
-verify 0048 before accepting traffic. The local maintenance client explicitly
-requires only schema through 0047, so ordinary personal use does not force the
-hosted identity schema into the existing database.
+verify 0048 before accepting traffic. V021-03 adds migration 0049's encrypted
+provider-credential envelopes on that same ownership edge. Encryption keys and
+plaintext credentials remain outside PostgreSQL. Hosted provider work must
+verify 0049. The local maintenance client explicitly requires only schema
+through 0047, so ordinary personal use does not force either hosted schema into
+the existing database.
 
 Status: database v2 is the current architecture. The legacy physical tables
 and former rollback project were retired only after the recorded exact-
@@ -34,11 +37,11 @@ are not current instructions. For routine operation use the
 | Boundary | Current status |
 | --- | --- |
 | Released runtime | v0.2.1 alpha is the local daily driver; the hosted authority is under construction. |
-| Schema | The verified personal music database is at 47 migrations. Migration 0048 is additive hosted identity/session storage and is not required by local maintenance. |
+| Schema | The verified personal music database is at 47 migrations. Migrations 0048–0049 are additive hosted identity/session and encrypted-credential storage and are not required by local maintenance. |
 | Legacy storage | Database-v1 physical tables and the former rollback project are gone after independently verified exact-confirmed cleanup. |
 | Recovery | The verified pre-compaction dump remains the historical recovery baseline; V020-13 adds its local-rehearsal dump and V020-14 adds the newer verified candidate-source dump. Immutable Spotify archives remain independent evidence sources. |
 | Routine operation | Use `scripts/chordrift-maintain.sh --account personal`; do not replay historical migration or cleanup applies. |
-| v0.2/v0.2.1 relationship | Migrations 0046–0047 are the active product/Spin foundation. Migration 0048 adds only hosted product identity and sessions. |
+| v0.2/v0.2.1 relationship | Migrations 0046–0047 are the active product/Spin foundation. Migration 0048 adds hosted product identity/sessions; migration 0049 adds server-side encrypted provider credentials. |
 
 The exact migration-0046 reconciliation and ownership model is documented in
 the [V020-05 product schema foundation](PRODUCT_SCHEMA_V020_05.md). It adds

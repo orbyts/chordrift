@@ -264,9 +264,16 @@ and later Chordrift refactor begin.
   local maintenance explicitly compatible with schema 0047. Publish the
   checkpoint as `v0.2.1-alpha.12` with unchanged application contract 1.2,
   product-session schema 1, and capability `service.product-identity.v1`.
-- [ ] **V021-03 — Encrypted provider credential vault.** Keep refresh credentials
-  server-side with rotation and revocation; clients retain only Chordrift
-  sessions.
+- [x] **V021-03 — Encrypted provider credential vault.** Keep refresh credentials
+  server-side with XChaCha20-Poly1305 authenticated envelopes whose keys remain
+  outside PostgreSQL. Bind every revision to its account, provider connection,
+  provider, kind, algorithm, and external key ID; allow internal leases only
+  after current membership authorization; and restrict atomic rotation and
+  revocation to the account owner. Prove tenant isolation, tamper failure, key
+  rollover, one-active-generation persistence, and revocation on disposable
+  PostgreSQL. Clients retain only Chordrift sessions, and no raw-credential
+  route exists. Publish the checkpoint as `v0.2.1-alpha.14` with additive
+  migration 0049 and capability `service.provider-credential-vault.v1`.
 - [ ] **V021-04 — Durable background operations.** Add job persistence,
   progress, cancellation, retry, recovery, and idempotent replay.
 - [ ] **V021-05 — Remote CLI parity.** Make the installed CLI an authenticated
@@ -359,10 +366,11 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** begin `V021-03 — Encrypted provider credential vault` behind the
-V021-02 product-session boundary. `v0.2.1-alpha.13` is published and its exact
-registry artifact is installed for daily-driver verification. The separate
-Classification Authority is not part of V021-03.
+**Next gate:** begin `V021-04 — Durable background operations` around the
+authenticated service and encrypted provider-credential boundaries.
+`v0.2.1-alpha.14` is the intended published checkpoint. Do not pull remote CLI
+cutover, deployment, a web UI, or the separate Classification Authority into
+V021-04.
 
 ## Portable core and thin clients
 
