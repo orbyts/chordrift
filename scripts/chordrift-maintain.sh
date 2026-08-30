@@ -12,7 +12,7 @@ ACCOUNT=personal
 SKIP_PULL=false
 REVIEW_ONLY=false
 CONFIRMED_PLAN=
-ARTWORK_MANIFEST=$REPO_ROOT/artwork/canonical/drift-atlas-v4/manifest.json
+ARTWORK_MANIFEST=$REPO_ROOT/artwork/canonical/drift-atlas-v5-indian-surfaces/manifest.json
 ARTWORK_REVIEW_MANIFEST=
 
 usage() {
@@ -57,6 +57,7 @@ done
     --require maintenance.enumerated-playlist-additions.v1 \
     --require maintenance.bulk-plan-preview.v1 \
     --require maintenance.direct-managed-intake.v1 \
+    --require maintenance.artwork-carry-forward.v1 \
     --require plan-origin.v1
 
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chordrift-maintain.XXXXXX")

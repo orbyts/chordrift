@@ -161,6 +161,16 @@ GitHub prerelease. The exact registry artifact is installed at
 No production Neon or Spotify write was made while implementing or releasing
 this checkpoint.
 
+The first live alpha.6 intake recorded “Hai Apna Dil To Aawara (Happy)” for
+Celluloid Mehfil, then stopped before proposal/artwork approval because the
+wizard still referenced the obsolete 20-cover Drift Atlas v4 manifest while
+the proposal requires 25 covers. Alpha.7 switches carry-forward to the approved
+Drift Atlas v5 manifest and classifies a current managed membership in a merely
+`proposed` generation as `direct_managed_addition` until approval. This makes
+the already-recorded live proposal safely resumable without repeating the
+Spotify Add. `maintenance.artwork-carry-forward.v1` prevents the repaired
+script from running against alpha.6.
+
 The Classification Authority brief now records Spotify's client recommender as
 potential affinity evidence only. The exact “based on this playlist” panel has
 no public playlist-recommendation endpoint, new/development apps lost general
@@ -170,9 +180,9 @@ placement evidence; Chordrift must not scrape unselected recommendations.
 
 ## Start the next task here: V021-01 authenticated service transport
 
-V020-01 through V020-15 and A021-01 through A021-08 are complete. v0.2.0 is
+V020-01 through V020-15 and A021-01 through A021-09 are complete. v0.2.0 is
 released and the separately approved personal binary/database cutover is
-complete. `v0.2.1-alpha.6` is the current daily-driver prerelease. A previously
+complete. `v0.2.1-alpha.7` is the current daily-driver prerelease. A previously
 unknown track added directly to exactly one managed Spotify playlist is now
 preserved in place and recorded as canonical destination intent without a
 Spotify membership write. Multiple destinations remain ambiguous; active

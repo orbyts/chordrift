@@ -267,7 +267,7 @@ fn classify(
 ) -> IntakeState {
     if excluded {
         IntakeState::PreviouslyExcluded
-    } else if current && proposed {
+    } else if current && proposed && proposal_state == Some("approved") {
         IntakeState::AlreadyCovered
     } else if current {
         IntakeState::DirectManagedAddition
@@ -304,6 +304,10 @@ mod tests {
         );
         assert_eq!(
             classify(true, false, false, Some("approved"), 0),
+            IntakeState::DirectManagedAddition
+        );
+        assert_eq!(
+            classify(true, false, true, Some("proposed"), 0),
             IntakeState::DirectManagedAddition
         );
         assert_eq!(

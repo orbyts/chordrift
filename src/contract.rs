@@ -187,6 +187,8 @@ pub const CAPABILITY_ENUMERATED_PLAYLIST_ADDITIONS: &str =
 pub const CAPABILITY_BULK_MAINTENANCE_PREVIEW: &str = "maintenance.bulk-plan-preview.v1";
 /// Direct additions to managed destinations are preserved and recorded as intake.
 pub const CAPABILITY_DIRECT_MANAGED_INTAKE: &str = "maintenance.direct-managed-intake.v1";
+/// Interrupted maintenance can resume with the complete approved artwork set.
+pub const CAPABILITY_ARTWORK_CARRY_FORWARD: &str = "maintenance.artwork-carry-forward.v1";
 /// Synchronization plans expose an origin that maintenance tools can reject.
 pub const CAPABILITY_PLAN_ORIGIN: &str = "plan-origin.v1";
 /// Approved Spins can become immutable, fake-provider-verified publication plans.

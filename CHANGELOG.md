@@ -4,6 +4,17 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.7] - 2026-08-29
+
+- Carry the complete 25-cover Drift Atlas v5 artwork system onto ordinary
+  model-only proposal revisions instead of importing the obsolete 20-cover v4
+  manifest.
+- Keep a direct managed addition unresolved until its containing proposal is
+  approved, allowing a maintenance run interrupted after assignment to resume
+  safely on the next invocation.
+- Add `maintenance.artwork-carry-forward.v1` and a fake-binary regression that
+  exercises the exact interrupted direct-intake recovery path.
+
 ## [0.2.1-alpha.6] - 2026-08-29
 
 - Preserve a previously unknown track added directly to a managed Spotify

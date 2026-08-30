@@ -187,6 +187,12 @@ are checkpoints, not replacements for the hosted-authority goal.
   proving destination-only additions cannot be deleted or require Liked Songs.
   Publish the repair as `v0.2.1-alpha.6` before relying on Spotify's per-playlist
   Add action for new tracks.
+- [x] **A021-09 — Complete artwork carry-forward and resumable intake.** Carry
+  the current 25-cover approved visual system onto model-only proposal
+  revisions, keep an assigned direct addition pending until proposal approval,
+  and prove an interruption after assignment resumes without repeating the
+  Spotify gesture or applying membership work. Publish the repair as
+  `v0.2.1-alpha.7`.
 
 ### v0.2.1 — Hosted Rust authority
 

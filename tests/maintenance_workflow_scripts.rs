@@ -42,6 +42,10 @@ fn installed_binary_advertises_unified_maintenance() {
         manifest["capabilities"]["maintenance.direct-managed-intake.v1"],
         "available"
     );
+    assert_eq!(
+        manifest["capabilities"]["maintenance.artwork-carry-forward.v1"],
+        "available"
+    );
 }
 
 #[test]
@@ -502,7 +506,13 @@ case "$*" in
     printf '%s\n' 'proposal: proposed'
     ;;
   "proposals approve --account personal --confirm {proposal}") printf '%s\n' 'proposal: approved' ;;
-  "artwork status --account personal") printf '%s\n' 'proposal_generation_id: {proposal}' ;;
+  "artwork status --account personal") printf '%s\n' 'proposal_generation_id: old-proposal' ;;
+  artwork\ import\ --account\ personal\ --manifest\ *drift-atlas-v5-indian-surfaces/.chordrift-maintain.*)
+    printf '%s\n' 'batch_id: 00000000-0000-0000-0000-000000000074'
+    ;;
+  "artwork approve --account personal --confirm 00000000-0000-0000-0000-000000000074")
+    printf '%s\n' 'artwork: approved'
+    ;;
   *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
 esac
 "##
@@ -527,6 +537,7 @@ esac
     ));
     assert!(!commands.contains("sync apply"));
     assert!(!commands.contains("tracks restore"));
+    assert!(commands.contains("drift-atlas-v5-indian-surfaces/.chordrift-maintain."));
     assert!(
         String::from_utf8_lossy(&output.stdout)
             .contains("Detected direct intake: New Song — Fixture Artist → New Vibe")
