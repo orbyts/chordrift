@@ -171,6 +171,15 @@ the already-recorded live proposal safely resumable without repeating the
 Spotify Add. `maintenance.artwork-carry-forward.v1` prevents the repaired
 script from running against alpha.6.
 
+A021-09 is complete. Commit `84712eb54c0ae6a4b6b5e9ba3896c2d206cfeaeb`
+passed CI run `33284531493`, including the disposable PostgreSQL 18 suite and
+package verification. `v0.2.1-alpha.7` is published on crates.io and as a
+GitHub prerelease. The exact registry artifact is installed at
+`~/.cargo/bin/chordrift`; it reports `0.2.1-alpha.7`, advertises
+`maintenance.artwork-carry-forward.v1`, and runs with `CHORDRIFT_BIN` unset.
+The interrupted personal proposal has not been altered after the reported
+failure; rerun the ordinary wizard once to resume it.
+
 The Classification Authority brief now records Spotify's client recommender as
 potential affinity evidence only. The exact “based on this playlist” panel has
 no public playlist-recommendation endpoint, new/development apps lost general
