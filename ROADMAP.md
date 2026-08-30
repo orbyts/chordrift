@@ -232,6 +232,16 @@ are checkpoints, not replacements for the hosted-authority goal.
   exclusion archive, retain its audit history, document the provider-first
   sequence as a wrapper-neutral contract, and publish the repair as
   `v0.2.1-alpha.13` before resuming V021-03.
+- [x] **A021-14 — Remembered saved-intake disposition.** When a newly liked
+  track is already present in a verified managed destination, name that
+  destination and ask whether Liked Songs should remain. Persist the per-track
+  keep/clear answer as a revisioned virtual-surface directive; undecided and
+  keep states must never plan an Unlike, while clear produces one exact
+  confirmed saved-state effect. Accept a later direct provider Unlike as newer
+  intent that supersedes an older keep directive. Extend application contract
+  1.3 with an explicit `consume_intake` resolution, update the canonical
+  sequence diagram, prove wrapper output plus disposable-PostgreSQL behavior,
+  and publish `v0.2.1-alpha.16` before V021-05.
 
 ### v0.2.1 — Hosted Rust authority
 
@@ -376,8 +386,8 @@ slices at the preceding release boundary, after real use informs their shape:
 
 **Next gate:** begin `V021-05 — Remote CLI parity`. Make the installed CLI an
 authenticated client of the typed durable service while retaining an explicit
-local development transport. `v0.2.1-alpha.15` is published and its exact
-locked crates.io artifact is the installed checkpoint. Do not pull hosting
+local development transport. `v0.2.1-alpha.16` is the intended published
+daily-driver checkpoint. Do not pull hosting
 selection, public deployment, a web UI, or the
 separate Classification Authority into V021-05.
 

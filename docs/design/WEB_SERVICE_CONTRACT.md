@@ -51,7 +51,7 @@ contract. It supports task-level operations equivalent to:
 - cancel long work; and
 - read progress, recovery state, receipt, and final convergence.
 
-The concrete 1.2 application contract exposes typed start, refresh, resolve,
+The concrete 1.3 application contract exposes typed start, refresh, resolve,
 authorize, and session-query DTOs. One user action may
 create several internal proposals, plans, assessments, and receipts. Those
 objects remain Rust-owned safety evidence and appear in advanced diagnostics,
@@ -62,6 +62,13 @@ precondition token, human track/artist/playlist labels, exact proposed provider
 effects, ambiguity choices, warnings, capabilities, and the actions currently
 allowed. It must not expose SQL rows, provider credentials, terminal text, or
 require the client to infer safety from plan internals.
+
+Saved/liked intake uses the same maintenance DTOs. A `saved_state` change names
+the track, the virtual intake surface, and every verified managed destination.
+`keep_observed` means retain the Like; `consume_intake` means clear only that
+temporary source after verified placement. The Rust authority persists the
+decision and returns an `update_saved_state` provider effect for exact review.
+Clients must not infer this effect from a checkbox or duplicate the rule.
 
 ## Concurrency and cumulative state
 

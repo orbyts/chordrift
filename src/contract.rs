@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Current backward-compatible application-contract feature generation.
-pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 2);
+pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 3);
 
 macro_rules! uuid_id {
     ($name:ident, $description:literal) => {
@@ -207,6 +207,8 @@ pub const CAPABILITY_PROVIDER_ORDER_INTENT: &str = "maintenance.provider-order-i
 pub const CAPABILITY_PROVIDER_BASELINE: &str = "maintenance.provider-baseline.v1";
 /// Wrapper-neutral maintenance task DTOs and Rust-owned transition rules.
 pub const CAPABILITY_MAINTENANCE_TASK_SESSION: &str = "maintenance.task-session.v1";
+/// Per-track saved/liked intake retention decisions are durable and explicit.
+pub const CAPABILITY_SAVED_INTAKE_DISPOSITION: &str = "maintenance.saved-intake-disposition.v1";
 /// Authenticated HTTP transport over typed application commands and queries.
 pub const CAPABILITY_AUTHENTICATED_SERVICE_TRANSPORT: &str = "service.authenticated-transport.v1";
 /// Persisted product identity, account ownership, and revocable sessions.
@@ -523,6 +525,11 @@ pub struct MaintenanceSurfaceView {
 pub enum MaintenanceResolution {
     /// Keep the exact observed provider state without a broader directive.
     KeepObserved,
+    /// Consume one temporary intake source after verified canonical placement.
+    ConsumeIntake {
+        /// Intake surface whose membership or saved state should be cleared.
+        source: MaintenanceSurfaceView,
+    },
     /// Treat one existing surface as canonical placement.
     Place {
         /// Selected canonical destination.

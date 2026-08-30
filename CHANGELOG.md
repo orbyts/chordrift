@@ -4,6 +4,21 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.16] - 2026-08-30
+
+- Name the verified managed destination when a newly liked track is already
+  placed, then ask whether Liked Songs should remain.
+- Persist each per-track keep/clear answer as a revisioned directive on a
+  virtual Liked Songs intake surface already present in the migration-47
+  product schema; undecided and keep states never plan an Unlike.
+- Allow an explicit clear answer to produce only an exact reviewed saved-state
+  removal, while a later direct provider Unlike supersedes an older keep
+  directive during record-only convergence.
+- Add `maintenance.saved-intake-disposition.v1` and application-contract 1.3's
+  explicit `consume_intake` resolution for thin CLI/web/mobile clients.
+- Extend fake-binary and disposable-PostgreSQL regressions for human labels,
+  remembered answers, clear planning, undecided safety, and direct Unlike.
+
 ## [0.2.1-alpha.15] - 2026-08-30
 
 - Add a restart-safe typed application command queue with exact durable

@@ -18,7 +18,7 @@ make the active library enjoyable again without silently losing history.
 
 ## Release status
 
-**v0.2.1-alpha.15 is the current daily-driver prerelease.** It preserves the
+**v0.2.1-alpha.16 is the current daily-driver prerelease.** It preserves the
 proven maintenance CLI through one application facade and adds the provider-
 neutral product domain, onboarding and audit boundaries, deterministic recipe/
 Spin previews, explicit plan origins, and additive schema migrations 0046 and
@@ -31,7 +31,13 @@ The v0.2.1 alpha line provides official installable checkpoints on the path to
 the hosted-authority v0.2.1 final daily driver. The installed CLI and verified
 47/47 account database may continue handling ordinary maintenance while later
 architecture work is paused; no hosted service or Classification Authority is
-required for the current workflow. Alpha.15 adds restart-safe hosted background
+required for the current workflow. Alpha.16 names an already-managed
+destination for a newly liked track and remembers the per-track choice to keep
+or clear Liked Songs. An undecided or keep choice cannot plan an Unlike; an
+explicit clear choice produces one exact reviewed saved-state effect, and a
+later direct Unlike supersedes an older keep decision. This uses the existing
+migration-47 virtual-surface/directive schema and raises the thin-client
+application contract to 1.3. Alpha.15 adds restart-safe hosted background
 operations: typed commands and exact idempotent receipts are durable before
 work, workers use expiring exclusive leases, and ordered progress,
 cancellation, bounded retry, and abandoned-work recovery survive process
@@ -57,10 +63,10 @@ final.
 Install the locked release with:
 
 ```console
-$ cargo install chordrift --version 0.2.1-alpha.15 --locked --force
+$ cargo install chordrift --version 0.2.1-alpha.16 --locked --force
 ```
 
-Read the [v0.2.1-alpha.15 release notes](docs/releases/V0.2.1-alpha.15.md), the
+Read the [v0.2.1-alpha.16 release notes](docs/releases/V0.2.1-alpha.16.md), the
 [provider-first convergence contract](docs/design/PROVIDER_FIRST_CONVERGENCE.md),
 the [provider credential vault contract](docs/design/PROVIDER_CREDENTIAL_VAULT_V021_03.md),
 the [durable operation contract](docs/design/DURABLE_BACKGROUND_OPERATIONS_V021_04.md),

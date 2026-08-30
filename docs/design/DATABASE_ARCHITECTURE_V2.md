@@ -45,6 +45,7 @@ are not current instructions. For routine operation use the
 | Recovery | The verified pre-compaction dump remains the historical recovery baseline; V020-13 adds its local-rehearsal dump and V020-14 adds the newer verified candidate-source dump. Immutable Spotify archives remain independent evidence sources. |
 | Routine operation | Use `scripts/chordrift-maintain.sh --account personal`; do not replay historical migration or cleanup applies. |
 | v0.2/v0.2.1 relationship | Migrations 0046–0047 are the active product/Spin foundation. Migration 0048 adds hosted product identity/sessions; 0049 adds encrypted provider credentials; 0050 adds durable operations/events. |
+| Saved/liked intake decisions | Liked Songs is a virtual user-authority intake `playlist_surface`, scoped to its provider account. Existing revisioned `playlist_track_directives` remember per-track keep/clear intent; no new migration or provider credential is required. |
 
 The exact migration-0046 reconciliation and ownership model is documented in
 the [V020-05 product schema foundation](PRODUCT_SCHEMA_V020_05.md). It adds

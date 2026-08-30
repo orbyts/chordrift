@@ -61,17 +61,38 @@ Current personal workflow:
 7. Clear the intake only after verified placement.
 
 For an account configured with the opt-in Liked Songs cleanup policy, step 7
-also removes the track from Liked Songs. Neon retains the original save event,
-and the removal is planned as a destructive cleanup operation only after the
-canonical destination is verified:
+does not silently remove an already placed track. The wizard first names its
+verified managed destination and asks whether it should remain in Liked Songs
+too. The answer is remembered per track:
+
+- **yes** preserves both the managed destination and Liked Songs and suppresses
+  future cleanup prompts;
+- **no** permits an exact reviewed removal from Liked Songs only; and
+- no recorded answer produces no automatic saved-state removal.
+
+Neon retains the original save event and every superseded answer. A later
+direct Unlike in Spotify is also supported: the next accepted observation
+retires an older keep decision and never restores the Like. To change a prior
+keep decision through Chordrift instead:
+
+```console
+$ chordrift intake liked-disposition --account personal \
+    --spotify-id SPOTIFY_TRACK_ID \
+    --disposition clear-after-verified-assignment \
+    --reason "No longer keep this in Liked Songs"
+$ scripts/chordrift-maintain.sh --account personal
+```
+
+The account policy remains the legacy account-wide default for exclusions. An
+explicit per-track keep/clear answer takes precedence:
 
 ```console
 $ chordrift spotify library-policy --account personal \
     --liked-songs clear-after-verified-assignment
 ```
 
-The safe product default is `preserve`; changing policy does not immediately
-write to Spotify.
+The safe product default is `preserve`; changing policy or recording a decision
+does not immediately write to Spotify.
 
 The later hosted/native product should perform steps 2–7 in the background and
 surface only an understandable proposal when confidence or intent is ambiguous.
@@ -99,8 +120,12 @@ The audit labels exact provider identities as `already_covered`,
 provider request and no database write. Use `--review-only` when that report is
 the desired endpoint.
 
-The interactive path asks for an existing destination only when placement is
-ambiguous, then shows one exact net-change summary and asks once. It refuses new
+The interactive path uses an already observed managed destination directly,
+asks for an existing destination when placement is ambiguous, and asks the
+separate remembered keep-or-clear question when Liked Songs is redundant. A
+future Classification Authority may supply ranked destination confidence; low
+confidence still returns a bounded confirmation/manual-placement choice. It
+then shows one exact net-change summary and asks once. It refuses new
 playlist/artwork design, retirement, unrelated work, and non-maintenance plans.
 Lower-level proposal and clustering commands remain developer diagnostics.
 

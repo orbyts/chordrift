@@ -168,6 +168,39 @@ pub enum IntakeCommand {
         #[arg(long, default_value = "personal")]
         account: String,
     },
+    /// Record whether one currently liked track remains saved after verified placement.
+    LikedDisposition {
+        /// Local label for this Spotify account.
+        #[arg(long, default_value = "personal")]
+        account: String,
+        /// Stable Spotify track identity shown by the intake audit.
+        #[arg(long)]
+        spotify_id: String,
+        /// Explicit handling after canonical placement is verified.
+        #[arg(long, value_enum)]
+        disposition: LikedDispositionArg,
+        /// Human-readable reason retained with the revision.
+        #[arg(long)]
+        reason: String,
+    },
+}
+
+/// CLI spelling for an explicit saved/liked intake disposition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum LikedDispositionArg {
+    /// Retain the track in Liked Songs as well as its managed destination.
+    Preserve,
+    /// Remove it from Liked Songs only after verified canonical placement.
+    ClearAfterVerifiedAssignment,
+}
+
+impl From<LikedDispositionArg> for intake::SavedTrackDisposition {
+    fn from(value: LikedDispositionArg) -> Self {
+        match value {
+            LikedDispositionArg::Preserve => Self::Preserve,
+            LikedDispositionArg::ClearAfterVerifiedAssignment => Self::ClearAfterVerifiedAssignment,
+        }
+    }
 }
 
 /// Provider-write-free v0.2 product rehearsal commands.
@@ -1792,6 +1825,27 @@ async fn execute_cli_handlers(cli: Cli, output: &mut impl Write) -> Result<()> {
                     IntakeCommand::Audit { account } => {
                         let report = intake::audit(&database, &account).await?;
                         write_intake_audit(output, &report)
+                    }
+                    IntakeCommand::LikedDisposition {
+                        account,
+                        spotify_id,
+                        disposition,
+                        reason,
+                    } => {
+                        let disposition = intake::SavedTrackDisposition::from(disposition);
+                        intake::set_saved_track_disposition(
+                            &database,
+                            &account,
+                            &spotify_id,
+                            disposition,
+                            &reason,
+                        )
+                        .await?;
+                        writeln!(output, "saved_track_disposition: {}", disposition.as_str())?;
+                        writeln!(output, "spotify_id: {spotify_id}")?;
+                        writeln!(output, "account: {account}")?;
+                        writeln!(output, "spotify_writes: disabled")?;
+                        Ok(())
                     }
                 }
             }
@@ -6620,6 +6674,10 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
                 CapabilityAvailability::Available,
             ),
             (
+                crate::contract::CAPABILITY_SAVED_INTAKE_DISPOSITION.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
                 CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW.to_owned(),
                 CapabilityAvailability::Available,
             ),
@@ -6698,12 +6756,12 @@ fn write_intake_audit(output: &mut impl Write, report: &intake::IntakeAudit) -> 
     writeln!(output, "spotify_writes: disabled")?;
     writeln!(
         output,
-        "state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id"
+        "state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id\tsaved_track_disposition"
     )?;
     for item in &report.items {
         writeln!(
             output,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             item.state.as_str(),
             clean_cell(&item.title),
             clean_cell(&item.artists),
@@ -6714,7 +6772,8 @@ fn write_intake_audit(output: &mut impl Write, report: &intake::IntakeAudit) -> 
             item.play_count,
             item.exclusion_history,
             clean_cell(item.active_exclusion_reason.as_deref().unwrap_or("-")),
-            item.spotify_id
+            item.spotify_id,
+            item.saved_track_disposition.as_deref().unwrap_or("-")
         )?;
     }
     Ok(())
@@ -6786,11 +6845,12 @@ mod tests {
         AlbumCommand, ApplyPhaseArg, ArtworkCommand, BehavioralSignalArg, BookmarkCommand,
         ClassificationCommand, Cli, ClusterCommand, Command, DbCleanupCommand, DbCommand,
         DbCompactCommand, DbV2Command, DbV2MigrationCommand, EmbeddingCommand, EnrichmentCommand,
-        HistoryCommand, IntakeCommand, LikedSongsPolicyArg, PlaylistCommand, PlaylistRoleArg,
-        PlaylistSignalClassArg, ProductAuditMode, ProductCollectionCommand, ProductCommand,
-        ProductOnboardingCommand, ProductRecipeCommand, ProductSpinCommand, ReevaluateCommand,
-        RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand, SyncCommand,
-        TrackCommand, binary_capability_manifest, format_count, format_elapsed, write_status,
+        HistoryCommand, IntakeCommand, LikedDispositionArg, LikedSongsPolicyArg, PlaylistCommand,
+        PlaylistRoleArg, PlaylistSignalClassArg, ProductAuditMode, ProductCollectionCommand,
+        ProductCommand, ProductOnboardingCommand, ProductRecipeCommand, ProductSpinCommand,
+        ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand,
+        SyncCommand, TrackCommand, binary_capability_manifest, format_count, format_elapsed,
+        write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -6839,6 +6899,35 @@ mod tests {
             Command::Intake {
                 command: IntakeCommand::Audit { account }
             } if account == "personal"
+        ));
+    }
+
+    #[test]
+    fn parses_explicit_liked_intake_disposition() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "intake",
+            "liked-disposition",
+            "--account",
+            "personal",
+            "--spotify-id",
+            "track-1",
+            "--disposition",
+            "clear-after-verified-assignment",
+            "--reason",
+            "already placed",
+        ])
+        .expect("valid saved-intake decision");
+        assert!(matches!(
+            cli.command,
+            Command::Intake {
+                command: IntakeCommand::LikedDisposition {
+                    account,
+                    spotify_id,
+                    disposition: LikedDispositionArg::ClearAfterVerifiedAssignment,
+                    reason,
+                }
+            } if account == "personal" && spotify_id == "track-1" && reason == "already placed"
         ));
     }
 

@@ -1569,9 +1569,8 @@ async fn cleanup_operations(
     .bind(account_id)
     .fetch_one(database.pool())
     .await?;
-    if saved_track_policy == "after_verified_assignment" {
-        let saved = sqlx::query(
-            "WITH proposed AS (
+    let saved = sqlx::query(
+        "WITH proposed AS (
                  SELECT DISTINCT membership.track_id
                  FROM playlists playlist
                  JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
@@ -1579,7 +1578,8 @@ async fn cleanup_operations(
              )
              SELECT saved.position, provider.provider_track_id,
                     proposed.track_id IS NOT NULL AS assigned,
-                    exclusion.id IS NOT NULL AS excluded
+                    exclusion.id IS NOT NULL AS excluded,
+                    disposition.disposition AS saved_track_disposition
              FROM provider_observed_saved_tracks saved
              JOIN provider_tracks provider ON provider.id = saved.provider_track_id
              LEFT JOIN proposed ON proposed.track_id = provider.track_id
@@ -1587,39 +1587,66 @@ async fn cleanup_operations(
                ON exclusion.provider_account_id = $1
               AND exclusion.track_id = provider.track_id
               AND exclusion.restored_at IS NULL
+             LEFT JOIN LATERAL (
+                 SELECT CASE directive.directive
+                            WHEN 'include' THEN 'preserve'
+                            WHEN 'exclude' THEN 'clear_after_verified_assignment'
+                        END AS disposition
+                 FROM playlist_surfaces surface
+                 JOIN playlist_track_directives directive
+                   ON directive.chordrift_account_id = surface.chordrift_account_id
+                  AND directive.surface_id = surface.id
+                  AND directive.track_id = provider.track_id
+                  AND directive.superseded_at IS NULL
+                 WHERE surface.chordrift_account_id = (
+                           SELECT chordrift_account_id FROM provider_accounts WHERE id = $1
+                       )
+                   AND surface.stable_key = 'provider-saved-tracks:' || $1::text
+                   AND surface.active
+                 ORDER BY directive.created_at DESC, directive.id DESC LIMIT 1
+             ) disposition ON TRUE
              WHERE saved.snapshot_id = $2
              ORDER BY saved.position",
-        )
-        .bind(account_id)
-        .bind(snapshot_id)
-        .bind(proposal_id)
-        .fetch_all(database.pool())
-        .await?;
-        for row in saved {
-            let assigned: bool = row.try_get("assigned")?;
-            let excluded: bool = row.try_get("excluded")?;
-            if !assigned && !excluded {
-                continue;
-            }
-            let spotify_track_id: String = row.try_get("provider_track_id")?;
-            let position: i32 = row.try_get("position")?;
-            operations.push(PlanOperationInput {
-                phase: "cleanup".to_owned(),
-                operation_type: "remove_saved_track".to_owned(),
-                operation_key: format!("consume-liked:{spotify_track_id}"),
-                playlist_id: None,
-                provider_playlist_id: None,
-                playlist_name: "Liked Songs".to_owned(),
-                spotify_playlist_id: None,
-                spotify_track_id: Some(spotify_track_id),
-                payload: json!({"position": position, "reason": "consumed_saved_track",
+    )
+    .bind(account_id)
+    .bind(snapshot_id)
+    .bind(proposal_id)
+    .fetch_all(database.pool())
+    .await?;
+    for row in saved {
+        let assigned: bool = row.try_get("assigned")?;
+        let excluded: bool = row.try_get("excluded")?;
+        let disposition: Option<String> = row.try_get("saved_track_disposition")?;
+        if !assigned && !excluded {
+            continue;
+        }
+        let explicit_clear = disposition.as_deref() == Some("clear_after_verified_assignment");
+        let account_policy_clears_exclusion =
+            excluded && disposition.is_none() && saved_track_policy == "after_verified_assignment";
+        if disposition.as_deref() == Some("preserve")
+            || (!explicit_clear && !account_policy_clears_exclusion)
+        {
+            continue;
+        }
+        let spotify_track_id: String = row.try_get("provider_track_id")?;
+        let position: i32 = row.try_get("position")?;
+        operations.push(PlanOperationInput {
+            phase: "cleanup".to_owned(),
+            operation_type: "remove_saved_track".to_owned(),
+            operation_key: format!("consume-liked:{spotify_track_id}"),
+            playlist_id: None,
+            provider_playlist_id: None,
+            playlist_name: "Liked Songs".to_owned(),
+            spotify_playlist_id: None,
+            spotify_track_id: Some(spotify_track_id),
+            payload: json!({"position": position, "reason": "consumed_saved_track",
                     "source_snapshot_id": snapshot_id}),
-                safety: json!({"destructive": true, "deferred": true,
+            safety: json!({"destructive": true, "deferred": true,
                     "creates_exclusion": false, "resolved_by_exclusion": excluded,
+                    "saved_track_disposition": disposition,
                     "requires_published_and_verified_destination": assigned,
                     "requires_durable_exclusion": excluded}),
-            });
-        }
+        });
     }
     Ok(operations)
 }

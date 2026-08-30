@@ -3,7 +3,7 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the **v0.2.1-alpha.15** daily-driver CLI. It retains the
+Command status: this page documents the **v0.2.1-alpha.16** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
@@ -50,6 +50,7 @@ $ chordrift capabilities \
     --require service.provider-credential-vault.v1 \
     --require service.durable-operations.v1 \
     --require maintenance.task-session.v1 \
+    --require maintenance.saved-intake-disposition.v1 \
     --require maintenance.intake-workflow.v1 \
     --require maintenance.bulk-plan-preview.v1 \
     --require maintenance.enumerated-playlist-additions.v1 \
@@ -86,6 +87,24 @@ The read-only report labels each provider identity `already_covered`,
 redirected TSV. A direct managed addition is preserved in its observed
 destination and recorded by the ordinary wizard without a Spotify membership
 write; several destinations or an active exclusion require an explicit choice.
+
+When a current Like is already in a verified managed destination, the audit
+also emits its remembered `saved_track_disposition`. The ordinary wizard names
+the destination and asks once when that field is unset. `preserve` keeps both;
+`clear_after_verified_assignment` permits only the exact reviewed Unlike. To
+change a remembered answer without contacting Spotify:
+
+```console
+$ chordrift intake liked-disposition --account personal \
+    --spotify-id SPOTIFY_TRACK_ID \
+    --disposition preserve \
+    --reason "Keep this in Liked Songs too"
+```
+
+The command revisions account intent and prints `spotify_writes: disabled`.
+Run the unified maintenance wizard to review and authorize any resulting
+provider effect. A direct Unlike in Spotify is also accepted on the next pull
+and supersedes an older keep directive after exact convergence.
 
 `sync plan` prints `plan_origin: maintenance`; `sync plan-show` exposes either
 `maintenance` or `spin_publication` from immutable plan preconditions. A Spin

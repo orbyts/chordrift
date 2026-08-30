@@ -4,7 +4,7 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.1-alpha.15**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-alpha.16**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
 and verified 47/47 database together; see
@@ -166,6 +166,7 @@ $ chordrift capabilities \
     --require service.provider-credential-vault.v1 \
     --require service.durable-operations.v1 \
     --require maintenance.task-session.v1 \
+    --require maintenance.saved-intake-disposition.v1 \
     --require maintenance.provider-baseline.v1 \
     --require maintenance.unified-workflow.v1 \
     --require maintenance.bulk-plan-preview.v1 \
@@ -180,7 +181,7 @@ exclusions, and direct reclassification moves is:
 $ scripts/chordrift-maintain.sh --account personal
 ```
 
-Alpha.15 keeps this shell as the temporary local CLI adapter while the same
+Alpha.16 keeps this shell as the temporary local CLI adapter while the same
 task-level state and authorization rules are now available through the Rust
 service contract. Product identity/session machinery is implemented, but there
 is still no hosted URL or identity vendor to configure. V021-03 adds the
@@ -202,6 +203,10 @@ recovery tools, not alternate daily workflows. Ordinary additions append only
 enumerated track IDs; complete replacement remains exclusive to a verified
 membership-identical reorder. After observation it prints visible analysis
 progress and obtains all plan labels and direct-move evidence in one bulk query.
+If a Like is already present in a managed playlist, it names that destination
+and asks whether to keep both. The remembered answer is revisioned in Neon;
+undecided or keep never plans an Unlike, clear plans only the exact saved-state
+change, and a later direct Unlike in Spotify supersedes the old keep intent.
 
 ## Semantic playlists used for capture
 

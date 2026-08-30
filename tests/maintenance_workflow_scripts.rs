@@ -64,9 +64,13 @@ fn installed_binary_advertises_unified_maintenance() {
         manifest["capabilities"]["maintenance.task-session.v1"],
         "available"
     );
+    assert_eq!(
+        manifest["capabilities"]["maintenance.saved-intake-disposition.v1"],
+        "available"
+    );
     assert_eq!(manifest["contract_versions"]["minimum"]["major"], 1);
-    assert_eq!(manifest["contract_versions"]["minimum"]["minor"], 2);
-    assert_eq!(manifest["contract_versions"]["maximum"]["minor"], 2);
+    assert_eq!(manifest["contract_versions"]["minimum"]["minor"], 3);
+    assert_eq!(manifest["contract_versions"]["maximum"]["minor"], 3);
     assert_eq!(
         manifest["capabilities"]["service.authenticated-transport.v1"],
         "available"
@@ -75,6 +79,61 @@ fn installed_binary_advertises_unified_maintenance() {
         manifest["capabilities"]["service.product-identity.v1"],
         "available"
     );
+}
+
+#[test]
+fn review_names_the_existing_destination_before_liked_cleanup() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let work = temporary_work("liked-already-managed-review");
+    let fake = work.join("chordrift-fake");
+    let log = work.join("commands.log");
+    write_fake(
+        &fake,
+        r##"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"$FAKE_CHORDRIFT_LOG"
+case "$*" in
+  capabilities*) printf '%s\n' '{"schema_version":1}' ;;
+  "sync pull --account personal") printf '%s\n' 'sync: current' ;;
+  "sync plan --account personal")
+    printf '%s\n' 'plan_id: 00000000-0000-0000-0000-000000000016' 'operations: 0'
+    ;;
+  "sync plan-show --account personal --plan 00000000-0000-0000-0000-000000000016 --details")
+    printf '%b\n' 'plan_origin: maintenance' 'snapshot_current: true' \
+      'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety'
+    ;;
+  "intake audit --account personal")
+    printf '%b\n' \
+      'state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id\tsaved_track_disposition' \
+      'already_covered\tDo Your Best\tJohn Maus\tLiked Songs\tNight Current\tNight Current\t1\t1\tfalse\t-\tfixture-liked-track\t-'
+    ;;
+  *) printf 'unexpected fake command: %s\n' "$*" >&2; exit 90 ;;
+esac
+"##,
+    );
+
+    let output = Command::new(root.join("scripts/chordrift-maintain.sh"))
+        .arg("--review-only")
+        .env("CHORDRIFT_BIN", &fake)
+        .env("FAKE_CHORDRIFT_LOG", &log)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Liked tracks already placed"));
+    assert!(stdout.contains("Do Your Best — John Maus · already in Night Current"));
+    assert!(stdout.contains("Review only; Spotify unchanged."));
+    assert!(
+        !fs::read_to_string(&log)
+            .unwrap()
+            .contains("intake liked-disposition")
+    );
+    fs::remove_dir_all(work).unwrap();
 }
 
 #[test]

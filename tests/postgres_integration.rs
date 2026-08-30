@@ -557,6 +557,39 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     assert_eq!(audit.items[2].state, IntakeState::KnownFromHistory);
     assert_eq!(audit.items[3].state, IntakeState::PreviouslyExcluded);
 
+    let already_covered_spotify_id = format!("intake-track-0-{suffix}");
+    intake::set_saved_track_disposition(
+        &database,
+        &account_label,
+        &already_covered_spotify_id,
+        intake::SavedTrackDisposition::Preserve,
+        "fixture keep decision",
+    )
+    .await?;
+    let decided_audit = intake::audit(&database, &account_label).await?;
+    let decided = decided_audit
+        .items
+        .iter()
+        .find(|item| item.spotify_id == already_covered_spotify_id)
+        .expect("decided saved track remains auditable");
+    assert_eq!(decided.saved_track_disposition.as_deref(), Some("preserve"));
+    let active_decisions: i64 = sqlx::query_scalar(
+        "SELECT count(*)
+         FROM playlist_surfaces surface
+         JOIN playlist_track_directives directive
+           ON directive.surface_id = surface.id
+          AND directive.chordrift_account_id = surface.chordrift_account_id
+         WHERE surface.chordrift_account_id = $1
+           AND surface.stable_key = 'provider-saved-tracks:' || $2::text
+           AND directive.track_id = $3 AND directive.superseded_at IS NULL",
+    )
+    .bind(chordrift_account_id)
+    .bind(account_id)
+    .bind(tracks[0].0)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(active_decisions, 1);
+
     // Record-only convergence must preserve an already accepted provider order
     // even when active assignment revisions are replayed into a new generation.
     let ordered_revision_id: Uuid = sqlx::query_scalar(
@@ -710,6 +743,32 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     assert_eq!(accepted.snapshot_id, snapshot_id);
     assert_eq!(accepted.playlist_count, 1);
 
+    let clear_spotify_id = format!("intake-track-2-{suffix}");
+    intake::set_saved_track_disposition(
+        &database,
+        &account_label,
+        &clear_spotify_id,
+        intake::SavedTrackDisposition::ClearAfterVerifiedAssignment,
+        "fixture clear decision",
+    )
+    .await?;
+    let saved_cleanup_plan = sync_plan::create(&database, &account_label, None).await?;
+    let (_, _, saved_cleanup_operations) =
+        sync_plan::show(&database, &account_label, Some(saved_cleanup_plan.plan_id)).await?;
+    assert!(saved_cleanup_operations.iter().any(|operation| {
+        operation.operation_type == "remove_saved_track"
+            && operation.spotify_track_id.as_deref() == Some(clear_spotify_id.as_str())
+    }));
+    assert!(!saved_cleanup_operations.iter().any(|operation| {
+        operation.operation_type == "remove_saved_track"
+            && operation.spotify_track_id.as_deref() == Some(already_covered_spotify_id.as_str())
+    }));
+    let undecided_spotify_id = format!("intake-track-3-{suffix}");
+    assert!(!saved_cleanup_operations.iter().any(|operation| {
+        operation.operation_type == "remove_saved_track"
+            && operation.spotify_track_id.as_deref() == Some(undecided_spotify_id.as_str())
+    }));
+
     // A later complete observation removes the formerly direct-intake track.
     // The accepted baseline must turn that delta into an exclusion, never an add.
     let removed_snapshot_id: Uuid = sqlx::query_scalar(
@@ -779,13 +838,13 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     let reduced_saved_revision_id: Uuid = sqlx::query_scalar(
         "INSERT INTO provider_saved_track_revisions
          (provider_account_id, content_sha256, item_count)
-         VALUES ($1, $2, 2) RETURNING id",
+         VALUES ($1, $2, 1) RETURNING id",
     )
     .bind(account_id)
     .bind("5".repeat(64))
     .fetch_one(database.pool())
     .await?;
-    for (position, track_index) in [0_usize, 3].into_iter().enumerate() {
+    for (position, track_index) in [3_usize].into_iter().enumerate() {
         sqlx::query(
             "INSERT INTO provider_saved_track_revision_tracks
              (revision_id, provider_track_id, position) VALUES ($1, $2, $3)",
@@ -814,6 +873,27 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     .await?;
     let accepted_removal = apply::accept_current_provider_state(&database, &account_label).await?;
     assert_eq!(accepted_removal.snapshot_id, removed_snapshot_id);
+    let old_keep_still_active: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1
+             FROM playlist_surfaces surface
+             JOIN playlist_track_directives directive
+               ON directive.surface_id = surface.id
+              AND directive.chordrift_account_id = surface.chordrift_account_id
+             WHERE surface.chordrift_account_id = $1
+               AND surface.stable_key = 'provider-saved-tracks:' || $2::text
+               AND directive.track_id = $3 AND directive.directive = 'include'
+               AND directive.superseded_at IS NULL)",
+    )
+    .bind(chordrift_account_id)
+    .bind(account_id)
+    .bind(tracks[0].0)
+    .fetch_one(database.pool())
+    .await?;
+    assert!(
+        !old_keep_still_active,
+        "a direct provider-side Unlike must supersede the older keep decision"
+    );
     assert_eq!(
         track_ops::active_exclusions(&database, &account_label)
             .await?

@@ -6,6 +6,25 @@ use uuid::Uuid;
 
 use crate::{ChordriftError, Result};
 
+/// Explicit handling for one saved/liked intake item after verified placement.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SavedTrackDisposition {
+    /// Keep the track in the provider's saved/liked container as well.
+    Preserve,
+    /// Clear the saved/liked intake only after canonical placement is verified.
+    ClearAfterVerifiedAssignment,
+}
+
+impl SavedTrackDisposition {
+    /// Stable database and CLI label.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Preserve => "preserve",
+            Self::ClearAfterVerifiedAssignment => "clear_after_verified_assignment",
+        }
+    }
+}
+
 /// One current provider intake item joined with Chordrift intent and history.
 #[derive(Clone, Debug, PartialEq)]
 pub struct IntakeItem {
@@ -21,6 +40,8 @@ pub struct IntakeItem {
     pub state: IntakeState,
     /// Current provider-visible canonical Chordrift destinations.
     pub current_destinations: Vec<String>,
+    /// Explicit keep-or-clear decision for the saved/liked source, when made.
+    pub saved_track_disposition: Option<String>,
     /// Destinations in the latest proposal generation.
     pub proposal_destinations: Vec<String>,
     /// Latest proposal state when proposal destinations exist.
@@ -164,6 +185,7 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
                       AND historical_exclusion.track_id = track.id
                 ) AS exclusion_history,
                 active_exclusion.exclusion_reason,
+                saved_disposition.disposition AS saved_track_disposition,
                 COALESCE(statistics.event_count, 0)::bigint AS event_count,
                 COALESCE(statistics.play_count, 0)::bigint AS play_count
          FROM candidates
@@ -204,6 +226,24 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
              ORDER BY exclusion.excluded_at DESC, exclusion.id DESC LIMIT 1
          ) active_exclusion ON TRUE
          LEFT JOIN LATERAL (
+             SELECT CASE directive.directive
+                        WHEN 'include' THEN 'preserve'
+                        WHEN 'exclude' THEN 'clear_after_verified_assignment'
+                    END AS disposition
+             FROM playlist_surfaces surface
+             JOIN playlist_track_directives directive
+               ON directive.chordrift_account_id = surface.chordrift_account_id
+              AND directive.surface_id = surface.id
+              AND directive.track_id = track.id
+              AND directive.superseded_at IS NULL
+             WHERE surface.chordrift_account_id = (
+                       SELECT chordrift_account_id FROM provider_accounts WHERE id = $1
+                   )
+               AND surface.stable_key = 'provider-saved-tracks:' || $1::text
+               AND surface.active
+             ORDER BY directive.created_at DESC, directive.id DESC LIMIT 1
+         ) saved_disposition ON TRUE
+         LEFT JOIN LATERAL (
              SELECT sum(item.event_count)::bigint AS event_count,
                     sum(item.play_count)::bigint AS play_count
              FROM account_listening_track_statistics item
@@ -241,6 +281,7 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
             sources: row.try_get("sources")?,
             state,
             current_destinations,
+            saved_track_disposition: row.try_get("saved_track_disposition")?,
             proposal_destinations,
             proposal_state: item_proposal_state,
             exclusion_history: row.try_get("exclusion_history")?,
@@ -256,6 +297,91 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
         proposal_state,
         items,
     })
+}
+
+/// Records one explicit saved/liked keep-or-clear decision without writing to a provider.
+pub async fn set_saved_track_disposition(
+    database: &Database,
+    account_label: &str,
+    spotify_id: &str,
+    disposition: SavedTrackDisposition,
+    reason: &str,
+) -> Result<()> {
+    if reason.trim().is_empty() {
+        return Err(ChordriftError::Configuration(
+            "saved-track disposition reason must not be empty".to_owned(),
+        ));
+    }
+    let mut transaction = database.pool().begin().await?;
+    let row = sqlx::query(
+        "SELECT account.id AS provider_account_id, account.chordrift_account_id,
+                provider.track_id
+         FROM provider_accounts account
+         JOIN provider_current_inventories inventory
+           ON inventory.provider_account_id = account.id
+         JOIN provider_tracks provider
+           ON provider.provider = account.provider
+          AND provider.provider_track_id = $2
+         JOIN provider_observed_saved_tracks saved
+           ON saved.snapshot_id = inventory.source_snapshot_id
+          AND saved.provider_track_id = provider.id
+         WHERE account.provider = 'spotify' AND account.account_label = $1
+         FOR UPDATE OF provider",
+    )
+    .bind(account_label)
+    .bind(spotify_id)
+    .fetch_optional(&mut *transaction)
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(format!(
+            "track `{spotify_id}` is not in the current saved/liked intake for account `{account_label}`"
+        ))
+    })?;
+    let provider_account_id: Uuid = row.try_get("provider_account_id")?;
+    let chordrift_account_id: Uuid = row.try_get("chordrift_account_id")?;
+    let track_id: Uuid = row.try_get("track_id")?;
+    let surface_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlist_surfaces
+             (chordrift_account_id, stable_key, name, authority, purpose,
+              refresh_policy)
+         VALUES ($1, 'provider-saved-tracks:' || $2::text, 'Liked Songs',
+                 'user', 'intake', 'monitored')
+         ON CONFLICT (chordrift_account_id, stable_key) DO UPDATE SET
+           name = EXCLUDED.name, active = TRUE, updated_at = now()
+         RETURNING id",
+    )
+    .bind(chordrift_account_id)
+    .bind(provider_account_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    sqlx::query(
+        "UPDATE playlist_track_directives
+         SET superseded_at = now()
+         WHERE chordrift_account_id = $1 AND surface_id = $2 AND track_id = $3
+           AND superseded_at IS NULL",
+    )
+    .bind(chordrift_account_id)
+    .bind(surface_id)
+    .bind(track_id)
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query(
+        "INSERT INTO playlist_track_directives
+             (chordrift_account_id, surface_id, track_id, directive, reason)
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(chordrift_account_id)
+    .bind(surface_id)
+    .bind(track_id)
+    .bind(match disposition {
+        SavedTrackDisposition::Preserve => "include",
+        SavedTrackDisposition::ClearAfterVerifiedAssignment => "exclude",
+    })
+    .bind(reason.trim())
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+    Ok(())
 }
 
 fn classify(

@@ -5,7 +5,7 @@ rules and regression obligations. Read it with
 `PLATFORM_INTENT_MODEL.md`. It contains no credentials or private library
 inventory.
 
-Status: active through `v0.2.1-alpha.15`, updated 2026-08-30.
+Status: active through the `v0.2.1-alpha.16` checkpoint, updated 2026-08-30.
 
 ## Governing rule
 
@@ -31,6 +31,7 @@ provider write.
 | Alpha.8 → alpha.9 | Recording `Tum Hi Ho Bandhu` as direct intake exposed the pre-existing Celluloid order delta only in the next plan, after the wizard's one reorder scan. | Record-only deltas must converge cumulatively to a bounded fixed point after every proposal revision. Rebuild stale plans from the newest complete pull. | Intake → newly exposed reorder → empty plan fake-binary regression. Complete. |
 | Alpha.12 → alpha.13 | Celluloid Mehfil and Kaveri Resonance alternated through repeated “Accepting current Spotify order” revisions and never stabilized. | Replaying historical assignment intent must be idempotent when the accepted provider membership already satisfies it; revision chronology must never become playlist order. | PostgreSQL regression preserves the exact provider order while extending an approved proposal; shell regression reaches one accepted baseline. Complete. |
 | Alpha.12 → alpha.13 | Tracks added and later removed returned because record-only convergence had not created the immutable managed verification used to interpret the later removal. | Every exactly converged ordinary pull becomes the next accepted baseline. A later removal becomes an active exclusion and an older proposal cannot produce an add/restore operation. | PostgreSQL baseline/removal regression plus exclusion-archive lifecycle proof. Complete. |
+| Alpha.15 → alpha.16 | A newly liked track already present in a managed playlist was silently summarized only as “Remove from Likes,” without naming its destination or remembering whether the user wanted both memberships. | Liked Songs is a virtual intake surface. Name every verified destination, require and revision a per-track keep/clear decision, default to no cleanup when undecided, and treat a later direct Unlike as superseding an older keep directive. | Fake-binary human-review regression plus disposable-PostgreSQL keep, clear, undecided, and direct-Unlike proof. Complete. |
 
 ## How to add the next finding
 

@@ -1,6 +1,7 @@
 # Provider-first convergence
 
-Status: normative ordinary-maintenance design as of v0.2.1-alpha.15.
+Status: normative ordinary-maintenance design as of the v0.2.1-alpha.16
+checkpoint.
 
 Spotify is the first provider implementation, not a special source of domain
 behavior. For ordinary maintenance, the newest complete provider observation is
@@ -31,18 +32,49 @@ sequenceDiagram
     Core->>Neon: Load accepted baseline Aₙ₋₁ + current intent
     Core->>Core: Classify cumulative delta Aₙ₋₁ → Sₙ
 
-    alt Provider-authored change is unambiguous
-        Core->>Neon: Record additions, moves, order, names, and removals
-        Note over Core,Neon: Removal creates an active exclusion; no provider write
+    alt Liked intake is already in a managed destination
+        Core->>Neon: Read prior keep/clear directive for virtual Liked Songs surface
+        alt A prior decision exists
+            Neon-->>Core: Reuse remembered keep or clear intent
+        else No prior decision exists
+            Core-->>Client: Already in Destination X; keep it in Likes too?
+            User->>Client: Keep or clear after verified placement
+            Client->>Core: Resolve exact saved-intake decision
+            Core->>Neon: Persist revisioned surface directive
+        end
+        alt Keep in Likes
+            Core->>Neon: Preserve both memberships as intended
+        else Clear Likes
+            Core-->>Client: Review exact Remove from Likes effect
+            User->>Client: Authorize exact saved-state change
+            Client->>Core: Authorize current review
+            Core->>Provider: Remove only the saved/liked state
+            Provider-->>Core: Updated complete snapshot Sₙ₊₁
+            Core->>Neon: Persist and verify destination remains and Like is absent
+        end
+    else Placement is confidently resolved
+        Core->>Neon: Record observed or inferred destination intent
+        Note over Core,Neon: Future classifier confidence may auto-resolve placement meaning
+        opt Destination membership does not already exist
+            Core-->>Client: Review exact suggested destination addition
+            User->>Client: Authorize exact placement effect
+            Client->>Core: Authorize current review
+            Core->>Provider: Add only the enumerated track
+            Provider-->>Core: Updated complete snapshot Sₙ₊₁
+            Core->>Neon: Persist and verify placement
+        end
     else Destination or meaning is genuinely ambiguous
         Core-->>Client: Return bounded decision request
-        User->>Client: Select destination or exclude
+        User->>Client: Confirm suggested destination, select another, or exclude
         Client->>Core: Resolve exact task revision
         Core->>Neon: Record the decision
+    else Other provider-authored change is unambiguous
+        Core->>Neon: Record moves, order, names, and removals
+        Note over Core,Neon: Managed removal creates an active exclusion; no provider write
     end
 
-    Core->>Core: Prove Neon model equals Sₙ exactly
-    Core->>Neon: Commit Sₙ as accepted baseline Aₙ
+    Core->>Core: Prove Neon model equals newest complete snapshot exactly
+    Core->>Neon: Commit newest snapshot as accepted baseline Aₙ
     Core-->>Client: Converged; zero provider writes
 
     opt User explicitly requests publication
@@ -69,18 +101,27 @@ sequenceDiagram
    accepted baseline, so changes accumulate safely.
 3. Direct provider additions and moves are placement evidence. Membership-equal
    reordering is provider-authored order. Neither requires a provider write.
-4. A track removed from an accepted managed membership becomes actively
+4. Liked/Saved is an intake surface, not canonical placement. When a liked track
+   is already in a verified managed destination, Chordrift names that destination
+   and asks whether the saved state should remain. The answer is a revisioned
+   surface directive: `keep` suppresses future cleanup; `clear` permits one exact
+   confirmed saved-state removal. No answer means no removal.
+5. A later direct provider-side Unlike is a newer user decision. The next exact
+   accepted observation supersedes an older keep directive without restoring the
+   Like. The user may instead change the directive through Chordrift and authorize
+   the same exact removal.
+6. A track removed from an accepted managed membership becomes actively
    excluded. The exclusion retains identity and history while preventing an
    automatic re-add.
-5. Re-adding an excluded track through the provider is an explicit resurrection
+7. Re-adding an excluded track through the provider is an explicit resurrection
    gesture. Emptying the exclusion archive is a separate Neon-only operation;
    it resolves the visible archive entry, retains audit history plus an internal
    forget tombstone so older placement cannot replay, and is refused while an
    excluded track is still in the observed provider library.
-6. An observation becomes the next baseline only after exact ordered equality.
+8. An observation becomes the next baseline only after exact ordered equality.
    A partial proposal, unresolved decision, or provider-lagged publication can
    never be accepted accidentally.
-7. Only a separately originated, exactly reviewed publication task may write to
+9. Only a separately originated, exactly reviewed publication task may write to
    a provider. Ordinary maintenance is record-only except for a user-authorized
    intake publication that is explicitly represented in that task.
 
@@ -90,6 +131,10 @@ The temporary CLI wrapper uses the same core boundaries:
 
 ```console
 $ scripts/chordrift-maintain.sh --account personal
+$ chordrift intake audit --account personal
+$ chordrift intake liked-disposition --account personal \
+    --spotify-id SPOTIFY_TRACK_ID --disposition preserve \
+    --reason "Keep this track in Liked Songs"
 $ chordrift tracks exclusions --account personal
 $ chordrift tracks empty-exclusions --account personal --confirm personal
 ```

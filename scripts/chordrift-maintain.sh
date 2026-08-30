@@ -60,6 +60,7 @@ done
     --require maintenance.artwork-carry-forward.v1 \
     --require maintenance.provider-order-intent.v1 \
     --require maintenance.provider-baseline.v1 \
+    --require maintenance.saved-intake-disposition.v1 \
     --require plan-origin.v1
 
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chordrift-maintain.XXXXXX")
@@ -71,6 +72,7 @@ AUTO_MOVES_FILE=$WORK_DIR/automatic-moves.tsv
 RESOLVED_AUTO_MOVES_FILE=$WORK_DIR/resolved-automatic-moves.tsv
 MOVE_AMBIGUOUS_FILE=$WORK_DIR/ambiguous-moves.tsv
 ORDER_DRIFT_FILE=$WORK_DIR/provider-order.tsv
+LIKED_DECISIONS_FILE=$WORK_DIR/liked-decisions.tsv
 DESTINATIONS_FILE=$WORK_DIR/destinations.tsv
 STATUS_FILE=$WORK_DIR/status.txt
 ARTWORK_FILE=$WORK_DIR/artwork.txt
@@ -101,6 +103,7 @@ create_plan() {
 
 find_ambiguous() {
     : >"$AMBIGUOUS_FILE"
+    : >"$LIKED_DECISIONS_FILE"
     run intake audit --account "$ACCOUNT" >"$AUDIT_FILE"
     awk -F '\t' '
         $1 == "previously_excluded" || $1 == "known_from_history" || $1 == "genuinely_new" {
@@ -115,8 +118,36 @@ find_ambiguous() {
         print $2 "\t" $3 "\t" $11 "\tNew intake\t" $5
     }' "$AUDIT_FILE" >>"$AUTO_MOVES_FILE"
 
+    awk -F '\t' '$1 == "already_covered" && index($4, "Liked Songs") > 0 &&
+        $5 != "" && $12 == "-" {
+        print $2 "\t" $3 "\t" $11 "\t" $5
+    }' "$AUDIT_FILE" >>"$LIKED_DECISIONS_FILE"
+
     cat "$MOVE_AMBIGUOUS_FILE" >>"$AMBIGUOUS_FILE"
     sort -u "$AMBIGUOUS_FILE" -o "$AMBIGUOUS_FILE"
+}
+
+resolve_saved_intake() {
+    [ -s "$LIKED_DECISIONS_FILE" ] || return 0
+    while IFS="$(printf '\t')" read -r title artists spotify_id destinations; do
+        printf '\n%s — %s\nAlready in: %s\n' "$title" "$artists" "$destinations"
+        printf 'Keep it in Liked Songs too? [y/N] ' >/dev/tty
+        IFS= read -r answer </dev/tty
+        case "$answer" in
+            y|Y|yes|YES|Yes)
+                disposition=preserve
+                printf 'Keeping it in Liked Songs and %s.\n' "$destinations"
+                ;;
+            *)
+                disposition=clear-after-verified-assignment
+                printf 'It will remain in %s and be removed from Liked Songs after confirmation.\n' \
+                    "$destinations"
+                ;;
+        esac
+        run intake liked-disposition --account "$ACCOUNT" \
+            --spotify-id "$spotify_id" --disposition "$disposition" \
+            --reason "Explicit ordinary-maintenance saved-intake decision" >/dev/null
+    done <"$LIKED_DECISIONS_FILE"
 }
 
 find_managed_moves() {
@@ -201,8 +232,11 @@ finalize_current_proposal() {
 }
 
 resolve_ambiguous() {
-    [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || [ -s "$ORDER_DRIFT_FILE" ] || return 0
+    [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || [ -s "$ORDER_DRIFT_FILE" ] || \
+        [ -s "$LIKED_DECISIONS_FILE" ] || return 0
     [ "$REVIEW_ONLY" = false ] || return 0
+    resolve_saved_intake
+    [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || [ -s "$ORDER_DRIFT_FILE" ] || return 0
     ensure_editable_proposal
     : >"$RESOLVED_AUTO_MOVES_FILE"
     while IFS="$(printf '\t')" read -r title artists spotify_id old_destination destination; do
@@ -282,7 +316,8 @@ create_plan
 find_managed_moves
 find_provider_order_drift
 find_ambiguous
-if [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || [ -s "$ORDER_DRIFT_FILE" ]; then
+if [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || [ -s "$ORDER_DRIFT_FILE" ] || \
+    [ -s "$LIKED_DECISIONS_FILE" ]; then
     if [ "$REVIEW_ONLY" = true ]; then
         if [ -s "$AUTO_MOVES_FILE" ]; then
             printf 'Inferred moves:\n'
@@ -295,6 +330,10 @@ if [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || [ -s "$ORDER_DRIFT_F
         if [ -s "$ORDER_DRIFT_FILE" ]; then
             printf 'Provider order to accept:\n'
             sed 's/^/  /' "$ORDER_DRIFT_FILE"
+        fi
+        if [ -s "$LIKED_DECISIONS_FILE" ]; then
+            printf 'Liked tracks already placed; choose whether Likes should remain:\n'
+            awk -F '\t' '{ print "  " $1 " — " $2 " · already in " $4 }' "$LIKED_DECISIONS_FILE"
         fi
         printf 'Review only; Spotify unchanged.\n'
         exit 0

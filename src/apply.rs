@@ -705,6 +705,32 @@ pub async fn accept_current_provider_state(
             "current provider state cannot be accepted until the approved playlist model has identical ordered membership",
         ));
     }
+    // A direct provider-side Unlike is itself the newer user decision. Retire
+    // any older explicit keep directive when the newest complete saved-track
+    // inventory no longer contains that track. This is Neon-only convergence;
+    // it neither calls the provider nor invents a cleanup operation.
+    sqlx::query(
+        "UPDATE playlist_track_directives directive
+         SET superseded_at = now()
+         FROM playlist_surfaces surface
+         WHERE directive.surface_id = surface.id
+           AND directive.chordrift_account_id = surface.chordrift_account_id
+           AND directive.superseded_at IS NULL
+           AND directive.directive = 'include'
+           AND surface.stable_key = 'provider-saved-tracks:' || $1::text
+           AND NOT EXISTS (
+               SELECT 1
+               FROM provider_current_inventories inventory
+               JOIN provider_observed_saved_tracks saved
+                 ON saved.snapshot_id = inventory.source_snapshot_id
+               JOIN provider_tracks provider ON provider.id = saved.provider_track_id
+               WHERE inventory.provider_account_id = $1
+                 AND provider.track_id = directive.track_id
+           )",
+    )
+    .bind(account_id)
+    .execute(database.pool())
+    .await?;
     let playlist_count: i64 = sqlx::query_scalar(
         "SELECT count(*)::bigint FROM managed_playlist_verifications
          WHERE provider_account_id = $1 AND proposal_generation_id = $2

@@ -333,6 +333,28 @@ product-session schema 1, and has `CHORDRIFT_BIN` unset. No personal Spotify or
 Neon operation was used for implementation, testing, release, or installation
 verification.
 
+Alpha.16 adds remembered saved-intake disposition before V021-05. Liked Songs
+is represented as a virtual user-authority intake surface using the existing
+migration-46 `playlist_surfaces` and revisioned `playlist_track_directives`.
+When a current Like is already in a verified managed destination, the ordinary
+wizard names every destination and asks whether to keep both. `include` maps to
+the client-safe `preserve` answer; `exclude` maps only to
+`clear_after_verified_assignment` for this virtual surface and is not a global
+track exclusion. Undecided and keep states cannot plan an Unlike. Clear yields
+one exact reviewed `remove_saved_track` effect and leaves managed membership
+unchanged. A later direct provider Unlike supersedes an older include directive
+during exact baseline acceptance. The answer may also be revised with
+`chordrift intake liked-disposition`; that command is Neon-only.
+
+Application contract 1.3 adds `MaintenanceResolution::ConsumeIntake` so remote
+CLI, web, and mobile clients can render the same decision without owning its
+meaning. Capability `maintenance.saved-intake-disposition.v1` gates the current
+shell adapter. Fake-binary coverage proves human track/artist/destination
+review; disposable PostgreSQL proves undecided safety, remembered keep,
+explicit clear, revision supersession, and direct-Unlike convergence. This
+feature uses schema 0047 already present in the personal database; it does not
+require or apply hosted migrations 0048 through 0050.
+
 Begin `V021-05 — Remote CLI parity`. Make the installed CLI an authenticated
 client of the typed durable service while preserving an explicit local
 development transport. Do not pull hosting selection/public deployment, a web
