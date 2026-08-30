@@ -243,13 +243,12 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Current checkpoint: release alpha.13, then begin V021-03
+## Current checkpoint: begin V021-03
 
 V020-01 through V020-15, A021-01 through A021-13, and V021-01 through V021-02
 are complete.
 v0.2.0 is released and the separately approved personal binary/database
-cutover is complete. `v0.2.1-alpha.12` remains installed until the alpha.13
-registry artifact is released and verified. Alpha.13 repairs two daily-use
+cutover is complete. `v0.2.1-alpha.13` is the installed daily-driver. It repairs two daily-use
 defects: assignment replay no longer turns revision chronology into provider
 playlist order, and every exactly converged record-only observation receives an
 immutable managed verification baseline. A later provider removal is therefore
@@ -263,9 +262,19 @@ A previously unknown track added directly to exactly one managed Spotify playlis
 is now preserved in place and recorded as canonical destination intent without
 a Spotify membership write. Multiple destinations remain ambiguous; active
 exclusions require explicit restoration. Known-track direct moves remain
-unchanged. Release and install `v0.2.1-alpha.13`, then begin `V021-03 —
-Encrypted provider credential vault`. Never call or write Spotify without the
+unchanged. Begin `V021-03 — Encrypted provider credential vault`. Never call or write Spotify without the
 user-authorized exact publication, maintenance, or retirement operation.
+
+Alpha.13 implementation commit `ff425146e89d177f4bc9828c7784e3322f5fe9a3`
+passed CI run `33325908241`, including formatting, strict Clippy, all targets,
+documentation tests, fresh/upgrade PostgreSQL integration, the exact provider-
+order/baseline/removal/forget regression, Spotify persistence round-trip, and
+clean packaging. The annotated `v0.2.1-alpha.13` tag, GitHub prerelease, and
+crates.io package are public. The exact locked registry artifact is installed
+at `~/.cargo/bin/chordrift`, reports `chordrift 0.2.1-alpha.13`, satisfies
+`maintenance.provider-baseline.v1`, retains application contract 1.2, and has
+`CHORDRIFT_BIN` unset. No personal Spotify or Neon operation was used for this
+repair, its release, or installation verification.
 
 V021-01 adds application contract 1.2 and capability
 `service.authenticated-transport.v1`. `MaintenanceApplication` is one

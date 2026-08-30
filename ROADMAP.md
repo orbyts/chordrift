@@ -359,10 +359,10 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** publish and daily-driver verify `v0.2.1-alpha.13`, then begin
-`V021-03 — Encrypted provider credential vault` behind the V021-02 product-
-session boundary. The separate Classification Authority is not part of that
-slice.
+**Next gate:** begin `V021-03 — Encrypted provider credential vault` behind the
+V021-02 product-session boundary. `v0.2.1-alpha.13` is published and its exact
+registry artifact is installed for daily-driver verification. The separate
+Classification Authority is not part of V021-03.
 
 ## Portable core and thin clients
 
