@@ -237,13 +237,20 @@ rebuilds after every record-only revision and absorbs newly exposed provider
 order to a bounded fixed point. The exact fake-binary regression runs intake,
 then reorder, then an empty plan and proves no `sync apply` call occurs.
 
+Alpha.9 implementation commit `9787f580e0b5b85c704f1db4444c0ae1301fa9e6`
+passed CI run `33286406152`, including strict Clippy, all targets, documentation
+tests, fresh/upgrade PostgreSQL integration, Spotify persistence round-trip,
+and clean packaging. The annotated `v0.2.1-alpha.9` tag, GitHub prerelease, and
+crates.io package are public. The exact registry artifact is installed at
+`~/.cargo/bin/chordrift`, reports `chordrift 0.2.1-alpha.9`, satisfies
+`maintenance.provider-order-intent.v1`, and has `CHORDRIFT_BIN` unset.
+
 Alpha.8 implementation commit `f788a9be7761ad9e0fe1cffbdb686967c0cda67a`
 passed CI run `33285324445`, including strict Clippy, all targets, documentation
 tests, fresh/upgrade PostgreSQL integration, Spotify persistence round-trip,
 and package verification. The annotated `v0.2.1-alpha.8` tag, GitHub
-prerelease, and crates.io package are public. The exact crates.io artifact is
-installed locally, reports `chordrift 0.2.1-alpha.8`, advertises
-`maintenance.provider-order-intent.v1`, and does not rely on `CHORDRIFT_BIN`.
+prerelease, and crates.io package are public. Its exact crates.io artifact was
+installed and verified before being superseded by alpha.9.
 
 ## Released v0.2.0 foundation and current v0.2.1 alpha deployment
 
