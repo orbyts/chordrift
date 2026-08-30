@@ -4,6 +4,17 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.9] - 2026-08-29
+
+- Re-scan a newly approved maintenance plan for record-only provider order
+  after direct intake or another intent revision reveals the delta.
+- Converge membership-equal provider ordering through bounded Neon-only
+  proposal revisions before classifying remaining provider work.
+- Preserve the rule that no order convergence path calls `sync apply`; stale
+  plans are rebuilt from the newest complete Spotify snapshot.
+- Add a fake-binary regression for direct intake followed by a newly exposed
+  Celluloid Mehfil reorder and publish a durable daily-driver edge-case ledger.
+
 ## [0.2.1-alpha.8] - 2026-08-29
 
 - Interpret a membership-equal managed-playlist order difference as provider

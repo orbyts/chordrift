@@ -58,6 +58,25 @@ and authorizes that understandable operation. Spin publication uses its
 distinct `spin_publication` plan origin and never borrows ordinary-maintenance
 authorization.
 
+### Cumulative pulls and interrupted work
+
+Each complete, internally consistent pull supersedes the previous provider
+snapshot as the current baseline for user-authority state. Chordrift folds the
+new delta on top of already recorded gestures; it does not require the user to
+repeat an earlier edit because a wizard stopped between Neon-only revisions.
+
+Any plan or readiness assessment bound to the older snapshot becomes stale.
+Record-only interpretation may be rebased and continued automatically. An
+unfinished Chordrift-authored operation keeps its explicit product intent, but
+Chordrift must rebuild and reauthorize its provider plan against the newest
+snapshot. It may never apply an old plan merely because it was previously
+approved.
+
+Convergence may require more than one internal revision: recording direct
+intake can expose a membership-equal order delta in the next plan. Ordinary
+maintenance absorbs such Neon-only deltas to a bounded fixed point before it
+classifies remaining work or considers any provider apply.
+
 ## Confidence policy
 
 Chordrift should automate only high-confidence, reversible interpretations.

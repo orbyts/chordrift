@@ -469,7 +469,9 @@ fn direct_managed_addition_records_existing_destination_without_provider_apply()
     let log = work.join("commands.log");
     let first_plan = "00000000-0000-0000-0000-000000000071";
     let second_plan = "00000000-0000-0000-0000-000000000072";
+    let third_plan = "00000000-0000-0000-0000-000000000075";
     let proposal = "00000000-0000-0000-0000-000000000073";
+    let order_proposal = "00000000-0000-0000-0000-000000000076";
     write_fake(
         &fake,
         &format!(
@@ -483,8 +485,10 @@ case "$*" in
     count=$(grep -c '^sync plan --account personal$' "$FAKE_CHORDRIFT_LOG")
     if [ "$count" -eq 1 ]; then
       printf '%s\n' 'plan_id: {first_plan}' 'operations: 0'
-    else
+    elif [ "$count" -eq 2 ]; then
       printf '%s\n' 'plan_id: {second_plan}' 'operations: 0'
+    else
+      printf '%s\n' 'plan_id: {third_plan}' 'operations: 0'
     fi
     ;;
   "sync plan-show --account personal --plan {first_plan} --details")
@@ -493,6 +497,11 @@ case "$*" in
     ;;
   "sync plan-show --account personal --plan {second_plan} --details")
     printf '%b\n' 'plan_id: {second_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
+      'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety' \
+      '0\tpublish\treorder_playlist\tCelluloid Mehfil\tplaylist-celluloid\t-\t{{"track_count":7}}\t{{"membership_unchanged":true}}\t-\t-\tordinary\t-\t-'
+    ;;
+  "sync plan-show --account personal --plan {third_plan} --details")
+    printf '%b\n' 'plan_id: {third_plan}' 'plan_origin: maintenance' 'snapshot_current: true' \
       'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety'
     ;;
   "intake audit --account personal")
@@ -501,15 +510,27 @@ case "$*" in
       'direct_managed_addition\tNew Song\tFixture Artist\tNew Vibe\tNew Vibe\t\t0\t0\tfalse\t-\tfixture-new-track'
     ;;
   "proposals status --account personal")
-    printf '%s\n' 'proposal: proposed' 'generation_id: {proposal}' 'coverage_complete: true'
+    count=$(grep -c '^proposals status --account personal$' "$FAKE_CHORDRIFT_LOG")
+    case "$count" in
+      1|2) printf '%s\n' 'proposal: proposed' 'generation_id: {proposal}' 'coverage_complete: true' ;;
+      3) printf '%s\n' 'proposal: approved' 'generation_id: {proposal}' 'coverage_complete: true' ;;
+      *) printf '%s\n' 'proposal: proposed' 'generation_id: {order_proposal}' 'coverage_complete: true' ;;
+    esac
     ;;
   "proposals list --account personal")
-    printf '%b\n' 'position\tcount\tstable_key\tname' '1\t1\tplaylist-new\tNew Vibe'
+    printf '%b\n' 'position\tcount\tstable_key\tname' \
+      '1\t1\tplaylist-new\tNew Vibe' \
+      '2\t7\tplaylist-celluloid\tCelluloid Mehfil'
     ;;
+  "proposals extend --account personal --min-similarity 1") printf '%s\n' 'proposal: proposed' ;;
   "proposals assign --account personal --spotify-id fixture-new-track --playlist playlist-new --reason Inferred from direct provider move")
     printf '%s\n' 'proposal: proposed'
     ;;
+  "proposals align-provider-order --account personal --playlist playlist-celluloid")
+    printf '%s\n' 'proposal_order: aligned'
+    ;;
   "proposals approve --account personal --confirm {proposal}") printf '%s\n' 'proposal: approved' ;;
+  "proposals approve --account personal --confirm {order_proposal}") printf '%s\n' 'proposal: approved' ;;
   "artwork status --account personal") printf '%s\n' 'proposal_generation_id: old-proposal' ;;
   artwork\ import\ --account\ personal\ --manifest\ *drift-atlas-v5-indian-surfaces/.chordrift-maintain.*)
     printf '%s\n' 'batch_id: 00000000-0000-0000-0000-000000000074'
@@ -542,9 +563,16 @@ esac
     assert!(!commands.contains("sync apply"));
     assert!(!commands.contains("tracks restore"));
     assert!(commands.contains("drift-atlas-v5-indian-surfaces/.chordrift-maintain."));
+    assert!(commands.contains(
+        "proposals align-provider-order --account personal --playlist playlist-celluloid"
+    ));
     assert!(
         String::from_utf8_lossy(&output.stdout)
             .contains("Detected direct intake: New Song — Fixture Artist → New Vibe")
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Accepting current Spotify order: Celluloid Mehfil")
     );
     fs::remove_dir_all(work).unwrap();
 }

@@ -198,6 +198,14 @@ are checkpoints, not replacements for the hosted-authority goal.
   proposal and accept the exact observed order in Neon under an equality guard.
   Never turn the repair into a Spotify reorder, addition, or removal. Publish
   the fix as `v0.2.1-alpha.8`.
+- [x] **A021-11 — Cumulative observation convergence.** Treat every complete
+  provider pull as the newest baseline for user-authority state, preserve
+  previously recorded provider gestures across interrupted runs, and rebuild
+  stale plans against the cumulative snapshot. Iterate record-only proposal
+  revisions to a bounded fixed point so direct intake can reveal and then
+  absorb an order delta without stopping or calling provider apply. Record the
+  daily-driver incidents in one edge-case ledger, prove the intake-then-reorder
+  sequence with a fake binary, and publish the repair as `v0.2.1-alpha.9`.
 
 ### v0.2.1 — Hosted Rust authority
 
@@ -850,20 +858,24 @@ multiple consistent corrections Chordrift may propose a broader account rule
 or destination concept, but it must show the evidence and obtain approval
 before applying that rule to other tracks.
 
-Treat edits made directly in Spotify as possible feedback rather than either
-ignoring them or automatically declaring Neon wrong. Compare each pull with the
-last verified managed baseline and stage ambiguous intent for review:
+Treat edits made directly in Spotify as authoritative observations of the
+exact user action. Every complete pull becomes the newest baseline for
+user-authority state; Neon preserves history and interpretation but does not
+compete with that current state. Compare each pull with the last verified
+baseline and fold exact gestures cumulatively:
 
 - removal from one managed playlist plus addition to another is a proposed
   move;
 - removal alone asks whether the user meant wrong vibe, temporary review, or
   exclusion;
-- addition to a managed playlist is a proposed destination preference;
-- reordering asks whether the sequence should be locked or remain
-  Chordrift-generated.
+- addition to a managed playlist is current placement intent, while any
+  permanent lock or classification generalization remains separate;
+- reordering is current order intent when exact membership is unchanged; it
+  does not silently become a reusable cadence rule.
 
-No ambiguous provider edit is silently learned or reversed. Once confirmed,
-the decision is written to Neon and becomes part of future orchestration. This
+No provider edit is silently reversed. Ambiguous broader meaning may remain
+unresolved without disputing the observed action. Once inferred or confirmed,
+that meaning is written to Neon and becomes part of future orchestration. This
 lets a consumer use Spotify as the familiar editing surface while Chordrift
 acts as a preservation-first assistant on top; the dedicated Chordrift review
 surface remains the faster, more explainable path for batch corrections.

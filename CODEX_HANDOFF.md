@@ -8,6 +8,10 @@ archive contents.
 
 Last updated: 2026-08-29.
 
+Every daily-driver failure and its permanent regression belongs in
+`docs/design/DAILY_DRIVER_EDGE_CASE_LEDGER.md`. Treat chaotic cumulative
+Spotify use as the normal product environment, not operator error.
+
 ## Product-experience rule for every task
 
 People use Spotify normally; they do not operate Chordrift's internal ledger.
@@ -24,6 +28,13 @@ classification, or learning evidence—is a separate inference. Chordrift may
 write a different order only for an explicitly requested and authorized
 Chordrift-authored operation such as Spin publication; that operation has a
 separate plan origin and authorization boundary.
+
+Every complete, internally consistent pull becomes the newest baseline for
+user-authority state. Previously recorded gestures accumulate across stopped
+runs. Any plan or readiness assessment tied to an older snapshot is stale and
+must be rebuilt. Record-only proposal revisions may converge automatically to a
+bounded fixed point; an unfinished Chordrift-authored operation retains its
+explicit intent but requires a newly reviewed plan before provider mutation.
 
 Batch IDs, plan IDs, readiness assessments, idempotency keys, receipts, and
 verification remain mandatory Rust-owned safety evidence, but clients should
@@ -206,9 +217,9 @@ placement evidence; Chordrift must not scrape unselected recommendations.
 
 ## Start the next task here: V021-01 authenticated service transport
 
-V020-01 through V020-15 and A021-01 through A021-10 are complete. v0.2.0 is
+V020-01 through V020-15 and A021-01 through A021-11 are complete. v0.2.0 is
 released and the separately approved personal binary/database cutover is
-complete. `v0.2.1-alpha.8` is the current daily-driver prerelease. A previously
+complete. `v0.2.1-alpha.9` is the current daily-driver prerelease. A previously
 unknown track added directly to exactly one managed Spotify playlist is now
 preserved in place and recorded as canonical destination intent without a
 Spotify membership write. Multiple destinations remain ambiguous; active
@@ -218,6 +229,13 @@ product identity, credential relocation, durable jobs, deployment, a native
 client, or the separate Classification Authority into V021-01. Never call or
 write Spotify without the user-authorized exact maintenance or retirement
 operation.
+
+Alpha.8 daily use exposed one more sequencing defect: after direct intake for
+`Tum Hi Ho Bandhu` was recorded, the newly approved proposal revealed the
+membership-equal Celluloid Mehfil order delta only in the next plan. Alpha.9
+rebuilds after every record-only revision and absorbs newly exposed provider
+order to a bounded fixed point. The exact fake-binary regression runs intake,
+then reorder, then an empty plan and proves no `sync apply` call occurs.
 
 Alpha.8 implementation commit `f788a9be7761ad9e0fe1cffbdb686967c0cda67a`
 passed CI run `33285324445`, including strict Clippy, all targets, documentation

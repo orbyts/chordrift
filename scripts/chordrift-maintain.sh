@@ -158,6 +158,47 @@ resolve_destination() {
     ' "$DESTINATIONS_FILE"
 }
 
+align_provider_orders() {
+    while IFS= read -r destination; do
+        stable_key=$(resolve_destination "$destination") || {
+            printf 'Provider-order destination "%s" is no longer unique.\n' "$destination" >&2
+            exit 3
+        }
+        printf 'Accepting current Spotify order: %s\n' "$destination"
+        run proposals align-provider-order --account "$ACCOUNT" \
+            --playlist "$stable_key" >/dev/null
+    done <"$ORDER_DRIFT_FILE"
+}
+
+finalize_current_proposal() {
+    run proposals status --account "$ACCOUNT" >"$STATUS_FILE"
+    [ "$(field coverage_complete "$STATUS_FILE")" = true ] || {
+        printf 'Some library tracks still need a destination; Spotify was not changed.\n' >&2
+        exit 3
+    }
+    PROPOSAL_ID=$(field generation_id "$STATUS_FILE")
+    run proposals approve --account "$ACCOUNT" --confirm "$PROPOSAL_ID" >/dev/null
+
+    # An unchanged visual system is inherited internally. This is not a new
+    # artwork review and cannot create, rename, or redesign a playlist.
+    run artwork status --account "$ACCOUNT" >"$ARTWORK_FILE" 2>/dev/null || true
+    if [ "$(field proposal_generation_id "$ARTWORK_FILE")" != "$PROPOSAL_ID" ]; then
+        [ -f "$ARTWORK_MANIFEST" ] || {
+            printf 'The unchanged approved artwork set is unavailable; Spotify was not changed.\n' >&2
+            exit 3
+        }
+        ARTWORK_SOURCE_DIR=$(CDPATH= cd -- "$(dirname -- "$ARTWORK_MANIFEST")" && pwd)
+        ARTWORK_REVIEW_MANIFEST=$(mktemp "$ARTWORK_SOURCE_DIR/.chordrift-maintain.XXXXXX")
+        sed -E "s/(\"proposal_generation_id\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\\1$PROPOSAL_ID\\2/" \
+            "$ARTWORK_MANIFEST" >"$ARTWORK_REVIEW_MANIFEST"
+        run artwork import --account "$ACCOUNT" --manifest "$ARTWORK_REVIEW_MANIFEST" >"$ARTWORK_FILE"
+        BATCH_ID=$(field batch_id "$ARTWORK_FILE")
+        run artwork approve --account "$ACCOUNT" --confirm "$BATCH_ID" >/dev/null
+        rm -f -- "$ARTWORK_REVIEW_MANIFEST"
+        ARTWORK_REVIEW_MANIFEST=
+    fi
+}
+
 resolve_ambiguous() {
     [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || [ -s "$ORDER_DRIFT_FILE" ] || return 0
     [ "$REVIEW_ONLY" = false ] || return 0
@@ -192,15 +233,7 @@ resolve_ambiguous() {
         done
         printf 'Recorded %s move(s) in Chordrift.\n' "$move_count"
     fi
-    while IFS= read -r destination; do
-        stable_key=$(resolve_destination "$destination") || {
-            printf 'Provider-order destination "%s" is no longer unique.\n' "$destination" >&2
-            exit 3
-        }
-        printf 'Accepting current Spotify order: %s\n' "$destination"
-        run proposals align-provider-order --account "$ACCOUNT" \
-            --playlist "$stable_key" >/dev/null
-    done <"$ORDER_DRIFT_FILE"
+    align_provider_orders
     [ ! -s "$AMBIGUOUS_FILE" ] || printf '\nChordrift needs one decision for each track below.\n'
     while IFS="$(printf '\t')" read -r source title artists spotify_id; do
         printf '\n%s — %s\nSource: %s\n' "$title" "$artists" "$source"
@@ -235,30 +268,7 @@ resolve_ambiguous() {
         done
     done <"$AMBIGUOUS_FILE"
 
-    run proposals status --account "$ACCOUNT" >"$STATUS_FILE"
-    [ "$(field coverage_complete "$STATUS_FILE")" = true ] || {
-        printf 'Some library tracks still need a destination; Spotify was not changed.\n' >&2
-        exit 3
-    }
-    PROPOSAL_ID=$(field generation_id "$STATUS_FILE")
-    run proposals approve --account "$ACCOUNT" --confirm "$PROPOSAL_ID" >/dev/null
-
-    # An unchanged visual system is inherited internally. This is not a new
-    # artwork review and cannot create, rename, or redesign a playlist.
-    run artwork status --account "$ACCOUNT" >"$ARTWORK_FILE" 2>/dev/null || true
-    if [ "$(field proposal_generation_id "$ARTWORK_FILE")" != "$PROPOSAL_ID" ]; then
-        [ -f "$ARTWORK_MANIFEST" ] || {
-            printf 'The unchanged approved artwork set is unavailable; Spotify was not changed.\n' >&2
-            exit 3
-        }
-        ARTWORK_SOURCE_DIR=$(CDPATH= cd -- "$(dirname -- "$ARTWORK_MANIFEST")" && pwd)
-        ARTWORK_REVIEW_MANIFEST=$(mktemp "$ARTWORK_SOURCE_DIR/.chordrift-maintain.XXXXXX")
-        sed -E "s/(\"proposal_generation_id\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\\1$PROPOSAL_ID\\2/" \
-            "$ARTWORK_MANIFEST" >"$ARTWORK_REVIEW_MANIFEST"
-        run artwork import --account "$ACCOUNT" --manifest "$ARTWORK_REVIEW_MANIFEST" >"$ARTWORK_FILE"
-        BATCH_ID=$(field batch_id "$ARTWORK_FILE")
-        run artwork approve --account "$ACCOUNT" --confirm "$BATCH_ID" >/dev/null
-    fi
+    finalize_current_proposal
 }
 
 if [ "$SKIP_PULL" = false ]; then
@@ -291,6 +301,25 @@ if [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || [ -s "$ORDER_DRIFT_F
     resolve_ambiguous
     create_plan
 fi
+
+# One observed gesture can reveal another record-only delta after the proposal
+# revision is approved. Keep absorbing exact membership-equal provider order
+# until the maintenance plan stabilizes. This loop performs Neon intent writes
+# only; align-provider-order refuses membership changes and no sync apply occurs.
+ORDER_ALIGNMENT_PASSES=0
+while true; do
+    find_provider_order_drift
+    [ -s "$ORDER_DRIFT_FILE" ] || break
+    ORDER_ALIGNMENT_PASSES=$((ORDER_ALIGNMENT_PASSES + 1))
+    [ "$ORDER_ALIGNMENT_PASSES" -le 4 ] || {
+        printf 'Stopped: provider-order intent did not stabilize after 4 revisions; Spotify was not changed.\n' >&2
+        exit 3
+    }
+    ensure_editable_proposal
+    align_provider_orders
+    finalize_current_proposal
+    create_plan
+done
 
 UNSAFE=$(awk -F '\t' '$1 ~ /^[0-9]+$/ &&
     $3 !~ /^(add_track|remove_track|exclude_track|restore_track|remove_saved_track)$/ &&
