@@ -1,8 +1,29 @@
 # Hosted production assembly — V021-06
 
-Status: implementation checkpoint; read-only provider observation and durable
-maintenance-session persistence are composed, while ordinary maintenance
-interpretation and provider writes remain disabled.
+Status: implementation checkpoint; read-only provider observation, durable
+maintenance sessions, provider-first interpretation, canonical intent
+projection, and saved-intake decisions are composed. Provider authorization,
+apply, and verification remain disabled until their exact-review proof.
+
+## Three-layer product boundary
+
+```text
+CLI / web / later iOS and Android
+        |  presentation, authentication, typed DTOs only
+        v
+Rust application and workflow authority
+        |  interpret, decide, orchestrate, review, authorize
+        v
+Rust domain core + typed infrastructure ports
+        |  durable intent, provider/database effects, receipts, verification
+        v
+PostgreSQL / credential vault / Spotify adapter
+```
+
+The middle layer matters: clients do not sequence low-level core calls, and
+core/provider adapters do not make product-workflow decisions. CLI and browser
+may render different experiences, but both operate the same durable
+maintenance session and receive the same allowed decisions and effects.
 
 ## Process boundary
 
@@ -82,12 +103,18 @@ fresh provider observation, the PostgreSQL adapter converts ordinary reconcile
 work into one typed session projection, and web plus remote CLI query that same
 session. Paired remove/add plan rows collapse into one logical move.
 
-This is still a staged record-only boundary. The adapter does not yet commit
-resolved session intent back into the canonical playlist model, and it rejects
-cleanup, publication, retirement, and any unsupported plan phase. Provider
-authorization is explicitly unavailable. Production assembly is not complete
-until canonical intent projection, saved-intake handling, exact provider-effect
-review, separately authorized apply, and verification are proven.
+Resolved record-only gestures now project through Rust into canonical playlist
+placement, reversible exclusion, provider custom order, and remembered saved-
+track disposition. An exact maintenance fork preserves the already-approved
+model and artwork and never centroid-assigns unrelated tracks. Replaying an
+already-satisfied resolution is a no-op. Saved-track cleanup is ordered after
+canonical destination intent and is withheld from review until every required
+decision is resolved.
+
+The adapter continues to reject publication, retirement, and unsupported plan
+phases. Provider authorization is explicitly unavailable. Production assembly
+is not complete until exact provider-effect review, separately authorized
+apply, and verification are proven.
 
 Migration 0051 now supplies the restart-safe task boundary described in
 [Durable maintenance sessions](DURABLE_MAINTENANCE_SESSIONS_V021_06.md). The

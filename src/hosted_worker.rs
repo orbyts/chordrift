@@ -22,8 +22,11 @@ use crate::{
     durable_operations::{
         DurableOperationLease, DurableOperationQueue, PostgresDurableOperationStore,
     },
-    maintenance::MaintenanceDecisionProjection,
+    maintenance::{MaintenanceDecisionProjection, MaintenanceWorkflow},
     maintenance_interpretation::PostgresMaintenanceInterpreter,
+    maintenance_projection::{
+        CanonicalMaintenanceProjector, attach_saved_provider_effects, saved_provider_effects,
+    },
     maintenance_store::{DurableMaintenanceAuthority, PostgresMaintenanceSessionStore},
     provider_vault::{
         PostgresProviderCredentialStore, ProviderCredentialIdentity, ProviderCredentialVault,
@@ -156,8 +159,16 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
         provider_connection_id: ResourceId,
     ) -> std::result::Result<ResourceId, ClientError> {
         self.observe(subject, provider_connection_id).await?;
-        let projection = PostgresMaintenanceInterpreter::new(&self.database)
-            .project(subject, provider_connection_id, None)
+        let projection = attach_saved_provider_effects(
+            PostgresMaintenanceInterpreter::new(&self.database)
+                .project(subject, provider_connection_id, None)
+                .await?,
+        );
+        let projected_view = MaintenanceWorkflow::new(session_id, projection.clone())
+            .map_err(|error| error.client_error())?
+            .view();
+        CanonicalMaintenanceProjector::new(&self.database)
+            .project(subject, provider_connection_id, &projected_view)
             .await?;
         DurableMaintenanceAuthority::new(self.sessions.clone())
             .start(
@@ -186,8 +197,18 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
         if observed_snapshot == current.view.provider_snapshot_id {
             return Ok(ResourceId::from_uuid(session_id.as_uuid()));
         }
-        let projection = PostgresMaintenanceInterpreter::new(&self.database)
-            .project(subject, current.provider_connection_id, Some(&current.view))
+        let projection = attach_saved_provider_effects(
+            PostgresMaintenanceInterpreter::new(&self.database)
+                .project(subject, current.provider_connection_id, Some(&current.view))
+                .await?,
+        );
+        let mut projected_workflow = MaintenanceWorkflow::from_view(current.view.clone())
+            .map_err(|error| error.client_error())?;
+        let projected_view = projected_workflow
+            .rebase(expected_revision, projection.clone())
+            .map_err(|error| error.client_error())?;
+        CanonicalMaintenanceProjector::new(&self.database)
+            .project(subject, current.provider_connection_id, &projected_view)
             .await?;
         DurableMaintenanceAuthority::new(self.sessions.clone())
             .refresh(
@@ -210,16 +231,42 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
         expected_revision: u64,
         decisions: Vec<MaintenanceDecision>,
     ) -> std::result::Result<ResourceId, ClientError> {
+        let current = self.sessions.load(subject, session_id).await?;
+        let mut projected_workflow = MaintenanceWorkflow::from_view(current.view.clone())
+            .map_err(|error| error.client_error())?;
+        let preliminary_view = projected_workflow
+            .resolve(
+                expected_revision,
+                decisions.clone(),
+                MaintenanceDecisionProjection {
+                    provider_effects: Vec::new(),
+                    review_id: None,
+                },
+            )
+            .map_err(|error| error.client_error())?;
+        let decision_projection = saved_provider_effects(
+            preliminary_view.provider_snapshot_id,
+            &preliminary_view.observed_changes,
+        );
+        let mut projected_workflow = MaintenanceWorkflow::from_view(current.view.clone())
+            .map_err(|error| error.client_error())?;
+        let projected_view = projected_workflow
+            .resolve(
+                expected_revision,
+                decisions.clone(),
+                decision_projection.clone(),
+            )
+            .map_err(|error| error.client_error())?;
+        CanonicalMaintenanceProjector::new(&self.database)
+            .project(subject, current.provider_connection_id, &projected_view)
+            .await?;
         DurableMaintenanceAuthority::new(self.sessions.clone())
             .resolve(
                 subject,
                 session_id,
                 expected_revision,
                 decisions,
-                MaintenanceDecisionProjection {
-                    provider_effects: Vec::new(),
-                    review_id: None,
-                },
+                decision_projection,
                 Some(operation_id),
                 Utc::now(),
             )

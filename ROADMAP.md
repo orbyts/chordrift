@@ -442,8 +442,9 @@ and later Chordrift refactor begin.
   and newest-observation state and is designed for future connections. The
   exact web acceptance surface is recorded in
   `docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md`. Remaining gates are canonical
-  intent projection, saved-intake interpretation, the complete web maintenance
-  journey, operational recovery checks, and beta publication. Read-only
+  provider-effect authorization/apply/verification, the complete web maintenance
+  journey, provider connection lifecycle, operational recovery checks, and beta
+  publication. Read-only
   provider observation is now a real durable operation:
   the authenticated API accepts the typed command, the separately containerized
   worker leases the encrypted account-scoped Spotify credential, verifies the
@@ -456,12 +457,13 @@ and later Chordrift refactor begin.
   PostgreSQL provider-first interpreter, durable Start/Refresh/Resolve worker
   dispatch, and shared web/remote-CLI session access are implemented on the
   branch. Start and Refresh take a fresh provider observation; paired move rows
-  collapse into one logical gesture; unsupported phases fail closed; and
-  Authorize remains unavailable. This does not complete Production assembly:
-  accepted session resolutions must still update canonical playlist intent,
-  saved-intake cleanup must join the typed flow, and the complete vertical
-  slice needs disposable-PostgreSQL restart/client proof before deployment.
-  Provider writes remain disabled.
+  collapse into one logical gesture. Resolved placement, exclusion, custom-order,
+  and saved-track decisions now project idempotently into canonical intent through
+  an exact maintenance fork that preserves approved artwork and never classifies
+  unrelated tracks. Saved cleanup is withheld until all decisions are resolved
+  and is ordered after destination intent. The disposable-PostgreSQL projection
+  proof passes. Unsupported phases fail closed and Authorize remains unavailable;
+  provider writes remain disabled.
 
   Durable-session checkpoint (2026-08-31): additive migration 0051, a
   tenant/provider-scoped current session store, immutable accepted-revision
@@ -476,10 +478,10 @@ and later Chordrift refactor begin.
 
   Ordered remaining work for `v0.2.1-beta.1`:
 
-  1. [in progress] read-only encrypted-vault observation, durable API/worker
+  1. [complete] read-only encrypted-vault observation, durable API/worker
      runtime, maintenance-session persistence, PostgreSQL interpretation, and
-     Start/Refresh/Resolve routing are composed; project accepted record-only
-     resolutions into canonical intent and add saved-intake interpretation;
+     Start/Refresh/Resolve routing, canonical record-only projection, and saved-
+     intake interpretation are composed and proven on disposable PostgreSQL;
   2. implement Connect/Reconnect/Disconnect and multiple isolated Spotify
      connections without changing Chordrift product identity;
   3. finish the web maintenance journey and the shared provider/model
@@ -636,6 +638,15 @@ post-hosting client-boundary refactor are proven. Client code owns presentation
 and platform integration only. Accounts, provider inventory,
 evidence, collections, recipes, Spins, publication safety, persistence,
 background work, and diagnostics remain Rust-owned.
+
+The Rust-owned portion is itself split deliberately. A task-oriented
+application/workflow layer interprets gestures, exposes decisions, coordinates
+durable operations, and binds review/authorization. Beneath it, the
+provider-neutral domain core and typed infrastructure ports enforce durable
+intent, playlist/exclusion invariants, persistence, provider effects, receipts,
+and verification. Client skins do not sequence core calls, and provider or
+database adapters do not decide the user workflow. This three-layer boundary is
+the portability contract for CLI, web, iOS, Android, and any later client.
 
 The shippable authority is a hosted Rust service. The web app, optional native
 clients, and the CLI consume one versioned command/query/event contract and

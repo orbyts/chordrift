@@ -2792,11 +2792,40 @@ typed projection. Paired plan rows for one move are collapsed by Spotify track
 ID. Resolve records exact-revision decisions. Web and remote CLI start, query,
 refresh, and resolve the same session; authorization is explicitly rejected.
 
-Do not deploy this checkpoint yet. Resolutions currently live in the durable
-session ledger but are not projected back into the canonical playlist model,
-so repeated observations are not yet full model convergence. Saved-intake
-cleanup and every non-reconcile plan phase also fail closed. Next implement the
-canonical intent projection plus saved-intake record-only interpretation, then
-prove API/worker restart and both clients on disposable PostgreSQL. Keep
-authorization/apply disabled until a separately approved exact-write gate. See
+The following branch checkpoint supersedes the earlier warning about session-
+only resolutions. Keep authorization/apply disabled until its separately
+approved exact-write gate. See
 `docs/design/DURABLE_MAINTENANCE_SESSIONS_V021_06.md`.
+
+### Canonical maintenance projection checkpoint (2026-08-31)
+
+The hosted maintenance path now has the intended three product layers: thin
+CLI/web skins submit typed DTOs; a Rust application/workflow layer interprets
+gestures and coordinates durable sessions; the Rust domain core plus typed
+PostgreSQL/provider ports performs canonical intent and effects. Later iOS and
+Android clients must reuse this boundary rather than port workflow logic.
+
+`CanonicalMaintenanceProjector` idempotently records resolved provider-first
+gestures as canonical placement, reversible exclusion, accepted custom order,
+or remembered saved-track disposition. It creates an exact editable fork of
+the approved model, omits active exclusions, preserves selected names and
+already-approved artwork, and never centroid-assigns unrelated tracks. A retry
+of an already-satisfied resolution creates no generation. Provider-side direct
+intake and reclassification become placement evidence; removal becomes an
+exclusion; reorder becomes canonical custom order.
+
+Saved/Liked intake is part of the same Rust session. Placement and whether to
+retain the Like are separate decisions. The authority remembers preserve or
+clear intent; an exact `update_saved_state` effect is withheld until every
+required decision is resolved, and clear intent is projected only after the
+canonical destination/exclusion work. The browser only renders the server-
+provided decisions and sends selected DTO variants.
+
+Strict Clippy and focused Rust tests pass. A disposable PostgreSQL 18 container
+on Vortex proved canonical removal, idempotent retry, active exclusion, and
+approved-artwork inheritance on the newest generation. The database container,
+temporary source, and root-owned Cargo output were removed after the proof. No
+Neon branch was created and Spotify was not contacted. Next implement exact
+provider-effect authorization/apply/verification, then the independent Spotify
+Connect/Reconnect/Disconnect lifecycle and complete web/remote-CLI acceptance
+journey. Provider writes remain disabled at this checkpoint.

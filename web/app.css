@@ -71,6 +71,7 @@ th, td { padding: 11px 14px; border-bottom: 1px solid #2c2925; }
 .record-card > div:first-child strong, .record-card > div:first-child span, .compact-card strong, .compact-card span { display: block; }
 .record-card span, .compact-card span { color: #847c74; font-size: .78rem; margin-top: 3px; }
 .record-meta { text-align: right; }
+.decision-select { min-width: min(290px, 42vw); background: #0f0e0d; color: #ddd7cf; border: 1px solid #4a433b; border-radius: 10px; padding: 9px 12px; }
 .workbench { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .pane { min-width: 0; overflow: hidden; }
 textarea, pre { display: block; width: 100%; min-height: 420px; margin: 0; border: 0; padding: 18px; background: #0b0a09; color: #ddd7cf; font: 12px/1.62 ui-monospace, SFMono-Regular, Menlo, monospace; overflow: auto; resize: vertical; }

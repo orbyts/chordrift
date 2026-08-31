@@ -18,6 +18,7 @@ use crate::{
         MaintenanceResolution, MaintenanceSessionView, MaintenanceSurfaceView,
         MaintenanceTrackView, ResourceId,
     },
+    intake,
     maintenance::MaintenanceProjection,
     service::AuthenticatedSubject,
     sync_plan::{self, MaintenanceAnnotation, PlanOrigin, PlannedOperation},
@@ -73,19 +74,100 @@ impl<'a> PostgresMaintenanceInterpreter<'a> {
         if !current_snapshot {
             return Err(ClientError::new(ErrorCode::StateConflict, true));
         }
-        if operations
-            .iter()
-            .any(|operation| operation.phase != "reconcile")
-        {
+        if operations.iter().any(|operation| {
+            !matches!(
+                (operation.phase.as_str(), operation.operation_type.as_str()),
+                ("reconcile", _)
+                    | ("publish", "reorder_playlist")
+                    | ("cleanup", "remove_saved_track")
+            )
+        }) {
             return Err(ClientError::new(ErrorCode::StateConflict, false));
         }
-        let annotations =
-            sync_plan::maintenance_annotations(self.database, &account_label, &operations)
-                .await
-                .map_err(map_domain_error)?;
-        let tracks = track_views(self.database, &operations).await?;
-        projection_from_plan(snapshot_id, &operations, &annotations, &tracks)
+        let interpreted_operations: Vec<_> = operations
+            .iter()
+            .filter(|operation| operation.operation_type != "remove_saved_track")
+            .cloned()
+            .collect();
+        let annotations = sync_plan::maintenance_annotations(
+            self.database,
+            &account_label,
+            &interpreted_operations,
+        )
+        .await
+        .map_err(map_domain_error)?;
+        let tracks = track_views(self.database, &interpreted_operations).await?;
+        let mut projection =
+            projection_from_plan(snapshot_id, &interpreted_operations, &annotations, &tracks)?;
+        append_saved_intake(
+            self.database,
+            &account_label,
+            snapshot_id,
+            &mut projection.observed_changes,
+        )
+        .await?;
+        Ok(projection)
     }
+}
+
+async fn append_saved_intake(
+    database: &Database,
+    account_label: &str,
+    snapshot_id: ResourceId,
+    changes: &mut Vec<MaintenanceChangeView>,
+) -> Result<(), ClientError> {
+    let audit = intake::audit(database, account_label)
+        .await
+        .map_err(map_domain_error)?;
+    let liked: Vec<_> = audit
+        .items
+        .iter()
+        .filter(|item| item.sources.iter().any(|source| source == "Liked Songs"))
+        .collect();
+    let spotify_ids = liked
+        .iter()
+        .map(|item| item.spotify_id.clone())
+        .collect::<BTreeSet<_>>();
+    let tracks = track_views_for_ids(database, &spotify_ids).await?;
+    let already_placed: BTreeSet<_> = changes
+        .iter()
+        .filter_map(|change| change.track.as_ref().map(|track| track.track_id))
+        .collect();
+    let liked_surface = surface("Liked Songs");
+    for item in liked {
+        let track = tracks.get(&item.spotify_id).cloned().ok_or_else(invalid)?;
+        let represented = !item.current_destinations.is_empty()
+            || !item.proposal_destinations.is_empty()
+            || already_placed.contains(&track.track_id);
+        if !represented {
+            changes.push(MaintenanceChangeView {
+                change_id: change_id(snapshot_id, &format!("liked-place:{}", item.spotify_id)),
+                kind: MaintenanceChangeKind::DirectIntake,
+                track: Some(track.clone()),
+                previous_surface: Some(liked_surface.clone()),
+                current_surface: None,
+                summary: format!("Choose a destination for {}", track.title),
+                resolution: None,
+            });
+        }
+        let resolution = match item.saved_track_disposition.as_deref() {
+            Some("preserve") => continue,
+            Some("clear_after_verified_assignment") => Some(MaintenanceResolution::ConsumeIntake {
+                source: liked_surface.clone(),
+            }),
+            _ => None,
+        };
+        changes.push(MaintenanceChangeView {
+            change_id: change_id(snapshot_id, &format!("liked-state:{}", item.spotify_id)),
+            kind: MaintenanceChangeKind::SavedState,
+            track: Some(track.clone()),
+            previous_surface: None,
+            current_surface: Some(liked_surface.clone()),
+            summary: format!("Choose whether {} remains in Liked Songs", track.title),
+            resolution,
+        });
+    }
+    Ok(())
 }
 
 fn projection_from_plan(
@@ -191,9 +273,14 @@ async fn track_views(
     let spotify_ids = operations
         .iter()
         .filter_map(|operation| operation.spotify_track_id.clone())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
+        .collect::<BTreeSet<_>>();
+    track_views_for_ids(database, &spotify_ids).await
+}
+
+async fn track_views_for_ids(
+    database: &Database,
+    spotify_ids: &BTreeSet<String>,
+) -> Result<BTreeMap<String, MaintenanceTrackView>, ClientError> {
     if spotify_ids.is_empty() {
         return Ok(BTreeMap::new());
     }
@@ -210,7 +297,7 @@ async fn track_views(
             AND provider.provider_track_id = ANY($1)
           ORDER BY provider.provider_track_id",
     )
-    .bind(&spotify_ids)
+    .bind(spotify_ids.iter().cloned().collect::<Vec<_>>())
     .fetch_all(database.pool())
     .await
     .map_err(|_| unavailable())?;

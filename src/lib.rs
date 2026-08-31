@@ -66,6 +66,7 @@ pub mod intake;
 pub mod maintenance;
 /// PostgreSQL provider-first interpretation for durable maintenance tasks.
 pub mod maintenance_interpretation;
+pub mod maintenance_projection;
 /// Restart-safe PostgreSQL persistence for wrapper-neutral maintenance sessions.
 pub mod maintenance_store;
 /// Versioned pretrained audio-model inference artifacts.

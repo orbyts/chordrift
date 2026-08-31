@@ -5,8 +5,10 @@ use chordrift::{
     apply, config,
     contract::{
         CONTRACT_VERSION, CancellationOutcome, CancellationRequest, ClientError, Command,
-        CommandRequest, ErrorCode, IdempotencyKey, MaintenanceSessionId, OperationState, Progress,
-        ProgressUnit, Query, QueryRequest, RequestId, ResourceId,
+        CommandRequest, ErrorCode, IdempotencyKey, MaintenanceChangeId, MaintenanceChangeKind,
+        MaintenanceChangeView, MaintenanceResolution, MaintenanceSessionId, MaintenanceSurfaceView,
+        MaintenanceTrackView, OperationState, Progress, ProgressUnit, Query, QueryRequest,
+        RequestId, ResourceId,
     },
     db, db_reports,
     domain::{
@@ -27,6 +29,7 @@ use chordrift::{
     },
     intake::{self, IntakeState},
     maintenance::{MaintenanceProjection, MaintenanceWorkflow},
+    maintenance_projection::CanonicalMaintenanceProjector,
     maintenance_store::{MaintenanceTransition, PostgresMaintenanceSessionStore},
     onboarding::{
         ContentFingerprint, OnboardingEvidence, OnboardingInputs, OnboardingInventory,
@@ -893,14 +896,123 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     .bind(reduced_saved_revision_id)
     .execute(database.pool())
     .await?;
-    track_ops::exclude(
-        &database,
-        &account_label,
-        &removed_spotify_id,
-        "Observed provider removal",
-        &removed_spotify_id,
+    let artwork_generation_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM playlist_generations
+         WHERE provider_account_id = $1 AND status = 'approved'
+         ORDER BY approved_at DESC, created_at DESC, id DESC LIMIT 1",
     )
+    .bind(account_id)
+    .fetch_one(database.pool())
     .await?;
+    let artwork_playlist_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM playlists WHERE generation_id = $1 AND concept_id = $2")
+            .bind(artwork_generation_id)
+            .bind(concept_id)
+            .fetch_one(database.pool())
+            .await?;
+    let artwork_batch_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlist_artwork_batches
+         (provider_account_id, proposal_generation_id, input_hash, state,
+          visual_system, generator_provider, generator_model, generator_version,
+          manifest_path, contact_sheet_path, artifact_count, approved_at)
+         VALUES ($1, $2, $3, 'approved', 'fixture', 'fixture', 'fixture', '1',
+                 'fixture/manifest.json', 'fixture/contact.png', 1, now()) RETURNING id",
+    )
+    .bind(account_id)
+    .bind(artwork_generation_id)
+    .bind("6".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    sqlx::query(
+        "INSERT INTO playlist_artwork_artifacts
+         (batch_id, playlist_id, stable_key, playlist_name, artifact_path,
+          media_type, pixel_width, pixel_height, byte_size, content_sha256,
+          prompt, semantic_tags, target_kind)
+         VALUES ($1, $2, 'fixture-canonical', 'Fixture Canonical',
+                 'fixture/cover.png', 'image/png', 1000, 1000, 100,
+                 $3, 'fixture prompt', '[]', 'canonical')",
+    )
+    .bind(artwork_batch_id)
+    .bind(artwork_playlist_id)
+    .bind("7".repeat(64))
+    .execute(database.pool())
+    .await?;
+
+    let removal_view = MaintenanceWorkflow::new(
+        MaintenanceSessionId::new(),
+        MaintenanceProjection {
+            provider_snapshot_id: ResourceId::from_uuid(removed_snapshot_id),
+            observed_changes: vec![MaintenanceChangeView {
+                change_id: MaintenanceChangeId::new(),
+                kind: MaintenanceChangeKind::Removal,
+                track: Some(MaintenanceTrackView {
+                    track_id: ResourceId::from_uuid(tracks[2].0),
+                    title: "Known From History".to_owned(),
+                    artists: Vec::new(),
+                }),
+                previous_surface: Some(MaintenanceSurfaceView {
+                    surface_id: ResourceId::new(),
+                    name: "Fixture Canonical".to_owned(),
+                }),
+                current_surface: None,
+                summary: "Accepted provider removal".to_owned(),
+                resolution: Some(MaintenanceResolution::Exclude),
+            }],
+            provider_effects: Vec::new(),
+            review_id: None,
+        },
+    )
+    .expect("fixture removal is valid")
+    .view();
+    let subject = AuthenticatedSubject {
+        subject_id: ResourceId::new(),
+        account_id: ResourceId::from_uuid(chordrift_account_id),
+    };
+    CanonicalMaintenanceProjector::new(&database)
+        .project(subject, ResourceId::from_uuid(account_id), &removal_view)
+        .await
+        .expect("record-only removal projects into canonical intent");
+    let projected_generation_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM playlist_generations
+         WHERE provider_account_id = $1",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    CanonicalMaintenanceProjector::new(&database)
+        .project(subject, ResourceId::from_uuid(account_id), &removal_view)
+        .await
+        .expect("retrying projected removal is a no-op");
+    let retried_generation_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM playlist_generations
+         WHERE provider_account_id = $1",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(projected_generation_count, retried_generation_count);
+    let inherited_artwork: (i64, i64) = sqlx::query_as(
+        "WITH latest AS (
+           SELECT id FROM playlist_generations
+           WHERE provider_account_id = $1 AND status = 'approved'
+           ORDER BY created_at DESC, id DESC LIMIT 1
+         )
+         SELECT count(DISTINCT batch.id)::bigint,
+                count(artifact.id)::bigint
+         FROM latest
+         JOIN playlist_generations generation ON generation.id = latest.id
+         JOIN playlist_artwork_batches batch
+           ON batch.proposal_generation_id = generation.id AND batch.state = 'approved'
+         JOIN playlist_artwork_artifacts artifact ON artifact.batch_id = batch.id
+         WHERE generation.provider_account_id = $1
+           AND generation.status = 'approved'
+           AND artifact.content_sha256 = $2",
+    )
+    .bind(account_id)
+    .bind("7".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(inherited_artwork, (1, 1));
     let accepted_removal = apply::accept_current_provider_state(&database, &account_label).await?;
     assert_eq!(accepted_removal.snapshot_id, removed_snapshot_id);
     let old_keep_still_active: bool = sqlx::query_scalar(
@@ -971,6 +1083,10 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
         .execute(database.pool())
         .await?;
     sqlx::query("DELETE FROM track_playlist_assignment_revisions WHERE provider_account_id = $1")
+        .bind(account_id)
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM playlist_artwork_batches WHERE provider_account_id = $1")
         .bind(account_id)
         .execute(database.pool())
         .await?;

@@ -2,7 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const uuid = () => crypto.randomUUID();
 const contractVersion = { major: 1, minor: 3 };
-const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null, maintenanceSession: null };
+const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null, maintenanceSession: null, destinationPlaylists: [] };
 
 function queryEnvelope(query) { return { contract_version: contractVersion, request_id: uuid(), query }; }
 
@@ -137,6 +137,10 @@ async function followOperation(operationId) {
 async function loadMaintenanceSession(sessionId) {
   const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'maintenance_session', parameters: { session_id: sessionId } }));
   state.maintenanceSession = response.view.value;
+  if (!state.destinationPlaylists.length) {
+    const destinations = await contractRequest('/v1/queries', queryEnvelope({ type: 'library_playlists', parameters: { provider_connection_id: state.provider.provider_connection_id, source: 'chordrift_model' } }));
+    state.destinationPlaylists = destinations.view.value.playlists;
+  }
   renderMaintenanceSession();
 }
 
@@ -148,19 +152,39 @@ function renderMaintenanceSession() {
   const list = node('div', 'card-list');
   for (const change of view.observed_changes) {
     const card = node('div', 'record-card');
-    card.append(node('strong', '', change.summary), node('span', '', change.resolution ? `Recorded · ${change.kind.replaceAll('_', ' ')}` : `Decision needed · ${change.kind.replaceAll('_', ' ')}`));
+    const label = node('div'); label.append(node('strong', '', change.summary), node('span', '', change.resolution ? `Recorded · ${change.kind.replaceAll('_', ' ')}` : `Decision needed · ${change.kind.replaceAll('_', ' ')}`)); card.append(label);
+    if (!change.resolution) card.append(decisionControl(change));
     list.append(card);
   }
   if (!view.observed_changes.length) list.append(node('p', 'empty', 'Provider and Chordrift intent are already aligned.'));
   panel.append(list);
   if (view.allowed_actions.includes('resolve')) {
-    const resolve = node('button', '', 'Keep the observed provider state'); resolve.type = 'button';
+    const resolve = node('button', '', 'Record these decisions'); resolve.type = 'button';
     resolve.addEventListener('click', resolveObservedChanges, { once: true }); panel.append(resolve);
   }
   if (view.allowed_actions.includes('refresh')) {
     const refresh = node('button', '', 'Check provider again'); refresh.type = 'button';
     refresh.addEventListener('click', refreshMaintenance, { once: true }); panel.append(refresh);
   }
+}
+
+function decisionControl(change) {
+  const select = node('select', 'decision-select'); select.dataset.changeId = change.change_id; select.dataset.kind = change.kind;
+  if (['direct_intake', 'reclassification', 'removal'].includes(change.kind)) {
+    const prompt = node('option', '', 'Choose destination…'); prompt.value = ''; select.append(prompt);
+    for (const playlist of state.destinationPlaylists) {
+      const option = node('option', '', playlist.name); option.value = JSON.stringify({ surface_id: playlist.playlist_id, name: playlist.name }); select.append(option);
+    }
+    if (change.kind === 'removal') {
+      const excluded = node('option', '', 'Keep removed · add to Excluded'); excluded.value = 'exclude'; select.append(excluded);
+    }
+  } else if (change.kind === 'saved_state') {
+    const keep = node('option', '', 'Keep in Liked Songs'); keep.value = 'keep'; select.append(keep);
+    const consume = node('option', '', 'Remove from Likes after placement'); consume.value = 'consume'; select.append(consume);
+  } else {
+    const keep = node('option', '', 'Keep observed provider state'); keep.value = 'keep'; select.append(keep);
+  }
+  return select;
 }
 
 async function runMaintenanceCommand(command) {
@@ -180,7 +204,17 @@ async function refreshMaintenance() {
 
 async function resolveObservedChanges() {
   const view = state.maintenanceSession;
-  const decisions = view.observed_changes.filter((change) => !change.resolution).map((change) => ({ change_id: change.change_id, resolution: { type: 'keep_observed' } }));
+  const decisions = [];
+  for (const change of view.observed_changes.filter((item) => !item.resolution)) {
+    const select = document.querySelector(`[data-change-id="${change.change_id}"]`); const selected = select?.value;
+    if (!selected) { select?.focus(); return; }
+    let resolution;
+    if (selected === 'keep') resolution = { type: 'keep_observed' };
+    else if (selected === 'exclude') resolution = { type: 'exclude' };
+    else if (selected === 'consume') resolution = { type: 'consume_intake', parameters: { source: change.current_surface } };
+    else resolution = { type: change.kind === 'removal' ? 'restore' : 'place', parameters: { destination: JSON.parse(selected) } };
+    decisions.push({ change_id: change.change_id, resolution });
+  }
   await runMaintenanceCommand({ type: 'resolve_maintenance', parameters: { session_id: view.session_id, expected_revision: view.revision, decisions } });
 }
 
