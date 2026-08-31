@@ -434,14 +434,22 @@ and later Chordrift refactor begin.
   and newest-observation state and is designed for future connections. The
   exact web acceptance surface is recorded in
   `docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md`. Remaining gates are the real
-  provider observation/maintenance adapter, durable worker composition, the
-  web maintenance journey, operational recovery checks, and beta publication.
+  maintenance interpretation adapter, durable maintenance-session persistence,
+  the web maintenance journey, operational recovery checks, and beta
+  publication. Read-only provider observation is now a real durable operation:
+  the authenticated API accepts the typed command, the separately containerized
+  worker leases the encrypted account-scoped Spotify credential, verifies the
+  stable provider identity, calls the Rust inventory importer directly, rotates
+  a returned refresh credential, persists the complete snapshot atomically, and
+  exposes reconnectable progress/cancellation. No CLI, shell, arbitrary SQL, or
+  client-supplied provider URL is in that route. Provider writes remain disabled.
   Provider writes remain disabled.
 
   Ordered remaining work for `v0.2.1-beta.1`:
 
-  1. compose the encrypted-vault Spotify session, real read-only observation
-     adapter, PostgreSQL maintenance adapter, and durable API/worker runtime;
+  1. [in progress] read-only encrypted-vault observation and the durable
+     API/worker runtime are composed; persist maintenance sessions and complete
+     the PostgreSQL maintenance interpretation adapter;
   2. implement Connect/Reconnect/Disconnect and multiple isolated Spotify
      connections without changing Chordrift product identity;
   3. finish the web maintenance journey and the shared provider/model

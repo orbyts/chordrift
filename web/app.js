@@ -2,7 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const uuid = () => crypto.randomUUID();
 const contractVersion = { major: 1, minor: 3 };
-const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation' };
+const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null };
 
 function queryEnvelope(query) { return { contract_version: contractVersion, request_id: uuid(), query }; }
 
@@ -61,9 +61,14 @@ async function loadCompatibility() {
     contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 50 },
     requested_features: ['service.authenticated-transport.v1', 'service.product-identity.v1', 'service.provider-credential-vault.v1', 'service.durable-operations.v1', 'service.remote-cli.v1', 'maintenance.task-session.v1']
   });
-  const available = state.compatibility.features['maintenance.task-session.v1'] === 'available';
-  $('#start-maintenance').disabled = !available || !state.provider;
-  $('#maintenance-availability').textContent = available ? 'Ready. Provider effects still require an exact review.' : 'Hosted maintenance is being connected. Library inspection is available now.';
+  const observationAvailable = state.compatibility.features['service.durable-operations.v1'] === 'available';
+  const maintenanceAvailable = state.compatibility.features['maintenance.task-session.v1'] === 'available';
+  $('#start-maintenance').disabled = !observationAvailable || !state.provider?.credential_ready;
+  $('#maintenance-availability').textContent = maintenanceAvailable
+    ? 'Observation and ordinary maintenance are ready. Provider effects still require an exact review.'
+    : observationAvailable
+      ? 'Read-only provider observation is ready. Maintenance interpretation is the next production boundary.'
+      : 'Hosted provider work is being connected. Library inspection is available now.';
 }
 
 async function loadProviderConnections() {
@@ -84,7 +89,58 @@ function renderProviderState() {
   const connected = state.provider.credential_ready;
   $('#provider-dot').classList.toggle('online', connected);
   $('#provider-state').textContent = `${connected ? 'Connected' : 'Read-only record'} · observed ${formatTime(state.provider.observed_at)}`;
-  $('#start-maintenance').disabled = !connected || state.compatibility?.features['maintenance.task-session.v1'] !== 'available';
+  $('#start-maintenance').disabled = !connected || state.compatibility?.features['service.durable-operations.v1'] !== 'available' || Boolean(state.activeOperation);
+}
+
+function commandEnvelope(command) {
+  return { contract_version: contractVersion, request_id: uuid(), idempotency_key: uuid(), command };
+}
+
+async function observeProvider() {
+  if (!state.provider || state.activeOperation) return;
+  const panel = $('#maintenance-session'); panel.hidden = false;
+  panel.replaceChildren(node('strong', '', 'Observation queued'), node('p', 'availability', 'Waiting for the hosted worker. Spotify will not be changed.'));
+  $('#start-maintenance').disabled = true;
+  try {
+    const receipt = await contractRequest('/v1/commands', commandEnvelope({ type: 'observe_provider', parameters: { provider_connection_id: state.provider.provider_connection_id } }));
+    state.activeOperation = receipt;
+    await followOperation(receipt.operation_id);
+  } catch (error) {
+    panel.replaceChildren(node('strong', '', 'Observation could not start'), node('p', 'warning', error.message));
+  } finally {
+    state.activeOperation = null; renderProviderState();
+  }
+}
+
+async function followOperation(operationId) {
+  const panel = $('#maintenance-session');
+  for (;;) {
+    const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'operation', parameters: { operation_id: operationId } }));
+    const operation = response.view.value; const current = operation.state;
+    const progress = current.details?.progress;
+    panel.replaceChildren(
+      node('strong', '', current.state.replaceAll('_', ' ')),
+      node('p', 'availability', progress ? `${progress.phase.replaceAll('_', ' ')} · ${progress.completed}${progress.total == null ? '' : ` / ${progress.total}`}` : 'Spotify remains unchanged during observation.')
+    );
+    if (['completed', 'failed', 'cancelled'].includes(current.state)) {
+      await Promise.all([loadProviderConnections(), loadActivity()]);
+      return;
+    }
+    const cancel = node('button', '', 'Cancel safely'); cancel.type = 'button';
+    cancel.addEventListener('click', cancelActiveOperation, { once: true }); panel.append(cancel);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
+async function cancelActiveOperation() {
+  if (!state.activeOperation) return;
+  await contractRequest('/v1/commands', commandEnvelope({
+    type: 'cancel_operation',
+    parameters: {
+      operation_id: state.activeOperation.operation_id,
+      cancellation_id: state.activeOperation.cancellation_id
+    }
+  }));
 }
 
 async function loadPlaylists() {
@@ -204,6 +260,7 @@ $('#provider-select').addEventListener('change', async (event) => {
   state.provider = state.connections.find((connection) => connection.provider_connection_id === event.target.value); renderProviderState(); await Promise.all([loadPlaylists(), loadExclusions()]);
 });
 $('#preset').addEventListener('change', selectPreset); $('#send').addEventListener('click', sendDeveloperRequest);
+$('#start-maintenance').addEventListener('click', observeProvider);
 $('.dialog-close').addEventListener('click', () => $('#track-dialog').close());
 $('#track-dialog').addEventListener('click', (event) => { if (event.target === $('#track-dialog')) $('#track-dialog').close(); });
 selectPreset(); loadSession();

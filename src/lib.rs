@@ -54,6 +54,8 @@ pub mod enrichment;
 pub mod history;
 /// Production hosted-service assembly, OIDC login, and thin browser client.
 pub mod hosted;
+/// Separate durable provider-operation worker used by the hosted authority.
+pub mod hosted_worker;
 /// Authenticated HTTP adapter for typed application commands and queries.
 pub mod http_transport;
 /// Product identities, account authorization, and revocable bearer sessions.

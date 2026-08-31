@@ -248,6 +248,52 @@ pub(crate) async fn session(account_label: &str) -> Result<SpotifySession> {
     })
 }
 
+/// Exchanges one short-lived hosted-vault lease for a Spotify API session.
+///
+/// The refresh token is supplied only by the encrypted server-side vault. It
+/// is never loaded from a client, command payload, or local credential store.
+/// A rotated refresh token is returned to the caller for immediate encrypted
+/// vault rotation.
+pub(crate) async fn hosted_session(
+    refresh_token: &str,
+    retained_scopes: &[String],
+    expected_account_id: &str,
+) -> Result<(SpotifySession, Option<ProviderRefreshCredential>)> {
+    let config = SpotifyOAuthConfig::from_environment()?;
+    let http = oauth_http_client()?;
+    let token = refresh_access_token(&http, &config, refresh_token).await?;
+    validate_token(&token)?;
+    let mut scopes = token_scopes(&token);
+    if scopes.is_empty() {
+        scopes = retained_scopes.to_vec();
+    }
+    let rotated = token
+        .refresh_token
+        .as_ref()
+        .map(|value| ProviderRefreshCredential::new(value.clone(), scopes.clone()))
+        .transpose()
+        .map_err(|_| {
+            ChordriftError::Configuration(
+                "Spotify returned an invalid rotated refresh credential".to_owned(),
+            )
+        })?;
+    let client = SpotifyClient::new(token.access_token)?;
+    let profile = client.current_user().await?;
+    if profile.account_id != expected_account_id {
+        return Err(ChordriftError::Configuration(
+            "hosted Spotify credential resolved to a different provider account".to_owned(),
+        ));
+    }
+    Ok((
+        SpotifySession {
+            client,
+            profile,
+            scopes,
+        },
+        rotated,
+    ))
+}
+
 /// Loads the existing local refresh credential for a one-time trusted hosted
 /// adoption. The plaintext value is transferred directly into the encrypted
 /// provider vault and is never returned to a client or rendered by the CLI.

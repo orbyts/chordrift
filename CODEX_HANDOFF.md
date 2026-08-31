@@ -2694,3 +2694,33 @@ Future migration/restore rehearsals use disposable local PostgreSQL by default.
 If Neon branch behavior itself must be tested, create the branch with an expiry
 and delete it immediately after the recorded proof. Never leave a rehearsal
 branch as an implicit runtime dependency.
+
+### Durable hosted observation checkpoint (2026-08-31)
+
+The V021-06 branch now has separate `chordrift-server` and `chordrift-worker`
+entry points. `ObserveProvider` is accepted into migration-0050 durable storage
+only after tenant/provider ownership validation. The worker exclusively claims
+it, decrypts the active refresh credential through the account-scoped vault,
+verifies the stable Spotify identity, rotates a returned refresh credential,
+and calls the Rust inventory importer directly. It emits durable progress,
+renews its lease, honors cooperative cancellation, and atomically publishes a
+complete provider observation. It never invokes a CLI or shell. The browser's
+Observe button submits and follows this typed operation; provider writes remain
+disabled.
+
+The pinned runtime image contains both binaries, while Vortex Compose runs them
+as separate read-only, non-root API and worker services. Only the API publishes
+the Nexus-facing private port. See
+`docs/design/HOSTED_PRODUCTION_ASSEMBLY_V021_06.md`.
+An isolated Vortex build succeeded as
+`sha256:dbbb3dce2df73504791e0691092eaf23810469a531164c8456746033549c8854`;
+inspection proved UID/GID 65532, no `/build` source tree, and only
+`chordrift-server` plus `chordrift-worker` under `/usr/local/bin`. Compose
+configuration validation also passed. This is a disposable development proof,
+not the eventual beta.1 release digest and not a live deployment.
+
+Do not mark V021-06 Production assembly complete yet. The next code boundary is
+durable maintenance-session persistence plus cumulative provider-first
+interpretation/decision recording. Only after that is proven with fake-provider
+and disposable-PostgreSQL tests should the hosted maintenance capability become
+available. No live Spotify observation was executed by this checkpoint.

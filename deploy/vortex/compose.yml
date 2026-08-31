@@ -44,6 +44,36 @@ services:
         reservations:
           memory: 128m
 
+  worker:
+    image: chordrift:${CHORDRIFT_IMAGE_TAG:-v0.2.1-beta.1-dev}
+    entrypoint: ["/usr/local/bin/chordrift-worker"]
+    restart: unless-stopped
+    env_file:
+      - ${CHORDRIFT_SECRETS_FILE:?set CHORDRIFT_SECRETS_FILE to the host-only environment file}
+    environment:
+      CHORDRIFT_WORKER_NAME: vortex-1
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    stop_grace_period: 30s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+        reservations:
+          memory: 128m
+
 networks:
   default:
     name: chordrift-private

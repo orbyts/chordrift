@@ -46,13 +46,17 @@ use crate::{
         CAPABILITY_AUTHENTICATED_SERVICE_TRANSPORT, CAPABILITY_DURABLE_OPERATIONS,
         CAPABILITY_MAINTENANCE_TASK_SESSION, CAPABILITY_PRODUCT_IDENTITY,
         CAPABILITY_PROVIDER_CREDENTIAL_VAULT, CAPABILITY_REMOTE_CLI, CONTRACT_VERSION,
-        CapabilityAvailability, ContractVersionRange, ErrorCode, ExcludedTrackView,
-        ExcludedTracksView, LibraryPlaylistTrackView, LibraryPlaylistTracksView,
-        LibraryPlaylistView, LibraryPlaylistsView, LibraryStateSource, LibraryTrackPlacementView,
-        LibraryTrackView, ProviderConnectionView, ProviderConnectionsView, ResourceId,
-        ServiceCompatibility,
+        CapabilityAvailability, Command, CommandReceipt, CommandRequest, ContractVersionRange,
+        ErrorCode, ExcludedTrackView, ExcludedTracksView, LibraryPlaylistTrackView,
+        LibraryPlaylistTracksView, LibraryPlaylistView, LibraryPlaylistsView, LibraryStateSource,
+        LibraryTrackPlacementView, LibraryTrackView, ProviderConnectionView,
+        ProviderConnectionsView, Query, QueryRequest, QueryResponse, ResourceId,
+        ServiceCompatibility, View,
     },
     db,
+    durable_operations::{
+        DurableOperationQueue, OperationRetryPolicy, PostgresDurableOperationStore,
+    },
     http_transport::{AuthenticatedHttpTransport, BearerAuthenticator},
     identity::{
         ExternalIdentityVerifier, PRODUCT_SESSION_SCHEMA_VERSION, PostgresProductIdentityStore,
@@ -61,7 +65,9 @@ use crate::{
     },
     maintenance::{MaintenanceDecisionProjection, MaintenanceProjection},
     provider_vault::{PostgresProviderCredentialStore, ProviderVaultKeyring},
-    service::{AuthenticatedSubject, MaintenanceApplication, MaintenanceBackend},
+    service::{
+        AuthenticatedSubject, ContractApplication, MaintenanceApplication, MaintenanceBackend,
+    },
 };
 
 const SESSION_COOKIE: &str = "chordrift_session";
@@ -222,6 +228,135 @@ struct BrowserBridge {
 #[derive(Clone)]
 struct DeploymentMaintenanceBackend {
     pool: PgPool,
+}
+
+struct DeploymentApplication {
+    pool: PgPool,
+    reads: MaintenanceApplication<DeploymentMaintenanceBackend>,
+    operations: DurableOperationQueue<PostgresDurableOperationStore>,
+}
+
+impl DeploymentApplication {
+    fn new(pool: PgPool, operations: DurableOperationQueue<PostgresDurableOperationStore>) -> Self {
+        Self {
+            reads: MaintenanceApplication::new(DeploymentMaintenanceBackend { pool: pool.clone() }),
+            pool,
+            operations,
+        }
+    }
+
+    async fn owns_provider_connection(
+        &self,
+        subject: AuthenticatedSubject,
+        provider_connection_id: ResourceId,
+    ) -> bool {
+        sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(
+                 SELECT 1 FROM provider_accounts
+                  WHERE chordrift_account_id = $1 AND id = $2
+             )",
+        )
+        .bind(subject.account_id.as_uuid())
+        .bind(provider_connection_id.as_uuid())
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(false)
+    }
+}
+
+#[async_trait]
+impl ContractApplication for DeploymentApplication {
+    async fn command(
+        &mut self,
+        subject: AuthenticatedSubject,
+        request: CommandRequest,
+    ) -> std::result::Result<CommandReceipt, crate::contract::ClientError> {
+        if let Command::CancelOperation(cancellation) = request.command {
+            self.operations
+                .request_cancellation(subject, cancellation)
+                .await?;
+            return Ok(CommandReceipt {
+                contract_version: CONTRACT_VERSION,
+                request_id: request.request_id,
+                operation_id: cancellation.operation_id,
+                cancellation_id: cancellation.cancellation_id,
+            });
+        }
+        if let Command::ObserveProvider {
+            provider_connection_id,
+        } = request.command
+        {
+            if !self
+                .owns_provider_connection(subject, provider_connection_id)
+                .await
+            {
+                return Err(crate::contract::ClientError::new(
+                    ErrorCode::PermissionDenied,
+                    false,
+                ));
+            }
+            return self
+                .operations
+                .accept(
+                    subject,
+                    request,
+                    OperationRetryPolicy::new(3, Duration::from_secs(5))
+                        .expect("static hosted retry policy is valid"),
+                )
+                .await
+                .map(|accepted| accepted.receipt);
+        }
+        self.reads.command(subject, request).await
+    }
+
+    async fn query(
+        &mut self,
+        subject: AuthenticatedSubject,
+        request: QueryRequest,
+    ) -> std::result::Result<QueryResponse, crate::contract::ClientError> {
+        let generated_at = Utc::now();
+        match request.query {
+            Query::Operation { operation_id } => {
+                let operation = self.operations.operation(subject, operation_id).await?;
+                Ok(crate::durable_operations::operation_query_response(
+                    request.request_id,
+                    generated_at,
+                    operation,
+                ))
+            }
+            Query::OperationHistory { account_id } => {
+                if account_id != subject.account_id {
+                    return Err(crate::contract::ClientError::new(
+                        ErrorCode::PermissionDenied,
+                        false,
+                    ));
+                }
+                Ok(QueryResponse::OperationHistory(View {
+                    contract_version: CONTRACT_VERSION,
+                    request_id: request.request_id,
+                    generated_at,
+                    value: self.operations.history(subject).await?,
+                }))
+            }
+            Query::OperationEvents {
+                operation_id,
+                after_sequence,
+            } => Ok(QueryResponse::OperationEvents(View {
+                contract_version: CONTRACT_VERSION,
+                request_id: request.request_id,
+                generated_at,
+                value: self
+                    .operations
+                    .events(subject, operation_id, after_sequence)
+                    .await?,
+            })),
+            query => {
+                self.reads
+                    .query(subject, QueryRequest { query, ..request })
+                    .await
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -813,6 +948,11 @@ pub async fn run_from_env() -> Result<()> {
     let provider_keyring = ProviderVaultKeyring::from_environment()
         .map_err(|_| configuration("hosted provider credential key is not ready"))?;
     let _provider_vault_ready = (provider_store, provider_keyring);
+    let operation_store = Arc::new(PostgresDurableOperationStore::new(pool.clone()));
+    operation_store
+        .verify_schema()
+        .await
+        .map_err(|_| configuration("durable operation schema is not ready"))?;
     let identity_store = Arc::new(PostgresProductIdentityStore::new(pool.clone()));
     identity_store
         .verify_schema()
@@ -845,7 +985,7 @@ pub async fn run_from_env() -> Result<()> {
         login_attempts: Arc::new(Mutex::new(HashMap::new())),
     };
 
-    let application = MaintenanceApplication::new(DeploymentMaintenanceBackend { pool });
+    let application = DeploymentApplication::new(pool, DurableOperationQueue::new(operation_store));
     let compatibility = deployment_compatibility();
     let typed = AuthenticatedHttpTransport::new(
         Arc::new(Mutex::new(Box::new(application))),
@@ -957,7 +1097,7 @@ fn deployment_compatibility() -> ServiceCompatibility {
             ),
             (
                 CAPABILITY_DURABLE_OPERATIONS.to_owned(),
-                CapabilityAvailability::Unavailable,
+                CapabilityAvailability::Available,
             ),
             (
                 CAPABILITY_REMOTE_CLI.to_owned(),
@@ -1294,8 +1434,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deployment_manifest_is_honest_before_real_adapter_is_wired() {
+    fn deployment_manifest_exposes_durable_observation_but_not_maintenance() {
         let compatibility = deployment_compatibility();
+        assert_eq!(
+            compatibility.features.get(CAPABILITY_DURABLE_OPERATIONS),
+            Some(&CapabilityAvailability::Available)
+        );
         assert_eq!(
             compatibility
                 .features

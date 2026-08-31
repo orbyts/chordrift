@@ -11,8 +11,9 @@ COPY scripts/render_artwork_label.swift ./scripts/render_artwork_label.swift
 COPY web ./web
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/build/target,sharing=locked \
-    cargo build --locked --release --bin chordrift-server && \
-    cp /build/target/release/chordrift-server /tmp/chordrift-server
+    cargo build --locked --release --bin chordrift-server --bin chordrift-worker && \
+    cp /build/target/release/chordrift-server /tmp/chordrift-server && \
+    cp /build/target/release/chordrift-worker /tmp/chordrift-worker
 
 FROM ${RUNTIME_IMAGE} AS runtime
 ARG VCS_REF=unknown
@@ -27,6 +28,7 @@ RUN apt-get update && \
     groupadd --system --gid 65532 chordrift && \
     useradd --system --uid 65532 --gid 65532 --no-create-home --home-dir /nonexistent chordrift
 COPY --from=builder --chmod=0555 /tmp/chordrift-server /usr/local/bin/chordrift-server
+COPY --from=builder --chmod=0555 /tmp/chordrift-worker /usr/local/bin/chordrift-worker
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/chordrift-server"]
