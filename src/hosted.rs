@@ -19,7 +19,7 @@ use axum::{
     Json, Router,
     extract::{Query as AxumQuery, Request, State},
     http::{
-        HeaderValue, StatusCode,
+        HeaderName, HeaderValue, StatusCode,
         header::{
             AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, LOCATION, ORIGIN, SET_COOKIE,
         },
@@ -335,13 +335,46 @@ pub async fn run_from_env() -> Result<()> {
         .route("/auth/session", get(session_status))
         .route("/auth/logout", post(logout))
         .with_state(state)
-        .merge(typed);
+        .merge(typed)
+        .layer(middleware::from_fn(security_headers));
 
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
     axum::serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
+}
+
+async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    add_security_headers(&mut response);
+    response
+}
+
+fn add_security_headers(response: &mut Response) {
+    let headers = response.headers_mut();
+    headers.insert(
+        HeaderName::from_static("strict-transport-security"),
+        HeaderValue::from_static("max-age=31536000"),
+    );
+    headers.insert(
+        HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(
+        HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+    );
+    headers.insert(
+        HeaderName::from_static("content-security-policy"),
+        HeaderValue::from_static(
+            "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'",
+        ),
+    );
 }
 
 /// Checks the loopback liveness endpoint for container orchestration without
@@ -748,6 +781,28 @@ mod tests {
         assert_eq!(
             cookie(&headers, SESSION_COOKIE).as_deref(),
             Some("expected")
+        );
+    }
+
+    #[test]
+    fn hosted_responses_enforce_wrapper_independent_browser_policy() {
+        let mut response = StatusCode::OK.into_response();
+        add_security_headers(&mut response);
+        assert_eq!(
+            response
+                .headers()
+                .get("content-security-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some(
+                "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'"
+            )
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("strict-transport-security")
+                .and_then(|value| value.to_str().ok()),
+            Some("max-age=31536000")
         );
     }
 }
