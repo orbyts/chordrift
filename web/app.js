@@ -68,7 +68,7 @@ async function loadCompatibility() {
 
 async function loadProviderConnections() {
   const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'provider_connections' }));
-  state.connections = response.view.connections;
+  state.connections = response.view.value.connections;
   const select = $('#provider-select'); select.replaceChildren();
   for (const connection of state.connections) {
     const provider = connection.provider === 'spotify' ? 'Spotify' : connection.provider;
@@ -90,7 +90,7 @@ function renderProviderState() {
 async function loadPlaylists() {
   if (!state.provider) return;
   const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'library_playlists', parameters: { provider_connection_id: state.provider.provider_connection_id, source: state.source } }));
-  const view = response.view;
+  const view = response.view.value;
   $('#library-context').textContent = state.source === 'provider_observation'
     ? `Newest complete ${state.provider.provider} observation · ${formatTime(view.state_at)}. Refreshing the provider is a separate read-only action.`
     : `Chordrift's newest editable or approved managed model · ${formatTime(view.state_at)}.`;
@@ -110,7 +110,7 @@ async function loadPlaylistTracks(playlist, button) {
   try {
     const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'library_playlist_tracks', parameters: { provider_connection_id: state.provider.provider_connection_id, playlist_id: playlist.playlist_id, source: state.source } }));
     table.replaceChildren();
-    for (const track of response.view.tracks) {
+    for (const track of response.view.value.tracks) {
       const row = node('tr', 'track-row'); row.tabIndex = 0; row.append(node('td', 'position', track.position));
       const identity = node('td', 'track-identity'); identity.append(node('strong', '', track.title), node('span', '', track.artists));
       row.append(identity, node('td', 'album', track.album || '—'));
@@ -129,7 +129,7 @@ async function loadTrack(providerTrackId) {
   const detail = $('#track-detail'); detail.replaceChildren(node('p', 'empty', 'Loading track history…')); $('#track-dialog').showModal();
   try {
     const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'library_track', parameters: { provider_connection_id: state.provider.provider_connection_id, provider_track_id: providerTrackId } }));
-    const track = response.view; detail.replaceChildren();
+    const track = response.view.value; detail.replaceChildren();
     detail.append(node('p', 'eyebrow', 'Track detail'), node('h2', 'dialog-title', track.title), node('p', 'dialog-artists', track.artists));
     const metrics = node('div', 'metrics');
     for (const [label, value] of [['Meaningful plays', track.play_count], ['Listening events', track.event_count], ['Last heard', formatTime(track.last_played_at)], ['Liked now', track.saved ? 'Yes' : 'No']]) {
@@ -149,7 +149,7 @@ async function loadExclusions() {
   if (!state.provider) return;
   try {
     const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'excluded_tracks', parameters: { provider_connection_id: state.provider.provider_connection_id } }));
-    const tracks = response.view.tracks; $('#exclusion-count').textContent = tracks.length.toLocaleString();
+    const tracks = response.view.value.tracks; $('#exclusion-count').textContent = tracks.length.toLocaleString();
     const list = $('#exclusion-list'); list.replaceChildren();
     for (const track of tracks) {
       const card = node('button', 'record-card'); card.type = 'button';
@@ -166,10 +166,10 @@ async function loadActivity() {
   try {
     const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'operation_history', parameters: { account_id: state.session.account_id } }));
     const list = $('#operation-list'); list.replaceChildren();
-    for (const operation of response.view.operations) {
+    for (const operation of response.view.value.operations) {
       const card = node('div', 'record-card'); card.append(node('strong', '', operation.state.state.replaceAll('_', ' ')), node('span', '', operation.operation_id)); list.append(card);
     }
-    if (!response.view.operations.length) list.append(node('p', 'empty', 'No hosted operations yet.'));
+    if (!response.view.value.operations.length) list.append(node('p', 'empty', 'No hosted operations yet.'));
   } catch (error) { $('#operation-list').replaceChildren(node('p', 'warning', error.message)); }
 }
 
