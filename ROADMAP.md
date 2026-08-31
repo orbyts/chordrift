@@ -242,6 +242,14 @@ are checkpoints, not replacements for the hosted-authority goal.
   1.3 with an explicit `consume_intake` resolution, update the canonical
   sequence diagram, prove wrapper output plus disposable-PostgreSQL behavior,
   and publish `v0.2.1-alpha.16` before V021-05.
+- [x] **A021-15 — Interrupted move convergence.** Collapse paired remove/add
+  plan evidence into one logical move before proposal mutation, treat current
+  membership represented by an editable copy as already covered, and prevent
+  stale assignment revisions from overriding active exclusions during
+  proposal extension. Recover the five-track Rasa Archive → Cinema Monsoon
+  incident without a Spotify write, prove zero pending maintenance and zero
+  phantom intake, and publish the regression as `v0.2.1-alpha.18` while
+  V021-06 remains in progress.
 
 **Daily-driver experience refinement queue (non-blocking):** batch the active
 items in `docs/design/DAILY_DRIVER_EDGE_CASE_LEDGER.md` into a later coherent

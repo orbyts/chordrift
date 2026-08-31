@@ -163,6 +163,41 @@ find_managed_moves() {
     awk -F '\t' 'NF == 4 { print }' "$WORK_DIR/managed-moves.tsv" >"$MOVE_AMBIGUOUS_FILE"
 }
 
+# A single provider gesture can appear as both the removal and addition halves
+# of a sync plan. Collapse matching evidence before an editable proposal is
+# created. Never guess when one track appears to target different destinations.
+normalize_automatic_moves() {
+    normalized="$WORK_DIR/automatic-moves-normalized.tsv"
+    if ! awk -F '\t' 'BEGIN { OFS = "\t" }
+        NF == 5 {
+            spotify_id = $3
+            destination = $5
+            pair = spotify_id SUBSEP destination
+            if (!(spotify_id in first_destination)) {
+                first_destination[spotify_id] = destination
+            } else if (first_destination[spotify_id] != destination) {
+                conflicts[spotify_id] = first_destination[spotify_id] " / " destination
+            }
+            if (!(pair in row) || (row[pair] ~ /\tNew intake\t/ && $4 != "New intake")) {
+                row[pair] = $0
+            }
+        }
+        END {
+            failed = 0
+            for (spotify_id in conflicts) {
+                print "Conflicting inferred destinations for " spotify_id ": " conflicts[spotify_id] > "/dev/stderr"
+                failed = 1
+            }
+            if (failed) exit 2
+            for (pair in row) print row[pair]
+        }
+    ' "$AUTO_MOVES_FILE" >"$normalized"; then
+        printf 'Stopped before changing Chordrift: observed moves do not have one unambiguous destination.\n' >&2
+        exit 3
+    fi
+    LC_ALL=C sort -t "$(printf '\t')" -k5,5 -k1,1 -k3,3 "$normalized" >"$AUTO_MOVES_FILE"
+}
+
 find_provider_order_drift() {
     awk -F '\t' '$1 ~ /^[0-9]+$/ && $2 == "publish" && $3 == "reorder_playlist" {
         print $4
@@ -316,6 +351,7 @@ create_plan
 find_managed_moves
 find_provider_order_drift
 find_ambiguous
+normalize_automatic_moves
 if [ -s "$AMBIGUOUS_FILE" ] || [ -s "$AUTO_MOVES_FILE" ] || [ -s "$ORDER_DRIFT_FILE" ] || \
     [ -s "$LIKED_DECISIONS_FILE" ]; then
     if [ "$REVIEW_ONLY" = true ]; then

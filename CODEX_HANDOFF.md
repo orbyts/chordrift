@@ -2724,3 +2724,32 @@ durable maintenance-session persistence plus cumulative provider-first
 interpretation/decision recording. Only after that is proven with fake-provider
 and disposable-PostgreSQL tests should the hosted maintenance capability become
 available. No live Spotify observation was executed by this checkpoint.
+
+### Alpha.18 interrupted-move recovery (2026-08-31)
+
+Daily use exposed one compound record-only failure while five tracks were moved
+from Rasa Archive to Cinema Monsoon. The detailed plan represented both halves
+of each move, the shell submitted ten IDs, and assignment rejected duplicates.
+The interrupted run left a complete editable proposal; the prior classifier
+then treated current membership plus a proposed destination as direct intake,
+expanding the retry to 1,439 tracks. No provider apply was reached.
+
+Alpha.18 canonicalizes automatic move evidence before proposal mutation,
+rejects conflicting destinations, and classifies current membership represented
+in either an approved or editable proposal as covered. Proposal extension model
+version 3 also prevents active exclusions from being re-added by stale manual
+assignment revisions. The changed extension hash prevents reuse of the bad
+cached copy.
+
+The live recovery used the fixed development binary against the already-pulled
+snapshot only. It recorded exactly five unique moves, omitted the two excluded
+tracks that a stale revision had attempted to replay, accepted exact provider
+order for membership-equal playlists, and finished with approved generation
+`5e35ca8a-279a-4092-99af-a7530c24f58d`: 1,429/1,429 represented, zero pending
+maintenance operations, and 1,429 `already_covered` intake rows with no direct
+intake. Spotify was neither pulled nor written during recovery.
+
+Publish this repair as `v0.2.1-alpha.18`, then continue V021-06. Permanent
+regressions live in the daily-driver edge-case ledger, the fake-binary suite,
+the intake classifier unit test, and the disposable-PostgreSQL intake/extension
+test.

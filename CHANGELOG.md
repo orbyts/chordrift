@@ -4,6 +4,23 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.18] - 2026-08-31
+
+- Collapse the removal and addition halves of one provider move into one
+  canonical maintenance decision before creating or editing a proposal; stop
+  safely if one track has conflicting inferred destinations.
+- Treat current Spotify membership already represented in an editable copy as
+  covered, preventing an interrupted run from relabeling the full library as
+  direct intake.
+- Keep active exclusions authoritative when replaying historical assignment
+  revisions into an editable proposal, and version the corrected extension
+  algorithm so an older cached copy cannot be reused.
+- Recover the live interrupted five-track Rasa Archive → Cinema Monsoon move
+  without writing Spotify, then prove the approved 1,429-track model has zero
+  pending maintenance operations and zero phantom direct intake.
+- Add fake-binary, unit, and disposable-PostgreSQL regressions for paired plan
+  evidence, editable-copy classification, and exclusion precedence.
+
 ## [0.2.1-alpha.17] - 2026-08-30
 
 - Add the installed CLI's authenticated remote service client with mandatory

@@ -45,7 +45,7 @@ receipt fields, and does not contact Spotify. It is not a replacement for the
 future user-facing Connect/Reconnect/Disconnect provider flow and must not be
 offered as a normal web or remote-CLI operation.
 
-Command status: this page documents the **v0.2.1-alpha.17** daily-driver CLI. It retains the
+Command status: this page documents the **v0.2.1-alpha.18** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
