@@ -6751,6 +6751,11 @@ fn write_database_cleanup_verification(
     writeln!(output, "invariant_sha256: {}", report.invariant_sha256)?;
     writeln!(
         output,
+        "live_invariant_matches_cleanup_instant: {}",
+        report.invariant_matches_receipt
+    )?;
+    writeln!(
+        output,
         "legacy_tables_absent: {}",
         report.legacy_tables_absent
     )?;
@@ -6764,7 +6769,17 @@ fn write_database_cleanup_verification(
         "normalized_listening_events: {}",
         report.normalized_listening_events
     )?;
+    writeln!(
+        output,
+        "minimum_normalized_listening_events: {}",
+        report.minimum_normalized_listening_events
+    )?;
     writeln!(output, "evidence_imports: {}", report.evidence_imports)?;
+    writeln!(
+        output,
+        "minimum_evidence_imports: {}",
+        report.minimum_evidence_imports
+    )?;
     writeln!(output, "verified_at: {}", report.verified_at.to_rfc3339())?;
     writeln!(output, "verified: {}", report.verified)?;
     writeln!(output, "provider_requests: disabled")?;

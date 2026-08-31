@@ -1,0 +1,49 @@
+name: chordrift
+
+services:
+  api:
+    image: chordrift:${CHORDRIFT_IMAGE_TAG:-v0.2.1-beta.1-dev}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VCS_REF: ${CHORDRIFT_VCS_REF:?set CHORDRIFT_VCS_REF to the exact commit}
+        BUILD_DATE: ${CHORDRIFT_BUILD_DATE:?set CHORDRIFT_BUILD_DATE in RFC3339 form}
+    restart: unless-stopped
+    env_file:
+      - ${CHORDRIFT_SECRETS_FILE:?set CHORDRIFT_SECRETS_FILE to the host-only environment file}
+    environment:
+      CHORDRIFT_BIND: 0.0.0.0:8080
+    ports:
+      - "10.214.90.35:8787:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/chordrift-server", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+        reservations:
+          memory: 128m
+
+networks:
+  default:
+    name: chordrift-private

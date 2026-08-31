@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Chordrift Workbench</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">Private beta · typed application contract</p>
+      <h1>Chordrift</h1>
+      <p class="lede">Observe freely. Review meaning. Authorize provider effects exactly.</p>
+    </div>
+    <nav>
+      <a class="button" id="login" href="/auth/login">Continue with Google</a>
+      <form action="/auth/logout" method="post"><button class="quiet" type="submit">Log out</button></form>
+    </nav>
+  </header>
+
+  <main>
+    <section class="status" aria-live="polite">
+      <span id="session-dot"></span>
+      <strong id="session-label">Checking Chordrift session…</strong>
+      <span id="session-detail"></span>
+    </section>
+
+    <section class="workbench">
+      <div class="pane">
+        <div class="pane-heading">
+          <div>
+            <p class="eyebrow">Request</p>
+            <h2>Typed DTO</h2>
+          </div>
+          <select id="preset" aria-label="Request preset">
+            <option value="compatibility">Compatibility</option>
+            <option value="operation_history">Operation history</option>
+            <option value="custom_query">Custom query</option>
+            <option value="custom_command">Custom command</option>
+          </select>
+        </div>
+        <textarea id="request" spellcheck="false" aria-label="Typed JSON request"></textarea>
+        <div class="actions">
+          <button id="send" type="button">Send typed request</button>
+          <span id="request-kind"></span>
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="pane-heading">
+          <div>
+            <p class="eyebrow">Response</p>
+            <h2>Rust authority</h2>
+          </div>
+          <span id="http-status">Idle</span>
+        </div>
+        <pre id="response" tabindex="0">Sign in, then send a typed request.</pre>
+      </div>
+    </section>
+
+    <aside>
+      This workbench cannot run shell commands, submit SQL, choose provider URLs,
+      or access credentials. Provider writes remain disabled for the identity cutover.
+    </aside>
+  </main>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

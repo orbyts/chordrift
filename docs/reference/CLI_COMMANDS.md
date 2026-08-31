@@ -325,7 +325,11 @@ The compaction plan runs in a read-only transaction and only describes current,
 durably protected, and redundant routine observations; it cannot apply cleanup.
 The v2 status command compares exact current order, saved surfaces, normalized
 evidence, and compact checkpoints. On the released clean runtime those parity
-gates are complete. The
+gates are complete. Cleanup verification treats its stored event/evidence
+counts as a retention floor: later provider observations and listening imports
+may change the live invariant and increase those counts without invalidating
+the cutover. Reappearing legacy tables, non-empty import staging, or counts
+below the receipt still fail verification. The
 [database-v2 design](../design/DATABASE_ARCHITECTURE_V2.md) retains the dated
 execution record; intermediate “next gate” statements there are historical.
 

@@ -2586,3 +2586,57 @@ Before schema changes, route the existing CLI through an application facade,
 freeze provider-neutral/domain/contract types, and add fake-provider account-
 isolation, idempotency, and cancellation tests. Then design one additive
 ownership/collection/surface/recipe/Spin/onboarding migration and rehearse it.
+
+## V021-06 hosted private-beta deployment checkpoint (2026-08-31)
+
+Work continues on branch `codex/v021-06-private-beta`. The branch adds a Rust
+hosted server, Auth0/Google authorization-code + PKCE login, verified-email
+bootstrap adoption of the existing Chordrift account, revocable HttpOnly
+Chordrift sessions, exact-origin cookie-to-bearer bridging for typed browser
+DTOs, a minimal JavaScript contract workbench, liveness/readiness endpoints,
+a pinned multi-stage non-root Docker image, Vortex Compose configuration, and a
+proposed Nexus Nginx site. The runtime image contains the compiled server and CA
+roots, not the repository, source, Git history, compiler, caches, or secrets.
+
+The hosted compatibility manifest deliberately advertises provider vault,
+durable operations, remote CLI, and maintenance as unavailable until the real
+Spotify/PostgreSQL maintenance adapter and durable worker are composed. The
+container must continue to fail closed; do not replace that boundary with a
+shell call to `chordrift` or the maintenance script. Provider writes remain
+disabled throughout the identity/database cutover and require a later explicit
+user gate.
+
+Neon project `royal-snow-31539822` has no-compute backup branch
+`pre-v02106-20260830` (`br-bold-haze-afrt5en4`) and auto-expiring rehearsal
+branch `rehearse-v02106-20260830` (`br-red-frost-afeshi7s`). Migrations
+0048–0050 were applied only to the rehearsal database. Its post-cleanup schema
+was restored schema-only into a disposable database; normalized-history import
+passes there. A separate fresh-migration disposable database passes six ignored
+PostgreSQL tests covering migration, product identity/revocation, tenant
+isolation, encrypted credential rotation/tamper/revocation, and durable
+operation replay/leases/recovery/cancellation. The complete non-database suite
+passes (173 passed, two database tests ignored), as do strict Clippy and format.
+
+The rehearsal exposed a cleanup-receipt bug: exact equality with the cleanup-
+instant invariant and event count made every later provider observation or
+listening import invalidate the cutover. Verification now treats the receipt's
+normalized event and evidence counts as a non-regression floor, still requires
+legacy tables absent and import staging empty, and reports live-invariant drift
+separately. The rehearsal has 149,412 normalized events versus the 149,314
+cleanup floor, two evidence imports, absent legacy tables, empty staging, and
+now verifies true.
+
+An isolated image previously built and passed liveness/readiness on Vortex, and
+the proposed Nexus configuration passed an isolated `nginx -t`. Nothing is
+active: Vortex has no hosted secret file, Nexus has no enabled Chordrift site,
+and `chordrift.suhail.ink` has no DNS record. No sudo has been required. Before
+activation, obtain the Auth0 tenant hostname/client ID and install its secret
+without chat or Git exposure, reconcile the intended Neon project's observation
+read-only, apply 0048–0050 to that intended project only, bind the first verified
+Google identity, and complete the real maintenance/worker composition and
+read-only acceptance gate.
+
+After deployment, the user wants a read-only recovery audit of tracks known
+from listening history but absent from all current playlists/saved surfaces,
+ranked by plays and recency. `known_from_history` has no active exclusion and
+may be assigned directly; `previously_excluded` requires explicit restoration.

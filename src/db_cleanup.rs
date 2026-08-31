@@ -34,21 +34,27 @@ pub struct CleanupPlan {
     pub evidence_imports_retained: i64,
 }
 
-/// Post-cleanup schema and invariant verification.
+/// Post-cleanup schema and retention-floor verification.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CleanupVerification {
     /// Exact plan that was applied.
     pub plan_sha256: String,
     /// Durable invariant fingerprint after cleanup.
     pub invariant_sha256: String,
+    /// Whether the mutable live-state fingerprint still equals the cleanup instant.
+    pub invariant_matches_receipt: bool,
     /// Whether all old physical table names are absent.
     pub legacy_tables_absent: bool,
     /// Whether every transient provider-import table is empty.
     pub import_staging_empty: bool,
     /// Normalized events retained.
     pub normalized_listening_events: i64,
+    /// Minimum normalized events retained when cleanup was approved.
+    pub minimum_normalized_listening_events: i64,
     /// Evidence imports retained.
     pub evidence_imports: i64,
+    /// Minimum evidence imports retained when cleanup was approved.
+    pub minimum_evidence_imports: i64,
     /// Verification timestamp from the cleanup receipt.
     pub verified_at: DateTime<Utc>,
     /// Whether every cleanup gate passed.
@@ -376,11 +382,25 @@ pub async fn verify(database: &Database, account_label: &str) -> Result<CleanupV
     let import_staging_empty = schema.try_get("staging_empty")?;
     let normalized_listening_events = schema.try_get("events")?;
     let evidence_imports = schema.try_get("imports")?;
-    let verified = legacy_tables_absent
-        && import_staging_empty
-        && invariant_sha256 == expected_invariant
-        && normalized_listening_events == expected_events
-        && evidence_imports == expected_imports;
+    // The cleanup receipt captures an exact point-in-time invariant, but the
+    // provider-first runtime must remain free to observe later Spotify state
+    // and append listening evidence. Those ordinary changes must not make a
+    // completed storage cutover appear corrupt. Verification therefore guards
+    // the irreversible boundary: legacy storage stays absent, transient
+    // staging stays empty, and retained evidence never drops below the counts
+    // approved at cleanup time. The current invariant is still recorded below
+    // so operators can distinguish expected live-state drift from data loss.
+    let invariant_matches_receipt = invariant_sha256 == expected_invariant;
+    let history_non_regressing = normalized_listening_events >= expected_events;
+    let evidence_non_regressing = evidence_imports >= expected_imports;
+    let verified = cleanup_boundary_verified(
+        legacy_tables_absent,
+        import_staging_empty,
+        normalized_listening_events,
+        expected_events,
+        evidence_imports,
+        expected_imports,
+    );
     let verified_at = Utc::now();
     sqlx::query(
         "UPDATE database_v2_cleanup_runs
@@ -394,8 +414,14 @@ pub async fn verify(database: &Database, account_label: &str) -> Result<CleanupV
         "legacy_tables_absent": legacy_tables_absent,
         "import_staging_empty": import_staging_empty,
         "invariant_sha256": invariant_sha256,
+        "receipt_invariant_sha256": expected_invariant,
+        "invariant_matches_receipt": invariant_matches_receipt,
         "normalized_listening_events": normalized_listening_events,
+        "minimum_normalized_listening_events": expected_events,
+        "history_non_regressing": history_non_regressing,
         "evidence_imports": evidence_imports,
+        "minimum_evidence_imports": expected_imports,
+        "evidence_non_regressing": evidence_non_regressing,
     }))
     .bind(&plan_sha256)
     .execute(database.pool())
@@ -403,13 +429,30 @@ pub async fn verify(database: &Database, account_label: &str) -> Result<CleanupV
     Ok(CleanupVerification {
         plan_sha256,
         invariant_sha256,
+        invariant_matches_receipt,
         legacy_tables_absent,
         import_staging_empty,
         normalized_listening_events,
+        minimum_normalized_listening_events: expected_events,
         evidence_imports,
+        minimum_evidence_imports: expected_imports,
         verified_at,
         verified,
     })
+}
+
+fn cleanup_boundary_verified(
+    legacy_tables_absent: bool,
+    import_staging_empty: bool,
+    normalized_listening_events: i64,
+    minimum_normalized_listening_events: i64,
+    evidence_imports: i64,
+    minimum_evidence_imports: i64,
+) -> bool {
+    legacy_tables_absent
+        && import_staging_empty
+        && normalized_listening_events >= minimum_normalized_listening_events
+        && evidence_imports >= minimum_evidence_imports
 }
 
 async fn account_id(database: &Database, account_label: &str) -> Result<Uuid> {
@@ -487,4 +530,23 @@ fn invariant_sha256(report: &db_reports::InvariantReport) -> String {
 
 fn digest(value: &str) -> String {
     format!("{:x}", Sha256::digest(value.as_bytes()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cleanup_boundary_verified;
+
+    #[test]
+    fn cleanup_receipt_allows_append_only_runtime_growth() {
+        assert!(cleanup_boundary_verified(
+            true, true, 149_412, 149_314, 3, 2
+        ));
+    }
+
+    #[test]
+    fn cleanup_receipt_rejects_loss_or_legacy_storage() {
+        assert!(!cleanup_boundary_verified(false, true, 10, 10, 2, 2));
+        assert!(!cleanup_boundary_verified(true, true, 9, 10, 2, 2));
+        assert!(!cleanup_boundary_verified(true, true, 10, 10, 1, 2));
+    }
 }

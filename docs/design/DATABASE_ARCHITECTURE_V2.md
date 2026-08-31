@@ -685,11 +685,16 @@ with exact source counts. Only `cleanup apply --confirm <PLAN_SHA256>` may:
    parity; and
 5. record a durable cleanup receipt before commit.
 
-`cleanup verify` requires the same logical invariant fingerprint, retained event
-and archive counts, absent database-v1 table names, and empty provider-import
-staging. Plans, approvals, apply receipts, managed verifications, exclusions,
-canonical assignments, archive hashes, historical identities, normalized
-events, and compact checkpoints remain intact.
+At the cleanup instant, `cleanup verify` records the same logical invariant
+fingerprint and exact retained event/archive counts. On later verification the
+live fingerprint may differ because provider-first pulls and listening imports
+are legitimate mutable state. The durable receipt therefore requires absent
+database-v1 table names, empty provider-import staging, and normalized event and
+evidence counts that are no lower than the approved cleanup floor. It reports
+whether the live fingerprint still matches the cleanup instant separately.
+Plans, approvals, apply receipts, managed verifications, exclusions, canonical
+assignments, archive hashes, historical identities, normalized events, and
+compact checkpoints remain intact.
 
 The second fresh PostgreSQL 18 rehearsal measured:
 

@@ -52,6 +52,8 @@ pub mod embeddings;
 pub mod enrichment;
 /// Privacy-conscious Spotify archive inspection and listening-history import.
 pub mod history;
+/// Production hosted-service assembly, OIDC login, and thin browser client.
+pub mod hosted;
 /// Authenticated HTTP adapter for typed application commands and queries.
 pub mod http_transport;
 /// Product identities, account authorization, and revocable bearer sessions.

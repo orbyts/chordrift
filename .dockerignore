@@ -1,0 +1,9 @@
+.git
+.github
+.env
+target
+artwork
+docs
+tests
+*.log
+deploy/**/secrets

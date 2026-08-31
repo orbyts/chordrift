@@ -1,0 +1,17 @@
+# Non-secret deployment identity
+CHORDRIFT_IMAGE_TAG=v0.2.1-beta.1-dev
+CHORDRIFT_VCS_REF=replace-with-full-commit-sha
+CHORDRIFT_BUILD_DATE=2026-08-30T00:00:00Z
+CHORDRIFT_SECRETS_FILE=/home/suhail/.config/chordrift-hosted/chordrift.env
+
+# The referenced host-only file contains these values. Never commit it.
+# CHORDRIFT_DATABASE_URL=postgresql://...
+# CHORDRIFT_PUBLIC_ORIGIN=https://chordrift.suhail.ink/
+# CHORDRIFT_ACCOUNT_ID=existing-chordrift-account-uuid
+# CHORDRIFT_BOOTSTRAP_VERIFIED_EMAIL=verified-google-email
+# CHORDRIFT_OIDC_ISSUER=https://YOUR_AUTH0_DOMAIN/
+# CHORDRIFT_OIDC_AUTHORIZATION_URL=https://YOUR_AUTH0_DOMAIN/authorize
+# CHORDRIFT_OIDC_TOKEN_URL=https://YOUR_AUTH0_DOMAIN/oauth/token
+# CHORDRIFT_OIDC_USERINFO_URL=https://YOUR_AUTH0_DOMAIN/userinfo
+# CHORDRIFT_OIDC_CLIENT_ID=...
+# CHORDRIFT_OIDC_CLIENT_SECRET=...
