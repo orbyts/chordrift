@@ -254,6 +254,16 @@ session in the OS credential store; command/query files are typed contract
 envelopes, not shell/SQL/provider escapes. V021-06 owns hosting, external login,
 service URL distribution, observability, backup/restore, and release rehearsal.
 
+Implementation commit `bc847e1cef6f453e599ab9fe9905b6da2b9a48a4`
+passed CI run `33355318790`, including formatting, strict Clippy, all targets,
+documentation tests, every ignored disposable-PostgreSQL integration, Spotify
+persistence round-trip, and package verification. The annotated
+`v0.2.1-alpha.17` tag, GitHub prerelease, and crates.io artifact are public.
+The exact locked registry artifact is installed, reports
+`chordrift 0.2.1-alpha.17`, and satisfies `service.remote-cli.v1` under
+application contract 1.3. `CHORDRIFT_BIN` remains unset. V021-05 used no
+personal Neon access, provider read/write, or migration.
+
 The future Classification Authority signal inventory is explicit in
 `docs/design/LEARNING_SIGNAL_TAXONOMY.md`. Read it with
 `CLASSIFICATION_KNOWLEDGE_FOUNDATION.md` before planning that separate project.
