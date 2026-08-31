@@ -5,7 +5,7 @@ rules and regression obligations. Read it with
 `PLATFORM_INTENT_MODEL.md`. It contains no credentials or private library
 inventory.
 
-Status: active through the `v0.2.1-alpha.16` checkpoint, updated 2026-08-30.
+Status: active through the V021-06 private-beta checkpoint, updated 2026-08-31.
 
 ## Governing rule
 
@@ -54,6 +54,13 @@ checkpoint.
 - **Presentation sorting boundary.** Report canonical provider positions only.
   A temporary Spotify client sort by title, artist, album, or date added is not
   playlist order intent and is not currently part of the provider contract.
+- **Provider/model membership explanation.** When a playlist count differs
+  between the newest provider observation and Chordrift's model, show both
+  directional sets—not only the net count. Name every provider-only and
+  model-only track with its position and state timestamps. The same typed
+  comparison must be renderable by the web client and remote CLI. A difference
+  is pending observed intent, not automatically an error and never authority
+  to overwrite either side.
 
 ## How to add the next finding
 
