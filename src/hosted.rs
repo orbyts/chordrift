@@ -1012,10 +1012,12 @@ fn static_asset(body: &'static str, content_type: &'static str) -> Response {
     response
         .headers_mut()
         .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
-    response.headers_mut().insert(
-        CACHE_CONTROL,
-        HeaderValue::from_static("public, max-age=300"),
-    );
+    // Private-beta clients must not retain a stale contract wrapper across a
+    // service rollout. Versioned immutable caching can return after the beta
+    // establishes an asset-manifest build step.
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
 }
 
