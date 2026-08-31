@@ -720,6 +720,19 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     .bind(generation_id)
     .execute(database.pool())
     .await?;
+    sqlx::query(
+        "INSERT INTO track_playlist_assignment_revisions
+         (provider_account_id, track_id, destination_concept_id, decision,
+          source_generation_id, reason)
+         VALUES ($1, $2, $3, 'assign', $4,
+                 'Stale assignment that must not override an active exclusion')",
+    )
+    .bind(account_id)
+    .bind(tracks[1].0)
+    .bind(concept_id)
+    .bind(generation_id)
+    .execute(database.pool())
+    .await?;
 
     let extended = proposals::extend_approved(&database, &account_label, 1.0).await?;
     let extended_order: Vec<Uuid> = sqlx::query_scalar(
@@ -737,6 +750,21 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
         extended_order,
         vec![tracks[0].0, tracks[2].0, tracks[3].0],
         "replaying an assignment already in its destination must preserve provider order"
+    );
+    assert!(
+        !extended_order.contains(&tracks[1].0),
+        "an active exclusion must win over a stale assignment revision"
+    );
+    let editable_audit = intake::audit(&database, &account_label).await?;
+    let copied_current_track = editable_audit
+        .items
+        .iter()
+        .find(|item| item.spotify_id == already_covered_spotify_id)
+        .expect("current fixture track remains auditable");
+    assert_eq!(
+        copied_current_track.state,
+        IntakeState::AlreadyCovered,
+        "an editable copy of accepted membership is not new provider intake"
     );
     proposals::approve(&database, &account_label, extended.generation_id).await?;
     let accepted = apply::accept_current_provider_state(&database, &account_label).await?;

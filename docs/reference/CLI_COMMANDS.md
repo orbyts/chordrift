@@ -5,8 +5,10 @@ instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
 ## Authenticated service client
 
-V021-05 adds the thin remote DTO client. V021-06 has not selected a public URL
-or external login yet, so these remain development/release-rehearsal commands:
+V021-05 adds the thin remote DTO client. The V021-06 private endpoint is
+`https://chordrift.suhail.ink`; remote maintenance remains unavailable until
+the beta worker/adapter gate, so these remain development/release-rehearsal
+commands:
 
 ```bash
 printf '%s' "$CHORDRIFT_ISSUED_SESSION" |
@@ -25,7 +27,25 @@ development. A remote failure never falls back to local Neon/provider access.
 The in-process local transport is an explicit Rust dependency-injection seam,
 not a second set of domain behavior.
 
-Command status: this page documents the **v0.2.1-alpha.17** daily-driver CLI. It retains the
+### Private-beta provider credential adoption
+
+After the first verified Google login creates the canonical owner membership,
+an operator may transfer the existing local Spotify refresh authorization
+directly from the OS credential store into the encrypted hosted vault:
+
+```console
+$ chordrift service adopt-local-provider-credential --account personal
+```
+
+This hidden deployment command requires schema 50, the deployment vault key,
+the canonical database connection, and an exact match between the locally
+authorized Spotify identity and the account-owned provider connection. It
+encrypts the refresh credential before persistence, prints only non-secret
+receipt fields, and does not contact Spotify. It is not a replacement for the
+future user-facing Connect/Reconnect/Disconnect provider flow and must not be
+offered as a normal web or remote-CLI operation.
+
+Command status: this page documents the **v0.2.1-alpha.18** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,
@@ -91,10 +111,11 @@ session, encrypted provider-credential, and restart-safe operation boundaries
 used by future clients. They do not add a second user-
 facing maintenance command or hosted URL; the ordinary shell below remains the
 current CLI adapter. Hosted identity/provider work needs migrations 0048–0050,
-while local maintenance intentionally requires only schema through migration
-0047. On the personal local deployment, `db status` may therefore report
-`47/50` with three pending hosted migrations; do not apply them merely to clear
-that counter. Ordinary maintenance validates its required schema through 0047.
+while ordinary local maintenance requires only schema through migration 0047
+and remains compatible with newer additive schemas. The consolidated personal
+deployment now reports `50/50`: local CLI and hosted service use the same
+canonical database. Do not infer that ordinary maintenance may exercise hosted
+authority merely because those additive tables are present.
 
 After a current pull, audit exact intake membership against durable coverage,
 exclusions, proposal intent, and normalized listening history:
@@ -325,7 +346,11 @@ The compaction plan runs in a read-only transaction and only describes current,
 durably protected, and redundant routine observations; it cannot apply cleanup.
 The v2 status command compares exact current order, saved surfaces, normalized
 evidence, and compact checkpoints. On the released clean runtime those parity
-gates are complete. The
+gates are complete. Cleanup verification treats its stored event/evidence
+counts as a retention floor: later provider observations and listening imports
+may change the live invariant and increase those counts without invalidating
+the cutover. Reappearing legacy tables, non-empty import staging, or counts
+below the receipt still fail verification. The
 [database-v2 design](../design/DATABASE_ARCHITECTURE_V2.md) retains the dated
 execution record; intermediate “next gate” statements there are historical.
 

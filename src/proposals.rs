@@ -1616,7 +1616,7 @@ pub async fn extend_approved(
     let embedding_input_hash: String = embedding.try_get("input_hash")?;
     let input_hash = hash_parts(&[
         "stable-playlist-extension",
-        "2",
+        "3",
         &base_generation_id.to_string(),
         &base_input_hash,
         &embedding_generation_id.to_string(),
@@ -1713,7 +1713,7 @@ pub async fn extend_approved(
         "INSERT INTO playlist_generations
          (model, model_version, status, parameters, provider_account_id,
           cluster_generation_id, input_hash)
-         VALUES ('stable-playlist-extension', '2', 'proposed', $1, $2, $3, $4)
+         VALUES ('stable-playlist-extension', '3', 'proposed', $1, $2, $3, $4)
          RETURNING id",
     )
     .bind(json!({
@@ -2753,6 +2753,11 @@ async fn replay_assignment_overrides(
               AND playlist.concept_id = revision.destination_concept_id
              WHERE revision.provider_account_id = $2
                AND revision.superseded_at IS NULL AND revision.decision = 'assign'
+               AND NOT EXISTS (
+                   SELECT 1 FROM excluded_tracks exclusion
+                   WHERE exclusion.provider_account_id = $2
+                     AND exclusion.track_id = revision.track_id
+                     AND exclusion.restored_at IS NULL)
                AND NOT EXISTS (
                    SELECT 1 FROM playlist_tracks existing
                    WHERE existing.playlist_id = playlist.id

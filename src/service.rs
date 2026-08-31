@@ -14,10 +14,12 @@ use sha2::{Digest, Sha256};
 use crate::{
     contract::{
         CONTRACT_VERSION, CancellationId, ClientError, Command, CommandReceipt, CommandRequest,
-        ErrorCode, IdempotencyKey, MaintenanceReviewId, MaintenanceSessionId,
-        MaintenanceSessionState, MaintenanceSessionView, OperationEvent, OperationEventsView,
-        OperationHistoryView, OperationId, OperationState, OperationView, Progress, ProgressUnit,
-        Query, QueryRequest, QueryResponse, RequestId, ResourceId, View, WaitingReason,
+        ErrorCode, ExcludedTracksView, IdempotencyKey, LibraryPlaylistTracksView,
+        LibraryPlaylistsView, LibraryStateSource, LibraryTrackView, MaintenanceReviewId,
+        MaintenanceSessionId, MaintenanceSessionState, MaintenanceSessionView, OperationEvent,
+        OperationEventsView, OperationHistoryView, OperationId, OperationState, OperationView,
+        Progress, ProgressUnit, ProviderConnectionsView, Query, QueryRequest, QueryResponse,
+        RequestId, ResourceId, View, WaitingReason,
     },
     maintenance::{MaintenanceDecisionProjection, MaintenanceProjection, MaintenanceSessions},
 };
@@ -34,6 +36,54 @@ pub struct AuthenticatedSubject {
 /// Infrastructure boundary used by the Rust maintenance authority.
 #[async_trait]
 pub trait MaintenanceBackend: Send {
+    /// Lists provider connections owned by the authenticated account.
+    async fn provider_connections(
+        &mut self,
+        _subject: AuthenticatedSubject,
+    ) -> Result<ProviderConnectionsView, ClientError> {
+        Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
+    }
+
+    /// Lists playlists from one explicit library state plane.
+    async fn library_playlists(
+        &mut self,
+        _subject: AuthenticatedSubject,
+        _provider_connection_id: ResourceId,
+        _source: LibraryStateSource,
+    ) -> Result<LibraryPlaylistsView, ClientError> {
+        Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
+    }
+
+    /// Lists ordered tracks from one playlist and state plane.
+    async fn library_playlist_tracks(
+        &mut self,
+        _subject: AuthenticatedSubject,
+        _provider_connection_id: ResourceId,
+        _playlist_id: &str,
+        _source: LibraryStateSource,
+    ) -> Result<LibraryPlaylistTracksView, ClientError> {
+        Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
+    }
+
+    /// Reads one track's placements and personal listening evidence.
+    async fn library_track(
+        &mut self,
+        _subject: AuthenticatedSubject,
+        _provider_connection_id: ResourceId,
+        _provider_track_id: &str,
+    ) -> Result<LibraryTrackView, ClientError> {
+        Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
+    }
+
+    /// Lists active reversible exclusions.
+    async fn excluded_tracks(
+        &mut self,
+        _subject: AuthenticatedSubject,
+        _provider_connection_id: ResourceId,
+    ) -> Result<ExcludedTracksView, ClientError> {
+        Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
+    }
+
     /// Reports whether the authenticated account owns one provider connection.
     async fn owns_provider_connection(
         &self,
@@ -481,6 +531,103 @@ where
         }
         let generated_at = self.clock.now();
         match request.query {
+            Query::ProviderConnections => {
+                let value = self.backend.provider_connections(subject).await?;
+                Ok(QueryResponse::ProviderConnections(View {
+                    contract_version: CONTRACT_VERSION,
+                    request_id: request.request_id,
+                    generated_at,
+                    value,
+                }))
+            }
+            Query::LibraryPlaylists {
+                provider_connection_id,
+                source,
+            } => {
+                if !self
+                    .backend
+                    .owns_provider_connection(subject, provider_connection_id)
+                    .await
+                {
+                    return Err(ClientError::new(ErrorCode::PermissionDenied, false));
+                }
+                let value = self
+                    .backend
+                    .library_playlists(subject, provider_connection_id, source)
+                    .await?;
+                Ok(QueryResponse::LibraryPlaylists(View {
+                    contract_version: CONTRACT_VERSION,
+                    request_id: request.request_id,
+                    generated_at,
+                    value,
+                }))
+            }
+            Query::LibraryPlaylistTracks {
+                provider_connection_id,
+                playlist_id,
+                source,
+            } => {
+                if !self
+                    .backend
+                    .owns_provider_connection(subject, provider_connection_id)
+                    .await
+                {
+                    return Err(ClientError::new(ErrorCode::PermissionDenied, false));
+                }
+                let value = self
+                    .backend
+                    .library_playlist_tracks(subject, provider_connection_id, &playlist_id, source)
+                    .await?;
+                Ok(QueryResponse::LibraryPlaylistTracks(View {
+                    contract_version: CONTRACT_VERSION,
+                    request_id: request.request_id,
+                    generated_at,
+                    value,
+                }))
+            }
+            Query::LibraryTrack {
+                provider_connection_id,
+                provider_track_id,
+            } => {
+                if !self
+                    .backend
+                    .owns_provider_connection(subject, provider_connection_id)
+                    .await
+                {
+                    return Err(ClientError::new(ErrorCode::PermissionDenied, false));
+                }
+                let value = self
+                    .backend
+                    .library_track(subject, provider_connection_id, &provider_track_id)
+                    .await?;
+                Ok(QueryResponse::LibraryTrack(View {
+                    contract_version: CONTRACT_VERSION,
+                    request_id: request.request_id,
+                    generated_at,
+                    value,
+                }))
+            }
+            Query::ExcludedTracks {
+                provider_connection_id,
+            } => {
+                if !self
+                    .backend
+                    .owns_provider_connection(subject, provider_connection_id)
+                    .await
+                {
+                    return Err(ClientError::new(ErrorCode::PermissionDenied, false));
+                }
+                let value = self
+                    .backend
+                    .excluded_tracks(subject, provider_connection_id)
+                    .await?;
+                Ok(QueryResponse::ExcludedTracks(View {
+                    contract_version: CONTRACT_VERSION,
+                    request_id: request.request_id,
+                    generated_at,
+                    value,
+                }))
+            }
             Query::MaintenanceSession { session_id } => {
                 self.require_session_owner(subject, session_id)?;
                 Ok(QueryResponse::MaintenanceSession(View {

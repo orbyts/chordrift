@@ -102,6 +102,26 @@ pub struct ImportReport {
 pub async fn import(account_label: &str, database: &Database) -> Result<ImportReport> {
     let reuse = load_reuse_plan(account_label, database).await?;
     let session = auth::session(account_label).await?;
+    import_with_session(account_label, database, reuse, session).await
+}
+
+/// Persists a complete inventory using a short-lived session created from the
+/// hosted encrypted-credential vault.
+pub(crate) async fn import_hosted(
+    account_label: &str,
+    database: &Database,
+    session: auth::SpotifySession,
+) -> Result<ImportReport> {
+    let reuse = load_reuse_plan(account_label, database).await?;
+    import_with_session(account_label, database, reuse, session).await
+}
+
+async fn import_with_session(
+    account_label: &str,
+    database: &Database,
+    reuse: ReusePlan,
+    session: auth::SpotifySession,
+) -> Result<ImportReport> {
     let inventory = session.client.inventory(session.profile, &reuse).await?;
     let spotify_api_requests = session.client.request_count();
     persist(account_label, inventory, spotify_api_requests, database).await

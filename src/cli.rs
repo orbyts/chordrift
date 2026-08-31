@@ -6,6 +6,7 @@ use std::{
 };
 
 use clap::{Parser, Subcommand, ValueEnum};
+use sqlx::Row as _;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -17,14 +18,20 @@ use crate::{
     contract::{
         CAPABILITY_DURABLE_OPERATIONS, CAPABILITY_MAINTENANCE_TASK_SESSION,
         CAPABILITY_PRODUCT_IDENTITY, CAPABILITY_REMOTE_CLI, CONTRACT_VERSION, ClientCompatibility,
-        CommandRequest, ContractVersionRange, QueryRequest, SchemaVersionRange,
+        CommandRequest, ContractVersionRange, QueryRequest, ResourceId, SchemaVersionRange,
     },
     credentials::{CredentialStore, SecretId, SystemCredentialStore},
     db, db_cleanup, db_reports, db_v2_migration, embeddings, enrichment, history, intake,
     model_inference, onboarding, onboarding_audit, playlists, presentation, product_rehearsal,
     proposals,
+    provider_vault::{
+        PostgresProviderCredentialStore, ProviderCredentialIdentity, ProviderCredentialVault,
+        ProviderVaultKeyring,
+    },
     providers::spotify,
-    recipe_execution, routes, signals, spin_preview, sync_plan, terminal, tracks,
+    recipe_execution, routes,
+    service::AuthenticatedSubject,
+    signals, spin_preview, sync_plan, terminal, tracks,
 };
 
 /// Chordrift command-line interface.
@@ -178,6 +185,13 @@ pub enum Command {
 /// Authenticated service-client commands. Hosting and login UX arrive in V021-06.
 #[derive(Clone, Debug, Subcommand)]
 pub enum ServiceCommand {
+    /// Adopt the existing local provider authorization into encrypted hosted storage.
+    #[command(hide = true)]
+    AdoptLocalProviderCredential {
+        /// Local provider account label whose OS credential is adopted.
+        #[arg(long, default_value = "personal")]
+        account: String,
+    },
     /// Store, inspect, or remove the opaque Chordrift session in the OS credential store.
     Session {
         /// Session operation.
@@ -2463,6 +2477,80 @@ fn service_compatibility_offer() -> ClientCompatibility {
 
 async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -> Result<()> {
     match command {
+        ServiceCommand::AdoptLocalProviderCredential { account } => {
+            let (provider_identity, refresh) = spotify::local_refresh_credential(&account)?;
+            let database = connect_current_database().await?;
+            let result: Result<()> = async {
+                db::require_schema_through(&database, 50).await?;
+                let row = sqlx::query(
+                    "SELECT provider.id AS provider_account_id,
+                            provider.chordrift_account_id,
+                            membership.product_subject_id
+                       FROM provider_accounts provider
+                       JOIN chordrift_account_memberships membership
+                         ON membership.chordrift_account_id = provider.chordrift_account_id
+                        AND membership.role = 'owner' AND membership.status = 'active'
+                       JOIN product_subjects subject
+                         ON subject.id = membership.product_subject_id AND subject.status = 'active'
+                      WHERE provider.provider = 'spotify'
+                        AND provider.account_label = $1
+                        AND provider.provider_account_id = $2",
+                )
+                .bind(&account)
+                .bind(&provider_identity)
+                .fetch_optional(database.pool())
+                .await?
+                .ok_or_else(|| {
+                    ChordriftError::Configuration(
+                        "local Spotify authorization does not match the adopted Chordrift account"
+                            .to_owned(),
+                    )
+                })?;
+                let provider_account_id: uuid::Uuid = row.try_get("provider_account_id")?;
+                let chordrift_account_id: uuid::Uuid = row.try_get("chordrift_account_id")?;
+                let product_subject_id: uuid::Uuid = row.try_get("product_subject_id")?;
+                let subject = AuthenticatedSubject {
+                    subject_id: ResourceId::from_uuid(product_subject_id),
+                    account_id: ResourceId::from_uuid(chordrift_account_id),
+                };
+                let identity = ProviderCredentialIdentity::new(
+                    subject.account_id,
+                    ResourceId::from_uuid(provider_account_id),
+                    "spotify",
+                )
+                .map_err(|_| {
+                    ChordriftError::Configuration(
+                        "provider credential identity is invalid".to_owned(),
+                    )
+                })?;
+                let keyring = ProviderVaultKeyring::from_environment().map_err(|_| {
+                    ChordriftError::Configuration(
+                        "provider vault key configuration is unavailable".to_owned(),
+                    )
+                })?;
+                let vault = ProviderCredentialVault::new(
+                    PostgresProviderCredentialStore::new(database.pool().clone()),
+                    keyring,
+                );
+                let revision = vault
+                    .rotate(subject, identity, &refresh, chrono::Utc::now())
+                    .await
+                    .map_err(|_| {
+                        ChordriftError::Configuration(
+                            "provider credential adoption failed closed".to_owned(),
+                        )
+                    })?;
+                writeln!(output, "provider: spotify")?;
+                writeln!(output, "account: {account}")?;
+                writeln!(output, "vault_generation: {}", revision.generation)?;
+                writeln!(output, "credential_encrypted: true")?;
+                writeln!(output, "provider_contacted: false")?;
+                Ok(())
+            }
+            .await;
+            database.close().await;
+            result?;
+        }
         ServiceCommand::Session { command } => match command {
             ServiceSessionCommand::Save { profile } => {
                 let mut token = Zeroizing::new(String::new());
@@ -6751,6 +6839,11 @@ fn write_database_cleanup_verification(
     writeln!(output, "invariant_sha256: {}", report.invariant_sha256)?;
     writeln!(
         output,
+        "live_invariant_matches_cleanup_instant: {}",
+        report.invariant_matches_receipt
+    )?;
+    writeln!(
+        output,
         "legacy_tables_absent: {}",
         report.legacy_tables_absent
     )?;
@@ -6764,7 +6857,17 @@ fn write_database_cleanup_verification(
         "normalized_listening_events: {}",
         report.normalized_listening_events
     )?;
+    writeln!(
+        output,
+        "minimum_normalized_listening_events: {}",
+        report.minimum_normalized_listening_events
+    )?;
     writeln!(output, "evidence_imports: {}", report.evidence_imports)?;
+    writeln!(
+        output,
+        "minimum_evidence_imports: {}",
+        report.minimum_evidence_imports
+    )?;
     writeln!(output, "verified_at: {}", report.verified_at.to_rfc3339())?;
     writeln!(output, "verified: {}", report.verified)?;
     writeln!(output, "provider_requests: disabled")?;

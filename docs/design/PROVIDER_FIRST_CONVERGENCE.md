@@ -1,6 +1,6 @@
 # Provider-first convergence
 
-Status: normative ordinary-maintenance design as of the v0.2.1-alpha.16
+Status: normative ordinary-maintenance design as of the v0.2.1-alpha.18
 checkpoint.
 
 Spotify is the first provider implementation, not a special source of domain

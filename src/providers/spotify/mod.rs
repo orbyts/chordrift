@@ -5,9 +5,11 @@ mod client;
 mod import;
 mod models;
 
-pub(crate) use auth::has_required_apply_scopes;
+pub(crate) use auth::hosted_session;
 pub use auth::{AuthReport, AuthStatus, SpotifyOAuthConfig, authenticate, logout, status};
+pub(crate) use auth::{has_required_apply_scopes, local_refresh_credential};
 pub(crate) use client::{RetryPolicy, retry_policy};
+pub(crate) use import::import_hosted;
 pub use import::{ImportReport, import};
 use models::SpotifyPlaylist;
 

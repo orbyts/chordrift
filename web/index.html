@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Chordrift</title>
+  <link rel="stylesheet" href="/assets/app.css?v=library-explorer-1">
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="/" aria-label="Chordrift home">Chordrift</a>
+    <div class="provider-context" id="provider-context" hidden>
+      <span class="connection-dot" id="provider-dot"></span>
+      <label for="provider-select">Provider</label>
+      <select id="provider-select" aria-label="Selected music provider"></select>
+      <span id="provider-state">Checking connection…</span>
+    </div>
+    <nav class="account-actions" aria-label="Account">
+      <a class="button" id="login" href="/auth/login" hidden>Continue with Google</a>
+      <form id="logout-form" action="/auth/logout" method="post" hidden><button class="quiet" type="submit">Log out</button></form>
+    </nav>
+  </header>
+
+  <main>
+    <section class="welcome" id="signed-out" hidden>
+      <p class="eyebrow">Your library, remembered</p>
+      <h1>Keep listening.<br>Chordrift keeps up.</h1>
+      <p>Chordrift observes how you use your music provider, remembers your intent, and asks before it changes anything on your behalf.</p>
+      <a class="button primary" href="/auth/login">Continue with Google</a>
+    </section>
+
+    <div id="signed-in" hidden>
+      <section class="status-strip" aria-live="polite">
+        <div><span class="connection-dot" id="session-dot"></span><strong id="session-label">Checking session…</strong></div>
+        <span id="session-detail"></span>
+      </section>
+      <nav class="section-tabs" aria-label="Chordrift sections">
+        <button class="tab active" data-view="maintain" type="button">Maintain</button>
+        <button class="tab" data-view="library" type="button">Library</button>
+        <button class="tab" data-view="exclusions" type="button">Excluded</button>
+        <button class="tab" data-view="activity" type="button">Activity</button>
+        <button class="tab" data-view="developer" type="button">Developer</button>
+      </nav>
+
+      <section class="view active" id="view-maintain">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow">Ordinary maintenance</p>
+            <h1>Observe first.<br>Change only with you.</h1>
+            <p class="lede">Pull the newest provider state, accept your direct edits, resolve only genuine ambiguity, and review any Chordrift-authored effect once.</p>
+          </div>
+          <div class="action-card">
+            <span class="step-number">01</span>
+            <h2>Check for changes</h2>
+            <p>Reading your provider never authorizes a provider write.</p>
+            <button id="start-maintenance" class="primary" type="button" disabled>Observe provider</button>
+            <p class="availability" id="maintenance-availability">Checking hosted maintenance capability…</p>
+          </div>
+        </div>
+        <div id="maintenance-session" class="maintenance-session" hidden></div>
+      </section>
+
+      <section class="view" id="view-library">
+        <div class="section-heading">
+          <div><p class="eyebrow">Library explorer</p><h1>Playlists</h1></div>
+          <div class="segmented" role="group" aria-label="Library state">
+            <button class="active" data-source="provider_observation" type="button">Provider observation</button>
+            <button data-source="chordrift_model" type="button">Chordrift model</button>
+          </div>
+        </div>
+        <p class="context-note" id="library-context"></p>
+        <div class="library-grid">
+          <aside class="playlist-list" id="playlist-list" aria-label="Playlists"></aside>
+          <section class="track-list">
+            <div class="track-list-heading"><div><p class="eyebrow">Selected playlist</p><h2 id="playlist-title">Choose a playlist</h2></div><span id="playlist-count"></span></div>
+            <div class="table-wrap"><table><thead><tr><th>#</th><th>Track</th><th>Album</th></tr></thead><tbody id="playlist-tracks"><tr><td colspan="3" class="empty">Select a playlist to inspect its recorded order.</td></tr></tbody></table></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-exclusions">
+        <div class="section-heading"><div><p class="eyebrow">Reversible archive</p><h1>Excluded tracks</h1></div><span class="count-pill" id="exclusion-count">—</span></div>
+        <p class="context-note">An exclusion prevents old intent from silently restoring a removal. Restoring or emptying this archive is always explicit.</p>
+        <div class="card-list" id="exclusion-list"></div>
+      </section>
+
+      <section class="view" id="view-activity">
+        <div class="section-heading"><div><p class="eyebrow">Durable operations</p><h1>Activity</h1></div></div>
+        <div class="card-list" id="operation-list"><p class="empty">No hosted operations loaded.</p></div>
+      </section>
+
+      <section class="view" id="view-developer">
+        <div class="section-heading"><div><p class="eyebrow">Temporary developer access</p><h1>Typed contract lab</h1></div></div>
+        <p class="context-note">This submits typed Chordrift DTOs. It cannot run shell commands, SQL, arbitrary URLs, or access credentials.</p>
+        <div class="workbench">
+          <div class="pane">
+            <div class="pane-heading"><h2>Request</h2><select id="preset" aria-label="Request preset"><option value="compatibility">Compatibility</option><option value="provider_connections">Provider connections</option><option value="operation_history">Operation history</option><option value="custom_query">Custom query</option><option value="custom_command">Custom command</option></select></div>
+            <textarea id="request" spellcheck="false" aria-label="Typed JSON request"></textarea>
+            <div class="actions"><button id="send" type="button">Send request</button><span id="request-kind"></span></div>
+          </div>
+          <div class="pane"><div class="pane-heading"><h2>Response</h2><span id="http-status">Idle</span></div><pre id="response" tabindex="0">Choose a request.</pre></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <dialog id="track-dialog"><button class="dialog-close" type="button" aria-label="Close track details">×</button><div id="track-detail"></div></dialog>
+  <script src="/assets/app.js?v=durable-observation-1" defer></script>
+</body>
+</html>

@@ -6,7 +6,7 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-08-30.
+Last updated: 2026-08-31.
 
 Every daily-driver failure and its permanent regression belongs in
 `docs/design/DAILY_DRIVER_EDGE_CASE_LEDGER.md`. Treat chaotic cumulative
@@ -78,13 +78,14 @@ catalog metadata, never the Like, listener/account identity, playlists, play
 counts, listening history, or private behavior. Do not create that project or
 its Neon store from a Chordrift task.
 
-The intended consumer client is now a responsive web application, not a
-macOS-first product. It follows only after v0.2.1 final, the separate
-Classification Authority contract, a further Chordrift client-boundary
-refactor, and exhaustive cumulative-provider edge-case testing are proven. The
-CLI remains the contract proving ground and recovery tool. Native clients are
-later work: iOS and Android are the intended mobile clients, while macOS and
-Windows may also follow. None of these client slices are numbered yet.
+The intended consumer client is a responsive web application, not a macOS-first
+product. A private daily-driver web client is now required for
+`v0.2.1-beta.1` alongside the CLI; unrestricted public launch still follows
+v0.2.1 final, the separate Classification Authority contract, a focused
+Chordrift refactor, and exhaustive cumulative-provider testing. The CLI remains
+the contract proving ground and recovery tool. Native clients are later work:
+iOS and Android are the intended mobile clients, while macOS and Windows may
+also follow.
 
 The product will use multiple commercial tiers beginning with a genuinely
 useful free plan. Do not invent prices or limits before hosted cost and usage
@@ -243,7 +244,7 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Current checkpoint: begin V021-06
+## V021-05 completion checkpoint (historical)
 
 V021-05 is implemented as `v0.2.1-alpha.17`. `RemoteHttpClient` and
 `LocalDevelopmentClient` consume one compatibility/command/query trait. The
@@ -2586,3 +2587,169 @@ Before schema changes, route the existing CLI through an application facade,
 freeze provider-neutral/domain/contract types, and add fake-provider account-
 isolation, idempotency, and cancellation tests. Then design one additive
 ownership/collection/surface/recipe/Spin/onboarding migration and rehearse it.
+
+## V021-06 hosted private-beta deployment checkpoint (2026-08-31)
+
+Work continues on branch `codex/v021-06-private-beta`. The authenticated service
+is live at `https://chordrift.suhail.ink` through Nexus to a non-root,
+read-only Vortex container. Auth0/Google login is active, the verified identity
+owns the existing Chordrift account, and its HttpOnly session survives container
+replacement. The deployed web client lists the selected Spotify connection,
+credential readiness, newest observation time, provider playlists/tracks,
+Chordrift-model playlists/tracks, listening detail and active exclusions.
+
+Chordrift login and provider authorization are separate. The existing Spotify
+refresh authorization was adopted as encrypted vault generation 1 without
+contacting Spotify. New users still need explicit Connect Spotify; reconnecting
+the same stable Spotify identity must retain its Neon data, while a different
+Spotify identity is a separate provider connection. Add Connect, Reconnect and
+Disconnect plus multiple-connection isolation before beta.1.
+
+The latest deployed checkpoint is commit `716f847`; branch tip may be newer
+when documentation advances. The container reports healthy. Browser validation
+proved the signed-in provider context, 26 observed Spotify playlists, separate
+Chordrift-model state, ordered playlist contents, track history/placements and
+the exclusion archive. The provider vault capability is available; maintenance
+remains unavailable and the Observe button is intentionally disabled until the
+real encrypted-vault Spotify session, PostgreSQL maintenance adapter and durable
+worker are composed. Never replace that boundary with a CLI or shell call.
+Provider writes remain disabled until a later exact user-approved gate.
+
+`v0.2.1-beta.1` now means a usable dual-client daily driver, not merely a
+bootable service. Complete ordinary observation, cumulative provider-first
+convergence, ambiguity decisions, exact effect review, progress, cancellation,
+retry and verification in both web and remote CLI through shared typed DTOs.
+The web need not expose every forensic query, but unequal provider/model totals
+must have a high-level directional explanation. A read-only Lightleak Reverie
+audit found 12 provider-only and four model-only tracks, explaining 501 versus
+493; this is pending observed intent, not authorization to overwrite either
+side. The shared comparison requirement is in
+`docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md` and the edge-case ledger.
+
+After beta.1, publish only real fixes as sequential `v0.2.1-beta.N` releases
+until Suhail explicitly approves stability. Final v0.2.1 also requires a web
+guide, concise CLI/operator handbook, dead-code/script/dependency/performance
+cleanup, full CI/container/deployment/backup proof, and exact installed-artifact
+verification. The history-known-but-unplaced recovery audit is a personal
+one-time tool and not a release blocker.
+
+After final v0.2.1, prepare the separate Classification Authority task: refresh
+the founding brief and learning-signal taxonomy, preserve the strict shared-
+classification/private-listener/placement boundary, add a bootstrap checklist,
+and deliver a ready-to-paste task prompt. The new task—not Chordrift—chooses the
+project name, creates its repository and Neon project, reserves its namespace,
+and authors its independent roadmap.
+
+### Neon storage consolidation (2026-08-31)
+
+The durable Chordrift topology is now project `royal-snow-31539822`, branch
+`br-cool-haze-aflxxqep` (`main`), database `chordrift_cutover`. Local alpha.17
+maintenance and the Vortex hosted service both use that database; it is healthy
+at 50/50 migrations. The Vortex container and public HTTPS endpoint passed
+post-cutover health checks, and a local read-only playlist query passed. No
+Spotify request or mutation occurred during consolidation.
+
+Temporary branches `br-red-frost-afeshi7s`
+(`rehearse-v02106-20260830`) and `br-bold-haze-afrt5en4`
+(`pre-v02106-20260830`) were deleted after cutover. The unused main-branch
+database `chordrift`, last synchronized on 2026-08-28 and with no client
+connections, was also deleted. The canonical PostgreSQL database is about
+195 MB. Neon control-plane/dashboard storage can lag and may retain deleted
+pages within the six-hour restore window before falling from the earlier
+roughly 419 MB value.
+
+The dashboard's later 228.24 MB reading is consistent with the measured
+logical footprint rather than a second application copy: `chordrift_cutover`
+is 204,226,560 bytes (about 195 MiB), while PostgreSQL's `postgres`,
+`template0`, and `template1` databases contribute about 23.4 MB. The complete
+object-by-object glossary is
+[`docs/reference/DATABASE_OBJECT_CATALOG.md`](docs/reference/DATABASE_OBJECT_CATALOG.md),
+and the grouped storage/dataflow overview is
+[`docs/design/chordrift-database-domain-map.svg`](docs/design/chordrift-database-domain-map.svg).
+The seven SQL views store no rows. Listening evidence is about 85 MiB and
+playlist intent/verified history about 53 MiB; those two domains, not the
+number of tables, explain most storage. Do not delete evidence or audit rows
+ad hoc. A future bounded compaction policy may retire superseded playlist,
+verification, and sync generations only after durable current anchors and
+restore invariants are proven.
+
+Owner-only external backups are under
+`$DROPBOX/Music/Chordrift/Backups/2026-08-31-pre-main-consolidation/`:
+
+- `chordrift_cutover-47.dump` — SHA-256
+  `4a00b29b74659f01a69ad15b577fd6d1d14295f0911f9d36aff9f1105c6a348d`;
+- `hosted-rehearsal-50.dump` — SHA-256
+  `43a7b048303739d511458224528266be2c8772b26106337af228c332980af6a9`;
+- `stale-main-chordrift-47.dump` — SHA-256
+  `97c151e5f301342b8b0ca97c4a9c1b82a74ce700cad170a1be37f57ea04d3844`.
+
+The deleted rehearsal database contained only disposable identity/vault/job
+fixtures; none were promoted. The canonical hosted tables are empty after
+consolidation. Reverify first-owner Google adoption and import the existing
+Spotify refresh authorization as encrypted generation 1 before beta.1. Until
+then provider-backed observation/maintenance stays unavailable and provider
+writes stay disabled.
+
+Future migration/restore rehearsals use disposable local PostgreSQL by default.
+If Neon branch behavior itself must be tested, create the branch with an expiry
+and delete it immediately after the recorded proof. Never leave a rehearsal
+branch as an implicit runtime dependency.
+
+### Durable hosted observation checkpoint (2026-08-31)
+
+The V021-06 branch now has separate `chordrift-server` and `chordrift-worker`
+entry points. `ObserveProvider` is accepted into migration-0050 durable storage
+only after tenant/provider ownership validation. The worker exclusively claims
+it, decrypts the active refresh credential through the account-scoped vault,
+verifies the stable Spotify identity, rotates a returned refresh credential,
+and calls the Rust inventory importer directly. It emits durable progress,
+renews its lease, honors cooperative cancellation, and atomically publishes a
+complete provider observation. It never invokes a CLI or shell. The browser's
+Observe button submits and follows this typed operation; provider writes remain
+disabled.
+
+The pinned runtime image contains both binaries, while Vortex Compose runs them
+as separate read-only, non-root API and worker services. Only the API publishes
+the Nexus-facing private port. See
+`docs/design/HOSTED_PRODUCTION_ASSEMBLY_V021_06.md`.
+An isolated Vortex build succeeded as
+`sha256:dbbb3dce2df73504791e0691092eaf23810469a531164c8456746033549c8854`;
+inspection proved UID/GID 65532, no `/build` source tree, and only
+`chordrift-server` plus `chordrift-worker` under `/usr/local/bin`. Compose
+configuration validation also passed. This is a disposable development proof,
+not the eventual beta.1 release digest and not a live deployment.
+
+Do not mark V021-06 Production assembly complete yet. The next code boundary is
+durable maintenance-session persistence plus cumulative provider-first
+interpretation/decision recording. Only after that is proven with fake-provider
+and disposable-PostgreSQL tests should the hosted maintenance capability become
+available. No live Spotify observation was executed by this checkpoint.
+
+### Alpha.18 interrupted-move recovery (2026-08-31)
+
+Daily use exposed one compound record-only failure while five tracks were moved
+from Rasa Archive to Cinema Monsoon. The detailed plan represented both halves
+of each move, the shell submitted ten IDs, and assignment rejected duplicates.
+The interrupted run left a complete editable proposal; the prior classifier
+then treated current membership plus a proposed destination as direct intake,
+expanding the retry to 1,439 tracks. No provider apply was reached.
+
+Alpha.18 canonicalizes automatic move evidence before proposal mutation,
+rejects conflicting destinations, and classifies current membership represented
+in either an approved or editable proposal as covered. Proposal extension model
+version 3 also prevents active exclusions from being re-added by stale manual
+assignment revisions. The changed extension hash prevents reuse of the bad
+cached copy.
+
+The live recovery used the fixed development binary against the already-pulled
+snapshot only. It recorded exactly five unique moves, omitted the two excluded
+tracks that a stale revision had attempted to replay, accepted exact provider
+order for membership-equal playlists, and finished with approved generation
+`5e35ca8a-279a-4092-99af-a7530c24f58d`: 1,429/1,429 represented, zero pending
+maintenance operations, and 1,429 `already_covered` intake rows with no direct
+intake. Spotify was neither pulled nor written during recovery.
+
+Publish this repair as `v0.2.1-alpha.18`, then continue V021-06. Permanent
+regressions live in the daily-driver edge-case ledger, the fake-binary suite,
+the intake classifier unit test, and the disposable-PostgreSQL intake/extension
+test.
