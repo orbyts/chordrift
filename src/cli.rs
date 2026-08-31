@@ -18,7 +18,9 @@ use crate::{
     contract::{
         CAPABILITY_DURABLE_OPERATIONS, CAPABILITY_MAINTENANCE_TASK_SESSION,
         CAPABILITY_PRODUCT_IDENTITY, CAPABILITY_REMOTE_CLI, CONTRACT_VERSION, ClientCompatibility,
-        CommandRequest, ContractVersionRange, QueryRequest, ResourceId, SchemaVersionRange,
+        Command as ContractCommand, CommandRequest, ContractVersionRange, IdempotencyKey,
+        MaintenanceDecision, MaintenanceSessionId, Query, QueryRequest, RequestId, ResourceId,
+        SchemaVersionRange,
     },
     credentials::{CredentialStore, SecretId, SystemCredentialStore},
     db, db_cleanup, db_reports, db_v2_migration, embeddings, enrichment, history, intake,
@@ -198,6 +200,12 @@ pub enum ServiceCommand {
         #[command(subcommand)]
         command: ServiceSessionCommand,
     },
+    /// Start, inspect, refresh, or resolve one durable ordinary-maintenance session.
+    Maintenance {
+        /// Maintenance-session operation.
+        #[command(subcommand)]
+        command: ServiceMaintenanceCommand,
+    },
     /// Negotiate contract, schema, and capabilities with one authenticated service.
     Compatibility {
         /// HTTPS service base URL; loopback HTTP is allowed for development tests.
@@ -230,6 +238,71 @@ pub enum ServiceCommand {
         /// Typed query envelope JSON file.
         #[arg(long)]
         file: PathBuf,
+    },
+}
+
+/// Thin remote client operations for durable ordinary maintenance.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ServiceMaintenanceCommand {
+    /// Observe the provider and start a cumulative record-only interpretation.
+    Start {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Provider connection shown by the hosted library view.
+        #[arg(long)]
+        provider_connection_id: uuid::Uuid,
+        /// Stable session identity; generated when omitted.
+        #[arg(long)]
+        session_id: Option<uuid::Uuid>,
+    },
+    /// Read the exact durable maintenance revision.
+    Show {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Maintenance session to inspect.
+        #[arg(long)]
+        session_id: uuid::Uuid,
+    },
+    /// Observe the provider again and cumulatively rebase a session.
+    Refresh {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Maintenance session to refresh.
+        #[arg(long)]
+        session_id: uuid::Uuid,
+        /// Exact revision currently displayed by the client.
+        #[arg(long)]
+        expected_revision: u64,
+    },
+    /// Persist ambiguity decisions from one exact displayed revision.
+    Resolve {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Maintenance session receiving the decisions.
+        #[arg(long)]
+        session_id: uuid::Uuid,
+        /// Exact revision currently displayed by the client.
+        #[arg(long)]
+        expected_revision: u64,
+        /// JSON file containing an array of typed `MaintenanceDecision` values.
+        #[arg(long)]
+        decisions: PathBuf,
     },
 }
 
@@ -2465,7 +2538,7 @@ fn load_service_client(url: &str, profile: &str) -> Result<RemoteHttpClient> {
 fn service_compatibility_offer() -> ClientCompatibility {
     ClientCompatibility {
         contract_versions: ContractVersionRange::exact(CONTRACT_VERSION),
-        schema_versions: SchemaVersionRange::new(0, 50).expect("CLI schema range is valid"),
+        schema_versions: SchemaVersionRange::new(0, 51).expect("CLI schema range is valid"),
         requested_features: vec![
             CAPABILITY_MAINTENANCE_TASK_SESSION.to_owned(),
             CAPABILITY_PRODUCT_IDENTITY.to_owned(),
@@ -2473,6 +2546,15 @@ fn service_compatibility_offer() -> ClientCompatibility {
             CAPABILITY_REMOTE_CLI.to_owned(),
         ],
     }
+}
+
+async fn negotiated_service_client(url: &str, profile: &str) -> Result<RemoteHttpClient> {
+    let client = load_service_client(url, profile)?;
+    client
+        .negotiate(service_compatibility_offer())
+        .await
+        .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+    Ok(client)
 }
 
 async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -> Result<()> {
@@ -2578,6 +2660,95 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
             ServiceSessionCommand::Remove { profile } => {
                 let removed = SystemCredentialStore.delete(&service_session_id(&profile)?)?;
                 writeln!(output, "removed: {removed}\nprofile: {profile}")?;
+            }
+        },
+        ServiceCommand::Maintenance { command } => match command {
+            ServiceMaintenanceCommand::Start {
+                url,
+                profile,
+                provider_connection_id,
+                session_id,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let session_id =
+                    MaintenanceSessionId::from_uuid(session_id.unwrap_or_else(uuid::Uuid::new_v4));
+                let receipt = client
+                    .command(CommandRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        idempotency_key: IdempotencyKey::new(),
+                        command: ContractCommand::StartMaintenance {
+                            session_id,
+                            provider_connection_id: ResourceId::from_uuid(provider_connection_id),
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&receipt)?)?;
+            }
+            ServiceMaintenanceCommand::Show {
+                url,
+                profile,
+                session_id,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let response = client
+                    .query(QueryRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        query: Query::MaintenanceSession {
+                            session_id: MaintenanceSessionId::from_uuid(session_id),
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&response)?)?;
+            }
+            ServiceMaintenanceCommand::Refresh {
+                url,
+                profile,
+                session_id,
+                expected_revision,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let receipt = client
+                    .command(CommandRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        idempotency_key: IdempotencyKey::new(),
+                        command: ContractCommand::RefreshMaintenance {
+                            session_id: MaintenanceSessionId::from_uuid(session_id),
+                            expected_revision,
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&receipt)?)?;
+            }
+            ServiceMaintenanceCommand::Resolve {
+                url,
+                profile,
+                session_id,
+                expected_revision,
+                decisions,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let decisions: Vec<MaintenanceDecision> =
+                    serde_json::from_slice(&std::fs::read(decisions)?)?;
+                let receipt = client
+                    .command(CommandRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        idempotency_key: IdempotencyKey::new(),
+                        command: ContractCommand::ResolveMaintenance {
+                            session_id: MaintenanceSessionId::from_uuid(session_id),
+                            expected_revision,
+                            decisions,
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&receipt)?)?;
             }
         },
         ServiceCommand::Compatibility { url, profile } => {
@@ -7140,9 +7311,9 @@ mod tests {
         HistoryCommand, IntakeCommand, LikedDispositionArg, LikedSongsPolicyArg, PlaylistCommand,
         PlaylistRoleArg, PlaylistSignalClassArg, ProductAuditMode, ProductCollectionCommand,
         ProductCommand, ProductOnboardingCommand, ProductRecipeCommand, ProductSpinCommand,
-        ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, ServiceCommand, SignalCommand,
-        SpotifyCommand, SyncCommand, TrackCommand, binary_capability_manifest, format_count,
-        format_elapsed, write_status,
+        ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, ServiceCommand,
+        ServiceMaintenanceCommand, SignalCommand, SpotifyCommand, SyncCommand, TrackCommand,
+        binary_capability_manifest, format_count, format_elapsed, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -7200,6 +7371,34 @@ mod tests {
             Command::Service {
                 command: ServiceCommand::Query { profile, .. }
             } if profile == "default"
+        ));
+    }
+
+    #[test]
+    fn parses_typed_remote_maintenance_commands() {
+        let connection_id = uuid::Uuid::new_v4();
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "maintenance",
+            "start",
+            "--url",
+            "https://api.chordrift.example",
+            "--provider-connection-id",
+            &connection_id.to_string(),
+        ])
+        .expect("valid remote maintenance start");
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Maintenance {
+                    command: ServiceMaintenanceCommand::Start {
+                        provider_connection_id,
+                        profile,
+                        ..
+                    }
+                }
+            } if provider_connection_id == connection_id && profile == "default"
         ));
     }
 

@@ -75,15 +75,22 @@ the API publishes the private Nexus-facing port.
 
 ## Remaining production-assembly gate
 
-Read-only `ObserveProvider` is the first production operation. V021-06
-production assembly is not complete until the same worker boundary persists
-maintenance sessions, interprets cumulative provider-first changes, records
-decisions, returns an immutable provider-effect review, and verifies any later
-explicitly authorized apply. Provider writes remain disabled during the
-read-only acceptance gate.
+Read-only `ObserveProvider` is the first production operation. The branch now
+also routes `StartMaintenance`, `RefreshMaintenance`, and
+`ResolveMaintenance` through the same durable worker. Start and refresh take a
+fresh provider observation, the PostgreSQL adapter converts ordinary reconcile
+work into one typed session projection, and web plus remote CLI query that same
+session. Paired remove/add plan rows collapse into one logical move.
+
+This is still a staged record-only boundary. The adapter does not yet commit
+resolved session intent back into the canonical playlist model, and it rejects
+cleanup, publication, retirement, and any unsupported plan phase. Provider
+authorization is explicitly unavailable. Production assembly is not complete
+until canonical intent projection, saved-intake handling, exact provider-effect
+review, separately authorized apply, and verification are proven.
 
 Migration 0051 now supplies the restart-safe task boundary described in
 [Durable maintenance sessions](DURABLE_MAINTENANCE_SESSIONS_V021_06.md). The
-remaining adapter must produce its typed projections from PostgreSQL provider
-observations and accepted intent; it may not delegate that work to the legacy
-shell wizard.
+adapter produces typed projections directly from PostgreSQL provider
+observations through the Rust planner; it never delegates to the legacy shell
+wizard.

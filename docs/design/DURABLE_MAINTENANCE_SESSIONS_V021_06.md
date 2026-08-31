@@ -1,7 +1,7 @@
 # Durable maintenance sessions — V021-06
 
-Status: persistence foundation proven; hosted interpretation and provider
-effects remain disabled.
+Status: persistence and record-only hosted interpretation are implemented on
+the branch; provider effects remain disabled.
 
 Ordinary maintenance is a Rust-owned task, not a terminal script or browser
 workflow. Migration 0051 persists its current typed projection and an immutable
@@ -11,7 +11,7 @@ event for every accepted revision:
 new complete provider observation
               |
               v
-PostgreSQL interpretation adapter (next gate)
+PostgreSQL interpretation adapter
               |
               | MaintenanceProjection
               v
@@ -44,15 +44,27 @@ Vortex. The proof container, network, source copy, and root-owned build output
 were removed immediately afterward. No Neon branch was created and Spotify was
 not read or changed.
 
-Migration 0051 is additive but remains staged until the hosted maintenance
-vertical slice is ready. The service must not advertise hosted maintenance or
-accept `StartMaintenance`, `RefreshMaintenance`, `ResolveMaintenance`, or
-`AuthorizeMaintenance` into the durable queue until:
+Migration 0051 is additive and remains staged until this vertical slice passes
+deployment rehearsal. The branch accepts Start, Refresh, and Resolve into the
+durable queue. It explicitly rejects Authorize. Start and Refresh perform a
+new provider read before interpreting the resulting complete snapshot.
 
-1. the PostgreSQL adapter turns the newest complete provider observation and
-   durable intent into the exact cumulative `MaintenanceProjection`;
-2. start, refresh, and resolve execute through the worker and this store;
-3. web and remote CLI render the same session after process restart;
-4. fake-provider regressions prove record-only gestures never become provider
-   writes; and
-5. authorization/apply remains a separately opened, exact-review gate.
+Completed branch proof:
+
+1. the PostgreSQL adapter reuses the Rust maintenance planner, rejects every
+   non-reconcile phase, and collapses paired move rows by provider track ID;
+2. start, refresh, and resolve run through the worker and durable store;
+3. web and remote CLI use the same session query DTO; and
+4. unit, transport, fake-provider, shell-compatibility, and full Rust suites
+   pass without enabling provider effects.
+
+Remaining activation gates:
+
+1. project accepted session resolutions back into canonical playlist intent so
+   the next provider observation converges rather than merely preserving a
+   parallel session ledger;
+2. support saved-intake cleanup and other ordinary non-reconcile phases without
+   weakening the explicit provider-write boundary;
+3. run API + worker + browser + remote CLI against disposable PostgreSQL after
+   process restart; and
+4. open authorization/apply only as a separately reviewed and proven gate.

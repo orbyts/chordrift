@@ -5,10 +5,9 @@ instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
 ## Authenticated service client
 
-V021-05 adds the thin remote DTO client. The V021-06 private endpoint is
-`https://chordrift.suhail.ink`; remote maintenance remains unavailable until
-the beta worker/adapter gate, so these remain development/release-rehearsal
-commands:
+V021-05 adds the thin remote DTO client. The V021-06 branch adds typed durable
+maintenance commands over the same contract. They are staged until migration
+0051 and the matching API/worker are deployed:
 
 ```bash
 printf '%s' "$CHORDRIFT_ISSUED_SESSION" |
@@ -17,6 +16,15 @@ chordrift service session status --profile default
 chordrift service compatibility --url https://service.example --profile default
 chordrift service command --url https://service.example --file command.json
 chordrift service query --url https://service.example --file query.json
+chordrift service maintenance start --url https://service.example \
+  --provider-connection-id PROVIDER_CONNECTION_UUID
+chordrift service maintenance show --url https://service.example \
+  --session-id SESSION_UUID
+chordrift service maintenance refresh --url https://service.example \
+  --session-id SESSION_UUID --expected-revision REVISION
+chordrift service maintenance resolve --url https://service.example \
+  --session-id SESSION_UUID --expected-revision REVISION \
+  --decisions decisions.json
 chordrift service session remove --profile default
 ```
 
@@ -26,6 +34,12 @@ store, and is never printed. Command/query files must be exact public
 development. A remote failure never falls back to local Neon/provider access.
 The in-process local transport is an explicit Rust dependency-injection seam,
 not a second set of domain behavior.
+
+`maintenance start` and `maintenance refresh` each perform a fresh provider
+read before interpretation. `show` reads the durable wrapper-neutral session.
+`resolve` accepts a JSON array of typed `MaintenanceDecision` values and records
+only the displayed revision. These commands cannot authorize provider effects;
+that gate remains unavailable in this checkpoint.
 
 ### Private-beta provider credential adoption
 

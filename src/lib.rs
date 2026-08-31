@@ -64,6 +64,8 @@ pub mod identity;
 pub mod intake;
 /// Wrapper-neutral ordinary-maintenance workflow shared by every client.
 pub mod maintenance;
+/// PostgreSQL provider-first interpretation for durable maintenance tasks.
+pub mod maintenance_interpretation;
 /// Restart-safe PostgreSQL persistence for wrapper-neutral maintenance sessions.
 pub mod maintenance_store;
 /// Versioned pretrained audio-model inference artifacts.

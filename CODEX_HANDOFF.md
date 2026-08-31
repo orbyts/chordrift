@@ -2785,9 +2785,18 @@ removed immediately. No Neon branch was created, the canonical database
 remains at the verified migration-50 live baseline, and Spotify was not read or
 changed.
 
-Hosted maintenance remains unavailable. Next, implement the real PostgreSQL
-cumulative provider-first interpretation adapter, then route typed start,
-refresh, and resolve commands through the durable worker/store and expose the
-same query to web and remote CLI. Keep authorization/apply disabled until fake-
-provider record-only proof and a separately approved exact-write gate. See
+The branch now contains the next record-only vertical slice. Start and Refresh
+perform a fresh Spotify read through the encrypted-vault worker, then the
+PostgreSQL adapter reuses the Rust maintenance planner to build the durable
+typed projection. Paired plan rows for one move are collapsed by Spotify track
+ID. Resolve records exact-revision decisions. Web and remote CLI start, query,
+refresh, and resolve the same session; authorization is explicitly rejected.
+
+Do not deploy this checkpoint yet. Resolutions currently live in the durable
+session ledger but are not projected back into the canonical playlist model,
+so repeated observations are not yet full model convergence. Saved-intake
+cleanup and every non-reconcile plan phase also fail closed. Next implement the
+canonical intent projection plus saved-intake record-only interpretation, then
+prove API/worker restart and both clients on disposable PostgreSQL. Keep
+authorization/apply disabled until a separately approved exact-write gate. See
 `docs/design/DURABLE_MAINTENANCE_SESSIONS_V021_06.md`.

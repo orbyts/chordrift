@@ -2,7 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const uuid = () => crypto.randomUUID();
 const contractVersion = { major: 1, minor: 3 };
-const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null };
+const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null, maintenanceSession: null };
 
 function queryEnvelope(query) { return { contract_version: contractVersion, request_id: uuid(), query }; }
 
@@ -58,7 +58,7 @@ function showUnavailable() {
 
 async function loadCompatibility() {
   state.compatibility = await contractRequest('/v1/compatibility', {
-    contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 50 },
+    contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 51 },
     requested_features: ['service.authenticated-transport.v1', 'service.product-identity.v1', 'service.provider-credential-vault.v1', 'service.durable-operations.v1', 'service.remote-cli.v1', 'maintenance.task-session.v1']
   });
   const observationAvailable = state.compatibility.features['service.durable-operations.v1'] === 'available';
@@ -96,15 +96,17 @@ function commandEnvelope(command) {
   return { contract_version: contractVersion, request_id: uuid(), idempotency_key: uuid(), command };
 }
 
-async function observeProvider() {
+async function startMaintenance() {
   if (!state.provider || state.activeOperation) return;
   const panel = $('#maintenance-session'); panel.hidden = false;
-  panel.replaceChildren(node('strong', '', 'Observation queued'), node('p', 'availability', 'Waiting for the hosted worker. Spotify will not be changed.'));
+  panel.replaceChildren(node('strong', '', 'Maintenance queued'), node('p', 'availability', 'Waiting for the hosted worker. Provider state will be read; Spotify will not be changed.'));
   $('#start-maintenance').disabled = true;
   try {
-    const receipt = await contractRequest('/v1/commands', commandEnvelope({ type: 'observe_provider', parameters: { provider_connection_id: state.provider.provider_connection_id } }));
+    const sessionId = uuid();
+    const receipt = await contractRequest('/v1/commands', commandEnvelope({ type: 'start_maintenance', parameters: { session_id: sessionId, provider_connection_id: state.provider.provider_connection_id } }));
     state.activeOperation = receipt;
-    await followOperation(receipt.operation_id);
+    const operation = await followOperation(receipt.operation_id);
+    if (operation.state.state === 'completed') await loadMaintenanceSession(operation.state.details?.result_id || sessionId);
   } catch (error) {
     panel.replaceChildren(node('strong', '', 'Observation could not start'), node('p', 'warning', error.message));
   } finally {
@@ -124,12 +126,62 @@ async function followOperation(operationId) {
     );
     if (['completed', 'failed', 'cancelled'].includes(current.state)) {
       await Promise.all([loadProviderConnections(), loadActivity()]);
-      return;
+      return operation;
     }
     const cancel = node('button', '', 'Cancel safely'); cancel.type = 'button';
     cancel.addEventListener('click', cancelActiveOperation, { once: true }); panel.append(cancel);
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+}
+
+async function loadMaintenanceSession(sessionId) {
+  const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'maintenance_session', parameters: { session_id: sessionId } }));
+  state.maintenanceSession = response.view.value;
+  renderMaintenanceSession();
+}
+
+function renderMaintenanceSession() {
+  const view = state.maintenanceSession; const panel = $('#maintenance-session');
+  if (!view) return;
+  panel.hidden = false; panel.replaceChildren();
+  panel.append(node('strong', '', view.state.replaceAll('_', ' ')), node('p', 'availability', `Revision ${view.revision} · ${view.observed_changes.length} observed change${view.observed_changes.length === 1 ? '' : 's'} · no provider write authorized`));
+  const list = node('div', 'card-list');
+  for (const change of view.observed_changes) {
+    const card = node('div', 'record-card');
+    card.append(node('strong', '', change.summary), node('span', '', change.resolution ? `Recorded · ${change.kind.replaceAll('_', ' ')}` : `Decision needed · ${change.kind.replaceAll('_', ' ')}`));
+    list.append(card);
+  }
+  if (!view.observed_changes.length) list.append(node('p', 'empty', 'Provider and Chordrift intent are already aligned.'));
+  panel.append(list);
+  if (view.allowed_actions.includes('resolve')) {
+    const resolve = node('button', '', 'Keep the observed provider state'); resolve.type = 'button';
+    resolve.addEventListener('click', resolveObservedChanges, { once: true }); panel.append(resolve);
+  }
+  if (view.allowed_actions.includes('refresh')) {
+    const refresh = node('button', '', 'Check provider again'); refresh.type = 'button';
+    refresh.addEventListener('click', refreshMaintenance, { once: true }); panel.append(refresh);
+  }
+}
+
+async function runMaintenanceCommand(command) {
+  const panel = $('#maintenance-session');
+  const receipt = await contractRequest('/v1/commands', commandEnvelope(command));
+  state.activeOperation = receipt; renderProviderState();
+  try {
+    const operation = await followOperation(receipt.operation_id);
+    if (operation.state.state === 'completed') await loadMaintenanceSession(state.maintenanceSession.session_id);
+  } finally { state.activeOperation = null; renderProviderState(); }
+}
+
+async function refreshMaintenance() {
+  const view = state.maintenanceSession;
+  await runMaintenanceCommand({ type: 'refresh_maintenance', parameters: { session_id: view.session_id, expected_revision: view.revision } });
+}
+
+async function resolveObservedChanges() {
+  const view = state.maintenanceSession;
+  const decisions = view.observed_changes.filter((change) => !change.resolution).map((change) => ({ change_id: change.change_id, resolution: { type: 'keep_observed' } }));
+  await runMaintenanceCommand({ type: 'resolve_maintenance', parameters: { session_id: view.session_id, expected_revision: view.revision, decisions } });
 }
 
 async function cancelActiveOperation() {
@@ -230,7 +282,7 @@ async function loadActivity() {
 }
 
 function requestFor(name) {
-  if (name === 'compatibility') return { path: '/v1/compatibility', body: { contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 50 }, requested_features: ['service.authenticated-transport.v1', 'service.product-identity.v1', 'service.provider-credential-vault.v1', 'service.durable-operations.v1', 'service.remote-cli.v1', 'maintenance.task-session.v1'] } };
+  if (name === 'compatibility') return { path: '/v1/compatibility', body: { contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 51 }, requested_features: ['service.authenticated-transport.v1', 'service.product-identity.v1', 'service.provider-credential-vault.v1', 'service.durable-operations.v1', 'service.remote-cli.v1', 'maintenance.task-session.v1'] } };
   if (name === 'provider_connections') return { path: '/v1/queries', body: queryEnvelope({ type: 'provider_connections' }) };
   if (name === 'operation_history') return { path: '/v1/queries', body: queryEnvelope({ type: 'operation_history', parameters: { account_id: state.session?.account_id || 'ACCOUNT_ID' } }) };
   return { path: name === 'custom_command' ? '/v1/commands' : '/v1/queries', body: name === 'custom_command'
@@ -260,7 +312,7 @@ $('#provider-select').addEventListener('change', async (event) => {
   state.provider = state.connections.find((connection) => connection.provider_connection_id === event.target.value); renderProviderState(); await Promise.all([loadPlaylists(), loadExclusions()]);
 });
 $('#preset').addEventListener('change', selectPreset); $('#send').addEventListener('click', sendDeveloperRequest);
-$('#start-maintenance').addEventListener('click', observeProvider);
+$('#start-maintenance').addEventListener('click', startMaintenance);
 $('.dialog-close').addEventListener('click', () => $('#track-dialog').close());
 $('#track-dialog').addEventListener('click', (event) => { if (event.target === $('#track-dialog')) $('#track-dialog').close(); });
 selectPreset(); loadSession();

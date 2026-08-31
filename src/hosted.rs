@@ -3,8 +3,8 @@
 //! This module owns HTTPS-origin policy, OIDC login, browser-cookie bridging,
 //! health checks, and the static contract workbench. It deliberately does not
 //! expose a shell, SQL, provider URLs, database credentials, or provider
-//! credentials. Provider mutation stays disabled until the deployment's real
-//! maintenance adapter and read-only cutover gate are verified.
+//! credentials. Record-only maintenance is available; provider mutation stays
+//! disabled until the separate exact-review cutover gate is verified.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -64,6 +64,7 @@ use crate::{
         VerifiedExternalIdentity,
     },
     maintenance::{MaintenanceDecisionProjection, MaintenanceProjection},
+    maintenance_store::PostgresMaintenanceSessionStore,
     provider_vault::{PostgresProviderCredentialStore, ProviderVaultKeyring},
     service::{
         AuthenticatedSubject, ContractApplication, MaintenanceApplication, MaintenanceBackend,
@@ -234,14 +235,16 @@ struct DeploymentApplication {
     pool: PgPool,
     reads: MaintenanceApplication<DeploymentMaintenanceBackend>,
     operations: DurableOperationQueue<PostgresDurableOperationStore>,
+    maintenance_sessions: PostgresMaintenanceSessionStore,
 }
 
 impl DeploymentApplication {
     fn new(pool: PgPool, operations: DurableOperationQueue<PostgresDurableOperationStore>) -> Self {
         Self {
             reads: MaintenanceApplication::new(DeploymentMaintenanceBackend { pool: pool.clone() }),
-            pool,
+            pool: pool.clone(),
             operations,
+            maintenance_sessions: PostgresMaintenanceSessionStore::new(pool),
         }
     }
 
@@ -282,10 +285,17 @@ impl ContractApplication for DeploymentApplication {
                 cancellation_id: cancellation.cancellation_id,
             });
         }
-        if let Command::ObserveProvider {
-            provider_connection_id,
-        } = request.command
-        {
+        let provider_connection_id = match &request.command {
+            Command::ObserveProvider {
+                provider_connection_id,
+            }
+            | Command::StartMaintenance {
+                provider_connection_id,
+                ..
+            } => Some(*provider_connection_id),
+            _ => None,
+        };
+        if let Some(provider_connection_id) = provider_connection_id {
             if !self
                 .owns_provider_connection(subject, provider_connection_id)
                 .await
@@ -305,6 +315,33 @@ impl ContractApplication for DeploymentApplication {
                 )
                 .await
                 .map(|accepted| accepted.receipt);
+        }
+        if matches!(
+            &request.command,
+            Command::RefreshMaintenance { .. } | Command::ResolveMaintenance { .. }
+        ) {
+            let session_id = match &request.command {
+                Command::RefreshMaintenance { session_id, .. }
+                | Command::ResolveMaintenance { session_id, .. } => *session_id,
+                _ => unreachable!("maintenance command shape already matched"),
+            };
+            self.maintenance_sessions.load(subject, session_id).await?;
+            return self
+                .operations
+                .accept(
+                    subject,
+                    request,
+                    OperationRetryPolicy::new(3, Duration::from_secs(5))
+                        .expect("static hosted retry policy is valid"),
+                )
+                .await
+                .map(|accepted| accepted.receipt);
+        }
+        if matches!(&request.command, Command::AuthorizeMaintenance { .. }) {
+            return Err(crate::contract::ClientError::new(
+                ErrorCode::CapabilityUnavailable,
+                false,
+            ));
         }
         self.reads.command(subject, request).await
     }
@@ -350,6 +387,15 @@ impl ContractApplication for DeploymentApplication {
                     .events(subject, operation_id, after_sequence)
                     .await?,
             })),
+            Query::MaintenanceSession { session_id } => {
+                let durable = self.maintenance_sessions.load(subject, session_id).await?;
+                Ok(QueryResponse::MaintenanceSession(View {
+                    contract_version: CONTRACT_VERSION,
+                    request_id: request.request_id,
+                    generated_at,
+                    value: durable.view,
+                }))
+            }
             query => {
                 self.reads
                     .query(subject, QueryRequest { query, ..request })
@@ -953,6 +999,10 @@ pub async fn run_from_env() -> Result<()> {
         .verify_schema()
         .await
         .map_err(|_| configuration("durable operation schema is not ready"))?;
+    PostgresMaintenanceSessionStore::new(pool.clone())
+        .verify_schema()
+        .await
+        .map_err(|_| configuration("durable maintenance schema is not ready"))?;
     let identity_store = Arc::new(PostgresProductIdentityStore::new(pool.clone()));
     identity_store
         .verify_schema()
@@ -1081,7 +1131,7 @@ pub async fn healthcheck_from_env() -> Result<()> {
 fn deployment_compatibility() -> ServiceCompatibility {
     ServiceCompatibility {
         contract_versions: ContractVersionRange::exact(CONTRACT_VERSION),
-        schema_version: 50,
+        schema_version: 51,
         features: BTreeMap::from([
             (
                 CAPABILITY_AUTHENTICATED_SERVICE_TRANSPORT.to_owned(),
@@ -1105,7 +1155,7 @@ fn deployment_compatibility() -> ServiceCompatibility {
             ),
             (
                 CAPABILITY_MAINTENANCE_TASK_SESSION.to_owned(),
-                CapabilityAvailability::Unavailable,
+                CapabilityAvailability::Available,
             ),
         ]),
         provider_capabilities: BTreeMap::new(),
@@ -1434,7 +1484,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deployment_manifest_exposes_durable_observation_but_not_maintenance() {
+    fn deployment_manifest_exposes_durable_record_only_maintenance() {
         let compatibility = deployment_compatibility();
         assert_eq!(
             compatibility.features.get(CAPABILITY_DURABLE_OPERATIONS),
@@ -1456,7 +1506,7 @@ mod tests {
             compatibility
                 .features
                 .get(CAPABILITY_MAINTENANCE_TASK_SESSION),
-            Some(&CapabilityAvailability::Unavailable)
+            Some(&CapabilityAvailability::Available)
         );
         assert!(compatibility.provider_capabilities.is_empty());
     }

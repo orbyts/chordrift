@@ -441,16 +441,26 @@ and later Chordrift refactor begin.
   provider selector visibly reports Spotify connection
   and newest-observation state and is designed for future connections. The
   exact web acceptance surface is recorded in
-  `docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md`. Remaining gates are the real
-  maintenance interpretation adapter, hosted maintenance command routing,
-  the web maintenance journey, operational recovery checks, and beta
-  publication. Read-only provider observation is now a real durable operation:
+  `docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md`. Remaining gates are canonical
+  intent projection, saved-intake interpretation, the complete web maintenance
+  journey, operational recovery checks, and beta publication. Read-only
+  provider observation is now a real durable operation:
   the authenticated API accepts the typed command, the separately containerized
   worker leases the encrypted account-scoped Spotify credential, verifies the
   stable provider identity, calls the Rust inventory importer directly, rotates
   a returned refresh credential, persists the complete snapshot atomically, and
   exposes reconnectable progress/cancellation. No CLI, shell, arbitrary SQL, or
   client-supplied provider URL is in that route. Provider writes remain disabled.
+
+  Record-only maintenance checkpoint: migration 0051 persistence, the real
+  PostgreSQL provider-first interpreter, durable Start/Refresh/Resolve worker
+  dispatch, and shared web/remote-CLI session access are implemented on the
+  branch. Start and Refresh take a fresh provider observation; paired move rows
+  collapse into one logical gesture; unsupported phases fail closed; and
+  Authorize remains unavailable. This does not complete Production assembly:
+  accepted session resolutions must still update canonical playlist intent,
+  saved-intake cleanup must join the typed flow, and the complete vertical
+  slice needs disposable-PostgreSQL restart/client proof before deployment.
   Provider writes remain disabled.
 
   Durable-session checkpoint (2026-08-31): additive migration 0051, a
@@ -460,16 +470,16 @@ and later Chordrift refactor begin.
   PostgreSQL 18 proof on Vortex passed restart, cross-tenant isolation, and
   stale-revision rejection; its container, network, source copy, and build
   output were removed immediately. The migration remains staged, no Neon
-  branch was created, Spotify was not contacted, and hosted maintenance is not
-  advertised yet. See
+  branch was created, Spotify was not contacted during that proof, and the
+  hosted maintenance capability is branch-only rather than deployed. See
   `docs/design/DURABLE_MAINTENANCE_SESSIONS_V021_06.md`.
 
   Ordered remaining work for `v0.2.1-beta.1`:
 
   1. [in progress] read-only encrypted-vault observation, durable API/worker
-     runtime, and maintenance-session persistence are composed; complete the
-     PostgreSQL maintenance interpretation adapter and route start/refresh/
-     resolve through the worker;
+     runtime, maintenance-session persistence, PostgreSQL interpretation, and
+     Start/Refresh/Resolve routing are composed; project accepted record-only
+     resolutions into canonical intent and add saved-intake interpretation;
   2. implement Connect/Reconnect/Disconnect and multiple isolated Spotify
      connections without changing Chordrift product identity;
   3. finish the web maintenance journey and the shared provider/model

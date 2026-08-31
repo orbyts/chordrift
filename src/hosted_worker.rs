@@ -14,11 +14,17 @@ use storexa::Database;
 
 use crate::{
     ChordriftError, Result, config,
-    contract::{ClientError, Command, ErrorCode, Progress, ProgressUnit, ResourceId},
+    contract::{
+        ClientError, Command, ErrorCode, MaintenanceDecision, MaintenanceSessionId, OperationId,
+        Progress, ProgressUnit, ResourceId,
+    },
     db,
     durable_operations::{
         DurableOperationLease, DurableOperationQueue, PostgresDurableOperationStore,
     },
+    maintenance::MaintenanceDecisionProjection,
+    maintenance_interpretation::PostgresMaintenanceInterpreter,
+    maintenance_store::{DurableMaintenanceAuthority, PostgresMaintenanceSessionStore},
     provider_vault::{
         PostgresProviderCredentialStore, ProviderCredentialIdentity, ProviderCredentialVault,
         ProviderVaultKeyring,
@@ -39,21 +45,61 @@ pub trait HostedProviderExecutor: Send + Sync {
         subject: AuthenticatedSubject,
         provider_connection_id: ResourceId,
     ) -> std::result::Result<ResourceId, ClientError>;
+
+    /// Starts a durable record-only maintenance interpretation.
+    async fn start_maintenance(
+        &self,
+        _subject: AuthenticatedSubject,
+        _operation_id: OperationId,
+        _session_id: MaintenanceSessionId,
+        _provider_connection_id: ResourceId,
+    ) -> std::result::Result<ResourceId, ClientError> {
+        Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
+    }
+
+    /// Rebases a durable session onto the newest already-observed state.
+    async fn refresh_maintenance(
+        &self,
+        _subject: AuthenticatedSubject,
+        _operation_id: OperationId,
+        _session_id: MaintenanceSessionId,
+        _expected_revision: u64,
+    ) -> std::result::Result<ResourceId, ClientError> {
+        Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
+    }
+
+    /// Persists explicit ambiguity decisions without provider effects.
+    async fn resolve_maintenance(
+        &self,
+        _subject: AuthenticatedSubject,
+        _operation_id: OperationId,
+        _session_id: MaintenanceSessionId,
+        _expected_revision: u64,
+        _decisions: Vec<MaintenanceDecision>,
+    ) -> std::result::Result<ResourceId, ClientError> {
+        Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
+    }
 }
 
 /// Production Spotify/Neon executor using an encrypted credential vault.
 pub struct SpotifyObservationExecutor {
     database: Database,
     vault: ProviderCredentialVault<PostgresProviderCredentialStore>,
+    sessions: PostgresMaintenanceSessionStore,
 }
 
 impl SpotifyObservationExecutor {
-    /// Builds the executor after the caller verifies schemas 0049 and 0050.
+    /// Builds the executor after the caller verifies schemas 0049 through 0051.
     pub fn new(
         database: Database,
         vault: ProviderCredentialVault<PostgresProviderCredentialStore>,
     ) -> Self {
-        Self { database, vault }
+        let sessions = PostgresMaintenanceSessionStore::new(database.pool().clone());
+        Self {
+            database,
+            vault,
+            sessions,
+        }
     }
 }
 
@@ -101,13 +147,92 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
             .map_err(provider_error)?;
         Ok(ResourceId::from_uuid(report.snapshot_id))
     }
+
+    async fn start_maintenance(
+        &self,
+        subject: AuthenticatedSubject,
+        operation_id: OperationId,
+        session_id: MaintenanceSessionId,
+        provider_connection_id: ResourceId,
+    ) -> std::result::Result<ResourceId, ClientError> {
+        self.observe(subject, provider_connection_id).await?;
+        let projection = PostgresMaintenanceInterpreter::new(&self.database)
+            .project(subject, provider_connection_id, None)
+            .await?;
+        DurableMaintenanceAuthority::new(self.sessions.clone())
+            .start(
+                subject,
+                provider_connection_id,
+                session_id,
+                projection,
+                Some(operation_id),
+                Utc::now(),
+            )
+            .await?;
+        Ok(ResourceId::from_uuid(session_id.as_uuid()))
+    }
+
+    async fn refresh_maintenance(
+        &self,
+        subject: AuthenticatedSubject,
+        operation_id: OperationId,
+        session_id: MaintenanceSessionId,
+        expected_revision: u64,
+    ) -> std::result::Result<ResourceId, ClientError> {
+        let current = self.sessions.load(subject, session_id).await?;
+        let observed_snapshot = self
+            .observe(subject, current.provider_connection_id)
+            .await?;
+        if observed_snapshot == current.view.provider_snapshot_id {
+            return Ok(ResourceId::from_uuid(session_id.as_uuid()));
+        }
+        let projection = PostgresMaintenanceInterpreter::new(&self.database)
+            .project(subject, current.provider_connection_id, Some(&current.view))
+            .await?;
+        DurableMaintenanceAuthority::new(self.sessions.clone())
+            .refresh(
+                subject,
+                session_id,
+                expected_revision,
+                projection,
+                Some(operation_id),
+                Utc::now(),
+            )
+            .await?;
+        Ok(ResourceId::from_uuid(session_id.as_uuid()))
+    }
+
+    async fn resolve_maintenance(
+        &self,
+        subject: AuthenticatedSubject,
+        operation_id: OperationId,
+        session_id: MaintenanceSessionId,
+        expected_revision: u64,
+        decisions: Vec<MaintenanceDecision>,
+    ) -> std::result::Result<ResourceId, ClientError> {
+        DurableMaintenanceAuthority::new(self.sessions.clone())
+            .resolve(
+                subject,
+                session_id,
+                expected_revision,
+                decisions,
+                MaintenanceDecisionProjection {
+                    provider_effects: Vec::new(),
+                    review_id: None,
+                },
+                Some(operation_id),
+                Utc::now(),
+            )
+            .await?;
+        Ok(ResourceId::from_uuid(session_id.as_uuid()))
+    }
 }
 
 /// Runs the separate provider worker until process shutdown.
 pub async fn run_from_env() -> Result<()> {
     let worker_name = required("CHORDRIFT_WORKER_NAME")?;
     let database = db::connect(config::database_config_from_env()?).await?;
-    db::require_schema_through(&database, 50).await?;
+    db::require_schema_through(&database, 51).await?;
     let pool = database.pool().clone();
     let credential_store = PostgresProviderCredentialStore::new(pool.clone());
     credential_store
@@ -121,6 +246,10 @@ pub async fn run_from_env() -> Result<()> {
         .verify_schema()
         .await
         .map_err(|_| configuration("durable operation schema is not ready"))?;
+    PostgresMaintenanceSessionStore::new(database.pool().clone())
+        .verify_schema()
+        .await
+        .map_err(|_| configuration("durable maintenance schema is not ready"))?;
     let queue = DurableOperationQueue::new(operation_store);
     let executor = SpotifyObservationExecutor::new(
         database,
@@ -160,8 +289,13 @@ where
     queue
         .record_progress(
             &lease,
-            Progress::new("observe_provider", 0, Some(1), ProgressUnit::Steps)
-                .expect("static worker progress is valid"),
+            Progress::new(
+                progress_phase(&lease.request.command),
+                0,
+                Some(1),
+                ProgressUnit::Steps,
+            )
+            .expect("static worker progress is valid"),
         )
         .await?;
     let mut work = Box::pin(dispatch(executor, &lease));
@@ -193,15 +327,66 @@ async fn dispatch<E: HostedProviderExecutor>(
     executor: &E,
     lease: &DurableOperationLease,
 ) -> std::result::Result<ResourceId, ClientError> {
-    match lease.request.command {
+    match &lease.request.command {
         Command::ObserveProvider {
             provider_connection_id,
         } => {
             executor
-                .observe(lease.subject, provider_connection_id)
+                .observe(lease.subject, *provider_connection_id)
+                .await
+        }
+        Command::StartMaintenance {
+            session_id,
+            provider_connection_id,
+        } => {
+            executor
+                .start_maintenance(
+                    lease.subject,
+                    lease.operation_id,
+                    *session_id,
+                    *provider_connection_id,
+                )
+                .await
+        }
+        Command::RefreshMaintenance {
+            session_id,
+            expected_revision,
+        } => {
+            executor
+                .refresh_maintenance(
+                    lease.subject,
+                    lease.operation_id,
+                    *session_id,
+                    *expected_revision,
+                )
+                .await
+        }
+        Command::ResolveMaintenance {
+            session_id,
+            expected_revision,
+            decisions,
+        } => {
+            executor
+                .resolve_maintenance(
+                    lease.subject,
+                    lease.operation_id,
+                    *session_id,
+                    *expected_revision,
+                    decisions.clone(),
+                )
                 .await
         }
         _ => Err(ClientError::new(ErrorCode::InvalidRequest, false)),
+    }
+}
+
+fn progress_phase(command: &Command) -> &'static str {
+    match command {
+        Command::ObserveProvider { .. } => "observe_provider",
+        Command::StartMaintenance { .. } => "start_maintenance",
+        Command::RefreshMaintenance { .. } => "refresh_maintenance",
+        Command::ResolveMaintenance { .. } => "resolve_maintenance",
+        _ => "unsupported",
     }
 }
 
@@ -265,6 +450,37 @@ mod tests {
         ) -> std::result::Result<ResourceId, ClientError> {
             Ok(provider_connection_id)
         }
+
+        async fn start_maintenance(
+            &self,
+            _subject: AuthenticatedSubject,
+            _operation_id: OperationId,
+            session_id: MaintenanceSessionId,
+            _provider_connection_id: ResourceId,
+        ) -> std::result::Result<ResourceId, ClientError> {
+            Ok(ResourceId::from_uuid(session_id.as_uuid()))
+        }
+
+        async fn refresh_maintenance(
+            &self,
+            _subject: AuthenticatedSubject,
+            _operation_id: OperationId,
+            session_id: MaintenanceSessionId,
+            _expected_revision: u64,
+        ) -> std::result::Result<ResourceId, ClientError> {
+            Ok(ResourceId::from_uuid(session_id.as_uuid()))
+        }
+
+        async fn resolve_maintenance(
+            &self,
+            _subject: AuthenticatedSubject,
+            _operation_id: OperationId,
+            session_id: MaintenanceSessionId,
+            _expected_revision: u64,
+            _decisions: Vec<MaintenanceDecision>,
+        ) -> std::result::Result<ResourceId, ClientError> {
+            Ok(ResourceId::from_uuid(session_id.as_uuid()))
+        }
     }
 
     fn lease(command: Command) -> DurableOperationLease {
@@ -311,5 +527,30 @@ mod tests {
                 .code,
             ErrorCode::InvalidRequest
         );
+    }
+
+    #[tokio::test]
+    async fn worker_dispatches_record_only_maintenance_commands() {
+        let session_id = MaintenanceSessionId::new();
+        for command in [
+            Command::StartMaintenance {
+                session_id,
+                provider_connection_id: ResourceId::new(),
+            },
+            Command::RefreshMaintenance {
+                session_id,
+                expected_revision: 1,
+            },
+            Command::ResolveMaintenance {
+                session_id,
+                expected_revision: 1,
+                decisions: Vec::new(),
+            },
+        ] {
+            assert_eq!(
+                dispatch(&FakeExecutor, &lease(command)).await.unwrap(),
+                ResourceId::from_uuid(session_id.as_uuid())
+            );
+        }
     }
 }
