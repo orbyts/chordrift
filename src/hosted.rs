@@ -60,6 +60,7 @@ use crate::{
         VerifiedExternalIdentity,
     },
     maintenance::{MaintenanceDecisionProjection, MaintenanceProjection},
+    provider_vault::{PostgresProviderCredentialStore, ProviderVaultKeyring},
     service::{AuthenticatedSubject, MaintenanceApplication, MaintenanceBackend},
 };
 
@@ -804,6 +805,14 @@ pub async fn run_from_env() -> Result<()> {
     let config = Arc::new(HostedConfig::from_env()?);
     let database = db::connect(config::database_config_from_env()?).await?;
     let pool = database.pool().clone();
+    let provider_store = PostgresProviderCredentialStore::new(pool.clone());
+    provider_store
+        .verify_schema()
+        .await
+        .map_err(|_| configuration("hosted provider credential schema is not ready"))?;
+    let provider_keyring = ProviderVaultKeyring::from_environment()
+        .map_err(|_| configuration("hosted provider credential key is not ready"))?;
+    let _provider_vault_ready = (provider_store, provider_keyring);
     let identity_store = Arc::new(PostgresProductIdentityStore::new(pool.clone()));
     identity_store
         .verify_schema()
@@ -942,11 +951,9 @@ fn deployment_compatibility() -> ServiceCompatibility {
                 CAPABILITY_PRODUCT_IDENTITY.to_owned(),
                 CapabilityAvailability::Available,
             ),
-            // These implementations exist, but remain unavailable in the
-            // deployment manifest until production assembly is complete.
             (
                 CAPABILITY_PROVIDER_CREDENTIAL_VAULT.to_owned(),
-                CapabilityAvailability::Unavailable,
+                CapabilityAvailability::Available,
             ),
             (
                 CAPABILITY_DURABLE_OPERATIONS.to_owned(),
@@ -1289,6 +1296,12 @@ mod tests {
     #[test]
     fn deployment_manifest_is_honest_before_real_adapter_is_wired() {
         let compatibility = deployment_compatibility();
+        assert_eq!(
+            compatibility
+                .features
+                .get(CAPABILITY_PROVIDER_CREDENTIAL_VAULT),
+            Some(&CapabilityAvailability::Available)
+        );
         assert_eq!(
             compatibility
                 .features

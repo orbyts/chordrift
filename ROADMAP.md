@@ -397,11 +397,17 @@ and later Chordrift refactor begin.
   pass. The rehearsal also found and repaired cleanup-receipt verification:
   normal append-only listening/provider activity may change the live invariant
   without invalidating the cutover, while legacy-table return, non-empty
-  staging, or evidence loss still fails verification. Remaining gates are real
-  maintenance/worker composition, Auth0 tenant credentials and first login,
-  intended-project observation reconciliation plus migrations, active Vortex/
-  Nexus deployment, operational checks, and beta publication. Provider writes
-  remain disabled.
+  staging, or evidence loss still fails verification. Auth0/Google first-owner
+  adoption, active Vortex/Nexus deployment, provider-aware provider/model
+  library inspection, track listening detail, active-exclusion inspection, and
+  encrypted generation-1 adoption of the existing Spotify refresh credential
+  are now proven live. The provider selector visibly reports Spotify connection
+  and newest-observation state and is designed for future connections. The
+  exact web acceptance surface is recorded in
+  `docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md`. Remaining gates are the real
+  provider observation/maintenance adapter, durable worker composition, the
+  web maintenance journey, operational recovery checks, and beta publication.
+  Provider writes remain disabled.
 
 ### Post-deployment private-beta recovery audit
 

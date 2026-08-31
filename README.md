@@ -71,6 +71,7 @@ $ cargo install chordrift --version 0.2.1-alpha.17 --locked --force
 Read the [v0.2.1-alpha.17 release notes](docs/releases/V0.2.1-alpha.17.md), the
 [provider-first convergence contract](docs/design/PROVIDER_FIRST_CONVERGENCE.md),
 the [provider credential vault contract](docs/design/PROVIDER_CREDENTIAL_VAULT_V021_03.md),
+the [web workflow capability matrix](docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md),
 the [durable operation contract](docs/design/DURABLE_BACKGROUND_OPERATIONS_V021_04.md),
 the [remote CLI contract](docs/design/REMOTE_CLI_PARITY_V021_05.md),
 and the

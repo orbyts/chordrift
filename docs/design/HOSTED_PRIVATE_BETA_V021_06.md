@@ -18,7 +18,7 @@ Vortex · non-root read-only Chordrift API container
         |
         +---- Neon PostgreSQL
         +---- Auth0 / Google OIDC
-        `---- Spotify only after a separately verified credential-vault cutover
+        `---- Spotify through a short-lived encrypted-vault credential lease
 ```
 
 Nexus is ingress. Vortex is compute. Neon remains the durable application
@@ -66,14 +66,25 @@ The Vortex container runs as UID/GID 65532, drops every Linux capability, uses
 only the Vortex private IPv4 address, has bounded log rotation/resources, and
 uses the Rust binary itself for liveness checks.
 
-## Honest incomplete capability state
+## Current deployed checkpoint
 
-The initial bootable assembly advertises authenticated transport and product
-identity only. Provider-vault, durable-operation, remote-CLI, and maintenance
-capabilities remain unavailable in the deployment manifest until their
-production composition and real Spotify/PostgreSQL maintenance adapter pass
-the isolated and live read-only gates. The service must fail closed rather
-than disguising a test backend or legacy shell workflow as hosted authority.
+The authenticated private-beta service is deployed at
+`https://chordrift.suhail.ink`. Google login adopts the existing Chordrift
+account, browser sessions survive container replacement, and the provider-aware
+explorer presents Spotify observation state separately from the Chordrift
+model. Playlist order, track detail, personal listening statistics and active
+exclusions are available through tenant-scoped typed queries.
+
+The existing Spotify refresh authorization has been adopted into the encrypted
+provider credential vault without contacting Spotify. The server reports the
+connection as credential-ready, but provider-backed observation, durable worker
+composition and the maintenance task remain unavailable until the real Rust
+adapter passes the read-only and fake-provider gates. Provider writes remain
+disabled. The service must fail closed rather than disguising a test backend or
+legacy shell workflow as hosted authority.
+
+The complete product/browser acceptance surface is tracked in
+[Web workflow capability matrix](WEB_WORKFLOW_CAPABILITY_MATRIX.md).
 
 ## Deployment gates
 
@@ -91,7 +102,9 @@ than disguising a test backend or legacy shell workflow as hosted authority.
    liveness, readiness, OIDC state/PKCE, first-owner adoption, logout, session
    revocation, and cross-account denial.
 7. Import the existing Spotify refresh credential into the encrypted vault only
-   after the database restore proof and identity adoption succeed.
+   after the database restore proof and identity adoption succeed. **Complete:**
+   generation 1 was encrypted without contacting Spotify; deployment use still
+   requires the read-only adapter gate.
 8. Exercise provider reads and ordinary maintenance against fake fixtures and
    then the personal account in read-only mode.
 9. Provider writes require a new explicit gate after Suhail reviews the exact
