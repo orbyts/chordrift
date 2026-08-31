@@ -10,6 +10,8 @@ umask 077
 TARGET_HOST=${1:-vortex}
 AUTH0_ITEM=${CHORDRIFT_AUTH0_OP_ITEM:-jh3ya32enwcjdy5myvlyrhfhjm}
 NEON_ITEM=${CHORDRIFT_NEON_OP_ITEM:-igyk24uav5igf7r7m5i6zv4vai}
+SPOTIFY_ITEM=${CHORDRIFT_SPOTIFY_OP_ITEM:-mmguucamllakhav2uniw3uixci}
+PROVIDER_VAULT_ITEM=${CHORDRIFT_PROVIDER_VAULT_OP_ITEM:-j7abwton3e2zmhf5jnwc2idyha}
 ACCOUNT_ID=669e8896-0ba1-f730-67cf-351467f4d6eb
 REMOTE_DIR=.config/chordrift-hosted
 REMOTE_FILE=$REMOTE_DIR/chordrift.env
@@ -31,6 +33,9 @@ DATABASE_NAME=$(op read "op://API/$NEON_ITEM/database")
 DATABASE_USER=$(op read "op://API/$NEON_ITEM/username")
 DATABASE_PASSWORD=$(op read "op://API/$NEON_ITEM/password")
 DATABASE_OPTIONS=$(op read "op://API/$NEON_ITEM/connection options")
+SPOTIFY_CLIENT_ID=$(op read "op://API/$SPOTIFY_ITEM/username")
+PROVIDER_VAULT_KEY_ID=$(op read "op://API/$PROVIDER_VAULT_ITEM/username")
+PROVIDER_VAULT_KEY_B64=$(op read "op://API/$PROVIDER_VAULT_ITEM/credential")
 
 case "$BOOTSTRAP_EMAIL" in *@*) ;; *) printf 'A valid bootstrap email is required.\n' >&2; exit 2 ;; esac
 case "$AUTH0_DOMAIN" in https://*|http://*|*/*) printf '1Password Auth0 domain must be a hostname.\n' >&2; exit 2 ;; esac
@@ -54,9 +59,12 @@ trap 'rm -f -- "$TEMP_FILE"' EXIT HUP INT TERM
     printf 'CHORDRIFT_OIDC_USERINFO_URL=https://%s/userinfo\n' "$AUTH0_DOMAIN"
     printf 'CHORDRIFT_OIDC_CLIENT_ID=%s\n' "$AUTH0_CLIENT_ID"
     printf 'CHORDRIFT_OIDC_CLIENT_SECRET=%s\n' "$AUTH0_CLIENT_SECRET"
+    printf 'CHORDRIFT_SPOTIFY_CLIENT_ID=%s\n' "$SPOTIFY_CLIENT_ID"
+    printf 'CHORDRIFT_PROVIDER_VAULT_ACTIVE_KEY_ID=%s\n' "$PROVIDER_VAULT_KEY_ID"
+    printf 'CHORDRIFT_PROVIDER_VAULT_KEY_B64=%s\n' "$PROVIDER_VAULT_KEY_B64"
 } >"$TEMP_FILE"
 chmod 600 "$TEMP_FILE"
-unset AUTH0_CLIENT_SECRET DATABASE_URL ENCODED_DATABASE_PASSWORD
+unset AUTH0_CLIENT_SECRET DATABASE_URL ENCODED_DATABASE_PASSWORD PROVIDER_VAULT_KEY_B64
 
 ssh "$TARGET_HOST" "mkdir -p '$REMOTE_DIR' && chmod 700 '$REMOTE_DIR'"
 scp -q "$TEMP_FILE" "$TARGET_HOST:$REMOTE_FILE.next"

@@ -621,7 +621,11 @@ impl MaintenanceBackend for DeploymentMaintenanceBackend {
                      ORDER BY CASE status WHEN 'proposed' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
                               created_at DESC, id DESC LIMIT 1
                  ) AND membership.track_id = $2
-            ) SELECT * FROM provider_placements UNION ALL SELECT * FROM model_placements
+            ) SELECT * FROM (
+                  SELECT * FROM provider_placements
+                  UNION ALL
+                  SELECT * FROM model_placements
+              ) placement
               ORDER BY source, lower(name), position",
         )
         .bind(provider_connection_id.as_uuid())

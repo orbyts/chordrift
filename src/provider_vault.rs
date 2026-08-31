@@ -5,9 +5,10 @@
 //! an external key ring before PostgreSQL persistence. Plaintext is leased only
 //! to an authorized internal provider operation and is zeroized on drop.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, env, sync::Arc};
 
 use async_trait::async_trait;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chacha20poly1305::{
     KeyInit, XChaCha20Poly1305, XNonce,
     aead::{Aead, Payload},
@@ -29,6 +30,8 @@ const NONCE_BYTES: usize = 24;
 const KEY_BYTES: usize = 32;
 const MAX_SECRET_BYTES: usize = 16 * 1024;
 const MAX_KEY_ID_BYTES: usize = 128;
+const ACTIVE_KEY_ID_VARIABLE: &str = "CHORDRIFT_PROVIDER_VAULT_ACTIVE_KEY_ID";
+const KEY_B64_VARIABLE: &str = "CHORDRIFT_PROVIDER_VAULT_KEY_B64";
 
 /// Stable account-owned identity of one provider refresh credential.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -146,6 +149,30 @@ pub struct ProviderVaultKeyring {
 }
 
 impl ProviderVaultKeyring {
+    /// Loads the active deployment key from explicit environment settings.
+    ///
+    /// Key material remains outside PostgreSQL and is never included in an
+    /// error or debug representation. Retained decrypt-only keys can be added
+    /// through a later rotation-specific deployment setting.
+    pub fn from_environment() -> Result<Self, ClientError> {
+        let key_id = env::var(ACTIVE_KEY_ID_VARIABLE)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(vault_unavailable)?;
+        let encoded = Zeroizing::new(
+            env::var(KEY_B64_VARIABLE)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(vault_unavailable)?,
+        );
+        let key = Zeroizing::new(
+            STANDARD
+                .decode(encoded.trim())
+                .map_err(|_| vault_unavailable())?,
+        );
+        Self::new(key_id.clone(), [(key_id, key.to_vec())])
+    }
+
     /// Creates a key ring with one active key and optional retained decrypt-only keys.
     pub fn new(
         active_key_id: impl Into<String>,

@@ -15,6 +15,7 @@ use url::Url;
 use crate::{
     ChordriftError, Result,
     credentials::{CredentialStore, SecretId, SystemCredentialStore},
+    provider_vault::ProviderRefreshCredential,
 };
 
 use super::{client::SpotifyClient, models::CurrentUser};
@@ -245,6 +246,23 @@ pub(crate) async fn session(account_label: &str) -> Result<SpotifySession> {
         profile,
         scopes: credential.scopes,
     })
+}
+
+/// Loads the existing local refresh credential for a one-time trusted hosted
+/// adoption. The plaintext value is transferred directly into the encrypted
+/// provider vault and is never returned to a client or rendered by the CLI.
+pub(crate) fn local_refresh_credential(
+    account_label: &str,
+) -> Result<(String, ProviderRefreshCredential)> {
+    let credential = load_credential(account_label)?;
+    let account_id = credential.account_id.clone();
+    let refresh = ProviderRefreshCredential::new(credential.refresh_token, credential.scopes)
+        .map_err(|_| {
+            ChordriftError::Configuration(
+                "stored Spotify credential cannot be adopted by the hosted vault".to_owned(),
+            )
+        })?;
+    Ok((account_id, refresh))
 }
 
 pub(crate) fn has_required_apply_scopes(scopes: &[String]) -> bool {
