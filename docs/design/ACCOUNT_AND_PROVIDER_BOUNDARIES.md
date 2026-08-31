@@ -5,7 +5,7 @@ before Chordrift is presented to additional users or gains another live music
 provider. It is not a claim that the current Spotify implementation is already
 provider-neutral.
 
-Status: active v0.2 boundary, updated 2026-08-27. V020-01 implemented the
+Status: active v0.2.1 boundary, updated 2026-08-31. V020-01 implemented the
 provider-neutral application-contract vocabulary and capability-negotiation
 foundation; V020-02 routes every existing CLI handler through the shared
 application facade without behavioral change; V020-03 adds account-owned and
@@ -101,6 +101,35 @@ This is the right relational shape for multiple accounts. The pure application
 boundary now has a purpose-built isolation suite, but production storage,
 credentials, and provider mutations still require the later end-to-end audit
 before a friend's account is treated as a product trial.
+
+## Product identity and provider-connection lifecycle
+
+A Chordrift product account and a Spotify account are different identities.
+Google/OIDC signs a person into Chordrift; Spotify OAuth separately authorizes
+one provider connection. Their email addresses and login methods do not need to
+match.
+
+One Chordrift account may own several provider connections, including multiple
+Spotify accounts. Connection selection scopes every provider observation,
+playlist view, exclusion, personal signal, proposal, operation and credential
+lease. It never changes the signed-in Chordrift identity.
+
+- **Disconnect** revokes Chordrift's active encrypted credential. It does not
+  delete provider observations, intent, exclusions, history, receipts or the
+  provider-account ownership row.
+- **Reconnect the same provider identity** rotates/provisions the credential on
+  the existing provider connection and exposes the same retained Neon state.
+- **Connect a different provider identity** creates or selects a different
+  isolated provider connection under the Chordrift account. It must not replace
+  or merge the first connection.
+- **Transfer or synchronization between connections/providers** is a later
+  explicit product workflow. Shared Chordrift ownership alone never authorizes
+  implicit copying.
+
+The provider selector must show provider, account display identity, credential
+state and newest complete observation time. Stable provider identity—not a
+user-editable account label or email string—decides whether authorization is a
+reconnection or a new connection.
 
 ## Spotify-specific boundaries that remain
 

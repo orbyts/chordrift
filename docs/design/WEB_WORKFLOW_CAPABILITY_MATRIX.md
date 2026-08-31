@@ -32,6 +32,8 @@ from the provider observation while maintenance is pending.
 | --- | --- | --- | --- | --- |
 | Product login/logout | OIDC exchange, Chordrift session, account authorization and revocation | Start login, show signed-in state, request logout | None | Deployed |
 | Provider status/selection | List tenant-owned provider connections, credential state and observation time | Render selector and selected context everywhere | None | Deployed for Spotify |
+| Provider connect/reconnect/disconnect | Match stable provider identity, provision or rotate an encrypted credential, or revoke it without deleting retained account data | Launch provider OAuth, show the resolved account before binding, and distinguish Disconnect from Chordrift logout | Authorization only; no library mutation | Pending before beta.1 |
+| Multiple provider accounts | Isolate every observation, intent record, credential and operation by account-owned provider connection | Switch explicit connections without merging their state | None | Contract/schema foundation exists; lifecycle UI pending |
 | Provider playlists | Query newest complete provider observation | List playlists and counts with observation time | None | Deployed |
 | Provider playlist tracks | Query exact ordered observed membership | Render one-based custom order, title, artists and album | None | Deployed |
 | Chordrift model playlists | Query newest current model generation | Render separately from provider state | None | Deployed |
