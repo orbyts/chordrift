@@ -430,6 +430,36 @@ pub enum Command {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", content = "parameters", rename_all = "snake_case")]
 pub enum Query {
+    /// Read provider connections owned by the authenticated account.
+    ProviderConnections,
+    /// Read playlist surfaces from one explicit state plane.
+    LibraryPlaylists {
+        /// Account-owned provider connection.
+        provider_connection_id: ResourceId,
+        /// Whether to inspect the newest provider observation or Chordrift's model.
+        source: LibraryStateSource,
+    },
+    /// Read ordered membership for one playlist surface.
+    LibraryPlaylistTracks {
+        /// Account-owned provider connection.
+        provider_connection_id: ResourceId,
+        /// Provider playlist identity or Chordrift stable collection key.
+        playlist_id: String,
+        /// State plane containing the playlist.
+        source: LibraryStateSource,
+    },
+    /// Read one track's identity, placement, lifecycle, and listening evidence.
+    LibraryTrack {
+        /// Account-owned provider connection.
+        provider_connection_id: ResourceId,
+        /// Stable provider track identity.
+        provider_track_id: String,
+    },
+    /// Read the active reversible exclusion archive.
+    ExcludedTracks {
+        /// Account-owned provider connection.
+        provider_connection_id: ResourceId,
+    },
     /// Read the audit produced by an onboarding session.
     OnboardingAudit {
         /// Session to inspect.
@@ -477,6 +507,160 @@ pub enum Query {
         /// Optional operation that narrows the report.
         operation_id: Option<OperationId>,
     },
+}
+
+/// Explicit library state plane selected by a client.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LibraryStateSource {
+    /// Newest complete provider observation retained in Neon.
+    ProviderObservation,
+    /// Newest approved or proposed Chordrift managed-playlist model.
+    ChordriftModel,
+}
+
+/// One provider connection owned by the authenticated Chordrift account.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ProviderConnectionView {
+    /// Account-scoped provider connection identity.
+    pub provider_connection_id: ResourceId,
+    /// Provider namespace.
+    pub provider: String,
+    /// Human-facing account name when available.
+    pub display_name: Option<String>,
+    /// Time of the newest complete provider observation.
+    pub observed_at: Option<DateTime<Utc>>,
+    /// Whether an active encrypted provider credential is available.
+    pub credential_ready: bool,
+}
+
+/// Provider connections visible to one authenticated account.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ProviderConnectionsView {
+    /// Account-owned provider connections.
+    pub connections: Vec<ProviderConnectionView>,
+}
+
+/// One playlist surface in a selected state plane.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LibraryPlaylistView {
+    /// Provider playlist ID or Chordrift stable collection key.
+    pub playlist_id: String,
+    /// Human-facing playlist name.
+    pub name: String,
+    /// Optional provider playlist identity when the model is published.
+    pub provider_playlist_id: Option<String>,
+    /// Number of tracks represented in this state plane.
+    pub track_count: u64,
+    /// Chordrift signal class when known.
+    pub signal_class: Option<String>,
+    /// Chordrift orchestration role when known.
+    pub role: Option<String>,
+}
+
+/// Playlist catalog from one explicit state plane.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LibraryPlaylistsView {
+    /// State plane represented by the result.
+    pub source: LibraryStateSource,
+    /// Observation or model creation time when available.
+    pub state_at: Option<DateTime<Utc>>,
+    /// Playlist surfaces in stable display order.
+    pub playlists: Vec<LibraryPlaylistView>,
+}
+
+/// One ordered playlist membership row.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LibraryPlaylistTrackView {
+    /// One-based custom-order position.
+    pub position: u64,
+    /// Stable provider track identity.
+    pub provider_track_id: String,
+    /// Canonical title.
+    pub title: String,
+    /// Ordered display artist string.
+    pub artists: String,
+    /// Album title when known.
+    pub album: Option<String>,
+}
+
+/// Ordered contents of one playlist in one explicit state plane.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LibraryPlaylistTracksView {
+    /// State plane represented by the result.
+    pub source: LibraryStateSource,
+    /// Selected playlist identity.
+    pub playlist_id: String,
+    /// Current human-facing name.
+    pub name: String,
+    /// Observation or model creation time when available.
+    pub state_at: Option<DateTime<Utc>>,
+    /// Ordered track membership.
+    pub tracks: Vec<LibraryPlaylistTrackView>,
+}
+
+/// Current playlist placement for a track.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LibraryTrackPlacementView {
+    /// Provider playlist ID or Chordrift stable collection key.
+    pub playlist_id: String,
+    /// Human-facing playlist name.
+    pub name: String,
+    /// One-based custom-order position.
+    pub position: u64,
+    /// State plane supplying this placement.
+    pub source: LibraryStateSource,
+}
+
+/// Complete client-safe track detail and personal listening evidence.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LibraryTrackView {
+    /// Stable provider track identity.
+    pub provider_track_id: String,
+    /// Canonical title.
+    pub title: String,
+    /// Ordered display artist string.
+    pub artists: String,
+    /// Album title when known.
+    pub album: Option<String>,
+    /// Meaningful historical plays.
+    pub play_count: u64,
+    /// Raw retained listening events.
+    pub event_count: u64,
+    /// Total retained listening duration.
+    pub total_ms_played: u64,
+    /// Most recent retained playback.
+    pub last_played_at: Option<DateTime<Utc>>,
+    /// Whether the track is currently saved/liked.
+    pub saved: bool,
+    /// Active reversible exclusion reason.
+    pub exclusion_reason: Option<String>,
+    /// Current provider and Chordrift-model placements.
+    pub placements: Vec<LibraryTrackPlacementView>,
+}
+
+/// One track in the reversible exclusion archive.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ExcludedTrackView {
+    /// Stable provider track identity.
+    pub provider_track_id: String,
+    /// Canonical title.
+    pub title: String,
+    /// Ordered display artist string.
+    pub artists: String,
+    /// Durable exclusion reason.
+    pub reason: String,
+    /// Time the active exclusion was created.
+    pub excluded_at: DateTime<Utc>,
+    /// Most recent playlist name before exclusion when known.
+    pub previous_playlist: Option<String>,
+}
+
+/// Active reversible exclusions for one provider connection.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ExcludedTracksView {
+    /// Active exclusions ordered newest first.
+    pub tracks: Vec<ExcludedTrackView>,
 }
 
 /// Provider action observed during ordinary maintenance.
@@ -1024,6 +1208,16 @@ pub struct OperationEventsView {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", content = "view", rename_all = "snake_case")]
 pub enum QueryResponse {
+    /// Provider connections owned by the authenticated account.
+    ProviderConnections(View<ProviderConnectionsView>),
+    /// Playlist catalog from one explicit state plane.
+    LibraryPlaylists(View<LibraryPlaylistsView>),
+    /// Ordered playlist contents from one explicit state plane.
+    LibraryPlaylistTracks(View<LibraryPlaylistTracksView>),
+    /// Track identity, placements, and personal evidence.
+    LibraryTrack(View<LibraryTrackView>),
+    /// Active reversible exclusion archive.
+    ExcludedTracks(View<ExcludedTracksView>),
     /// One ordinary-maintenance session.
     MaintenanceSession(View<MaintenanceSessionView>),
     /// Latest state of one operation.

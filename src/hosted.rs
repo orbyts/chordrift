@@ -34,7 +34,7 @@ use rand::RngCore as _;
 use reqwest::redirect::Policy;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row as _};
 use tokio::sync::Mutex;
 use url::Url;
 use uuid::Uuid;
@@ -46,7 +46,11 @@ use crate::{
         CAPABILITY_AUTHENTICATED_SERVICE_TRANSPORT, CAPABILITY_DURABLE_OPERATIONS,
         CAPABILITY_MAINTENANCE_TASK_SESSION, CAPABILITY_PRODUCT_IDENTITY,
         CAPABILITY_PROVIDER_CREDENTIAL_VAULT, CAPABILITY_REMOTE_CLI, CONTRACT_VERSION,
-        CapabilityAvailability, ContractVersionRange, ErrorCode, ResourceId, ServiceCompatibility,
+        CapabilityAvailability, ContractVersionRange, ErrorCode, ExcludedTrackView,
+        ExcludedTracksView, LibraryPlaylistTrackView, LibraryPlaylistTracksView,
+        LibraryPlaylistView, LibraryPlaylistsView, LibraryStateSource, LibraryTrackPlacementView,
+        LibraryTrackView, ProviderConnectionView, ProviderConnectionsView, ResourceId,
+        ServiceCompatibility,
     },
     db,
     http_transport::{AuthenticatedHttpTransport, BearerAuthenticator},
@@ -221,6 +225,529 @@ struct DeploymentMaintenanceBackend {
 
 #[async_trait]
 impl MaintenanceBackend for DeploymentMaintenanceBackend {
+    async fn provider_connections(
+        &mut self,
+        subject: AuthenticatedSubject,
+    ) -> std::result::Result<ProviderConnectionsView, crate::contract::ClientError> {
+        let rows = sqlx::query(
+            "SELECT account.id, account.provider, account.display_name,
+                    inventory.captured_at AS observed_at,
+                    EXISTS (
+                        SELECT 1 FROM provider_credential_vault credential
+                         WHERE credential.provider_account_id = account.id
+                           AND credential.credential_kind = 'oauth_refresh'
+                           AND credential.revoked_at IS NULL
+                    ) AS credential_ready
+               FROM provider_accounts account
+               LEFT JOIN provider_current_inventories inventory
+                 ON inventory.provider_account_id = account.id
+              WHERE account.chordrift_account_id = $1
+              ORDER BY account.provider, lower(COALESCE(account.display_name, account.account_label)), account.id",
+        )
+        .bind(subject.account_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|_| client_unavailable())?;
+        let connections = rows
+            .into_iter()
+            .map(|row| {
+                Ok(ProviderConnectionView {
+                    provider_connection_id: ResourceId::from_uuid(
+                        row.try_get("id").map_err(|_| client_unavailable())?,
+                    ),
+                    provider: row.try_get("provider").map_err(|_| client_unavailable())?,
+                    display_name: row
+                        .try_get("display_name")
+                        .map_err(|_| client_unavailable())?,
+                    observed_at: row
+                        .try_get("observed_at")
+                        .map_err(|_| client_unavailable())?,
+                    credential_ready: row
+                        .try_get("credential_ready")
+                        .map_err(|_| client_unavailable())?,
+                })
+            })
+            .collect::<std::result::Result<Vec<_>, crate::contract::ClientError>>()?;
+        Ok(ProviderConnectionsView { connections })
+    }
+
+    async fn library_playlists(
+        &mut self,
+        _subject: AuthenticatedSubject,
+        provider_connection_id: ResourceId,
+        source: LibraryStateSource,
+    ) -> std::result::Result<LibraryPlaylistsView, crate::contract::ClientError> {
+        match source {
+            LibraryStateSource::ProviderObservation => {
+                let state_at = sqlx::query_scalar(
+                    "SELECT captured_at FROM provider_current_inventories WHERE provider_account_id = $1",
+                )
+                .bind(provider_connection_id.as_uuid())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|_| client_unavailable())?;
+                let rows = sqlx::query(
+                    "SELECT spotify_playlist_id, name, total_items, signal_class, role
+                       FROM current_spotify_playlists
+                      WHERE provider_account_id = $1
+                      ORDER BY lower(name), spotify_playlist_id",
+                )
+                .bind(provider_connection_id.as_uuid())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|_| client_unavailable())?;
+                let playlists = rows
+                    .into_iter()
+                    .map(|row| {
+                        let playlist_id: String = row
+                            .try_get("spotify_playlist_id")
+                            .map_err(|_| client_unavailable())?;
+                        let count: i32 = row
+                            .try_get("total_items")
+                            .map_err(|_| client_unavailable())?;
+                        Ok(LibraryPlaylistView {
+                            provider_playlist_id: Some(playlist_id.clone()),
+                            playlist_id,
+                            name: row.try_get("name").map_err(|_| client_unavailable())?,
+                            track_count: u64::try_from(count).map_err(|_| client_unavailable())?,
+                            signal_class: row
+                                .try_get("signal_class")
+                                .map_err(|_| client_unavailable())?,
+                            role: row.try_get("role").map_err(|_| client_unavailable())?,
+                        })
+                    })
+                    .collect::<std::result::Result<Vec<_>, crate::contract::ClientError>>()?;
+                Ok(LibraryPlaylistsView {
+                    source,
+                    state_at,
+                    playlists,
+                })
+            }
+            LibraryStateSource::ChordriftModel => {
+                let generation = sqlx::query(
+                    "SELECT id, created_at FROM playlist_generations
+                      WHERE provider_account_id = $1
+                        AND status IN ('proposed', 'approved', 'published')
+                      ORDER BY CASE status WHEN 'proposed' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
+                               created_at DESC, id DESC LIMIT 1",
+                )
+                .bind(provider_connection_id.as_uuid())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|_| client_unavailable())?
+                .ok_or_else(|| {
+                    crate::contract::ClientError::new(ErrorCode::ResourceNotFound, false)
+                })?;
+                let generation_id: Uuid =
+                    generation.try_get("id").map_err(|_| client_unavailable())?;
+                let state_at = Some(
+                    generation
+                        .try_get("created_at")
+                        .map_err(|_| client_unavailable())?,
+                );
+                let rows = sqlx::query(
+                    "SELECT concept.stable_key,
+                            COALESCE(name_revision.name, playlist.name) AS name,
+                            provider.provider_playlist_id,
+                            count(membership.id)::bigint AS track_count
+                       FROM playlists playlist
+                       JOIN playlist_concepts concept ON concept.id = playlist.concept_id
+                       LEFT JOIN playlist_name_revisions name_revision
+                         ON name_revision.playlist_id = playlist.id AND name_revision.selected
+                       LEFT JOIN provider_playlists provider
+                         ON provider.concept_id = concept.id AND provider.provider = 'spotify'
+                       LEFT JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+                      WHERE playlist.generation_id = $1 AND playlist.archived_at IS NULL
+                      GROUP BY concept.stable_key, COALESCE(name_revision.name, playlist.name),
+                               provider.provider_playlist_id
+                      ORDER BY lower(COALESCE(name_revision.name, playlist.name)), concept.stable_key",
+                )
+                .bind(generation_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|_| client_unavailable())?;
+                let playlists = rows
+                    .into_iter()
+                    .map(|row| {
+                        let count: i64 = row
+                            .try_get("track_count")
+                            .map_err(|_| client_unavailable())?;
+                        Ok(LibraryPlaylistView {
+                            playlist_id: row
+                                .try_get("stable_key")
+                                .map_err(|_| client_unavailable())?,
+                            name: row.try_get("name").map_err(|_| client_unavailable())?,
+                            provider_playlist_id: row
+                                .try_get("provider_playlist_id")
+                                .map_err(|_| client_unavailable())?,
+                            track_count: u64::try_from(count).map_err(|_| client_unavailable())?,
+                            signal_class: Some("canonical".to_owned()),
+                            role: Some("managed".to_owned()),
+                        })
+                    })
+                    .collect::<std::result::Result<Vec<_>, crate::contract::ClientError>>()?;
+                Ok(LibraryPlaylistsView {
+                    source,
+                    state_at,
+                    playlists,
+                })
+            }
+        }
+    }
+
+    async fn library_playlist_tracks(
+        &mut self,
+        _subject: AuthenticatedSubject,
+        provider_connection_id: ResourceId,
+        playlist_id: &str,
+        source: LibraryStateSource,
+    ) -> std::result::Result<LibraryPlaylistTracksView, crate::contract::ClientError> {
+        let (name, state_at, rows) = match source {
+            LibraryStateSource::ProviderObservation => {
+                let header = sqlx::query(
+                    "SELECT name, inventory.captured_at
+                       FROM current_spotify_playlists playlist
+                       JOIN provider_current_inventories inventory
+                         ON inventory.provider_account_id = playlist.provider_account_id
+                      WHERE playlist.provider_account_id = $1 AND playlist.spotify_playlist_id = $2",
+                )
+                .bind(provider_connection_id.as_uuid())
+                .bind(playlist_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|_| client_unavailable())?
+                .ok_or_else(|| crate::contract::ClientError::new(ErrorCode::ResourceNotFound, false))?;
+                let rows = sqlx::query(
+                    "SELECT membership.position, provider_track.provider_track_id, track.title,
+                            COALESCE(string_agg(artist.name, ', ' ORDER BY track_artist.position), '') AS artists,
+                            album.title AS album
+                       FROM provider_current_inventories inventory
+                       JOIN provider_current_playlists current_playlist
+                         ON current_playlist.provider_account_id = inventory.provider_account_id
+                       JOIN provider_playlists provider_playlist
+                         ON provider_playlist.id = current_playlist.provider_playlist_id
+                       JOIN provider_playlist_revision_tracks membership
+                         ON membership.revision_id = current_playlist.revision_id
+                       JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
+                       JOIN tracks track ON track.id = provider_track.track_id
+                       LEFT JOIN albums album ON album.id = track.album_id
+                       LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
+                       LEFT JOIN artists artist ON artist.id = track_artist.artist_id
+                      WHERE inventory.provider_account_id = $1
+                        AND provider_playlist.provider_playlist_id = $2
+                      GROUP BY membership.position, provider_track.provider_track_id, track.title, album.title
+                      ORDER BY membership.position",
+                )
+                .bind(provider_connection_id.as_uuid())
+                .bind(playlist_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|_| client_unavailable())?;
+                (
+                    header.try_get("name").map_err(|_| client_unavailable())?,
+                    Some(
+                        header
+                            .try_get("captured_at")
+                            .map_err(|_| client_unavailable())?,
+                    ),
+                    rows,
+                )
+            }
+            LibraryStateSource::ChordriftModel => {
+                let header = sqlx::query(
+                    "SELECT playlist.id, generation.created_at,
+                            COALESCE(name_revision.name, playlist.name) AS name
+                       FROM playlist_generations generation
+                       JOIN playlists playlist ON playlist.generation_id = generation.id
+                       JOIN playlist_concepts concept ON concept.id = playlist.concept_id
+                       LEFT JOIN playlist_name_revisions name_revision
+                         ON name_revision.playlist_id = playlist.id AND name_revision.selected
+                      WHERE generation.provider_account_id = $1
+                        AND generation.status IN ('proposed', 'approved', 'published')
+                        AND concept.stable_key = $2 AND playlist.archived_at IS NULL
+                      ORDER BY CASE generation.status WHEN 'proposed' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
+                               generation.created_at DESC, generation.id DESC LIMIT 1",
+                )
+                .bind(provider_connection_id.as_uuid())
+                .bind(playlist_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|_| client_unavailable())?
+                .ok_or_else(|| crate::contract::ClientError::new(ErrorCode::ResourceNotFound, false))?;
+                let model_playlist_id: Uuid =
+                    header.try_get("id").map_err(|_| client_unavailable())?;
+                let rows = sqlx::query(
+                    "SELECT membership.position, provider.provider_track_id, track.title,
+                            COALESCE(string_agg(artist.name, ', ' ORDER BY track_artist.position), '') AS artists,
+                            album.title AS album
+                       FROM playlist_tracks membership
+                       JOIN tracks track ON track.id = membership.track_id
+                       JOIN provider_tracks provider
+                         ON provider.track_id = track.id AND provider.provider = 'spotify'
+                       LEFT JOIN albums album ON album.id = track.album_id
+                       LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
+                       LEFT JOIN artists artist ON artist.id = track_artist.artist_id
+                      WHERE membership.playlist_id = $1
+                      GROUP BY membership.position, provider.provider_track_id, track.title, album.title
+                      ORDER BY membership.position",
+                )
+                .bind(model_playlist_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|_| client_unavailable())?;
+                (
+                    header.try_get("name").map_err(|_| client_unavailable())?,
+                    Some(
+                        header
+                            .try_get("created_at")
+                            .map_err(|_| client_unavailable())?,
+                    ),
+                    rows,
+                )
+            }
+        };
+        let tracks = rows
+            .into_iter()
+            .map(|row| {
+                let position: i32 = row.try_get("position").map_err(|_| client_unavailable())?;
+                Ok(LibraryPlaylistTrackView {
+                    position: u64::try_from(position + 1).map_err(|_| client_unavailable())?,
+                    provider_track_id: row
+                        .try_get("provider_track_id")
+                        .map_err(|_| client_unavailable())?,
+                    title: row.try_get("title").map_err(|_| client_unavailable())?,
+                    artists: row.try_get("artists").map_err(|_| client_unavailable())?,
+                    album: row.try_get("album").map_err(|_| client_unavailable())?,
+                })
+            })
+            .collect::<std::result::Result<Vec<_>, crate::contract::ClientError>>()?;
+        Ok(LibraryPlaylistTracksView {
+            source,
+            playlist_id: playlist_id.to_owned(),
+            name,
+            state_at,
+            tracks,
+        })
+    }
+
+    async fn library_track(
+        &mut self,
+        _subject: AuthenticatedSubject,
+        provider_connection_id: ResourceId,
+        provider_track_id: &str,
+    ) -> std::result::Result<LibraryTrackView, crate::contract::ClientError> {
+        let row = sqlx::query(
+            "SELECT track.id AS track_id, track.title,
+                    COALESCE(string_agg(artist.name, ', ' ORDER BY track_artist.position), '') AS artists,
+                    album.title AS album
+               FROM provider_tracks provider
+               JOIN tracks track ON track.id = provider.track_id
+               LEFT JOIN albums album ON album.id = track.album_id
+               LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
+               LEFT JOIN artists artist ON artist.id = track_artist.artist_id
+              WHERE provider.provider = 'spotify' AND provider.provider_track_id = $1
+              GROUP BY track.id, track.title, album.title",
+        )
+        .bind(provider_track_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| client_unavailable())?
+        .ok_or_else(|| crate::contract::ClientError::new(ErrorCode::ResourceNotFound, false))?;
+        let track_id: Uuid = row.try_get("track_id").map_err(|_| client_unavailable())?;
+        let statistics = sqlx::query(
+            "SELECT event_count, play_count, total_ms_played, last_played_at
+               FROM account_listening_track_statistics
+              WHERE provider_account_id = $1 AND provider_track_id = $2",
+        )
+        .bind(provider_connection_id.as_uuid())
+        .bind(provider_track_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| client_unavailable())?;
+        let saved = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (
+                SELECT 1 FROM provider_current_inventories inventory
+                JOIN provider_saved_track_revision_tracks saved_track
+                  ON saved_track.revision_id = inventory.saved_track_revision_id
+                JOIN provider_tracks provider ON provider.id = saved_track.provider_track_id
+                WHERE inventory.provider_account_id = $1 AND provider.provider_track_id = $2
+            )",
+        )
+        .bind(provider_connection_id.as_uuid())
+        .bind(provider_track_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|_| client_unavailable())?;
+        let exclusion_reason = sqlx::query_scalar(
+            "SELECT exclusion_reason FROM excluded_tracks
+              WHERE provider_account_id = $1 AND track_id = $2 AND restored_at IS NULL
+                AND source_provider <> 'chordrift_forget'
+              ORDER BY excluded_at DESC, id DESC LIMIT 1",
+        )
+        .bind(provider_connection_id.as_uuid())
+        .bind(track_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| client_unavailable())?;
+        let placement_rows = sqlx::query(
+            "WITH provider_placements AS (
+                SELECT provider_playlist.provider_playlist_id AS playlist_id,
+                       current_playlist.name, membership.position + 1 AS position,
+                       'provider_observation'::text AS source
+                  FROM provider_current_inventories inventory
+                  JOIN provider_current_playlists current_playlist
+                    ON current_playlist.provider_account_id = inventory.provider_account_id
+                  JOIN provider_playlists provider_playlist
+                    ON provider_playlist.id = current_playlist.provider_playlist_id
+                  JOIN provider_playlist_revision_tracks membership
+                    ON membership.revision_id = current_playlist.revision_id
+                  JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
+                 WHERE inventory.provider_account_id = $1 AND provider_track.track_id = $2
+            ), model_placements AS (
+                SELECT concept.stable_key AS playlist_id,
+                       COALESCE(name_revision.name, playlist.name) AS name,
+                       membership.position + 1 AS position,
+                       'chordrift_model'::text AS source
+                  FROM playlist_generations generation
+                  JOIN playlists playlist ON playlist.generation_id = generation.id
+                  JOIN playlist_concepts concept ON concept.id = playlist.concept_id
+                  JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+                  LEFT JOIN playlist_name_revisions name_revision
+                    ON name_revision.playlist_id = playlist.id AND name_revision.selected
+                 WHERE generation.id = (
+                    SELECT id FROM playlist_generations
+                     WHERE provider_account_id = $1
+                       AND status IN ('proposed', 'approved', 'published')
+                     ORDER BY CASE status WHEN 'proposed' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
+                              created_at DESC, id DESC LIMIT 1
+                 ) AND membership.track_id = $2
+            ) SELECT * FROM provider_placements UNION ALL SELECT * FROM model_placements
+              ORDER BY source, lower(name), position",
+        )
+        .bind(provider_connection_id.as_uuid())
+        .bind(track_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|_| client_unavailable())?;
+        let placements = placement_rows
+            .into_iter()
+            .map(|placement| {
+                let position: i32 = placement
+                    .try_get("position")
+                    .map_err(|_| client_unavailable())?;
+                let source: String = placement
+                    .try_get("source")
+                    .map_err(|_| client_unavailable())?;
+                Ok(LibraryTrackPlacementView {
+                    playlist_id: placement
+                        .try_get("playlist_id")
+                        .map_err(|_| client_unavailable())?,
+                    name: placement
+                        .try_get("name")
+                        .map_err(|_| client_unavailable())?,
+                    position: u64::try_from(position).map_err(|_| client_unavailable())?,
+                    source: if source == "provider_observation" {
+                        LibraryStateSource::ProviderObservation
+                    } else {
+                        LibraryStateSource::ChordriftModel
+                    },
+                })
+            })
+            .collect::<std::result::Result<Vec<_>, crate::contract::ClientError>>()?;
+        let (event_count, play_count, total_ms_played, last_played_at) =
+            if let Some(statistics) = statistics {
+                let events: i64 = statistics
+                    .try_get("event_count")
+                    .map_err(|_| client_unavailable())?;
+                let plays: i64 = statistics
+                    .try_get("play_count")
+                    .map_err(|_| client_unavailable())?;
+                let duration: i64 = statistics
+                    .try_get("total_ms_played")
+                    .map_err(|_| client_unavailable())?;
+                (
+                    u64::try_from(events).map_err(|_| client_unavailable())?,
+                    u64::try_from(plays).map_err(|_| client_unavailable())?,
+                    u64::try_from(duration).map_err(|_| client_unavailable())?,
+                    Some(
+                        statistics
+                            .try_get("last_played_at")
+                            .map_err(|_| client_unavailable())?,
+                    ),
+                )
+            } else {
+                (0, 0, 0, None)
+            };
+        Ok(LibraryTrackView {
+            provider_track_id: provider_track_id.to_owned(),
+            title: row.try_get("title").map_err(|_| client_unavailable())?,
+            artists: row.try_get("artists").map_err(|_| client_unavailable())?,
+            album: row.try_get("album").map_err(|_| client_unavailable())?,
+            play_count,
+            event_count,
+            total_ms_played,
+            last_played_at,
+            saved,
+            exclusion_reason,
+            placements,
+        })
+    }
+
+    async fn excluded_tracks(
+        &mut self,
+        _subject: AuthenticatedSubject,
+        provider_connection_id: ResourceId,
+    ) -> std::result::Result<ExcludedTracksView, crate::contract::ClientError> {
+        let rows = sqlx::query(
+            "SELECT min(provider.provider_track_id) AS provider_track_id, track.title,
+                    COALESCE(string_agg(DISTINCT artist.name, ', '), '') AS artists,
+                    exclusion.exclusion_reason, exclusion.excluded_at,
+                    current_playlist.name AS previous_playlist
+               FROM excluded_tracks exclusion
+               JOIN tracks track ON track.id = exclusion.track_id
+               JOIN provider_tracks provider
+                 ON provider.track_id = track.id AND provider.provider = 'spotify'
+               LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
+               LEFT JOIN artists artist ON artist.id = track_artist.artist_id
+               LEFT JOIN provider_playlists previous
+                 ON previous.id = exclusion.source_provider_playlist_id
+               LEFT JOIN current_spotify_playlists current_playlist
+                 ON current_playlist.provider_account_id = exclusion.provider_account_id
+                AND current_playlist.provider_playlist_id = previous.id
+              WHERE exclusion.provider_account_id = $1 AND exclusion.restored_at IS NULL
+                AND exclusion.source_provider <> 'chordrift_forget'
+              GROUP BY exclusion.id, track.id, track.title, exclusion.exclusion_reason,
+                       exclusion.excluded_at, current_playlist.name
+              ORDER BY exclusion.excluded_at DESC, exclusion.id DESC",
+        )
+        .bind(provider_connection_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|_| client_unavailable())?;
+        let tracks = rows
+            .into_iter()
+            .map(|row| {
+                Ok(ExcludedTrackView {
+                    provider_track_id: row
+                        .try_get("provider_track_id")
+                        .map_err(|_| client_unavailable())?,
+                    title: row.try_get("title").map_err(|_| client_unavailable())?,
+                    artists: row.try_get("artists").map_err(|_| client_unavailable())?,
+                    reason: row
+                        .try_get("exclusion_reason")
+                        .map_err(|_| client_unavailable())?,
+                    excluded_at: row
+                        .try_get("excluded_at")
+                        .map_err(|_| client_unavailable())?,
+                    previous_playlist: row
+                        .try_get("previous_playlist")
+                        .map_err(|_| client_unavailable())?,
+                })
+            })
+            .collect::<std::result::Result<Vec<_>, crate::contract::ClientError>>()?;
+        Ok(ExcludedTracksView { tracks })
+    }
+
     async fn owns_provider_connection(
         &self,
         subject: AuthenticatedSubject,
