@@ -301,8 +301,17 @@ and later Chordrift refactor begin.
   recovery, and retry exhaustion on disposable PostgreSQL. Publish the
   checkpoint as `v0.2.1-alpha.15` with additive migration 0050 and capability
   `service.durable-operations.v1`.
-- [ ] **V021-05 — Remote CLI parity.** Make the installed CLI an authenticated
+- [x] **V021-05 — Remote CLI parity.** Make the installed CLI an authenticated
   service client while retaining an explicit local development transport.
+  The installed binary now stores only an opaque Chordrift session in the OS
+  credential store, negotiates contract/schema/capabilities before work, and
+  submits the same typed command/query DTOs over authenticated HTTPS. Non-TLS
+  transport is limited to loopback development. An explicit in-process client
+  implements the identical transport trait for deterministic tests; neither
+  client can submit shell, SQL, provider URLs, or provider credentials. Real
+  HTTP/in-process conformance proves compatible negotiation and response
+  parity. Publish as `v0.2.1-alpha.17` with capability
+  `service.remote-cli.v1`; hosting and external login selection remain V021-06.
 - [ ] **V021-06 — Service deployment and release.** Select hosting and product
   authentication with the user, verify backup/restore and observability, then
   release the service foundation without exposing Neon or provider secrets.
@@ -395,12 +404,11 @@ slices at the preceding release boundary, after real use informs their shape:
 - **v1.0.0 — Consumer-ready release:** a secure, installable, recoverable product
   whose supported clients pass the same contract and safety suite.
 
-**Next gate:** begin `V021-05 — Remote CLI parity`. Make the installed CLI an
-authenticated client of the typed durable service while retaining an explicit
-local development transport. `v0.2.1-alpha.16` is published and its exact
-locked crates.io artifact is the installed daily-driver checkpoint. Do not pull hosting
-selection, public deployment, a web UI, or the
-separate Classification Authority into V021-05.
+**Next gate:** begin `V021-06 — Service deployment and release`. Select hosting
+and external product authentication with the user, then verify operational
+configuration, observability, backup/restore, worker recovery, and secret
+isolation. Do not treat this as an unrestricted public web launch or begin the
+web UI or separate Classification Authority in this slice.
 
 ## Portable core and thin clients
 

@@ -24,6 +24,8 @@ pub mod bookmarks;
 pub mod classifications;
 /// Command-line parsing and execution.
 pub mod cli;
+/// Authenticated remote and explicit in-process development client transports.
+pub mod client_transport;
 /// Reproducible account-scoped vibe cluster generations.
 pub mod clusters;
 /// Application-owned database configuration.

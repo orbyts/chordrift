@@ -243,7 +243,16 @@ Recommendations access in 2024, and current Spotify API terms forbid using
 Spotify Platform content to train ML/AI. An explicit user Add remains private
 placement evidence; Chordrift must not scrape unselected recommendations.
 
-## Current checkpoint: begin V021-05
+## Current checkpoint: begin V021-06
+
+V021-05 is implemented as `v0.2.1-alpha.17`. `RemoteHttpClient` and
+`LocalDevelopmentClient` consume one compatibility/command/query trait. The
+remote client requires HTTPS outside loopback, zeroizes its bearer, negotiates
+before every CLI DTO submission, and maps only structured `ClientError` data.
+`chordrift service session save|status|remove` retains the opaque product
+session in the OS credential store; command/query files are typed contract
+envelopes, not shell/SQL/provider escapes. V021-06 owns hosting, external login,
+service URL distribution, observability, backup/restore, and release rehearsal.
 
 The future Classification Authority signal inventory is explicit in
 `docs/design/LEARNING_SIGNAL_TAXONOMY.md`. Read it with
@@ -382,11 +391,10 @@ retains product-session schema 1, and has `CHORDRIFT_BIN` unset. No personal
 Spotify or Neon operation was used for implementation, testing, release, or
 installation verification.
 
-Begin `V021-05 — Remote CLI parity`. Make the installed CLI an authenticated
-client of the typed durable service while preserving an explicit local
-development transport. Do not pull hosting selection/public deployment, a web
-UI, or the separate Classification Authority into V021-05. Never call or write
-Spotify without an exact separately authorized provider operation.
+Historical V021-05 directive: move the installed CLI to the authenticated typed
+service while preserving explicit local development parity. This is now
+satisfied by alpha.17. The current gate is V021-06; never call or write Spotify
+without an exact separately authorized provider operation.
 
 Alpha.13 implementation commit `ff425146e89d177f4bc9828c7784e3322f5fe9a3`
 passed CI run `33325908241`, including formatting, strict Clippy, all targets,

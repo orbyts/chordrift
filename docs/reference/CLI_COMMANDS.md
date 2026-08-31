@@ -3,7 +3,29 @@
 This is the comprehensive command and diagnostic reference. For task-oriented
 instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
-Command status: this page documents the **v0.2.1-alpha.16** daily-driver CLI. It retains the
+## Authenticated service client
+
+V021-05 adds the thin remote DTO client. V021-06 has not selected a public URL
+or external login yet, so these remain development/release-rehearsal commands:
+
+```bash
+printf '%s' "$CHORDRIFT_ISSUED_SESSION" |
+  chordrift service session save --profile default
+chordrift service session status --profile default
+chordrift service compatibility --url https://service.example --profile default
+chordrift service command --url https://service.example --file command.json
+chordrift service query --url https://service.example --file query.json
+chordrift service session remove --profile default
+```
+
+The session enters through standard input, is stored in the OS credential
+store, and is never printed. Command/query files must be exact public
+`CommandRequest`/`QueryRequest` JSON. HTTPS is mandatory except for loopback
+development. A remote failure never falls back to local Neon/provider access.
+The in-process local transport is an explicit Rust dependency-injection seam,
+not a second set of domain behavior.
+
+Command status: this page documents the **v0.2.1-alpha.17** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,

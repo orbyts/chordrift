@@ -4,11 +4,17 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.1-alpha.16**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-alpha.17**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
 and verified 47/47 database together; see
 [Recovery and rollback](how-to/RECOVERY_AND_ROLLBACK.md).
+
+> **Hosted-service status:** V021-05's authenticated remote CLI transport is
+> implemented, but V021-06 has not selected or deployed the public service or
+> product login. Continue using the local daily-driver workflow until that
+> release gate is complete; remote failure never causes an implicit local
+> fallback.
 
 ## Documentation map
 

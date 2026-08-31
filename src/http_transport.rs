@@ -18,7 +18,10 @@ use axum::{
 use tokio::sync::Mutex;
 
 use crate::{
-    contract::{ClientError, CommandRequest, ErrorCategory, ErrorCode, QueryRequest},
+    contract::{
+        CONTRACT_VERSION, ClientCompatibility, ClientError, CommandRequest, ContractVersionRange,
+        ErrorCategory, ErrorCode, QueryRequest, ServiceCompatibility, negotiate,
+    },
     service::{AuthenticatedSubject, ContractApplication},
 };
 
@@ -52,6 +55,7 @@ struct HttpState {
     application: Arc<Mutex<Box<dyn ContractApplication>>>,
     authenticator: Arc<dyn BearerAuthenticator>,
     request_gate: Arc<dyn HttpRequestGate>,
+    compatibility: ServiceCompatibility,
 }
 
 /// Builds an authenticated HTTP router over one Rust application authority.
@@ -71,6 +75,13 @@ impl AuthenticatedHttpTransport {
                 application,
                 authenticator,
                 request_gate: Arc::new(AllowAllRequestGate),
+                compatibility: ServiceCompatibility {
+                    contract_versions: ContractVersionRange::exact(CONTRACT_VERSION),
+                    schema_version: 0,
+                    features: Default::default(),
+                    provider_capabilities: Default::default(),
+                    evidence_capabilities: Default::default(),
+                },
             },
         }
     }
@@ -82,12 +93,42 @@ impl AuthenticatedHttpTransport {
         self
     }
 
+    /// Declares the exact compatibility and capability view of this deployment.
+    #[must_use]
+    pub fn with_compatibility(mut self, compatibility: ServiceCompatibility) -> Self {
+        self.state.compatibility = compatibility;
+        self
+    }
+
     /// Returns routes suitable for a loopback test server or later deployment.
     pub fn router(self) -> Router {
         Router::new()
+            .route("/v1/compatibility", post(compatibility))
             .route("/v1/commands", post(command))
             .route("/v1/queries", post(query))
             .with_state(self.state)
+    }
+}
+
+async fn compatibility(State(state): State<HttpState>, request: Request) -> Response {
+    let subject = match authenticate(&state, request.headers()).await {
+        Ok(subject) => subject,
+        Err(error) => return error_response(error),
+    };
+    if let Err(error) = state.request_gate.check(subject) {
+        return error_response(error);
+    }
+    let body = match to_bytes(request.into_body(), MAX_CONTRACT_BODY_BYTES).await {
+        Ok(body) => body,
+        Err(_) => return error_response(ClientError::new(ErrorCode::InvalidRequest, false)),
+    };
+    let offer = match serde_json::from_slice::<ClientCompatibility>(&body) {
+        Ok(offer) => offer,
+        Err(_) => return error_response(ClientError::new(ErrorCode::InvalidRequest, false)),
+    };
+    match negotiate(&offer, &state.compatibility) {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(_) => error_response(ClientError::new(ErrorCode::IncompatibleContract, false)),
     }
 }
 

@@ -4,6 +4,20 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.17] - 2026-08-30
+
+- Add the installed CLI's authenticated remote service client with mandatory
+  contract, schema, and capability negotiation before commands or queries.
+- Store only opaque Chordrift product sessions in the operating-system
+  credential store; session values are accepted through standard input and are
+  never printed.
+- Require HTTPS outside loopback development and accept only typed application
+  DTOs and structured client-safe errors.
+- Retain an explicit in-process development client over the identical transport
+  trait and prove remote/local compatibility and command/query parity.
+- Advertise `service.remote-cli.v1`. Hosting, public login, and deployment
+  configuration remain V021-06.
+
 ## [0.2.1-alpha.16] - 2026-08-30
 
 - Name the verified managed destination when a newly liked track is already

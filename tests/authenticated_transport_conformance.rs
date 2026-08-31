@@ -5,14 +5,16 @@ use std::{
 
 use async_trait::async_trait;
 use chordrift::{
+    client_transport::{ClientTransport, LocalDevelopmentClient, RemoteHttpClient},
     contract::{
-        CONTRACT_VERSION, CancellationRequest, ClientError, Command, CommandReceipt,
-        CommandRequest, ContractVersion, ErrorCode, IdempotencyKey, MaintenanceChangeId,
-        MaintenanceChangeKind, MaintenanceChangeView, MaintenanceDecision,
-        MaintenanceProviderEffectKind, MaintenanceProviderEffectView, MaintenanceResolution,
-        MaintenanceSessionId, MaintenanceSessionState, MaintenanceSessionView,
-        MaintenanceSurfaceView, MaintenanceTrackView, OperationEventsView, OperationState, Query,
-        QueryRequest, QueryResponse, RequestId, ResourceId, WaitingReason,
+        CONTRACT_VERSION, CancellationRequest, ClientCompatibility, ClientError, Command,
+        CommandReceipt, CommandRequest, ContractVersion, ContractVersionRange, ErrorCode,
+        IdempotencyKey, MaintenanceChangeId, MaintenanceChangeKind, MaintenanceChangeView,
+        MaintenanceDecision, MaintenanceProviderEffectKind, MaintenanceProviderEffectView,
+        MaintenanceResolution, MaintenanceSessionId, MaintenanceSessionState,
+        MaintenanceSessionView, MaintenanceSurfaceView, MaintenanceTrackView, OperationEventsView,
+        OperationState, Query, QueryRequest, QueryResponse, RequestId, ResourceId,
+        SchemaVersionRange, ServiceCompatibility, WaitingReason,
     },
     http_transport::{AuthenticatedHttpTransport, BearerAuthenticator, HttpRequestGate},
     maintenance::{MaintenanceDecisionProjection, MaintenanceProjection},
@@ -351,6 +353,104 @@ async fn server_with_transport(
         base_url: format!("http://{address}"),
         task,
     }
+}
+
+fn service_compatibility() -> ServiceCompatibility {
+    ServiceCompatibility {
+        contract_versions: ContractVersionRange::exact(CONTRACT_VERSION),
+        schema_version: 50,
+        features: Default::default(),
+        provider_capabilities: Default::default(),
+        evidence_capabilities: Default::default(),
+    }
+}
+
+fn client_offer() -> ClientCompatibility {
+    ClientCompatibility {
+        contract_versions: ContractVersionRange::exact(CONTRACT_VERSION),
+        schema_versions: SchemaVersionRange::new(47, 50).expect("valid schema range"),
+        requested_features: Vec::new(),
+    }
+}
+
+#[tokio::test]
+async fn shipped_remote_client_and_explicit_local_transport_share_the_contract() {
+    let fixture = Fixture::new();
+    let (remote_application, _) = application(&fixture);
+    let server = server_with_transport(
+        &fixture,
+        AuthenticatedHttpTransport::new(
+            remote_application,
+            Arc::new(TestAuthenticator {
+                owner: fixture.owner,
+                stranger: fixture.stranger,
+            }),
+        )
+        .with_compatibility(service_compatibility()),
+    )
+    .await;
+    let remote = RemoteHttpClient::new(&server.base_url, "owner-token".to_owned())
+        .expect("loopback remote client");
+    let negotiated = remote
+        .negotiate(client_offer())
+        .await
+        .expect("remote compatibility");
+    assert_eq!(negotiated.contract_version, CONTRACT_VERSION);
+    assert_eq!(negotiated.schema_version, 50);
+
+    let remote_receipt = remote
+        .command(command_request(
+            Command::StartMaintenance {
+                session_id: fixture.session_id,
+                provider_connection_id: fixture.provider_connection_id,
+            },
+            IdempotencyKey::new(),
+        ))
+        .await
+        .expect("remote command");
+    let remote_view = remote
+        .query(query_request(Query::Operation {
+            operation_id: remote_receipt.operation_id,
+        }))
+        .await
+        .expect("remote query");
+
+    let local_fixture = Fixture::new();
+    let (local_application, _) = application(&local_fixture);
+    let local = LocalDevelopmentClient::new(
+        local_application,
+        local_fixture.owner,
+        service_compatibility(),
+    );
+    assert_eq!(
+        local
+            .negotiate(client_offer())
+            .await
+            .expect("local compatibility"),
+        negotiated
+    );
+    let local_receipt = local
+        .command(command_request(
+            Command::StartMaintenance {
+                session_id: local_fixture.session_id,
+                provider_connection_id: local_fixture.provider_connection_id,
+            },
+            IdempotencyKey::new(),
+        ))
+        .await
+        .expect("local command");
+    let local_view = local
+        .query(query_request(Query::Operation {
+            operation_id: local_receipt.operation_id,
+        }))
+        .await
+        .expect("local query");
+    assert_eq!(
+        serde_json::to_value(remote_view).expect("remote JSON")["type"],
+        serde_json::to_value(local_view).expect("local JSON")["type"]
+    );
+
+    assert!(RemoteHttpClient::new("http://example.com", "secret".to_owned()).is_err());
 }
 
 fn command_request(command: Command, key: IdempotencyKey) -> CommandRequest {

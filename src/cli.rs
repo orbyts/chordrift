@@ -1,18 +1,28 @@
 use std::{
     future::Future,
-    io::{self, Write},
+    io::{self, Read, Write},
     path::PathBuf,
     time::{Duration, Instant},
 };
 
 use clap::{Parser, Subcommand, ValueEnum};
+use zeroize::Zeroizing;
 
 use crate::{
     ChordriftError, Result, albums, analysis,
     application::{ApplicationFacade, ApplicationInvocation},
-    apply, apply_readiness, artwork, bookmarks, classifications, clusters, config, db, db_cleanup,
-    db_reports, db_v2_migration, embeddings, enrichment, history, intake, model_inference,
-    onboarding, onboarding_audit, playlists, presentation, product_rehearsal, proposals,
+    apply, apply_readiness, artwork, bookmarks, classifications,
+    client_transport::{ClientTransport, RemoteHttpClient},
+    clusters, config,
+    contract::{
+        CAPABILITY_DURABLE_OPERATIONS, CAPABILITY_MAINTENANCE_TASK_SESSION,
+        CAPABILITY_PRODUCT_IDENTITY, CAPABILITY_REMOTE_CLI, CONTRACT_VERSION, ClientCompatibility,
+        CommandRequest, ContractVersionRange, QueryRequest, SchemaVersionRange,
+    },
+    credentials::{CredentialStore, SecretId, SystemCredentialStore},
+    db, db_cleanup, db_reports, db_v2_migration, embeddings, enrichment, history, intake,
+    model_inference, onboarding, onboarding_audit, playlists, presentation, product_rehearsal,
+    proposals,
     providers::spotify,
     recipe_execution, routes, signals, spin_preview, sync_plan, terminal, tracks,
 };
@@ -34,6 +44,12 @@ pub enum Command {
         /// Capability that must be available; may be repeated.
         #[arg(long = "require", value_name = "CAPABILITY")]
         required: Vec<String>,
+    },
+    /// Call the authenticated hosted application contract as a thin client.
+    Service {
+        /// Remote service client operation.
+        #[command(subcommand)]
+        command: ServiceCommand,
     },
     /// Rehearse the provider-neutral v0.2 product through the local CLI.
     Product {
@@ -156,6 +172,73 @@ pub enum Command {
         /// Enrichment operation to perform.
         #[command(subcommand)]
         command: EnrichmentCommand,
+    },
+}
+
+/// Authenticated service-client commands. Hosting and login UX arrive in V021-06.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ServiceCommand {
+    /// Store, inspect, or remove the opaque Chordrift session in the OS credential store.
+    Session {
+        /// Session operation.
+        #[command(subcommand)]
+        command: ServiceSessionCommand,
+    },
+    /// Negotiate contract, schema, and capabilities with one authenticated service.
+    Compatibility {
+        /// HTTPS service base URL; loopback HTTP is allowed for development tests.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+    },
+    /// Submit one exact typed `CommandRequest` JSON document.
+    Command {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Typed command envelope JSON file.
+        #[arg(long)]
+        file: PathBuf,
+    },
+    /// Submit one exact typed `QueryRequest` JSON document.
+    Query {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Typed query envelope JSON file.
+        #[arg(long)]
+        file: PathBuf,
+    },
+}
+
+/// OS credential-store operations for one remote Chordrift session.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ServiceSessionCommand {
+    /// Read an opaque Chordrift session from standard input and store it securely.
+    Save {
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+    },
+    /// Report whether the profile has a stored session without printing it.
+    Status {
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+    },
+    /// Delete the profile's local Chordrift session.
+    Remove {
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
     },
 }
 
@@ -1762,6 +1845,7 @@ async fn execute_cli_handlers(cli: Cli, output: &mut impl Write) -> Result<()> {
             }
             writeln!(output, "{}", serde_json::to_string(&manifest)?)?;
         }
+        Command::Service { command } => run_service_command(command, output).await?,
         Command::Product { command } => run_product_command(command, output).await?,
         Command::Db { command } => {
             let config = config::database_config_from_env()?;
@@ -2342,6 +2426,107 @@ async fn execute_cli_handlers(cli: Cli, output: &mut impl Write) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn service_session_id(profile: &str) -> Result<SecretId> {
+    SecretId::new("chordrift-service", profile, "product-session")
+}
+
+fn load_service_client(url: &str, profile: &str) -> Result<RemoteHttpClient> {
+    let token = SystemCredentialStore
+        .load(&service_session_id(profile)?)?
+        .ok_or_else(|| {
+            ChordriftError::Configuration(format!(
+                "no Chordrift service session is stored for profile '{profile}'"
+            ))
+        })?;
+    let token = String::from_utf8(token).map_err(|_| {
+        ChordriftError::Configuration("stored Chordrift service session is invalid".to_owned())
+    })?;
+    RemoteHttpClient::new(url, token)
+        .map_err(|error| ChordriftError::Configuration(error.to_string()))
+}
+
+fn service_compatibility_offer() -> ClientCompatibility {
+    ClientCompatibility {
+        contract_versions: ContractVersionRange::exact(CONTRACT_VERSION),
+        schema_versions: SchemaVersionRange::new(0, 50).expect("CLI schema range is valid"),
+        requested_features: vec![
+            CAPABILITY_MAINTENANCE_TASK_SESSION.to_owned(),
+            CAPABILITY_PRODUCT_IDENTITY.to_owned(),
+            CAPABILITY_DURABLE_OPERATIONS.to_owned(),
+            CAPABILITY_REMOTE_CLI.to_owned(),
+        ],
+    }
+}
+
+async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -> Result<()> {
+    match command {
+        ServiceCommand::Session { command } => match command {
+            ServiceSessionCommand::Save { profile } => {
+                let mut token = Zeroizing::new(String::new());
+                io::stdin().take(4097).read_to_string(&mut token)?;
+                if token.len() > 4096 {
+                    return Err(ChordriftError::Configuration(
+                        "Chordrift service session exceeds the accepted size".to_owned(),
+                    ));
+                }
+                let token = token.trim();
+                if !token.starts_with("chd_session_") || token.len() <= "chd_session_".len() {
+                    return Err(ChordriftError::Configuration(
+                        "standard input is not an opaque Chordrift session".to_owned(),
+                    ));
+                }
+                SystemCredentialStore.save(&service_session_id(&profile)?, token.as_bytes())?;
+                writeln!(output, "stored: true\nprofile: {profile}")?;
+            }
+            ServiceSessionCommand::Status { profile } => {
+                let stored = SystemCredentialStore
+                    .load(&service_session_id(&profile)?)?
+                    .is_some();
+                writeln!(output, "stored: {stored}\nprofile: {profile}")?;
+            }
+            ServiceSessionCommand::Remove { profile } => {
+                let removed = SystemCredentialStore.delete(&service_session_id(&profile)?)?;
+                writeln!(output, "removed: {removed}\nprofile: {profile}")?;
+            }
+        },
+        ServiceCommand::Compatibility { url, profile } => {
+            let client = load_service_client(&url, &profile)?;
+            let negotiated = client
+                .negotiate(service_compatibility_offer())
+                .await
+                .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+            writeln!(output, "{}", serde_json::to_string(&negotiated)?)?;
+        }
+        ServiceCommand::Command { url, profile, file } => {
+            let client = load_service_client(&url, &profile)?;
+            client
+                .negotiate(service_compatibility_offer())
+                .await
+                .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+            let request: CommandRequest = serde_json::from_slice(&std::fs::read(file)?)?;
+            let receipt = client
+                .command(request)
+                .await
+                .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+            writeln!(output, "{}", serde_json::to_string(&receipt)?)?;
+        }
+        ServiceCommand::Query { url, profile, file } => {
+            let client = load_service_client(&url, &profile)?;
+            client
+                .negotiate(service_compatibility_offer())
+                .await
+                .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+            let request: QueryRequest = serde_json::from_slice(&std::fs::read(file)?)?;
+            let response = client
+                .query(request)
+                .await
+                .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+            writeln!(output, "{}", serde_json::to_string(&response)?)?;
+        }
+    }
     Ok(())
 }
 
@@ -6612,7 +6797,7 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
         CAPABILITY_MAINTENANCE_INTAKE_AUDIT, CAPABILITY_MAINTENANCE_INTAKE_WORKFLOW,
         CAPABILITY_MAINTENANCE_TASK_SESSION, CAPABILITY_PLAN_ORIGIN, CAPABILITY_PRODUCT_IDENTITY,
         CAPABILITY_PROVIDER_BASELINE, CAPABILITY_PROVIDER_CREDENTIAL_VAULT,
-        CAPABILITY_PROVIDER_ORDER_INTENT, CAPABILITY_SPIN_PUBLICATION_PLAN,
+        CAPABILITY_PROVIDER_ORDER_INTENT, CAPABILITY_REMOTE_CLI, CAPABILITY_SPIN_PUBLICATION_PLAN,
         CAPABILITY_UNIFIED_MAINTENANCE_WORKFLOW, CapabilityAvailability, ContractVersionRange,
     };
 
@@ -6635,6 +6820,10 @@ fn binary_capability_manifest() -> crate::contract::BinaryCapabilityManifest {
             ),
             (
                 CAPABILITY_DURABLE_OPERATIONS.to_owned(),
+                CapabilityAvailability::Available,
+            ),
+            (
+                CAPABILITY_REMOTE_CLI.to_owned(),
                 CapabilityAvailability::Available,
             ),
             (
@@ -6848,9 +7037,9 @@ mod tests {
         HistoryCommand, IntakeCommand, LikedDispositionArg, LikedSongsPolicyArg, PlaylistCommand,
         PlaylistRoleArg, PlaylistSignalClassArg, ProductAuditMode, ProductCollectionCommand,
         ProductCommand, ProductOnboardingCommand, ProductRecipeCommand, ProductSpinCommand,
-        ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, SignalCommand, SpotifyCommand,
-        SyncCommand, TrackCommand, binary_capability_manifest, format_count, format_elapsed,
-        write_status,
+        ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, ServiceCommand, SignalCommand,
+        SpotifyCommand, SyncCommand, TrackCommand, binary_capability_manifest, format_count,
+        format_elapsed, write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -6886,8 +7075,29 @@ mod tests {
         assert!(manifest.supports("maintenance.intake-workflow.v1"));
         assert!(manifest.supports("maintenance.enumerated-playlist-additions.v1"));
         assert!(manifest.supports("spin-publication-plan.v1"));
+        assert!(manifest.supports("service.remote-cli.v1"));
         assert!(!manifest.supports("spin-publication.v1"));
         serde_json::to_string(&manifest).expect("capability manifest serializes");
+    }
+
+    #[test]
+    fn parses_authenticated_remote_service_query() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "query",
+            "--url",
+            "https://api.chordrift.example",
+            "--file",
+            "query.json",
+        ])
+        .expect("valid remote service query");
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Query { profile, .. }
+            } if profile == "default"
+        ));
     }
 
     #[test]
