@@ -7,14 +7,15 @@ only when you need every option or an internal diagnostic command.
 These workflows describe **v0.2.1-alpha.17**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
-and verified 47/47 database together; see
+and verified 50/50 database together; see
 [Recovery and rollback](how-to/RECOVERY_AND_ROLLBACK.md).
 
 > **Hosted-service status:** V021-05's authenticated remote CLI transport is
-> implemented, but V021-06 has not selected or deployed the public service or
-> product login. Continue using the local daily-driver workflow until that
-> release gate is complete; remote failure never causes an implicit local
-> fallback.
+> implemented, and the V021-06 private deployment foundation is running with
+> Chordrift login through Google/Auth0. The full browser daily driver, Spotify
+> connection lifecycle, existing-account adoption, and beta.1 release gate
+> remain open. Continue using the local maintenance workflow for provider-backed
+> daily work; remote failure never causes an implicit local fallback.
 
 ## Documentation map
 
@@ -40,6 +41,7 @@ and verified 47/47 database together; see
 | Review the verified candidate and cutover evidence | [Candidate and personal cutover gate](design/CANDIDATE_CUTOVER_GATE_V020_14.md) | Historical gate plus the completed v0.2.0 binary/database outcome; no Spotify write occurred. |
 | Review the future external classification dependency | [Classification Authority foundation](design/CLASSIFICATION_KNOWLEDGE_FOUNDATION.md) | Founding brief for a separate project: learned shared knowledge, generalization to unseen recordings, explainable confidence, and a strict private Chordrift query/cache boundary. |
 | Review database-v2 decisions | [Database architecture v2](design/DATABASE_ARCHITECTURE_V2.md) | Completed v0.1.4 foundation and labeled historical execution record. |
+| Understand the live Neon schema at a glance | [Database domain map](design/chordrift-database-domain-map.svg) and [database object catalog](reference/DATABASE_OBJECT_CATALOG.md) | Current through migration 0050; groups every table/view, identifies simple query surfaces, and records the measured storage footprint. |
 | Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
 | Review hosted credential safety | [Provider credential vault](design/PROVIDER_CREDENTIAL_VAULT_V021_03.md) | Encrypted server-side refresh credentials, external keys, tenant authorization, rotation, and revocation; not required by local maintenance. |
 | Review hosted background work | [Durable background operations](design/DURABLE_BACKGROUND_OPERATIONS_V021_04.md) | Restart-safe typed jobs, progress, cancellation, retry, recovery, and replay; not required by local maintenance. |

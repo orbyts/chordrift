@@ -1,15 +1,20 @@
 # Chordrift database architecture v2
 
-The zoomable [schema overview](database-v2-schema-overview.svg) maps the
-implemented table groups, their main relationships, the clean runtime
-staging/recovery boundary, and the lifecycle of a manual Spotify playlist
-removal.
+The compact [current domain map](chordrift-database-domain-map.svg) explains
+the nine storage/behavior groups and their measured footprint. The
+[table-and-view catalog](../reference/DATABASE_OBJECT_CATALOG.md) gives a
+plain-language description of every public object and identifies the seven
+simple read-only views. The larger zoomable
+[database-v2 lifecycle overview](database-v2-schema-overview.svg) retains the
+clean runtime staging/recovery boundary and the lifecycle of a manual Spotify
+playlist removal.
 
 The v0.2 product layer is documented separately in
 [Playlist product architecture](PLAYLIST_PRODUCT_ARCHITECTURE.md). Migrations
 0046 and 0047 add provider-neutral product/Spin state to this clean foundation.
-The separately approved cutover now pairs the local daily driver with the
-verified 47-migration personal music database.
+The consolidated deployment now pairs the local daily driver and hosted
+authority with one verified migration-50 canonical database. Local ordinary
+maintenance continues to use only its migration-47-compatible contract.
 
 V021-02 adds migration 0048 for hosted product subjects, verified external
 identity bindings, account memberships, and digest-only revocable sessions.
@@ -21,9 +26,9 @@ plaintext credentials remain outside PostgreSQL. Hosted provider work must
 verify 0049. V021-04 adds migration 0050's typed durable operation ledger and
 append-only event stream; it stores application DTOs, leases, retry, and
 cancellation state but no provider credential. Hosted workers must verify 0050.
-The local maintenance client explicitly requires only schema
-through 0047, so ordinary personal use does not force either hosted schema into
-the existing database.
+The local maintenance client explicitly requires only schema through 0047 and
+remains compatible with the additive hosted tables now present in the canonical
+database.
 
 Status: database v2 is the current architecture. The legacy physical tables
 and former rollback project were retired only after the recorded exact-
@@ -40,7 +45,7 @@ are not current instructions. For routine operation use the
 | Boundary | Current status |
 | --- | --- |
 | Released runtime | v0.2.1 alpha is the local daily driver; the hosted authority is under construction. |
-| Schema | The verified personal music database is at 47 migrations. Migrations 0048–0050 are additive hosted identity/session, encrypted-credential, and durable-operation storage and are not required by local maintenance. |
+| Schema | The canonical personal database is at 50/50 migrations. Migrations 0048–0050 are additive hosted identity/session, encrypted-credential, and durable-operation storage; local maintenance still exercises only its migration-47-compatible contract. |
 | Legacy storage | Database-v1 physical tables and the former rollback project are gone after independently verified exact-confirmed cleanup. |
 | Recovery | The verified pre-compaction dump remains the historical recovery baseline; V020-13 adds its local-rehearsal dump and V020-14 adds the newer verified candidate-source dump. Immutable Spotify archives remain independent evidence sources. |
 | Routine operation | Use `scripts/chordrift-maintain.sh --account personal`; do not replay historical migration or cleanup applies. |

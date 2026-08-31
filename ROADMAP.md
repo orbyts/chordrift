@@ -322,6 +322,13 @@ and later Chordrift refactor begin.
     encrypted provider-credential vault, durable operation queue, and a real
     Spotify/PostgreSQL maintenance adapter. A deployed route must never invoke
     a CLI command, shell, arbitrary SQL, or a client-supplied provider URL.
+  - [ ] **Bounded storage lifecycle.** Keep durable listening evidence,
+    accepted user intent, current provider anchors, and exact write receipts.
+    Define and rehearse a lossless retention/compaction policy for superseded
+    playlist generations, verification history, and routine sync audit rows;
+    staging must be empty after successful work and disposable Neon rehearsal
+    branches must be deleted immediately. The migration-0050 domain map,
+    exhaustive object catalog, and 2026-08-31 storage baseline are complete.
   - [x] **Chordrift identity with Google login.** Use Google through a standard
     OIDC broker as an external proof of identity while Chordrift retains its
     own stable subject, account ownership, revocable sessions, and future

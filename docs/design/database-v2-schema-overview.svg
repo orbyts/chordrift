@@ -18,7 +18,7 @@
 
   <rect class="bg" width="2600" height="2000"/>
   <text class="heading" x="70" y="65">Chordrift database v2 — conceptual Neon table map</text>
-  <text class="sub" x="70" y="102">Database v2 through migration 0048; local maintenance remains compatible through 0047. Tables are grouped by responsibility.</text>
+  <text class="sub" x="70" y="102">Database v2 through migration 0050; local maintenance uses the migration-0047-compatible subset. Tables are grouped by responsibility.</text>
 
   <!-- Main relationships, behind panels -->
   <path class="edge" d="M430 370H490"/><text class="label" x="438" y="350">identifies</text>
@@ -34,7 +34,7 @@
   <rect class="panel" x="70" y="145" width="360" height="990" fill="#f1ecff" stroke="#9678d0"/>
   <text class="panelTitle" x="100" y="188">1 · Identity hub</text>
   <text class="panelNote" x="100" y="217">Stable things, not observations</text>
-  <g transform="translate(100 245)"><rect class="card" width="300" height="118" stroke="#7657b0"/><text class="name" x="17" y="29">product_subjects</text><text class="name" x="17" y="54">external_identities</text><text class="name" x="17" y="79">memberships · sessions</text><text class="purpose" x="17" y="104">Product auth · token digests</text></g>
+  <g transform="translate(100 245)"><rect class="card" width="300" height="118" stroke="#7657b0"/><text class="name" x="17" y="29">product_subjects</text><text class="name" x="17" y="54">external_identities</text><text class="name" x="17" y="79">memberships · sessions · vault</text><text class="purpose" x="17" y="104">Product auth · token digests</text></g>
   <g transform="translate(100 385)"><rect class="card" width="300" height="86" stroke="#9678d0"/><text class="name" x="17" y="32">provider_accounts</text><text class="purpose" x="17" y="60">One account at a provider</text></g>
   <g transform="translate(100 490)"><rect class="card" width="300" height="86" stroke="#9678d0"/><text class="name" x="17" y="32">provider_playlists</text><text class="purpose" x="17" y="60">Stable provider playlist IDs</text></g>
   <g transform="translate(100 595)"><rect class="card" width="300" height="86" stroke="#9678d0"/><text class="name" x="17" y="32">provider_tracks · albums</text><text class="purpose" x="17" y="60">Stable provider media IDs</text></g>

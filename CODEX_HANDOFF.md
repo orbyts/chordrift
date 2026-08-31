@@ -2658,6 +2658,21 @@ connections, was also deleted. The canonical PostgreSQL database is about
 pages within the six-hour restore window before falling from the earlier
 roughly 419 MB value.
 
+The dashboard's later 228.24 MB reading is consistent with the measured
+logical footprint rather than a second application copy: `chordrift_cutover`
+is 204,226,560 bytes (about 195 MiB), while PostgreSQL's `postgres`,
+`template0`, and `template1` databases contribute about 23.4 MB. The complete
+object-by-object glossary is
+[`docs/reference/DATABASE_OBJECT_CATALOG.md`](docs/reference/DATABASE_OBJECT_CATALOG.md),
+and the grouped storage/dataflow overview is
+[`docs/design/chordrift-database-domain-map.svg`](docs/design/chordrift-database-domain-map.svg).
+The seven SQL views store no rows. Listening evidence is about 85 MiB and
+playlist intent/verified history about 53 MiB; those two domains, not the
+number of tables, explain most storage. Do not delete evidence or audit rows
+ad hoc. A future bounded compaction policy may retire superseded playlist,
+verification, and sync generations only after durable current anchors and
+restore invariants are proven.
+
 Owner-only external backups are under
 `$DROPBOX/Music/Chordrift/Backups/2026-08-31-pre-main-consolidation/`:
 

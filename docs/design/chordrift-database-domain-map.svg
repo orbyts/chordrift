@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1320" viewBox="0 0 2000 1320" role="img" aria-labelledby="title desc">
+  <title id="title">Chordrift database domain map through migration 0050</title>
+  <desc id="desc">High-level grouped view of Chordrift identity, provider observation, music evidence, playlist intent, derived classification, synchronization audit, hosted operations, and read-only views, with measured storage shares.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+      <path d="M0,0 L11,5.5 L0,11 Z" fill="#65758b"/>
+    </marker>
+    <marker id="arrowWrite" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+      <path d="M0,0 L11,5.5 L0,11 Z" fill="#b55b38"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#172033" flood-opacity="0.09"/>
+    </filter>
+    <style>
+      .bg{fill:#f7f8fb}.title{font:700 38px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#182131}.subtitle{font:400 19px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#5d6878}.box{stroke-width:2;rx:20;filter:url(#shadow)}.head{font:700 22px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#182131}.body{font:400 16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#4f5c6d}.mono{font:600 14px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#263244}.size{font:700 17px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#263244}.edge{fill:none;stroke:#65758b;stroke-width:3;marker-end:url(#arrow)}.edgeWrite{fill:none;stroke:#b55b38;stroke-width:4;stroke-dasharray:9 7;marker-end:url(#arrowWrite)}.edgeLabel{font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#5d6878;paint-order:stroke;stroke:#f7f8fb;stroke-width:7}.barLabel{font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#fff}.foot{font:500 15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#5d6878}.view{fill:#fff;stroke:#6b8bbb;stroke-width:2;rx:12}.viewName{font:600 12px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#263244}
+    </style>
+  </defs>
+
+  <rect class="bg" width="2000" height="1320"/>
+  <text class="title" x="64" y="58">Chordrift database — domain map</text>
+  <text class="subtitle" x="64" y="92">Migration 0050 · one Neon project · one main branch · one canonical database · arrows show product dataflow, not every foreign key</text>
+
+  <!-- external provider -->
+  <rect class="box" x="64" y="145" width="250" height="185" fill="#eef2f7" stroke="#8794a7"/>
+  <text class="head" x="92" y="186">Music provider</text>
+  <text class="body" x="92" y="219">Spotify at launch</text>
+  <text class="body" x="92" y="247">Source of observed state</text>
+  <text class="body" x="92" y="275">Changed only after an</text>
+  <text class="body" x="92" y="299">explicit reviewed apply</text>
+
+  <!-- identity -->
+  <rect class="box" x="390" y="130" width="400" height="215" fill="#f2ecff" stroke="#9577cf"/>
+  <text class="head" x="420" y="172">Accounts, identity &amp; authorization</text>
+  <text class="mono" x="420" y="207">chordrift_accounts · provider_accounts</text>
+  <text class="mono" x="420" y="235">product_subjects · external_identities</text>
+  <text class="mono" x="420" y="263">memberships · sessions · credential_vault</text>
+  <text class="body" x="420" y="302">Who owns which provider connection;</text>
+  <text class="body" x="420" y="325">tokens are digests/ciphertext, never plaintext</text>
+
+  <!-- provider -->
+  <rect class="box" x="865" y="130" width="500" height="215" fill="#e7f3ff" stroke="#5b93ca"/>
+  <text class="head" x="895" y="172">Provider identities &amp; observed state</text>
+  <text class="mono" x="895" y="207">provider_tracks · artists · albums · playlists</text>
+  <text class="mono" x="895" y="235">current_inventories · current_playlists</text>
+  <text class="mono" x="895" y="263">playlist/saved revisions · compact checkpoints</text>
+  <text class="size" x="895" y="307">14 MiB · 7.4%</text>
+  <text class="body" x="1050" y="307">One current pointer; unchanged bodies reused</text>
+
+  <!-- views -->
+  <rect class="box" x="1440" y="120" width="496" height="235" fill="#f4f8ff" stroke="#6b8bbb"/>
+  <text class="head" x="1470" y="160">Simple read-only views</text>
+  <g transform="translate(1470 182)">
+    <rect class="view" width="215" height="34"/><text class="viewName" x="11" y="22">current_spotify_playlists</text>
+    <rect class="view" x="228" width="238" height="34"/><text class="viewName" x="239" y="22">provider_observed_playlists</text>
+    <rect class="view" y="45" width="290" height="34"/><text class="viewName" x="11" y="67">provider_observed_playlist_tracks</text>
+    <rect class="view" x="303" y="45" width="163" height="34"/><text class="viewName" x="314" y="67">…saved_tracks</text>
+    <rect class="view" y="90" width="218" height="34"/><text class="viewName" x="11" y="112">…saved_albums</text>
+    <rect class="view" x="231" y="90" width="235" height="34"/><text class="viewName" x="242" y="112">…saved_album_tracks</text>
+    <rect class="view" y="135" width="230" height="34"/><text class="viewName" x="11" y="157">listening_evidence_events</text>
+  </g>
+
+  <!-- canonical -->
+  <rect class="box" x="390" y="430" width="400" height="190" fill="#edf8f1" stroke="#58a27a"/>
+  <text class="head" x="420" y="472">Canonical music catalog</text>
+  <text class="mono" x="420" y="507">tracks · artists · albums · track_artists</text>
+  <text class="mono" x="420" y="535">track_matches · historical identities</text>
+  <text class="size" x="420" y="579">2.0 MiB · 1.1%</text>
+  <text class="body" x="566" y="579">Provider-independent identity</text>
+
+  <!-- evidence -->
+  <rect class="box" x="865" y="410" width="500" height="230" fill="#e5f7ec" stroke="#48a16f"/>
+  <text class="head" x="895" y="452">Listening evidence</text>
+  <text class="mono" x="895" y="487">normalized_listening_events</text>
+  <text class="mono" x="895" y="515">listening_evidence_imports · source_files</text>
+  <text class="mono" x="895" y="543">historical_provider_track_identities</text>
+  <text class="size" x="895" y="589">85 MiB · 46.2%</text>
+  <text class="body" x="1056" y="589">149,458 durable play events</text>
+  <text class="body" x="895" y="617">Raw archives stay outside Neon</text>
+
+  <!-- derived -->
+  <rect class="box" x="1440" y="410" width="496" height="230" fill="#f0f2f5" stroke="#8794a7"/>
+  <text class="head" x="1470" y="452">Derived &amp; classification</text>
+  <text class="mono" x="1470" y="487">statistics · signals · embeddings</text>
+  <text class="mono" x="1470" y="515">enrichment · model facts/inferences</text>
+  <text class="mono" x="1470" y="543">clusters · classification revisions</text>
+  <text class="size" x="1470" y="589">16 MiB · 8.5%</text>
+  <text class="body" x="1628" y="589">Mostly rebuildable/versioned</text>
+  <text class="body" x="1470" y="617">Accepted user corrections remain durable</text>
+
+  <!-- intent -->
+  <rect class="box" x="390" y="735" width="575" height="260" fill="#fff3de" stroke="#c78b31"/>
+  <text class="head" x="420" y="777">Playlist intent &amp; verified baselines</text>
+  <text class="mono" x="420" y="812">concepts · generations · playlists · playlist_tracks</text>
+  <text class="mono" x="420" y="840">assignments · exclusions · routing surfaces</text>
+  <text class="mono" x="420" y="868">managed verifications · verified tracks</text>
+  <text class="mono" x="420" y="896">collections · surfaces · recipes · Spins</text>
+  <text class="size" x="420" y="942">53 MiB · 29.2%</text>
+  <text class="body" x="580" y="942">What Chordrift/user meant over time</text>
+  <text class="body" x="420" y="971">Largest future compaction candidate after retaining current anchors</text>
+
+  <!-- sync -->
+  <rect class="box" x="1035" y="735" width="475" height="260" fill="#fbeaf1" stroke="#bf7691"/>
+  <text class="head" x="1065" y="777">Sync, apply &amp; migration audit</text>
+  <text class="mono" x="1065" y="812">sync_runs · sync_operations</text>
+  <text class="mono" x="1065" y="840">readiness assessments/checks</text>
+  <text class="mono" x="1065" y="868">apply runs/operations/targets</text>
+  <text class="mono" x="1065" y="896">migration · cleanup · retirement receipts</text>
+  <text class="size" x="1065" y="942">12 MiB · 6.5%</text>
+  <text class="body" x="1216" y="942">Checks and balances</text>
+  <text class="body" x="1065" y="971">Provider writes require one exact confirmed plan</text>
+
+  <!-- service -->
+  <rect class="box" x="1580" y="735" width="356" height="260" fill="#f3edff" stroke="#9577cf"/>
+  <text class="head" x="1610" y="777">Hosted authority</text>
+  <text class="mono" x="1610" y="812">service_operations</text>
+  <text class="mono" x="1610" y="840">service_operation_events</text>
+  <text class="mono" x="1610" y="868">sessions · credential vault</text>
+  <text class="size" x="1610" y="914">0.35 MiB · 0.2%</text>
+  <text class="body" x="1610" y="947">Typed DTOs, jobs, retry,</text>
+  <text class="body" x="1610" y="971">cancellation and progress</text>
+
+  <!-- arrows -->
+  <path class="edge" d="M314 230 H390"/><text class="edgeLabel" x="323" y="214">account identity</text>
+  <path class="edge" d="M790 230 H865"/><text class="edgeLabel" x="802" y="214">owns</text>
+  <path class="edge" d="M1365 230 H1440"/><text class="edgeLabel" x="1374" y="214">projects</text>
+  <path class="edge" d="M1115 345 V410"/><text class="edgeLabel" x="1129" y="385">resolves</text>
+  <path class="edge" d="M790 525 H865"/><text class="edgeLabel" x="801" y="509">links</text>
+  <path class="edge" d="M1365 525 H1440"/><text class="edgeLabel" x="1377" y="509">derives</text>
+  <path class="edge" d="M590 620 V735"/><text class="edgeLabel" x="607" y="686">places</text>
+  <path class="edge" d="M1115 640 L820 735"/><text class="edgeLabel" x="944" y="669">personal signals</text>
+  <path class="edge" d="M965 865 H1035"/><text class="edgeLabel" x="977" y="849">plans</text>
+  <path class="edge" d="M1510 865 H1580"/><text class="edgeLabel" x="1518" y="849">executes</text>
+  <path class="edgeWrite" d="M1270 735 C1270 680 189 700 189 330"/>
+
+  <!-- storage -->
+  <text class="head" x="64" y="1082">Current footprint · why Neon shows about 228.24 MB</text>
+  <rect x="64" y="1110" width="1460" height="54" rx="10" fill="#d9dee7"/>
+  <rect x="64" y="1110" width="675" height="54" rx="10" fill="#48a16f"/>
+  <rect x="739" y="1110" width="426" height="54" fill="#c78b31"/>
+  <rect x="1165" y="1110" width="124" height="54" fill="#8794a7"/>
+  <rect x="1289" y="1110" width="108" height="54" fill="#5b93ca"/>
+  <rect x="1397" y="1110" width="94" height="54" fill="#bf7691"/>
+  <rect x="1491" y="1110" width="33" height="54" rx="10" fill="#9577cf"/>
+  <text class="barLabel" x="82" y="1143">Listening 85 MiB</text>
+  <text class="barLabel" x="757" y="1143">Playlist intent 53 MiB</text>
+  <text class="barLabel" x="1175" y="1143">Derived 16</text>
+  <text class="barLabel" x="1300" y="1143">Provider 14</text>
+  <text class="barLabel" x="1407" y="1143">Audit 12</text>
+
+  <text class="foot" x="64" y="1203">Application database: 204,226,560 bytes (≈195 MiB). PostgreSQL system/template databases: ≈23.4 MB. Total PostgreSQL logical size: 227,647,488 bytes.</text>
+  <text class="foot" x="64" y="1232">The seven views store 0 bytes. Empty future-contract tables cost little. Table count is not the storage problem; evidence and retained playlist history are.</text>
+  <text class="foot" x="64" y="1261">Safe future optimization: compact superseded playlist/verification/audit generations behind durable current anchors. Preserve listening evidence and accepted user intent.</text>
+</svg>
