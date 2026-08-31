@@ -15,8 +15,9 @@ use storexa::Database;
 use crate::{
     ChordriftError, Result, config,
     contract::{
-        ClientError, Command, ErrorCode, MaintenanceDecision, MaintenanceSessionId, OperationId,
-        Progress, ProgressUnit, ResourceId,
+        ClientError, Command, ErrorCode, MaintenanceDecision, MaintenanceProviderEffectKind,
+        MaintenanceReviewId, MaintenanceSessionId, MaintenanceSessionState, OperationId, Progress,
+        ProgressUnit, ResourceId,
     },
     db,
     durable_operations::{
@@ -82,6 +83,18 @@ pub trait HostedProviderExecutor: Send + Sync {
     ) -> std::result::Result<ResourceId, ClientError> {
         Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
     }
+
+    /// Authorizes, executes, observes, and verifies one immutable review.
+    async fn authorize_maintenance(
+        &self,
+        _subject: AuthenticatedSubject,
+        _operation_id: OperationId,
+        _session_id: MaintenanceSessionId,
+        _expected_revision: u64,
+        _review_id: MaintenanceReviewId,
+    ) -> std::result::Result<ResourceId, ClientError> {
+        Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
+    }
 }
 
 /// Production Spotify/Neon executor using an encrypted credential vault.
@@ -104,6 +117,158 @@ impl SpotifyObservationExecutor {
             sessions,
         }
     }
+
+    async fn hosted_mutation_session(
+        &self,
+        subject: AuthenticatedSubject,
+        provider_connection_id: ResourceId,
+    ) -> std::result::Result<spotify::MutationSession, ClientError> {
+        let row = sqlx::query(
+            "SELECT provider, provider_account_id FROM provider_accounts
+              WHERE id = $1 AND chordrift_account_id = $2",
+        )
+        .bind(provider_connection_id.as_uuid())
+        .bind(subject.account_id.as_uuid())
+        .fetch_optional(self.database.pool())
+        .await
+        .map_err(|_| unavailable())?
+        .ok_or_else(|| ClientError::new(ErrorCode::PermissionDenied, false))?;
+        let provider: String = row.try_get("provider").map_err(|_| unavailable())?;
+        if provider != "spotify" {
+            return Err(ClientError::new(ErrorCode::CapabilityUnavailable, false));
+        }
+        let stable_provider_id: String = row
+            .try_get("provider_account_id")
+            .map_err(|_| unavailable())?;
+        let identity =
+            ProviderCredentialIdentity::new(subject.account_id, provider_connection_id, provider)?;
+        let lease = self.vault.lease(subject, &identity).await?;
+        let (session, rotated) =
+            spotify::hosted_session(lease.refresh_token(), lease.scopes(), &stable_provider_id)
+                .await
+                .map_err(provider_error)?;
+        if let Some(rotated) = rotated.as_ref() {
+            self.vault
+                .rotate(subject, identity, rotated, Utc::now())
+                .await?;
+        }
+        spotify::hosted_mutation_session(session).map_err(provider_error)
+    }
+
+    async fn reviewed_saved_track_removals(
+        &self,
+        view: &crate::contract::MaintenanceSessionView,
+    ) -> std::result::Result<Vec<(uuid::Uuid, String)>, ClientError> {
+        let mut removals = Vec::new();
+        for track_id in trusted_saved_track_removal_ids(view)? {
+            let spotify_id: String = sqlx::query_scalar(
+                "SELECT provider_track_id FROM provider_tracks
+                  WHERE provider = 'spotify' AND track_id = $1
+                  ORDER BY id LIMIT 1",
+            )
+            .bind(track_id)
+            .fetch_optional(self.database.pool())
+            .await
+            .map_err(|_| unavailable())?
+            .ok_or_else(|| ClientError::new(ErrorCode::StateConflict, false))?;
+            removals.push((track_id, spotify_id));
+        }
+        removals.sort_by(|left, right| left.1.cmp(&right.1));
+        removals.dedup_by(|left, right| left.0 == right.0);
+        Ok(removals)
+    }
+
+    async fn verify_saved_track_removals(
+        &self,
+        provider_connection_id: ResourceId,
+        removals: &[(uuid::Uuid, String)],
+    ) -> std::result::Result<(), ClientError> {
+        for (track_id, _) in removals {
+            let still_saved: bool = sqlx::query_scalar(
+                "SELECT EXISTS (
+                   SELECT 1 FROM provider_current_inventories inventory
+                   JOIN provider_saved_track_revision_tracks saved
+                     ON saved.revision_id = inventory.saved_track_revision_id
+                   JOIN provider_tracks provider_track
+                     ON provider_track.id = saved.provider_track_id
+                  WHERE inventory.provider_account_id = $1
+                    AND provider_track.track_id = $2)",
+            )
+            .bind(provider_connection_id.as_uuid())
+            .bind(track_id)
+            .fetch_one(self.database.pool())
+            .await
+            .map_err(|_| unavailable())?;
+            if still_saved {
+                return Err(ClientError::new(ErrorCode::StateConflict, true));
+            }
+        }
+        Ok(())
+    }
+
+    async fn current_provider_snapshot(
+        &self,
+        provider_connection_id: ResourceId,
+    ) -> std::result::Result<ResourceId, ClientError> {
+        let snapshot: uuid::Uuid = sqlx::query_scalar(
+            "SELECT source_snapshot_id FROM provider_current_inventories
+              WHERE provider_account_id = $1",
+        )
+        .bind(provider_connection_id.as_uuid())
+        .fetch_optional(self.database.pool())
+        .await
+        .map_err(|_| unavailable())?
+        .ok_or_else(|| ClientError::new(ErrorCode::StateConflict, false))?;
+        Ok(ResourceId::from_uuid(snapshot))
+    }
+
+    async fn operation_already_verified(
+        &self,
+        subject: AuthenticatedSubject,
+        session_id: MaintenanceSessionId,
+        operation_id: OperationId,
+    ) -> std::result::Result<bool, ClientError> {
+        sqlx::query_scalar(
+            "SELECT EXISTS (
+               SELECT 1 FROM maintenance_sessions session
+               JOIN maintenance_session_events event
+                 ON event.maintenance_session_id = session.id
+              WHERE session.id = $1 AND session.chordrift_account_id = $2
+                AND session.product_subject_id = $3
+                AND event.source_operation_id = $4
+                AND event.transition_name = 'verified')",
+        )
+        .bind(session_id.as_uuid())
+        .bind(subject.account_id.as_uuid())
+        .bind(subject.subject_id.as_uuid())
+        .bind(operation_id.as_uuid())
+        .fetch_one(self.database.pool())
+        .await
+        .map_err(|_| unavailable())
+    }
+}
+
+fn trusted_saved_track_removal_ids(
+    view: &crate::contract::MaintenanceSessionView,
+) -> std::result::Result<Vec<uuid::Uuid>, ClientError> {
+    let expected = saved_provider_effects(view.provider_snapshot_id, &view.observed_changes);
+    if expected.provider_effects != view.provider_effects || expected.review_id != view.review_id {
+        return Err(ClientError::new(ErrorCode::StateConflict, false));
+    }
+    let mut track_ids = Vec::new();
+    for effect in &view.provider_effects {
+        if effect.kind != MaintenanceProviderEffectKind::UpdateSavedState {
+            return Err(ClientError::new(ErrorCode::CapabilityUnavailable, false));
+        }
+        let track = effect
+            .track
+            .as_ref()
+            .ok_or_else(|| ClientError::new(ErrorCode::InvalidRequest, false))?;
+        track_ids.push(track.track_id.as_uuid());
+    }
+    track_ids.sort_unstable();
+    track_ids.dedup();
+    Ok(track_ids)
 }
 
 #[async_trait]
@@ -273,6 +438,114 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
             .await?;
         Ok(ResourceId::from_uuid(session_id.as_uuid()))
     }
+
+    async fn authorize_maintenance(
+        &self,
+        subject: AuthenticatedSubject,
+        operation_id: OperationId,
+        session_id: MaintenanceSessionId,
+        expected_revision: u64,
+        review_id: MaintenanceReviewId,
+    ) -> std::result::Result<ResourceId, ClientError> {
+        let authority = DurableMaintenanceAuthority::new(self.sessions.clone());
+        let mut current = self.sessions.load(subject, session_id).await?;
+        if self
+            .operation_already_verified(subject, session_id, operation_id)
+            .await?
+        {
+            return Ok(ResourceId::from_uuid(session_id.as_uuid()));
+        }
+        if current.view.state == MaintenanceSessionState::ReadyForAuthorization {
+            if self
+                .current_provider_snapshot(current.provider_connection_id)
+                .await?
+                != current.view.provider_snapshot_id
+            {
+                return Err(ClientError::new(ErrorCode::StateConflict, false));
+            }
+            current.view = authority
+                .authorize(
+                    subject,
+                    session_id,
+                    expected_revision,
+                    review_id,
+                    Some(operation_id),
+                    Utc::now(),
+                )
+                .await?;
+        } else if current.view.review_id != Some(review_id) {
+            return Err(ClientError::new(ErrorCode::StateConflict, false));
+        }
+        let removals = self.reviewed_saved_track_removals(&current.view).await?;
+        if removals.is_empty() {
+            return Err(ClientError::new(ErrorCode::InvalidRequest, false));
+        }
+        if current.view.state == MaintenanceSessionState::Authorized {
+            current.view = authority
+                .mark_execution_state(
+                    subject,
+                    session_id,
+                    current.view.revision,
+                    MaintenanceSessionState::Applying,
+                    Some(operation_id),
+                    Utc::now(),
+                )
+                .await?;
+        }
+        if current.view.state == MaintenanceSessionState::Applying {
+            let session = self
+                .hosted_mutation_session(subject, current.provider_connection_id)
+                .await?;
+            for chunk in removals.chunks(40) {
+                let spotify_ids = chunk
+                    .iter()
+                    .map(|(_, spotify_id)| spotify_id.clone())
+                    .collect::<Vec<_>>();
+                session
+                    .remove_library_tracks(&spotify_ids)
+                    .await
+                    .map_err(provider_error)?;
+            }
+            current.view = authority
+                .mark_execution_state(
+                    subject,
+                    session_id,
+                    current.view.revision,
+                    MaintenanceSessionState::Verifying,
+                    Some(operation_id),
+                    Utc::now(),
+                )
+                .await?;
+        }
+        if current.view.state == MaintenanceSessionState::Verifying {
+            self.observe(subject, current.provider_connection_id)
+                .await?;
+            self.verify_saved_track_removals(current.provider_connection_id, &removals)
+                .await?;
+            let projection = attach_saved_provider_effects(
+                PostgresMaintenanceInterpreter::new(&self.database)
+                    .project(subject, current.provider_connection_id, Some(&current.view))
+                    .await?,
+            );
+            let projected_view = MaintenanceWorkflow::new(session_id, projection.clone())
+                .map_err(|error| error.client_error())?
+                .view();
+            CanonicalMaintenanceProjector::new(&self.database)
+                .project(subject, current.provider_connection_id, &projected_view)
+                .await?;
+            authority
+                .complete_verification(
+                    subject,
+                    session_id,
+                    current.view.revision,
+                    projection,
+                    Some(operation_id),
+                    Utc::now(),
+                )
+                .await?;
+        }
+        Ok(ResourceId::from_uuid(session_id.as_uuid()))
+    }
 }
 
 /// Runs the separate provider worker until process shutdown.
@@ -423,6 +696,21 @@ async fn dispatch<E: HostedProviderExecutor>(
                 )
                 .await
         }
+        Command::AuthorizeMaintenance {
+            session_id,
+            expected_revision,
+            review_id,
+        } => {
+            executor
+                .authorize_maintenance(
+                    lease.subject,
+                    lease.operation_id,
+                    *session_id,
+                    *expected_revision,
+                    *review_id,
+                )
+                .await
+        }
         _ => Err(ClientError::new(ErrorCode::InvalidRequest, false)),
     }
 }
@@ -433,6 +721,7 @@ fn progress_phase(command: &Command) -> &'static str {
         Command::StartMaintenance { .. } => "start_maintenance",
         Command::RefreshMaintenance { .. } => "refresh_maintenance",
         Command::ResolveMaintenance { .. } => "resolve_maintenance",
+        Command::AuthorizeMaintenance { .. } => "authorize_maintenance",
         _ => "unsupported",
     }
 }
@@ -485,6 +774,14 @@ mod tests {
         CONTRACT_VERSION, CommandRequest, IdempotencyKey, OperationId, RequestId,
     };
     use crate::durable_operations::DurableOperationLease;
+    use crate::{
+        contract::{
+            MaintenanceChangeId, MaintenanceChangeKind, MaintenanceChangeView,
+            MaintenanceResolution, MaintenanceSessionView, MaintenanceSurfaceView,
+            MaintenanceTrackView,
+        },
+        maintenance_projection::saved_provider_effects,
+    };
 
     struct FakeExecutor;
 
@@ -525,6 +822,17 @@ mod tests {
             session_id: MaintenanceSessionId,
             _expected_revision: u64,
             _decisions: Vec<MaintenanceDecision>,
+        ) -> std::result::Result<ResourceId, ClientError> {
+            Ok(ResourceId::from_uuid(session_id.as_uuid()))
+        }
+
+        async fn authorize_maintenance(
+            &self,
+            _subject: AuthenticatedSubject,
+            _operation_id: OperationId,
+            session_id: MaintenanceSessionId,
+            _expected_revision: u64,
+            _review_id: MaintenanceReviewId,
         ) -> std::result::Result<ResourceId, ClientError> {
             Ok(ResourceId::from_uuid(session_id.as_uuid()))
         }
@@ -577,7 +885,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn worker_dispatches_record_only_maintenance_commands() {
+    async fn worker_dispatches_typed_maintenance_commands() {
         let session_id = MaintenanceSessionId::new();
         for command in [
             Command::StartMaintenance {
@@ -593,11 +901,61 @@ mod tests {
                 expected_revision: 1,
                 decisions: Vec::new(),
             },
+            Command::AuthorizeMaintenance {
+                session_id,
+                expected_revision: 2,
+                review_id: MaintenanceReviewId::new(),
+            },
         ] {
             assert_eq!(
                 dispatch(&FakeExecutor, &lease(command)).await.unwrap(),
                 ResourceId::from_uuid(session_id.as_uuid())
             );
         }
+    }
+
+    #[test]
+    fn provider_execution_accepts_only_the_server_rederived_exact_review() {
+        let snapshot = ResourceId::new();
+        let track = MaintenanceTrackView {
+            track_id: ResourceId::new(),
+            title: "Saved fixture".to_owned(),
+            artists: Vec::new(),
+        };
+        let liked = MaintenanceSurfaceView {
+            surface_id: ResourceId::new(),
+            name: "Liked Songs".to_owned(),
+        };
+        let changes = vec![MaintenanceChangeView {
+            change_id: MaintenanceChangeId::new(),
+            kind: MaintenanceChangeKind::SavedState,
+            track: Some(track.clone()),
+            previous_surface: None,
+            current_surface: Some(liked.clone()),
+            summary: "Choose saved state".to_owned(),
+            resolution: Some(MaintenanceResolution::ConsumeIntake { source: liked }),
+        }];
+        let exact = saved_provider_effects(snapshot, &changes);
+        let mut view = MaintenanceSessionView {
+            session_id: MaintenanceSessionId::new(),
+            revision: 2,
+            provider_snapshot_id: snapshot,
+            state: MaintenanceSessionState::ReadyForAuthorization,
+            observed_changes: changes,
+            provider_effects: exact.provider_effects,
+            review_id: exact.review_id,
+            allowed_actions: vec![crate::contract::MaintenanceAllowedAction::Authorize],
+        };
+        assert_eq!(
+            trusted_saved_track_removal_ids(&view).unwrap(),
+            vec![track.track_id.as_uuid()]
+        );
+        view.provider_effects[0]
+            .summary
+            .push_str(" plus anything else");
+        assert_eq!(
+            trusted_saved_track_removal_ids(&view).unwrap_err().code,
+            ErrorCode::StateConflict
+        );
     }
 }

@@ -2,8 +2,9 @@
 
 Status: implementation checkpoint; read-only provider observation, durable
 maintenance sessions, provider-first interpretation, canonical intent
-projection, and saved-intake decisions are composed. Provider authorization,
-apply, and verification remain disabled until their exact-review proof.
+projection, saved-intake decisions, and exact saved-state
+authorization/apply/verification are composed. Live deployment and acceptance
+remain gated.
 
 ## Three-layer product boundary
 
@@ -111,10 +112,18 @@ already-satisfied resolution is a no-op. Saved-track cleanup is ordered after
 canonical destination intent and is withheld from review until every required
 decision is resolved.
 
+The first bounded provider-write path is saved/Liked cleanup. The API accepts
+authorization only for the exact current revision and review. The worker
+rederives the effect from trusted observed changes, rejects a mismatched or
+newer provider checkpoint, persists Authorized and Applying, performs only the
+enumerated idempotent saved-track removal, observes Spotify again, verifies the
+track is absent, and persists Verifying and Verified. A crash can resume at
+Authorized, Applying, or Verifying without widening the reviewed work; a
+completed operation replay is a no-op.
+
 The adapter continues to reject publication, retirement, and unsupported plan
-phases. Provider authorization is explicitly unavailable. Production assembly
-is not complete until exact provider-effect review, separately authorized
-apply, and verification are proven.
+phases. No live provider write is authorized merely because this code exists;
+deployment and manual private-beta acceptance remain separate gates.
 
 Migration 0051 now supplies the restart-safe task boundary described in
 [Durable maintenance sessions](DURABLE_MAINTENANCE_SESSIONS_V021_06.md). The

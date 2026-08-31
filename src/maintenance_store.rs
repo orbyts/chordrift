@@ -196,6 +196,78 @@ impl DurableMaintenanceAuthority {
             .await?;
         Ok(view)
     }
+
+    /// Persists a server-owned execution transition without changing the
+    /// immutable reviewed effects.
+    pub async fn mark_execution_state(
+        &self,
+        subject: AuthenticatedSubject,
+        session_id: MaintenanceSessionId,
+        expected_revision: u64,
+        state: MaintenanceSessionState,
+        source_operation_id: Option<OperationId>,
+        occurred_at: DateTime<Utc>,
+    ) -> Result<MaintenanceSessionView, ClientError> {
+        let current = self.store.load(subject, session_id).await?;
+        let mut workflow =
+            MaintenanceWorkflow::from_view(current.view).map_err(|error| error.client_error())?;
+        if workflow.view().revision != expected_revision {
+            return Err(conflict());
+        }
+        let view = workflow
+            .mark_execution_state(state)
+            .map_err(|error| error.client_error())?;
+        let transition = match state {
+            MaintenanceSessionState::Applying => MaintenanceTransition::Applying,
+            MaintenanceSessionState::Verifying => MaintenanceTransition::Verifying,
+            MaintenanceSessionState::Recoverable => MaintenanceTransition::Recoverable,
+            _ => return Err(invalid()),
+        };
+        self.store
+            .replace(
+                subject,
+                expected_revision,
+                &view,
+                transition,
+                source_operation_id,
+                occurred_at,
+            )
+            .await?;
+        Ok(view)
+    }
+
+    /// Consumes one authorized review only after a fresh provider observation
+    /// verifies the exact effects.
+    pub async fn complete_verification(
+        &self,
+        subject: AuthenticatedSubject,
+        session_id: MaintenanceSessionId,
+        expected_revision: u64,
+        projection: MaintenanceProjection,
+        source_operation_id: Option<OperationId>,
+        occurred_at: DateTime<Utc>,
+    ) -> Result<MaintenanceSessionView, ClientError> {
+        let current = self.store.load(subject, session_id).await?;
+        let mut workflow =
+            MaintenanceWorkflow::from_view(current.view).map_err(|error| error.client_error())?;
+        if workflow.view().revision != expected_revision {
+            return Err(conflict());
+        }
+        let view = workflow
+            .complete_verification(projection)
+            .map_err(|error| error.client_error())?;
+        self.store
+            .replace(
+                subject,
+                expected_revision,
+                &view,
+                MaintenanceTransition::Verified,
+                source_operation_id,
+                occurred_at,
+            )
+            .await?;
+        Ok(view)
+    }
 }
 
 impl PostgresMaintenanceSessionStore {

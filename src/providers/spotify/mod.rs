@@ -22,6 +22,16 @@ pub(crate) struct MutationSession {
     session: auth::SpotifySession,
 }
 
+pub(crate) fn hosted_mutation_session(session: auth::SpotifySession) -> Result<MutationSession> {
+    if !has_required_apply_scopes(&session.scopes) {
+        return Err(ChordriftError::Configuration(
+            "Spotify hosted authorization lacks required write scopes; reconnect the provider"
+                .to_owned(),
+        ));
+    }
+    Ok(MutationSession { session })
+}
+
 pub(crate) async fn mutation_session(account_label: &str) -> Result<MutationSession> {
     let session = auth::session(account_label).await?;
     if !has_required_apply_scopes(&session.scopes) {

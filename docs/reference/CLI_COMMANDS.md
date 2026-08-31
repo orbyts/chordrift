@@ -25,6 +25,9 @@ chordrift service maintenance refresh --url https://service.example \
 chordrift service maintenance resolve --url https://service.example \
   --session-id SESSION_UUID --expected-revision REVISION \
   --decisions decisions.json
+chordrift service maintenance authorize --url https://service.example \
+  --session-id SESSION_UUID --expected-revision REVISION \
+  --review-id REVIEW_UUID
 chordrift service session remove --profile default
 ```
 
@@ -38,8 +41,10 @@ not a second set of domain behavior.
 `maintenance start` and `maintenance refresh` each perform a fresh provider
 read before interpretation. `show` reads the durable wrapper-neutral session.
 `resolve` accepts a JSON array of typed `MaintenanceDecision` values and records
-only the displayed revision. These commands cannot authorize provider effects;
-that gate remains unavailable in this checkpoint.
+only the displayed revision. `authorize` accepts only the immutable review and
+revision returned by `show`; the Rust worker applies, observes, and verifies
+that bounded provider effect. It never accepts a shell command, plan ID, SQL,
+or provider URL.
 
 ### Private-beta provider credential adoption
 

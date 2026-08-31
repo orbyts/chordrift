@@ -148,7 +148,7 @@ function renderMaintenanceSession() {
   const view = state.maintenanceSession; const panel = $('#maintenance-session');
   if (!view) return;
   panel.hidden = false; panel.replaceChildren();
-  panel.append(node('strong', '', view.state.replaceAll('_', ' ')), node('p', 'availability', `Revision ${view.revision} · ${view.observed_changes.length} observed change${view.observed_changes.length === 1 ? '' : 's'} · no provider write authorized`));
+  panel.append(node('strong', '', view.state.replaceAll('_', ' ')), node('p', 'availability', `Revision ${view.revision} · ${view.observed_changes.length} observed change${view.observed_changes.length === 1 ? '' : 's'} · ${view.provider_effects.length} exact provider change${view.provider_effects.length === 1 ? '' : 's'}`));
   const list = node('div', 'card-list');
   for (const change of view.observed_changes) {
     const card = node('div', 'record-card');
@@ -158,6 +158,15 @@ function renderMaintenanceSession() {
   }
   if (!view.observed_changes.length) list.append(node('p', 'empty', 'Provider and Chordrift intent are already aligned.'));
   panel.append(list);
+  if (view.provider_effects.length) {
+    panel.append(node('h3', '', 'Exact provider changes'));
+    const effects = node('div', 'card-list');
+    for (const effect of view.provider_effects) {
+      const card = node('div', 'record-card');
+      card.append(node('strong', '', effect.summary), node('span', '', effect.kind.replaceAll('_', ' '))); effects.append(card);
+    }
+    panel.append(effects);
+  }
   if (view.allowed_actions.includes('resolve')) {
     const resolve = node('button', '', 'Record these decisions'); resolve.type = 'button';
     resolve.addEventListener('click', resolveObservedChanges, { once: true }); panel.append(resolve);
@@ -165,6 +174,10 @@ function renderMaintenanceSession() {
   if (view.allowed_actions.includes('refresh')) {
     const refresh = node('button', '', 'Check provider again'); refresh.type = 'button';
     refresh.addEventListener('click', refreshMaintenance, { once: true }); panel.append(refresh);
+  }
+  if (view.allowed_actions.includes('authorize')) {
+    const authorize = node('button', '', 'Apply exactly these changes'); authorize.type = 'button';
+    authorize.addEventListener('click', authorizeMaintenance, { once: true }); panel.append(authorize);
   }
 }
 
@@ -216,6 +229,12 @@ async function resolveObservedChanges() {
     decisions.push({ change_id: change.change_id, resolution });
   }
   await runMaintenanceCommand({ type: 'resolve_maintenance', parameters: { session_id: view.session_id, expected_revision: view.revision, decisions } });
+}
+
+async function authorizeMaintenance() {
+  const view = state.maintenanceSession;
+  if (!view.review_id || !window.confirm('Apply only the exact provider changes shown above?')) return;
+  await runMaintenanceCommand({ type: 'authorize_maintenance', parameters: { session_id: view.session_id, expected_revision: view.revision, review_id: view.review_id } });
 }
 
 async function cancelActiveOperation() {

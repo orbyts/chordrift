@@ -45,7 +45,7 @@ and verified 50/50 database together; see
 | Review exact slice order | [Roadmap](../ROADMAP.md) | Authoritative execution map and completion checkboxes. |
 | Review hosted credential safety | [Provider credential vault](design/PROVIDER_CREDENTIAL_VAULT_V021_03.md) | Encrypted server-side refresh credentials, external keys, tenant authorization, rotation, and revocation; not required by local maintenance. |
 | Review hosted background work | [Durable background operations](design/DURABLE_BACKGROUND_OPERATIONS_V021_04.md) | Restart-safe typed jobs, progress, cancellation, retry, recovery, and replay; not required by local maintenance. |
-| Review hosted API/worker assembly | [Hosted production assembly](design/HOSTED_PRODUCTION_ASSEMBLY_V021_06.md) | Durable read-only provider observation is composed; hosted maintenance interpretation and provider writes remain gated. |
+| Review hosted API/worker assembly | [Hosted production assembly](design/HOSTED_PRODUCTION_ASSEMBLY_V021_06.md) | Durable provider observation and hosted maintenance through exact saved-state verification are composed; live deployment remains gated. |
 
 If a historical release detail is needed, use the corresponding Git tag. The
 documents on `main` prioritize unambiguous v0.2.0 operation and forward design.

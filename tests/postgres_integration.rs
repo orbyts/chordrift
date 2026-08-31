@@ -6,9 +6,10 @@ use chordrift::{
     contract::{
         CONTRACT_VERSION, CancellationOutcome, CancellationRequest, ClientError, Command,
         CommandRequest, ErrorCode, IdempotencyKey, MaintenanceChangeId, MaintenanceChangeKind,
-        MaintenanceChangeView, MaintenanceResolution, MaintenanceSessionId, MaintenanceSurfaceView,
-        MaintenanceTrackView, OperationState, Progress, ProgressUnit, Query, QueryRequest,
-        RequestId, ResourceId,
+        MaintenanceChangeView, MaintenanceProviderEffectKind, MaintenanceProviderEffectView,
+        MaintenanceResolution, MaintenanceReviewId, MaintenanceSessionId, MaintenanceSessionState,
+        MaintenanceSurfaceView, MaintenanceTrackView, OperationState, Progress, ProgressUnit,
+        Query, QueryRequest, RequestId, ResourceId,
     },
     db, db_reports,
     domain::{
@@ -30,7 +31,9 @@ use chordrift::{
     intake::{self, IntakeState},
     maintenance::{MaintenanceProjection, MaintenanceWorkflow},
     maintenance_projection::CanonicalMaintenanceProjector,
-    maintenance_store::{MaintenanceTransition, PostgresMaintenanceSessionStore},
+    maintenance_store::{
+        DurableMaintenanceAuthority, MaintenanceTransition, PostgresMaintenanceSessionStore,
+    },
     onboarding::{
         ContentFingerprint, OnboardingEvidence, OnboardingInputs, OnboardingInventory,
         OnboardingProviderReader, OnboardingReadSelection, OnboardingSessionBoundary,
@@ -3419,6 +3422,111 @@ async fn persists_tenant_isolated_maintenance_sessions_and_exact_revision_events
     .fetch_one(database.pool())
     .await?;
     assert_eq!(event_count, 2);
+
+    let authority = DurableMaintenanceAuthority::new(restarted.clone());
+    let review_id = MaintenanceReviewId::new();
+    let reviewed = authority
+        .refresh(
+            owner,
+            session_id,
+            2,
+            MaintenanceProjection {
+                provider_snapshot_id: second.provider_snapshot_id,
+                observed_changes: Vec::new(),
+                provider_effects: vec![MaintenanceProviderEffectView {
+                    effect_id: ResourceId::new(),
+                    kind: MaintenanceProviderEffectKind::UpdateSavedState,
+                    track: Some(MaintenanceTrackView {
+                        track_id: ResourceId::new(),
+                        title: "Fixture saved track".to_owned(),
+                        artists: Vec::new(),
+                    }),
+                    surface: Some(MaintenanceSurfaceView {
+                        surface_id: ResourceId::new(),
+                        name: "Liked Songs".to_owned(),
+                    }),
+                    summary: "Remove Fixture saved track from Liked Songs".to_owned(),
+                }],
+                review_id: Some(review_id),
+            },
+            None,
+            at + TimeDelta::seconds(3),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        reviewed.state,
+        MaintenanceSessionState::ReadyForAuthorization
+    );
+    let authorized = authority
+        .authorize(
+            owner,
+            session_id,
+            reviewed.revision,
+            review_id,
+            None,
+            at + TimeDelta::seconds(4),
+        )
+        .await
+        .unwrap();
+    let applying = authority
+        .mark_execution_state(
+            owner,
+            session_id,
+            authorized.revision,
+            MaintenanceSessionState::Applying,
+            None,
+            at + TimeDelta::seconds(5),
+        )
+        .await
+        .unwrap();
+    let verifying = authority
+        .mark_execution_state(
+            owner,
+            session_id,
+            applying.revision,
+            MaintenanceSessionState::Verifying,
+            None,
+            at + TimeDelta::seconds(6),
+        )
+        .await
+        .unwrap();
+    let completed = authority
+        .complete_verification(
+            owner,
+            session_id,
+            verifying.revision,
+            MaintenanceProjection {
+                provider_snapshot_id: ResourceId::new(),
+                observed_changes: Vec::new(),
+                provider_effects: Vec::new(),
+                review_id: None,
+            },
+            None,
+            at + TimeDelta::seconds(7),
+        )
+        .await
+        .unwrap();
+    assert_eq!(completed.state, MaintenanceSessionState::InSync);
+    let transitions: Vec<String> = sqlx::query_scalar(
+        "SELECT transition_name FROM maintenance_session_events
+          WHERE maintenance_session_id = $1 ORDER BY revision",
+    )
+    .bind(session_id.as_uuid())
+    .fetch_all(database.pool())
+    .await?;
+    assert_eq!(
+        transitions,
+        vec![
+            "started",
+            "refreshed",
+            "refreshed",
+            "authorized",
+            "applying",
+            "verifying",
+            "verified",
+        ]
+    );
 
     database.close().await;
     Ok(())

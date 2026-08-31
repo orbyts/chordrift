@@ -337,11 +337,33 @@ impl ContractApplication for DeploymentApplication {
                 .await
                 .map(|accepted| accepted.receipt);
         }
-        if matches!(&request.command, Command::AuthorizeMaintenance { .. }) {
-            return Err(crate::contract::ClientError::new(
-                ErrorCode::CapabilityUnavailable,
-                false,
-            ));
+        if let Command::AuthorizeMaintenance {
+            session_id,
+            expected_revision,
+            review_id,
+        } = &request.command
+        {
+            let current = self.maintenance_sessions.load(subject, *session_id).await?;
+            if current.view.revision != *expected_revision
+                || current.view.state
+                    != crate::contract::MaintenanceSessionState::ReadyForAuthorization
+                || current.view.review_id != Some(*review_id)
+            {
+                return Err(crate::contract::ClientError::new(
+                    ErrorCode::StateConflict,
+                    false,
+                ));
+            }
+            return self
+                .operations
+                .accept(
+                    subject,
+                    request,
+                    OperationRetryPolicy::new(3, Duration::from_secs(5))
+                        .expect("static hosted retry policy is valid"),
+                )
+                .await
+                .map(|accepted| accepted.receipt);
         }
         self.reads.command(subject, request).await
     }

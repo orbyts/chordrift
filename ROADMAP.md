@@ -486,8 +486,9 @@ and later Chordrift refactor begin.
      connections without changing Chordrift product identity;
   3. finish the web maintenance journey and the shared provider/model
      comparison query while preserving remote CLI parity;
-  4. exercise provider reads first, then open provider writes only behind one
-     separately approved exact-review gate;
+  4. [implementation complete; deployment gated] exercise provider reads first,
+     then open the bounded saved-state write only behind one separately approved
+     exact-review gate; broader publication remains a separate workflow;
   5. add fake-provider, disposable-PostgreSQL, browser, restart/recovery,
      tenant-isolation, rate-limit, and secret-redaction acceptance tests;
   6. profile observation/planning database paths, remove superseded wrappers

@@ -2821,11 +2821,31 @@ required decision is resolved, and clear intent is projected only after the
 canonical destination/exclusion work. The browser only renders the server-
 provided decisions and sends selected DTO variants.
 
+The next exact-write checkpoint is also implemented on the branch. Web and
+remote CLI render immutable provider effects and submit only session,
+revision, and review identity. The API rejects stale or mismatched review
+authorization before queueing. The worker independently rederives the trusted
+effect from the saved-state gesture, refuses unsupported effects, checks that
+Chordrift has not observed a newer provider checkpoint, and persists the exact
+Authorized → Applying → Verifying → Verified sequence. Saved-track removal is
+idempotent; retries resume the persisted stage, a fresh complete observation
+verifies absence, and newly observed unrelated gestures become a new session
+projection rather than being covered by the older authorization.
+
+The decision reducer validates resolution shape before mutating anything: a
+client cannot submit `consume_intake` for a playlist removal or swap the
+server-provided Liked Songs source. Provider execution requires the exact
+server-rederived effects and review rather than trusting human summary text.
+A disposable PostgreSQL 18 proof on Vortex passed the seven immutable session
+events and was removed with its source/build directory. This proof did not
+contact Spotify. The code exists but remains undeployed; no live provider
+write is authorized until private-beta deployment and manual acceptance.
+
 Strict Clippy and focused Rust tests pass. A disposable PostgreSQL 18 container
 on Vortex proved canonical removal, idempotent retry, active exclusion, and
 approved-artwork inheritance on the newest generation. The database container,
 temporary source, and root-owned Cargo output were removed after the proof. No
-Neon branch was created and Spotify was not contacted. Next implement exact
-provider-effect authorization/apply/verification, then the independent Spotify
-Connect/Reconnect/Disconnect lifecycle and complete web/remote-CLI acceptance
-journey. Provider writes remain disabled at this checkpoint.
+Neon branch was created and Spotify was not contacted. Next implement the
+independent Spotify Connect/Reconnect/Disconnect lifecycle and complete
+web/remote-CLI acceptance journey. Provider writes remain disabled in the
+deployed checkpoint.

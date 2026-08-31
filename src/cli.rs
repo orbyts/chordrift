@@ -19,8 +19,8 @@ use crate::{
         CAPABILITY_DURABLE_OPERATIONS, CAPABILITY_MAINTENANCE_TASK_SESSION,
         CAPABILITY_PRODUCT_IDENTITY, CAPABILITY_REMOTE_CLI, CONTRACT_VERSION, ClientCompatibility,
         Command as ContractCommand, CommandRequest, ContractVersionRange, IdempotencyKey,
-        MaintenanceDecision, MaintenanceSessionId, Query, QueryRequest, RequestId, ResourceId,
-        SchemaVersionRange,
+        MaintenanceDecision, MaintenanceReviewId, MaintenanceSessionId, Query, QueryRequest,
+        RequestId, ResourceId, SchemaVersionRange,
     },
     credentials::{CredentialStore, SecretId, SystemCredentialStore},
     db, db_cleanup, db_reports, db_v2_migration, embeddings, enrichment, history, intake,
@@ -303,6 +303,24 @@ pub enum ServiceMaintenanceCommand {
         /// JSON file containing an array of typed `MaintenanceDecision` values.
         #[arg(long)]
         decisions: PathBuf,
+    },
+    /// Authorize exactly the immutable provider effects shown by `show`.
+    Authorize {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Maintenance session containing the review.
+        #[arg(long)]
+        session_id: uuid::Uuid,
+        /// Exact revision currently displayed by the client.
+        #[arg(long)]
+        expected_revision: u64,
+        /// Immutable review identity displayed by the client.
+        #[arg(long)]
+        review_id: uuid::Uuid,
     },
 }
 
@@ -2744,6 +2762,29 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
                             session_id: MaintenanceSessionId::from_uuid(session_id),
                             expected_revision,
                             decisions,
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&receipt)?)?;
+            }
+            ServiceMaintenanceCommand::Authorize {
+                url,
+                profile,
+                session_id,
+                expected_revision,
+                review_id,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let receipt = client
+                    .command(CommandRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        idempotency_key: IdempotencyKey::new(),
+                        command: ContractCommand::AuthorizeMaintenance {
+                            session_id: MaintenanceSessionId::from_uuid(session_id),
+                            expected_revision,
+                            review_id: MaintenanceReviewId::from_uuid(review_id),
                         },
                     })
                     .await
@@ -7399,6 +7440,37 @@ mod tests {
                     }
                 }
             } if provider_connection_id == connection_id && profile == "default"
+        ));
+
+        let session_id = uuid::Uuid::new_v4();
+        let review_id = uuid::Uuid::new_v4();
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "maintenance",
+            "authorize",
+            "--url",
+            "https://api.chordrift.example",
+            "--session-id",
+            &session_id.to_string(),
+            "--expected-revision",
+            "4",
+            "--review-id",
+            &review_id.to_string(),
+        ])
+        .expect("valid exact maintenance authorization");
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Maintenance {
+                    command: ServiceMaintenanceCommand::Authorize {
+                        session_id: parsed_session,
+                        review_id: parsed_review,
+                        expected_revision: 4,
+                        ..
+                    }
+                }
+            } if parsed_session == session_id && parsed_review == review_id
         ));
     }
 

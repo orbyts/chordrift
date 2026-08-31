@@ -228,6 +228,17 @@ impl MaintenanceWorkflow {
             return Err(MaintenanceWorkflowError::IncompleteDecisionSet);
         }
 
+        for decision in &decisions {
+            let change = self
+                .view
+                .observed_changes
+                .iter()
+                .find(|change| change.change_id == decision.change_id)
+                .ok_or(MaintenanceWorkflowError::UnknownChange)?;
+            if !resolution_allowed(change, &decision.resolution) {
+                return Err(MaintenanceWorkflowError::InvalidResolution);
+            }
+        }
         for decision in decisions {
             let change = self
                 .view
@@ -323,6 +334,28 @@ impl MaintenanceWorkflow {
         Ok(self.view())
     }
 
+    /// Completes verification against a newly observed provider snapshot.
+    ///
+    /// Reviewed effects and their authorization identity are consumed only
+    /// after the provider result has been observed. The resolved gesture
+    /// history remains available for explanation and audit.
+    pub fn complete_verification(
+        &mut self,
+        projection: MaintenanceProjection,
+    ) -> Result<MaintenanceSessionView, MaintenanceWorkflowError> {
+        if self.view.state != MaintenanceSessionState::Verifying {
+            return Err(MaintenanceWorkflowError::InvalidExecutionTransition);
+        }
+        validate_projection(&projection)?;
+        self.view.revision += 1;
+        self.view.provider_snapshot_id = projection.provider_snapshot_id;
+        self.view.observed_changes = projection.observed_changes;
+        self.view.provider_effects = projection.provider_effects;
+        self.view.review_id = projection.review_id;
+        self.refresh_derived_state()?;
+        Ok(self.view())
+    }
+
     fn require_revision(&self, expected: u64) -> Result<(), MaintenanceWorkflowError> {
         if expected != self.view.revision {
             return Err(MaintenanceWorkflowError::StaleRevision {
@@ -386,6 +419,29 @@ fn validate_projection(projection: &MaintenanceProjection) -> Result<(), Mainten
         return Err(MaintenanceWorkflowError::DuplicateEffect);
     }
     Ok(())
+}
+
+fn resolution_allowed(
+    change: &MaintenanceChangeView,
+    resolution: &crate::contract::MaintenanceResolution,
+) -> bool {
+    use crate::contract::{MaintenanceChangeKind as Kind, MaintenanceResolution as Resolution};
+    match (change.kind, resolution) {
+        (Kind::SavedState, Resolution::KeepObserved) => true,
+        (Kind::SavedState, Resolution::ConsumeIntake { source }) => {
+            change.current_surface.as_ref() == Some(source)
+        }
+        (Kind::DirectIntake | Kind::Reclassification, Resolution::Place { .. }) => true,
+        (Kind::DirectIntake | Kind::Reclassification, Resolution::KeepObserved) => {
+            change.current_surface.is_some()
+        }
+        (Kind::Removal, Resolution::Exclude | Resolution::Restore { .. }) => true,
+        (
+            Kind::Reorder | Kind::PlaylistMetadata | Kind::PlaylistCreated | Kind::PlaylistRemoved,
+            Resolution::KeepObserved,
+        ) => true,
+        _ => false,
+    }
 }
 
 fn validate_view(view: &MaintenanceSessionView) -> Result<(), MaintenanceWorkflowError> {
@@ -480,6 +536,9 @@ pub enum MaintenanceWorkflowError {
     /// A decision referred to an unknown change.
     #[error("maintenance decision refers to an unknown change")]
     UnknownChange,
+    /// A decision variant is not valid for the observed gesture it targets.
+    #[error("maintenance resolution is not valid for this observed change")]
+    InvalidResolution,
     /// The current state does not accept ambiguity decisions.
     #[error("maintenance session is not waiting for decisions")]
     DecisionsNotAccepted,
@@ -540,6 +599,7 @@ impl MaintenanceWorkflowError {
             Self::DuplicateDecision
             | Self::IncompleteDecisionSet
             | Self::UnknownChange
+            | Self::InvalidResolution
             | Self::DuplicateChange
             | Self::DuplicateEffect
             | Self::InvalidDurableView
@@ -692,6 +752,37 @@ mod tests {
     }
 
     #[test]
+    fn decision_variant_must_match_the_server_observed_gesture() {
+        let change = ambiguous_change();
+        let mut workflow = MaintenanceWorkflow::new(
+            MaintenanceSessionId::new(),
+            MaintenanceProjection {
+                provider_snapshot_id: ResourceId::new(),
+                observed_changes: vec![change.clone()],
+                provider_effects: Vec::new(),
+                review_id: None,
+            },
+        )
+        .unwrap();
+        let error = workflow
+            .resolve(
+                1,
+                vec![MaintenanceDecision {
+                    change_id: change.change_id,
+                    resolution: MaintenanceResolution::ConsumeIntake {
+                        source: surface("Liked Songs"),
+                    },
+                }],
+                MaintenanceDecisionProjection {
+                    provider_effects: Vec::new(),
+                    review_id: None,
+                },
+            )
+            .expect_err("a removal cannot be rewritten as saved-track cleanup");
+        assert_eq!(error, MaintenanceWorkflowError::InvalidResolution);
+    }
+
+    #[test]
     fn rebase_clears_old_authorization_and_uses_new_snapshot() {
         let old_review = MaintenanceReviewId::new();
         let mut workflow = MaintenanceWorkflow::new(
@@ -771,5 +862,41 @@ mod tests {
             MaintenanceWorkflow::from_view(tampered).unwrap_err(),
             MaintenanceWorkflowError::InvalidDurableView
         );
+    }
+
+    #[test]
+    fn verification_consumes_the_exact_review_after_a_fresh_snapshot() {
+        let review_id = MaintenanceReviewId::new();
+        let mut workflow = MaintenanceWorkflow::new(
+            MaintenanceSessionId::new(),
+            MaintenanceProjection {
+                provider_snapshot_id: ResourceId::new(),
+                observed_changes: Vec::new(),
+                provider_effects: vec![effect()],
+                review_id: Some(review_id),
+            },
+        )
+        .unwrap();
+        workflow.authorize(1, review_id).unwrap();
+        workflow
+            .mark_execution_state(MaintenanceSessionState::Applying)
+            .unwrap();
+        workflow
+            .mark_execution_state(MaintenanceSessionState::Verifying)
+            .unwrap();
+        let verified_snapshot = ResourceId::new();
+        let completed = workflow
+            .complete_verification(MaintenanceProjection {
+                provider_snapshot_id: verified_snapshot,
+                observed_changes: Vec::new(),
+                provider_effects: Vec::new(),
+                review_id: None,
+            })
+            .unwrap();
+        assert_eq!(completed.provider_snapshot_id, verified_snapshot);
+        assert_eq!(completed.state, MaintenanceSessionState::InSync);
+        assert!(completed.provider_effects.is_empty());
+        assert_eq!(completed.review_id, None);
+        MaintenanceWorkflow::from_view(completed).expect("verified view remains durable");
     }
 }

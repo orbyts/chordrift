@@ -399,10 +399,15 @@ fn canonical_action(change: &MaintenanceChangeView) -> Option<CanonicalAction> {
             }),
             _ => None,
         },
-        MaintenanceResolution::ConsumeIntake { .. } => Some(CanonicalAction::SavedDisposition {
-            track_id: track_id?,
-            disposition: SavedTrackDisposition::ClearAfterVerifiedAssignment,
-        }),
+        MaintenanceResolution::ConsumeIntake { .. }
+            if change.kind == MaintenanceChangeKind::SavedState =>
+        {
+            Some(CanonicalAction::SavedDisposition {
+                track_id: track_id?,
+                disposition: SavedTrackDisposition::ClearAfterVerifiedAssignment,
+            })
+        }
+        MaintenanceResolution::ConsumeIntake { .. } => None,
     }
 }
 
@@ -433,10 +438,16 @@ pub fn saved_provider_effects(
     let effects: Vec<_> = changes
         .iter()
         .filter_map(|change| {
+            if change.kind != MaintenanceChangeKind::SavedState {
+                return None;
+            }
             let MaintenanceResolution::ConsumeIntake { source } = change.resolution.as_ref()?
             else {
                 return None;
             };
+            if change.current_surface.as_ref() != Some(source) {
+                return None;
+            }
             let track = change.track.clone()?;
             Some(MaintenanceProviderEffectView {
                 effect_id: ResourceId::from_uuid(stable_uuid(
@@ -541,12 +552,13 @@ mod tests {
             surface_id: ResourceId::new(),
             name: "Liked Songs".to_owned(),
         };
-        let consume = change(
+        let mut consume = change(
             MaintenanceChangeKind::SavedState,
             MaintenanceResolution::ConsumeIntake {
                 source: source.clone(),
             },
         );
+        consume.current_surface = Some(source);
         assert!(matches!(
             canonical_action(&consume),
             Some(CanonicalAction::SavedDisposition {
