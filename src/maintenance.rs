@@ -183,6 +183,15 @@ impl MaintenanceWorkflow {
         Ok(workflow)
     }
 
+    /// Rehydrates an already-validated durable session after a process restart.
+    ///
+    /// Infrastructure stores the typed view, while all subsequent transitions
+    /// continue to run through this Rust-owned state machine.
+    pub fn from_view(view: MaintenanceSessionView) -> Result<Self, MaintenanceWorkflowError> {
+        validate_view(&view)?;
+        Ok(Self { view })
+    }
+
     /// Returns the immutable client-facing view for the current revision.
     #[must_use]
     pub fn view(&self) -> MaintenanceSessionView {
@@ -379,6 +388,78 @@ fn validate_projection(projection: &MaintenanceProjection) -> Result<(), Mainten
     Ok(())
 }
 
+fn validate_view(view: &MaintenanceSessionView) -> Result<(), MaintenanceWorkflowError> {
+    validate_projection(&MaintenanceProjection {
+        provider_snapshot_id: view.provider_snapshot_id,
+        observed_changes: view.observed_changes.clone(),
+        provider_effects: view.provider_effects.clone(),
+        review_id: view.review_id,
+    })?;
+    if view.revision == 0 {
+        return Err(MaintenanceWorkflowError::InvalidDurableView);
+    }
+    let unresolved = view
+        .observed_changes
+        .iter()
+        .any(|change| change.resolution.is_none());
+    let valid = match view.state {
+        MaintenanceSessionState::NeedsDecision => {
+            unresolved
+                && view.review_id.is_none()
+                && view.allowed_actions
+                    == vec![
+                        MaintenanceAllowedAction::Refresh,
+                        MaintenanceAllowedAction::Resolve,
+                    ]
+        }
+        MaintenanceSessionState::ReadyForAuthorization => {
+            !unresolved
+                && !view.provider_effects.is_empty()
+                && view.review_id.is_some()
+                && view.allowed_actions
+                    == vec![
+                        MaintenanceAllowedAction::Refresh,
+                        MaintenanceAllowedAction::Authorize,
+                    ]
+        }
+        MaintenanceSessionState::InSync => {
+            !unresolved
+                && view.provider_effects.is_empty()
+                && view.review_id.is_none()
+                && view.allowed_actions == vec![MaintenanceAllowedAction::Refresh]
+        }
+        MaintenanceSessionState::Authorized => {
+            !unresolved
+                && !view.provider_effects.is_empty()
+                && view.review_id.is_some()
+                && view.allowed_actions
+                    == vec![
+                        MaintenanceAllowedAction::Refresh,
+                        MaintenanceAllowedAction::Cancel,
+                    ]
+        }
+        MaintenanceSessionState::Applying | MaintenanceSessionState::Verifying => {
+            !unresolved
+                && !view.provider_effects.is_empty()
+                && view.review_id.is_some()
+                && view.allowed_actions == vec![MaintenanceAllowedAction::Cancel]
+        }
+        MaintenanceSessionState::Recoverable => {
+            view.allowed_actions
+                == vec![
+                    MaintenanceAllowedAction::Refresh,
+                    MaintenanceAllowedAction::Resume,
+                ]
+        }
+        MaintenanceSessionState::Reconciling => view.allowed_actions.is_empty(),
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(MaintenanceWorkflowError::InvalidDurableView)
+    }
+}
+
 /// Invalid task-level maintenance transition or projection.
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum MaintenanceWorkflowError {
@@ -414,6 +495,9 @@ pub enum MaintenanceWorkflowError {
     /// A projection repeated a provider-effect identity.
     #[error("maintenance projection contains duplicate provider effects")]
     DuplicateEffect,
+    /// A persisted view violates the workflow's state invariants.
+    #[error("persisted maintenance view violates workflow invariants")]
+    InvalidDurableView,
     /// A provider-effect review was supplied before ambiguity was resolved.
     #[error("maintenance review cannot be finalized before decisions")]
     ReviewBeforeDecisions,
@@ -458,6 +542,7 @@ impl MaintenanceWorkflowError {
             | Self::UnknownChange
             | Self::DuplicateChange
             | Self::DuplicateEffect
+            | Self::InvalidDurableView
             | Self::ReviewBeforeDecisions
             | Self::ReviewWithoutEffects
             | Self::EffectsWithoutReview
@@ -663,6 +748,28 @@ mod tests {
         assert_eq!(
             workflow.view().allowed_actions,
             vec![MaintenanceAllowedAction::Refresh]
+        );
+    }
+
+    #[test]
+    fn durable_rehydration_rejects_tampered_state_or_actions() {
+        let workflow = MaintenanceWorkflow::new(
+            MaintenanceSessionId::new(),
+            MaintenanceProjection {
+                provider_snapshot_id: ResourceId::new(),
+                observed_changes: Vec::new(),
+                provider_effects: Vec::new(),
+                review_id: None,
+            },
+        )
+        .unwrap();
+        assert!(MaintenanceWorkflow::from_view(workflow.view()).is_ok());
+
+        let mut tampered = workflow.view();
+        tampered.allowed_actions = vec![MaintenanceAllowedAction::Authorize];
+        assert_eq!(
+            MaintenanceWorkflow::from_view(tampered).unwrap_err(),
+            MaintenanceWorkflowError::InvalidDurableView
         );
     }
 }

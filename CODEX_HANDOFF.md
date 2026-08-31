@@ -2763,3 +2763,31 @@ run reported `Everything is already in sync.`
 Continue V021-06. Permanent regressions live in the daily-driver edge-case
 ledger, the fake-binary suite, the intake classifier unit test, and the
 disposable-PostgreSQL intake/extension test.
+
+### Durable maintenance-session checkpoint (2026-08-31)
+
+V021-06 now stages additive migration 0051 with `maintenance_sessions` for the
+current typed task projection and `maintenance_session_events` for immutable
+accepted revisions. The rows are bound to the authenticated product subject,
+Chordrift account, and owned provider connection. Replacement is exact-next-
+revision compare-and-swap, so stale web, CLI, API, or worker processes cannot
+overwrite newer user intent. Rehydration passes through the Rust
+`MaintenanceWorkflow` invariant validator; no provider credential, session
+token, shell, client SQL, or client provider URL is stored.
+
+`PostgresMaintenanceSessionStore` supplies create/load/replace and
+`DurableMaintenanceAuthority` owns start, refresh, resolve, and exact-review
+authorization transitions without executing provider effects. A disposable
+PostgreSQL 18 run on Vortex proved migration, restart reload, cross-tenant
+non-disclosure, immutable event history, and stale revision rejection. The
+container, network, temporary source copy, and root-owned Cargo output were
+removed immediately. No Neon branch was created, the canonical database
+remains at the verified migration-50 live baseline, and Spotify was not read or
+changed.
+
+Hosted maintenance remains unavailable. Next, implement the real PostgreSQL
+cumulative provider-first interpretation adapter, then route typed start,
+refresh, and resolve commands through the durable worker/store and expose the
+same query to web and remote CLI. Keep authorization/apply disabled until fake-
+provider record-only proof and a separately approved exact-write gate. See
+`docs/design/DURABLE_MAINTENANCE_SESSIONS_V021_06.md`.

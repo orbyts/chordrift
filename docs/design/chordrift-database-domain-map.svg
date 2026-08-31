@@ -114,7 +114,8 @@
   <text class="head" x="1610" y="777">Hosted authority</text>
   <text class="mono" x="1610" y="812">service_operations</text>
   <text class="mono" x="1610" y="840">service_operation_events</text>
-  <text class="mono" x="1610" y="868">sessions · credential vault</text>
+  <text class="mono" x="1610" y="868">maintenance sessions · events</text>
+  <text class="mono" x="1610" y="896">product sessions · credential vault</text>
   <text class="size" x="1610" y="914">0.35 MiB · 0.2%</text>
   <text class="body" x="1610" y="947">Typed DTOs, jobs, retry,</text>
   <text class="body" x="1610" y="971">cancellation and progress</text>

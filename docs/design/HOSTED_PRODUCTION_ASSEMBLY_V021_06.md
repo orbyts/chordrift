@@ -1,7 +1,8 @@
 # Hosted production assembly — V021-06
 
-Status: implementation checkpoint; read-only provider observation is composed,
-ordinary maintenance interpretation and provider writes remain disabled.
+Status: implementation checkpoint; read-only provider observation and durable
+maintenance-session persistence are composed, while ordinary maintenance
+interpretation and provider writes remain disabled.
 
 ## Process boundary
 
@@ -80,3 +81,9 @@ maintenance sessions, interprets cumulative provider-first changes, records
 decisions, returns an immutable provider-effect review, and verifies any later
 explicitly authorized apply. Provider writes remain disabled during the
 read-only acceptance gate.
+
+Migration 0051 now supplies the restart-safe task boundary described in
+[Durable maintenance sessions](DURABLE_MAINTENANCE_SESSIONS_V021_06.md). The
+remaining adapter must produce its typed projections from PostgreSQL provider
+observations and accepted intent; it may not delegate that work to the legacy
+shell wizard.

@@ -442,7 +442,7 @@ and later Chordrift refactor begin.
   and newest-observation state and is designed for future connections. The
   exact web acceptance surface is recorded in
   `docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md`. Remaining gates are the real
-  maintenance interpretation adapter, durable maintenance-session persistence,
+  maintenance interpretation adapter, hosted maintenance command routing,
   the web maintenance journey, operational recovery checks, and beta
   publication. Read-only provider observation is now a real durable operation:
   the authenticated API accepts the typed command, the separately containerized
@@ -453,11 +453,23 @@ and later Chordrift refactor begin.
   client-supplied provider URL is in that route. Provider writes remain disabled.
   Provider writes remain disabled.
 
+  Durable-session checkpoint (2026-08-31): additive migration 0051, a
+  tenant/provider-scoped current session store, immutable accepted-revision
+  events, exact compare-and-swap replacement, restart rehydration validation,
+  and a Rust durable transition authority are implemented. A disposable
+  PostgreSQL 18 proof on Vortex passed restart, cross-tenant isolation, and
+  stale-revision rejection; its container, network, source copy, and build
+  output were removed immediately. The migration remains staged, no Neon
+  branch was created, Spotify was not contacted, and hosted maintenance is not
+  advertised yet. See
+  `docs/design/DURABLE_MAINTENANCE_SESSIONS_V021_06.md`.
+
   Ordered remaining work for `v0.2.1-beta.1`:
 
-  1. [in progress] read-only encrypted-vault observation and the durable
-     API/worker runtime are composed; persist maintenance sessions and complete
-     the PostgreSQL maintenance interpretation adapter;
+  1. [in progress] read-only encrypted-vault observation, durable API/worker
+     runtime, and maintenance-session persistence are composed; complete the
+     PostgreSQL maintenance interpretation adapter and route start/refresh/
+     resolve through the worker;
   2. implement Connect/Reconnect/Disconnect and multiple isolated Spotify
      connections without changing Chordrift product identity;
   3. finish the web maintenance journey and the shared provider/model

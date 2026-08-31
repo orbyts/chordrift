@@ -5,8 +5,8 @@ use chordrift::{
     apply, config,
     contract::{
         CONTRACT_VERSION, CancellationOutcome, CancellationRequest, ClientError, Command,
-        CommandRequest, ErrorCode, IdempotencyKey, OperationState, Progress, ProgressUnit, Query,
-        QueryRequest, RequestId, ResourceId,
+        CommandRequest, ErrorCode, IdempotencyKey, MaintenanceSessionId, OperationState, Progress,
+        ProgressUnit, Query, QueryRequest, RequestId, ResourceId,
     },
     db, db_reports,
     domain::{
@@ -26,6 +26,8 @@ use chordrift::{
         VerifiedExternalIdentity,
     },
     intake::{self, IntakeState},
+    maintenance::{MaintenanceProjection, MaintenanceWorkflow},
+    maintenance_store::{MaintenanceTransition, PostgresMaintenanceSessionStore},
     onboarding::{
         ContentFingerprint, OnboardingEvidence, OnboardingInputs, OnboardingInventory,
         OnboardingProviderReader, OnboardingReadSelection, OnboardingSessionBoundary,
@@ -45,7 +47,7 @@ use chordrift::{
         CandidateEligibility, RecipeCandidate, RecipeExecutionRequest, RecipeExecutor,
         SelectionBudgets,
     },
-    service::ServiceClock,
+    service::{AuthenticatedSubject, ServiceClock},
     spin_preview::{SpinPreviewBoundary, SpinPreviewInput},
     spin_publication::{SpinPublicationBoundary, SpinPublicationRequest},
     sync_plan::{self, PlanOrigin},
@@ -3157,6 +3159,150 @@ async fn persists_restart_safe_operation_replay_recovery_retry_and_cancellation(
             .len(),
         2
     );
+
+    database.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for a disposable PostgreSQL database"]
+async fn persists_tenant_isolated_maintenance_sessions_and_exact_revision_events()
+-> chordrift::Result<()> {
+    let config = DatabaseConfig::from_env_var("CHORDRIFT_TEST_DATABASE_URL")?
+        .with_name("chordrift-maintenance-session-test")?
+        .with_provider(PostgresProvider::Neon)?
+        .with_min_connections(0)
+        .with_max_connections(3);
+    let database = db::connect(config).await?;
+    db::migrate(&database).await?;
+    let account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name)
+         VALUES ('Maintenance Session Fixture') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let other_account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name)
+         VALUES ('Maintenance Session Other Tenant') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let identity_store = PostgresProductIdentityStore::new(database.pool().clone());
+    let owner = identity_store
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "maintenance-owner").unwrap(),
+            ResourceId::from_uuid(account_id),
+        )
+        .await
+        .unwrap();
+    let other = identity_store
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "maintenance-other-owner")
+                .unwrap(),
+            ResourceId::from_uuid(other_account_id),
+        )
+        .await
+        .unwrap();
+    let provider_account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_accounts
+         (provider, provider_account_id, account_label, chordrift_account_id)
+         VALUES ('spotify', $1, 'maintenance-fixture', $2) RETURNING id",
+    )
+    .bind(format!("maintenance-provider-{account_id}"))
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    let provider_connection_id = ResourceId::from_uuid(provider_account_id);
+    let session_id = MaintenanceSessionId::new();
+    let first_snapshot = ResourceId::new();
+    let mut workflow = MaintenanceWorkflow::new(
+        session_id,
+        MaintenanceProjection {
+            provider_snapshot_id: first_snapshot,
+            observed_changes: Vec::new(),
+            provider_effects: Vec::new(),
+            review_id: None,
+        },
+    )
+    .unwrap();
+    let first = workflow.view();
+    let at: DateTime<Utc> = "2026-08-31T19:00:00Z".parse().unwrap();
+    let store = PostgresMaintenanceSessionStore::new(database.pool().clone());
+    store.verify_schema().await.unwrap();
+    store
+        .create(owner, provider_connection_id, &first, None, at)
+        .await
+        .unwrap();
+
+    let restarted = PostgresMaintenanceSessionStore::new(database.pool().clone());
+    let loaded = restarted.load(owner, session_id).await.unwrap();
+    assert_eq!(loaded.subject, owner);
+    assert_eq!(loaded.provider_connection_id, provider_connection_id);
+    assert_eq!(loaded.view, first);
+    assert_eq!(
+        restarted
+            .load(
+                AuthenticatedSubject {
+                    subject_id: other.subject_id,
+                    account_id: other.account_id,
+                },
+                session_id,
+            )
+            .await
+            .expect_err("other tenant cannot discover the session")
+            .code,
+        ErrorCode::ResourceNotFound
+    );
+
+    let second = workflow
+        .rebase(
+            1,
+            MaintenanceProjection {
+                provider_snapshot_id: ResourceId::new(),
+                observed_changes: Vec::new(),
+                provider_effects: Vec::new(),
+                review_id: None,
+            },
+        )
+        .unwrap();
+    restarted
+        .replace(
+            owner,
+            1,
+            &second,
+            MaintenanceTransition::Refreshed,
+            None,
+            at + TimeDelta::seconds(1),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        restarted.load(owner, session_id).await.unwrap().view,
+        second
+    );
+    assert_eq!(
+        restarted
+            .replace(
+                owner,
+                1,
+                &second,
+                MaintenanceTransition::Refreshed,
+                None,
+                at + TimeDelta::seconds(2),
+            )
+            .await
+            .expect_err("stale writer cannot overwrite the accepted revision")
+            .code,
+        ErrorCode::StateConflict
+    );
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM maintenance_session_events
+          WHERE maintenance_session_id = $1",
+    )
+    .bind(session_id.as_uuid())
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(event_count, 2);
 
     database.close().await;
     Ok(())

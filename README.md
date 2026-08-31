@@ -60,8 +60,10 @@ does not select an identity vendor or expose a hosted endpoint. Migration 0048
 belongs to the hosted identity deployment; the
 local maintenance client remains explicitly compatible with the verified
 47-migration music database. Hosted identity and credential work use additive
-migrations 0048 through 0050 only when deployed. The rest of the v0.2.1 hosted-authority sequence
-remains intact. The separate
+migrations 0048 through 0050 on the current deployment. V021-06 stages
+migration 0051 for restart-safe maintenance sessions; it is disposable-
+PostgreSQL-proven but not yet part of the live migration-50 baseline. The rest
+of the v0.2.1 hosted-authority sequence remains intact. The separate
 Classification Authority project and a later Chordrift refactor follow v0.2.1
 final.
 

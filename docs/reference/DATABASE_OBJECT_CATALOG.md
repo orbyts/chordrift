@@ -1,7 +1,7 @@
 # Chordrift database object catalog
 
-This is the plain-language index to the production schema through migration
-0050. The [domain map](../design/chordrift-database-domain-map.svg) shows how
+This is the plain-language index to the schema definition through staged
+migration 0051. The [domain map](../design/chordrift-database-domain-map.svg) shows how
 the groups relate; this page explains every public table and view.
 
 ## How to read the schema
@@ -18,9 +18,11 @@ the groups relate; this page explains every public table and view.
 | **View** | A read-only SQL projection. These are the simplest raw SQL entry points. |
 
 The number of tables is not the main storage cost. Most empty tables occupy
-only a few pages. On 2026-08-31, the 113 tables occupied about 192 MiB in
-relations; the complete application database was about 195 MiB. Seven views
-store no rows.
+only a few pages. The 2026-08-31 live migration-0050 baseline had 113 tables,
+about 192 MiB in relations, and a complete application database of about 195
+MiB. Migration 0051 adds two initially empty hosted tables; it was proven on
+disposable PostgreSQL and is not included in that live storage measurement.
+Seven views store no rows.
 
 ## Simple read/query surfaces
 
@@ -89,6 +91,8 @@ the wrong product conclusion.
 | `provider_capability_observations` | Evidence | Immutable observations of which provider/evidence capabilities were available for an account. |
 | `service_operations` | Hosted/audit | Durable typed web/remote commands, state, retry, lease, cancellation, and idempotency metadata. |
 | `service_operation_events` | Hosted/audit | Ordered append-only progress/state events for durable operations. |
+| `maintenance_sessions` | Hosted/current | Current tenant/provider-scoped wrapper-neutral maintenance projection and monotonic revision. |
+| `maintenance_session_events` | Hosted/audit | Immutable accepted maintenance revisions preserving cumulative provider intent, decisions, and exact reviews. |
 
 ## Canonical music and provider identities
 
