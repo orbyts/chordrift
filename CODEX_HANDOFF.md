@@ -2749,7 +2749,17 @@ order for membership-equal playlists, and finished with approved generation
 maintenance operations, and 1,429 `already_covered` intake rows with no direct
 intake. Spotify was neither pulled nor written during recovery.
 
-Publish this repair as `v0.2.1-alpha.18`, then continue V021-06. Permanent
-regressions live in the daily-driver edge-case ledger, the fake-binary suite,
-the intake classifier unit test, and the disposable-PostgreSQL intake/extension
-test.
+Implementation commit `2f0757c` was merged to `main` as `1e12c79`. Pull-request
+CI run `33438947590` and post-merge main CI run `33439431684` passed formatting,
+strict Clippy, all targets, documentation, every ignored PostgreSQL integration,
+Spotify persistence, and package verification. The annotated
+`v0.2.1-alpha.18` tag, GitHub prerelease, and crates.io artifact are public.
+The exact locked registry artifact is installed at
+`/Users/suhail/.cargo/bin/chordrift`, reports `chordrift 0.2.1-alpha.18`, and
+passes the maintenance/provider-baseline/remote-CLI capability gate with
+`CHORDRIFT_BIN` unset. A final installed-artifact `--skip-pull --review-only`
+run reported `Everything is already in sync.`
+
+Continue V021-06. Permanent regressions live in the daily-driver edge-case
+ledger, the fake-binary suite, the intake classifier unit test, and the
+disposable-PostgreSQL intake/extension test.
