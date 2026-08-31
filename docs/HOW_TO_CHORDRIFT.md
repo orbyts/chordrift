@@ -187,21 +187,22 @@ exclusions, and direct reclassification moves is:
 $ scripts/chordrift-maintain.sh --account personal
 ```
 
-Alpha.16 keeps this shell as the temporary local CLI adapter while the same
+Alpha.17 keeps this shell as the temporary local CLI adapter while the same
 task-level state and authorization rules are now available through the Rust
-service contract. Product identity/session machinery is implemented, but there
-is still no hosted URL or identity vendor to configure. V021-03 adds the
+service contract. Product identity/session machinery is implemented, and the
+private V021-06 deployment uses Auth0/Google at
+`https://chordrift.suhail.ink`. V021-03 adds the
 internal encrypted credential vault and V021-04 adds restart-safe durable
 operations; V021-05/V021-06 add remote CLI parity and deployment. Migrations
 0048 through 0050 are hosted identity, encrypted-credential, and durable-job
 storage; ordinary local maintenance continues to
 require only the already verified schema through migration 0047.
 
-Consequently, `chordrift db status` may show `47/50` and three pending migrations
-while you are using only the local maintenance client. That is expected and is
-not a reason to run `db migrate`. A hosted deployment must instead show
-migrations 0048 through 0050 applied before it accepts durable provider-backed
-traffic.
+The consolidated personal deployment now shows `50/50`: the local CLI and
+hosted service share one canonical database on the Neon `main` branch. Ordinary
+maintenance still exercises only its migration-47-compatible contract. The
+presence of additive hosted tables does not authorize provider-backed service
+traffic or provider writes.
 
 It refuses new playlist design, artwork redesign, retirement, and every future
 Spin publication plan. Lower-level commands remain developer diagnostics and

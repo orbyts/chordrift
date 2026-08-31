@@ -75,13 +75,34 @@ explorer presents Spotify observation state separately from the Chordrift
 model. Playlist order, track detail, personal listening statistics and active
 exclusions are available through tenant-scoped typed queries.
 
-The existing Spotify refresh authorization has been adopted into the encrypted
-provider credential vault without contacting Spotify. The server reports the
-connection as credential-ready, but provider-backed observation, durable worker
-composition and the maintenance task remain unavailable until the real Rust
-adapter passes the read-only and fake-provider gates. Provider writes remain
-disabled. The service must fail closed rather than disguising a test backend or
-legacy shell workflow as hosted authority.
+The service and local CLI now target the same canonical `chordrift_cutover`
+database on the single Neon `main` branch. It is at migration 50/50. The
+temporary pre-cutover and rehearsal branches, plus the stale duplicate
+`chordrift` database, were deleted after external logical backups and client
+health checks passed. Rehearsal fixture identities, revoked fixture
+credentials, and fixture operations were not promoted. First-owner login and
+encrypted import of the existing Spotify refresh authorization must be
+reverified on this canonical database before beta.1. Provider-backed
+observation, durable worker composition and the maintenance task remain
+unavailable until the real Rust adapter passes the read-only and fake-provider
+gates. Provider writes remain disabled. The service must fail closed rather
+than disguising a test backend or legacy shell workflow as hosted authority.
+
+## Storage and rehearsal policy
+
+The durable topology is one Neon project, one `main` branch, and one canonical
+application database. At the consolidation gate the PostgreSQL database was
+approximately 195 MB. Its largest durable components are normalized listening
+history (about 81 MB), revisioned playlist membership (about 35 MB), verified
+playlist baselines (about 15 MB), and synchronization receipts (about 9 MB).
+Those are product evidence, not branch duplication.
+
+Prefer disposable local PostgreSQL for migration and restore rehearsal. When
+Neon branch semantics are specifically being tested, set an expiry at branch
+creation, record the proof, and delete the branch immediately afterward. A
+temporary Neon branch must never become an undocumented service dependency.
+Logical backups live outside Neon and are not a reason to retain a permanent
+backup branch on the free plan.
 
 The complete product/browser acceptance surface is tracked in
 [Web workflow capability matrix](WEB_WORKFLOW_CAPABILITY_MATRIX.md).
@@ -90,11 +111,10 @@ The complete product/browser acceptance surface is tracked in
 
 1. Build and test from the exact Git commit; record the image digest.
 2. Back up Neon and prove the backup restores into an isolated target.
-3. The loaded daily-driver URL points to `chordrift-v014-legacy-retirement` at
-   schema 0045. The intended `royal-snow-31539822` project is at schema 0047,
-   has the provider-neutral account foundation, and has matching durable-intent
-   counts but a slightly older observation. Compare content hashes, reconcile
-   only the read-only observation delta, then rehearse migrations 0048–0050.
+3. **Complete:** project `royal-snow-31539822` is the only Chordrift Neon
+   project. Its canonical database is at schema 0050 and is shared by local and
+   hosted transports. The former legacy project, temporary rehearsal branches,
+   and stale duplicate database are deleted.
 4. Configure Auth0 as a Regular Web Application with Google login and callback
    `https://chordrift.suhail.ink/auth/callback`.
 5. Start the Vortex API with provider writes unavailable.
@@ -102,9 +122,9 @@ The complete product/browser acceptance surface is tracked in
    liveness, readiness, OIDC state/PKCE, first-owner adoption, logout, session
    revocation, and cross-account denial.
 7. Import the existing Spotify refresh credential into the encrypted vault only
-   after the database restore proof and identity adoption succeed. **Complete:**
-   generation 1 was encrypted without contacting Spotify; deployment use still
-   requires the read-only adapter gate.
+   after database restore proof and identity adoption succeed. **Pending
+   canonical re-verification:** the prior rehearsal proof is retained, but its
+   fixture rows were deliberately not copied into the canonical database.
 8. Exercise provider reads and ordinary maintenance against fake fixtures and
    then the personal account in read-only mode.
 9. Provider writes require a new explicit gate after Suhail reviews the exact

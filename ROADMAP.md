@@ -327,7 +327,7 @@ and later Chordrift refactor begin.
     own stable subject, account ownership, revocable sessions, and future
     identity-linking boundary. Spotify authorization remains a separate,
     revocable provider connection and is never a Chordrift login method.
-  - [x] **Existing-account adoption.** Bind Suhail's first verified Google
+  - [ ] **Existing-account adoption.** Bind Suhail's first verified Google
     issuer/subject to the existing Chordrift account through the trusted
     bootstrap boundary. Do not create an empty replacement account, rewrite
     music ownership IDs, re-import Spotify, or mutate provider state. Compare
@@ -404,18 +404,26 @@ and later Chordrift refactor begin.
   Nexus proxy policy exist on the V021-06 development branch. A clean image
   built and passed an isolated Vortex liveness/readiness smoke test; the
   proposed Nexus configuration passed an isolated `nginx -t`. The intended
-  Neon project has a no-compute backup branch and an auto-expiring rehearsal
-  branch where migrations 0048–0050, the post-cleanup runtime schema, and
-  schema-only restore were proven. Disposable PostgreSQL identity, vault,
+  Neon project used temporary backup and rehearsal branches to prove migrations
+  0048–0050, the post-cleanup runtime schema, and schema-only restore. After
+  proof, the hosted service and local CLI were consolidated onto the single
+  canonical `main` branch/database at 50/50; both temporary branches and one
+  stale duplicate database were deleted. The live database is approximately
+  195 MB, with owner-only logical backups retained outside Neon. Future Neon
+  rehearsal branches must have an expiry at creation and be deleted
+  immediately after their recorded proof; prefer disposable local PostgreSQL
+  when branch semantics are not under test. Disposable PostgreSQL identity, vault,
   durable-operation, tenant-isolation, migration, and normalized-history tests
   pass. The rehearsal also found and repaired cleanup-receipt verification:
   normal append-only listening/provider activity may change the live invariant
   without invalidating the cutover, while legacy-table return, non-empty
-  staging, or evidence loss still fails verification. Auth0/Google first-owner
-  adoption, active Vortex/Nexus deployment, provider-aware provider/model
-  library inspection, track listening detail, active-exclusion inspection, and
-  encrypted generation-1 adoption of the existing Spotify refresh credential
-  are now proven live. The provider selector visibly reports Spotify connection
+  staging, or evidence loss still fails verification. Active Vortex/Nexus
+  deployment and provider-aware provider/model library inspection are proven.
+  Consolidation deliberately did not copy rehearsal fixture identities,
+  revoked fixture credentials, or fixture operations. Auth0/Google first-owner
+  adoption and encrypted generation-1 import of the existing Spotify refresh
+  credential must be reverified on the canonical database before beta.1. The
+  provider selector visibly reports Spotify connection
   and newest-observation state and is designed for future connections. The
   exact web acceptance surface is recorded in
   `docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md`. Remaining gates are the real

@@ -2639,3 +2639,43 @@ classification/private-listener/placement boundary, add a bootstrap checklist,
 and deliver a ready-to-paste task prompt. The new task—not Chordrift—chooses the
 project name, creates its repository and Neon project, reserves its namespace,
 and authors its independent roadmap.
+
+### Neon storage consolidation (2026-08-31)
+
+The durable Chordrift topology is now project `royal-snow-31539822`, branch
+`br-cool-haze-aflxxqep` (`main`), database `chordrift_cutover`. Local alpha.17
+maintenance and the Vortex hosted service both use that database; it is healthy
+at 50/50 migrations. The Vortex container and public HTTPS endpoint passed
+post-cutover health checks, and a local read-only playlist query passed. No
+Spotify request or mutation occurred during consolidation.
+
+Temporary branches `br-red-frost-afeshi7s`
+(`rehearse-v02106-20260830`) and `br-bold-haze-afrt5en4`
+(`pre-v02106-20260830`) were deleted after cutover. The unused main-branch
+database `chordrift`, last synchronized on 2026-08-28 and with no client
+connections, was also deleted. The canonical PostgreSQL database is about
+195 MB. Neon control-plane/dashboard storage can lag and may retain deleted
+pages within the six-hour restore window before falling from the earlier
+roughly 419 MB value.
+
+Owner-only external backups are under
+`$DROPBOX/Music/Chordrift/Backups/2026-08-31-pre-main-consolidation/`:
+
+- `chordrift_cutover-47.dump` — SHA-256
+  `4a00b29b74659f01a69ad15b577fd6d1d14295f0911f9d36aff9f1105c6a348d`;
+- `hosted-rehearsal-50.dump` — SHA-256
+  `43a7b048303739d511458224528266be2c8772b26106337af228c332980af6a9`;
+- `stale-main-chordrift-47.dump` — SHA-256
+  `97c151e5f301342b8b0ca97c4a9c1b82a74ce700cad170a1be37f57ea04d3844`.
+
+The deleted rehearsal database contained only disposable identity/vault/job
+fixtures; none were promoted. The canonical hosted tables are empty after
+consolidation. Reverify first-owner Google adoption and import the existing
+Spotify refresh authorization as encrypted generation 1 before beta.1. Until
+then provider-backed observation/maintenance stays unavailable and provider
+writes stay disabled.
+
+Future migration/restore rehearsals use disposable local PostgreSQL by default.
+If Neon branch behavior itself must be tested, create the branch with an expiry
+and delete it immediately after the recorded proof. Never leave a rehearsal
+branch as an implicit runtime dependency.
