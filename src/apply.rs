@@ -364,8 +364,39 @@ pub async fn execute(
         ));
     }
 
-    let gate = load_gate(database, account_label, assessment_id, phase).await?;
     let session = spotify::mutation_session(account_label).await?;
+    execute_with_session(
+        database,
+        account_label,
+        assessment_id,
+        phase,
+        confirmation,
+        allow_destructive,
+        &session,
+    )
+    .await
+}
+
+pub(crate) async fn execute_with_session(
+    database: &Database,
+    account_label: &str,
+    assessment_id: Uuid,
+    phase: ApplyPhase,
+    confirmation: Uuid,
+    allow_destructive: bool,
+    session: &MutationSession,
+) -> Result<ApplyReport> {
+    if confirmation != assessment_id {
+        return Err(configuration(
+            "confirmation must exactly match the apply-readiness assessment ID",
+        ));
+    }
+    if phase.destructive() && !allow_destructive {
+        return Err(configuration(
+            "cleanup and retirement require the explicit destructive gate",
+        ));
+    }
+    let gate = load_gate(database, account_label, assessment_id, phase).await?;
     if session.account_id() != gate.provider_account_id {
         return Err(configuration(
             "Spotify credential identity does not match the planned Neon account",
@@ -376,7 +407,7 @@ pub async fn execute(
     if completed {
         return report(database, apply_run_id, true, started_at).await;
     }
-    let result = execute_phase(database, &session, apply_run_id, phase).await;
+    let result = execute_phase(database, session, apply_run_id, phase).await;
     match result {
         Ok(()) => {
             sqlx::query(

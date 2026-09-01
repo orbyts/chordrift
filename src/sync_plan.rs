@@ -124,6 +124,27 @@ pub struct PlannedOperation {
     pub safety: Value,
 }
 
+/// One explicitly reviewed provider addition used by a bounded history import.
+///
+/// The track does not need to exist in the current provider catalog yet. Its
+/// exact Spotify identifier is appended to the named, already-managed
+/// destination and becomes canonical only after the following provider pull.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ReviewedAdditionInput {
+    /// Existing managed destination name from the approved model.
+    pub playlist_name: String,
+    /// Exact Spotify track identifier approved by the account owner.
+    pub spotify_track_id: String,
+    /// Human title retained only for auditable plan detail.
+    pub title: String,
+    /// Human artist label retained only for auditable plan detail.
+    pub artists: String,
+    /// Intended final cadence position after the later verified reorder.
+    pub final_position: i32,
+    /// Historical listening count used to derive the reviewed cadence.
+    pub play_count: i64,
+}
+
 /// Human-facing context and ordinary-maintenance interpretation for one plan row.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MaintenanceAnnotation {
@@ -258,6 +279,135 @@ pub async fn create(
         snapshot_id,
         operations,
         "full",
+    )
+    .await
+}
+
+/// Persists an immutable append-only plan for one explicitly reviewed history
+/// cohort without first requiring those Spotify IDs in the current catalog.
+///
+/// This is deliberately only phase one of the import. The caller must observe
+/// and accept the resulting provider state before constructing an exact-order
+/// cadence proposal. No removals or replacements are planned here.
+pub async fn create_reviewed_addition_plan(
+    database: &Database,
+    account_label: &str,
+    additions: &[ReviewedAdditionInput],
+) -> Result<PlanReport> {
+    if additions.is_empty() {
+        return Err(ChordriftError::Configuration(
+            "reviewed addition plan must contain at least one track".to_owned(),
+        ));
+    }
+    let mut spotify_ids = BTreeSet::new();
+    for addition in additions {
+        if addition.playlist_name.trim().is_empty()
+            || addition.spotify_track_id.trim().is_empty()
+            || addition.final_position < 0
+            || !spotify_ids.insert(addition.spotify_track_id.as_str())
+        {
+            return Err(ChordriftError::Configuration(
+                "reviewed additions require unique Spotify IDs, named destinations, and non-negative positions"
+                    .to_owned(),
+            ));
+        }
+    }
+
+    let account_id = account_id(database, account_label).await?;
+    let proposal_id = approved_proposal(database, account_id, None).await?;
+    let snapshot_id = latest_snapshot(database, account_id).await?;
+    validate_proposal(database, proposal_id).await?;
+    let desired = desired_playlists(database, account_id, proposal_id).await?;
+    let current = current_managed_playlists(database, account_id, snapshot_id).await?;
+
+    let mut destinations = BTreeMap::new();
+    for playlist in desired {
+        let observed = current.get(&playlist.concept_id).ok_or_else(|| {
+            ChordriftError::Configuration(format!(
+                "reviewed destination {:?} is not an observed managed playlist",
+                playlist.name
+            ))
+        })?;
+        destinations.insert(
+            playlist.name.to_lowercase(),
+            (
+                playlist.playlist_id,
+                playlist.concept_id,
+                observed.provider_playlist_id,
+                observed.spotify_id.clone(),
+                observed.provider_snapshot_id.clone(),
+                playlist.name,
+            ),
+        );
+    }
+
+    let historical_match_count: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT identity.provider_track_id)::bigint
+         FROM historical_provider_track_identities identity
+         WHERE identity.provider = 'spotify'
+           AND identity.provider_track_id = ANY($1)",
+    )
+    .bind(spotify_ids.iter().copied().collect::<Vec<_>>())
+    .fetch_one(database.pool())
+    .await?;
+    if usize::try_from(historical_match_count).ok() != Some(additions.len()) {
+        return Err(ChordriftError::Configuration(
+            "every reviewed Spotify ID must retain a historical identity".to_owned(),
+        ));
+    }
+
+    let mut operations = Vec::with_capacity(additions.len());
+    for addition in additions {
+        let destination = destinations
+            .get(&addition.playlist_name.to_lowercase())
+            .ok_or_else(|| {
+                ChordriftError::Configuration(format!(
+                    "reviewed destination {:?} is not in the approved model",
+                    addition.playlist_name
+                ))
+            })?;
+        operations.push(PlanOperationInput {
+            phase: "publish".to_owned(),
+            operation_type: "add_track".to_owned(),
+            operation_key: format!(
+                "reviewed-history-add:{}:{}",
+                destination.1, addition.spotify_track_id
+            ),
+            playlist_id: Some(destination.0),
+            provider_playlist_id: Some(destination.2),
+            playlist_name: destination.5.clone(),
+            spotify_playlist_id: Some(destination.3.clone()),
+            spotify_track_id: Some(addition.spotify_track_id.clone()),
+            payload: json!({
+                "position": addition.final_position,
+                "concept_id": destination.1,
+                "title": addition.title,
+                "artists": addition.artists,
+                "play_count": addition.play_count,
+                "reason": "account_owner_reviewed_history_import",
+                "expected_snapshot_id": destination.4
+            }),
+            safety: json!({
+                "destructive": false,
+                "append_only": true,
+                "requires_snapshot_match": true,
+                "membership_replacement": false
+            }),
+        });
+    }
+    operations.sort_by(|left, right| {
+        left.playlist_name
+            .cmp(&right.playlist_name)
+            .then_with(|| operation_position(left).cmp(&operation_position(right)))
+            .then_with(|| left.operation_key.cmp(&right.operation_key))
+    });
+    persist_operations(
+        database,
+        account_id,
+        proposal_id,
+        snapshot_id,
+        operations,
+        "reviewed_history_additions",
     )
     .await
 }

@@ -13,7 +13,7 @@ use sqlx::Row as _;
 use storexa::Database;
 
 use crate::{
-    ChordriftError, Result, config,
+    ChordriftError, Result, apply, apply_readiness, config,
     contract::{
         ClientError, Command, ErrorCode, MaintenanceDecision, MaintenanceProviderEffectKind,
         MaintenanceReviewId, MaintenanceSessionId, MaintenanceSessionState, OperationId, Progress,
@@ -40,6 +40,95 @@ use crate::{
 
 const DEFAULT_POLL_MILLISECONDS: u64 = 750;
 const LEASE_DURATION: Duration = Duration::from_secs(120);
+
+/// Uses the encrypted hosted provider credential to readiness-check and apply
+/// one already-persisted append-only publish plan. This operator boundary is
+/// intentionally unavailable through public HTTP and accepts no provider URL,
+/// SQL, or operation payload from a client.
+pub async fn apply_reviewed_sync_plan_from_env(
+    account_label: &str,
+    plan_id: uuid::Uuid,
+) -> Result<apply::ApplyReport> {
+    let database = db::connect(config::database_config_from_env()?).await?;
+    db::require_schema_through(&database, 51).await?;
+    let row = sqlx::query(
+        "SELECT account.id AS provider_account_id,
+                account.provider_account_id AS stable_provider_id,
+                account.chordrift_account_id,
+                membership.product_subject_id
+         FROM provider_accounts account
+         JOIN chordrift_account_memberships membership
+           ON membership.chordrift_account_id = account.chordrift_account_id
+          AND membership.status = 'active' AND membership.role = 'owner'
+         WHERE account.provider = 'spotify' AND account.account_label = $1",
+    )
+    .bind(account_label)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| configuration("hosted account owner or Spotify connection is missing"))?;
+    let provider_account_id: uuid::Uuid = row.try_get("provider_account_id")?;
+    let account_id: uuid::Uuid = row.try_get("chordrift_account_id")?;
+    let subject_id: uuid::Uuid = row.try_get("product_subject_id")?;
+    let stable_provider_id: String = row.try_get("stable_provider_id")?;
+    let subject = AuthenticatedSubject {
+        subject_id: ResourceId::from_uuid(subject_id),
+        account_id: ResourceId::from_uuid(account_id),
+    };
+    let identity = ProviderCredentialIdentity::new(
+        subject.account_id,
+        ResourceId::from_uuid(provider_account_id),
+        "spotify",
+    )
+    .map_err(|_| configuration("hosted provider credential identity is invalid"))?;
+    let store = PostgresProviderCredentialStore::new(database.pool().clone());
+    store
+        .verify_schema()
+        .await
+        .map_err(|_| configuration("hosted provider credential schema is not ready"))?;
+    let vault = ProviderCredentialVault::new(
+        store,
+        ProviderVaultKeyring::from_environment()
+            .map_err(|_| configuration("hosted provider credential key is not ready"))?,
+    );
+    let lease = vault
+        .lease(subject, &identity)
+        .await
+        .map_err(|_| configuration("hosted Spotify credential is unavailable"))?;
+    let (spotify_session, rotated) =
+        spotify::hosted_session(lease.refresh_token(), lease.scopes(), &stable_provider_id).await?;
+    let auth_status = spotify::AuthStatus {
+        account_label: account_label.to_owned(),
+        account_id: spotify_session.profile.account_id.clone(),
+        display_name: spotify_session.profile.display_name.clone(),
+        scopes: spotify_session.scopes.clone(),
+    };
+    if let Some(rotated) = rotated.as_ref() {
+        vault
+            .rotate(subject, identity, rotated, Utc::now())
+            .await
+            .map_err(|_| configuration("hosted Spotify credential rotation failed"))?;
+    }
+    let assessment =
+        apply_readiness::assess(&database, account_label, Some(plan_id), Some(&auth_status))
+            .await?;
+    if assessment.status != "ready" {
+        return Err(ChordriftError::Configuration(format!(
+            "reviewed plan readiness is {}",
+            assessment.status
+        )));
+    }
+    let mutation_session = spotify::hosted_mutation_session(spotify_session)?;
+    apply::execute_with_session(
+        &database,
+        account_label,
+        assessment.assessment_id,
+        apply::ApplyPhase::Publish,
+        assessment.assessment_id,
+        false,
+        &mutation_session,
+    )
+    .await
+}
 
 /// Provider-side work accepted by the durable hosted command boundary.
 #[async_trait]

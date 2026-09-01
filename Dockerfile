@@ -11,9 +11,11 @@ COPY scripts/render_artwork_label.swift ./scripts/render_artwork_label.swift
 COPY web ./web
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/build/target,sharing=locked \
-    cargo build --locked --release --bin chordrift-server --bin chordrift-worker && \
+    cargo build --locked --release --bin chordrift-server --bin chordrift-worker \
+      --bin chordrift-hosted-plan-apply && \
     cp /build/target/release/chordrift-server /tmp/chordrift-server && \
-    cp /build/target/release/chordrift-worker /tmp/chordrift-worker
+    cp /build/target/release/chordrift-worker /tmp/chordrift-worker && \
+    cp /build/target/release/chordrift-hosted-plan-apply /tmp/chordrift-hosted-plan-apply
 
 FROM ${RUNTIME_IMAGE} AS runtime
 ARG VCS_REF=unknown
@@ -29,6 +31,7 @@ RUN apt-get update && \
     useradd --system --uid 65532 --gid 65532 --no-create-home --home-dir /nonexistent chordrift
 COPY --from=builder --chmod=0555 /tmp/chordrift-server /usr/local/bin/chordrift-server
 COPY --from=builder --chmod=0555 /tmp/chordrift-worker /usr/local/bin/chordrift-worker
+COPY --from=builder --chmod=0555 /tmp/chordrift-hosted-plan-apply /usr/local/bin/chordrift-hosted-plan-apply
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/chordrift-server"]
