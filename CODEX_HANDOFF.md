@@ -37,6 +37,20 @@ retained local CLI loopback callback. No authorization code, provider
 credential, Neon intent change, or Spotify library mutation resulted from the
 rejected attempt.
 
+The subsequent first disconnect/revocation rehearsal found two beta blockers.
+The web form POST was rejected with HTTP 403 because the route's exact-Origin
+guard did not recognize the thin wrapper request after proxying. Separately,
+removing Chordrift from Spotify's Apps page invalidated the grant without a
+provider webhook; the next observation failed but left the local encrypted
+envelope active and the UI stale. The branch repair submits disconnect through
+a session-authenticated non-simple same-origin fetch, immediately revokes an
+envelope when Spotify terminally rejects its refresh credential, returns the
+typed `authentication_required` failure, and reloads connection state so the
+web and remote CLI both offer Reconnect. The UI now says **Authorized** and
+shows the separate last-verification time because out-of-band revocation cannot
+be known before the next provider call. Neon history and Spotify state remain
+unchanged by either failure.
+
 The V021-06 beta branch keeps Chordrift product login and Spotify provider
 authorization separate. Server-owned Spotify PKCE routes implement Connect,
 Reconnect, Add Account, and Disconnect. Stable Spotify identity selects the

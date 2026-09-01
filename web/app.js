@@ -100,7 +100,7 @@ function renderProviderState() {
   }
   const connected = state.provider.credential_ready;
   $('#provider-dot').classList.toggle('online', connected);
-  $('#provider-state').textContent = `${connected ? 'Connected' : 'Read-only record'} · observed ${formatTime(state.provider.observed_at)}`;
+  $('#provider-state').textContent = `${connected ? 'Authorized' : 'Reconnect required'} · last verified ${formatTime(state.provider.observed_at)}`;
   $('#spotify-connect').hidden = connected;
   $('#spotify-connect').textContent = 'Reconnect Spotify';
   $('#spotify-connect').href = `/providers/spotify/connect?provider_connection_id=${encodeURIComponent(state.provider.provider_connection_id)}`;
@@ -131,15 +131,43 @@ async function startMaintenance() {
   }
 }
 
+async function disconnectSpotify(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button');
+  button.disabled = true;
+  try {
+    const response = await fetch(form.action, {
+      method: 'POST', credentials: 'same-origin', redirect: 'follow',
+      headers: { 'x-chordrift-browser': '1' }
+    });
+    if (!response.ok) throw new Error(`Disconnect failed (${response.status})`);
+    state.activeOperation = null;
+    state.maintenanceSession = null;
+    $('#maintenance-session').hidden = true;
+    await loadProviderConnections();
+  } catch (error) {
+    const panel = $('#maintenance-session');
+    panel.hidden = false;
+    panel.replaceChildren(node('strong', '', 'Spotify could not disconnect'), node('p', 'warning', error.message));
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function followOperation(operationId) {
   const panel = $('#maintenance-session');
   for (;;) {
     const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'operation', parameters: { operation_id: operationId } }));
     const operation = response.view.value; const current = operation.state;
     const progress = current.details?.progress;
+    const credentialExpired = ['failed', 'recoverable'].includes(current.state)
+      && current.details?.error?.code === 'authentication_required';
     panel.replaceChildren(
       node('strong', '', current.state.replaceAll('_', ' ')),
-      node('p', 'availability', progress ? `${progress.phase.replaceAll('_', ' ')} · ${progress.completed}${progress.total == null ? '' : ` / ${progress.total}`}` : 'Spotify remains unchanged during observation.')
+      node('p', credentialExpired ? 'warning' : 'availability', credentialExpired
+        ? 'Spotify access was removed or expired. Reconnect Spotify; your Chordrift library is unchanged.'
+        : progress ? `${progress.phase.replaceAll('_', ' ')} · ${progress.completed}${progress.total == null ? '' : ` / ${progress.total}`}` : 'Spotify remains unchanged during observation.')
     );
     if (['completed', 'failed', 'cancelled'].includes(current.state)) {
       await Promise.all([loadProviderConnections(), loadActivity()]);
@@ -405,6 +433,7 @@ $('#provider-select').addEventListener('change', async (event) => {
 });
 $('#preset').addEventListener('change', selectPreset); $('#send').addEventListener('click', sendDeveloperRequest);
 $('#start-maintenance').addEventListener('click', startMaintenance);
+$('#spotify-disconnect').addEventListener('submit', disconnectSpotify);
 $('.dialog-close').addEventListener('click', () => $('#track-dialog').close());
 $('#track-dialog').addEventListener('click', (event) => { if (event.target === $('#track-dialog')) $('#track-dialog').close(); });
 selectPreset(); loadSession();

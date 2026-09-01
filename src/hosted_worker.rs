@@ -143,10 +143,27 @@ impl SpotifyObservationExecutor {
         let identity =
             ProviderCredentialIdentity::new(subject.account_id, provider_connection_id, provider)?;
         let lease = self.vault.lease(subject, &identity).await?;
-        let (session, rotated) =
-            spotify::hosted_session(lease.refresh_token(), lease.scopes(), &stable_provider_id)
-                .await
-                .map_err(provider_error)?;
+        let (session, rotated) = match spotify::hosted_session(
+            lease.refresh_token(),
+            lease.scopes(),
+            &stable_provider_id,
+        )
+        .await
+        {
+            Ok(value) => value,
+            Err(error) if rejected_refresh_credential(&error) => {
+                self.vault
+                    .revoke(
+                        subject,
+                        &identity,
+                        "provider rejected refresh credential",
+                        Utc::now(),
+                    )
+                    .await?;
+                return Err(ClientError::new(ErrorCode::AuthenticationRequired, false));
+            }
+            Err(error) => return Err(provider_error(error)),
+        };
         if let Some(rotated) = rotated.as_ref() {
             self.vault
                 .rotate(subject, identity, rotated, Utc::now())
@@ -301,10 +318,27 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
         let identity =
             ProviderCredentialIdentity::new(subject.account_id, provider_connection_id, provider)?;
         let lease = self.vault.lease(subject, &identity).await?;
-        let (session, rotated) =
-            spotify::hosted_session(lease.refresh_token(), lease.scopes(), &stable_provider_id)
-                .await
-                .map_err(provider_error)?;
+        let (session, rotated) = match spotify::hosted_session(
+            lease.refresh_token(),
+            lease.scopes(),
+            &stable_provider_id,
+        )
+        .await
+        {
+            Ok(value) => value,
+            Err(error) if rejected_refresh_credential(&error) => {
+                self.vault
+                    .revoke(
+                        subject,
+                        &identity,
+                        "provider rejected refresh credential",
+                        Utc::now(),
+                    )
+                    .await?;
+                return Err(ClientError::new(ErrorCode::AuthenticationRequired, false));
+            }
+            Err(error) => return Err(provider_error(error)),
+        };
         if let Some(rotated) = rotated.as_ref() {
             self.vault
                 .rotate(subject, identity, rotated, Utc::now())
@@ -751,6 +785,19 @@ fn provider_error(error: ChordriftError) -> ClientError {
     }
 }
 
+fn rejected_refresh_credential(error: &ChordriftError) -> bool {
+    let ChordriftError::SpotifyApi { status, message } = error else {
+        return false;
+    };
+    if !matches!(status, 400 | 401) {
+        return false;
+    }
+    let message = message.to_ascii_lowercase();
+    message.contains("invalid_grant")
+        || message.contains("refresh token")
+        || message.contains("revoked")
+}
+
 fn unavailable() -> ClientError {
     ClientError::new(ErrorCode::DependencyUnavailable, true)
 }
@@ -773,6 +820,25 @@ mod tests {
     use crate::contract::{
         CONTRACT_VERSION, CommandRequest, IdempotencyKey, OperationId, RequestId,
     };
+
+    #[test]
+    fn only_terminal_refresh_rejections_expire_the_vault_credential() {
+        assert!(rejected_refresh_credential(&ChordriftError::SpotifyApi {
+            status: 400,
+            message: "invalid_grant".to_owned(),
+        }));
+        assert!(rejected_refresh_credential(&ChordriftError::SpotifyApi {
+            status: 400,
+            message: "Refresh token revoked".to_owned(),
+        }));
+        assert!(!rejected_refresh_credential(&ChordriftError::SpotifyApi {
+            status: 429,
+            message: "rate limited".to_owned(),
+        }));
+        assert!(!rejected_refresh_credential(
+            &ChordriftError::Configuration("not a provider rejection".to_owned(),)
+        ));
+    }
     use crate::durable_operations::DurableOperationLease;
     use crate::{
         contract::{

@@ -466,6 +466,18 @@ and later Chordrift refactor begin.
   exposes reconnectable progress/cancellation. No CLI, shell, arbitrary SQL, or
   client-supplied provider URL is in that route. Provider writes remain disabled.
 
+  Provider-lifecycle hardening checkpoint (2026-08-31): the first live
+  disconnect returned HTTP 403 because a proxied native form POST did not
+  satisfy the route's exact-Origin guard. The first out-of-band Spotify Apps
+  revocation then proved that a locally active credential cannot truthfully
+  imply current provider validity before another provider call. Disconnect now
+  uses a session-authenticated non-simple same-origin wrapper request. A
+  terminal refresh-token rejection revokes the encrypted local envelope during
+  the failed operation, returns typed `authentication_required`, and exposes
+  Reconnect without removing provider history or Chordrift intent. The UI
+  reports **Authorized** separately from its last provider verification. Unit
+  regressions pass; deployment and browser acceptance remain before beta.1.
+
   Record-only maintenance checkpoint: migration 0051 persistence, the real
   PostgreSQL provider-first interpreter, durable Start/Refresh/Resolve worker
   dispatch, and shared web/remote-CLI session access are implemented on the

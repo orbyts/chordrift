@@ -1625,13 +1625,21 @@ async fn authenticated_browser_subject(
 }
 
 fn same_origin(state: &HostedState, headers: &HeaderMap) -> bool {
-    headers
+    same_origin_for(&state.config.public_origin, headers)
+}
+
+fn same_origin_for(public_origin: &Url, headers: &HeaderMap) -> bool {
+    let exact_origin = headers
         .get(ORIGIN)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|origin| {
-            origin.trim_end_matches('/')
-                == state.config.public_origin.as_str().trim_end_matches('/')
-        })
+            origin.trim_end_matches('/') == public_origin.as_str().trim_end_matches('/')
+        });
+    exact_origin
+        || headers
+            .get("x-chordrift-browser")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value == "1")
 }
 
 fn spotify_redirect(state: &HostedState, outcome: &str) -> Response {
@@ -1752,6 +1760,34 @@ mod tests {
             cookie(&headers, SESSION_COOKIE).as_deref(),
             Some("expected")
         );
+    }
+
+    #[test]
+    fn browser_mutations_accept_exact_origin_or_non_simple_wrapper_header() {
+        let state = HostedConfig {
+            bind: "127.0.0.1:0".parse().unwrap(),
+            public_origin: Url::parse("https://chordrift.example/").unwrap(),
+            oidc_issuer: Url::parse("https://identity.example/").unwrap(),
+            oidc_authorization_url: Url::parse("https://identity.example/authorize").unwrap(),
+            oidc_token_url: Url::parse("https://identity.example/token").unwrap(),
+            oidc_userinfo_url: Url::parse("https://identity.example/userinfo").unwrap(),
+            oidc_client_id: "client".to_owned(),
+            oidc_client_secret: Zeroizing::new("secret".to_owned()),
+            spotify_client_id: "spotify-client".to_owned(),
+            bootstrap_email: None,
+            account_id: ResourceId::new(),
+        };
+        let mut origin = HeaderMap::new();
+        origin.insert(
+            ORIGIN,
+            HeaderValue::from_static("https://chordrift.example"),
+        );
+        assert!(same_origin_for(&state.public_origin, &origin));
+
+        let mut wrapper = HeaderMap::new();
+        wrapper.insert("x-chordrift-browser", HeaderValue::from_static("1"));
+        assert!(same_origin_for(&state.public_origin, &wrapper));
+        assert!(!same_origin_for(&state.public_origin, &HeaderMap::new()));
     }
 
     #[test]

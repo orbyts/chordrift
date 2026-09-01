@@ -28,6 +28,22 @@ and a rejected request creates no credential or library mutation. The operator
 resolution is to allowlist the exact hosted callback alongside any retained
 loopback callback and retry **Reconnect Spotify**.
 
+The first hosted disconnect test exposed two provider-lifecycle gaps. A native
+same-origin form POST reached the API without the exact `Origin` header required
+by the route and returned HTTP 403 before vault revocation. Removing Chordrift
+from Spotify's Apps page then invalidated the provider grant out of band, but
+the locally active encrypted envelope continued to render as connected after
+the next provider operation failed. Disconnect is now a thin same-origin fetch
+authenticated by the Chordrift session and a non-simple wrapper header. An
+OAuth refresh rejection classified as `invalid_grant`, revoked refresh token,
+or equivalent terminal authorization failure immediately revokes the local
+envelope, returns `authentication_required`, and causes every client to offer
+Reconnect while retaining provider history and Chordrift intent. Because
+Spotify does not push third-party revocation events to Chordrift, the UI calls
+an unverified local envelope **Authorized** and separately shows when provider
+access was last verified; the next explicit provider check is the freshness
+boundary.
+
 | Checkpoint | Observed failure | Durable rule | Regression/status |
 | --- | --- | --- | --- |
 | Pre-alpha / A021-01 | Several UUID-heavy workflows made ordinary cleanup slow and confusing. | One capability-checked maintenance entry point hides internal IDs and asks once only for a provider mutation. | Unified fake-binary workflow suite. Complete. |
@@ -43,6 +59,7 @@ loopback callback and retry **Reconnect Spotify**.
 | Alpha.12 → alpha.13 | Tracks added and later removed returned because record-only convergence had not created the immutable managed verification used to interpret the later removal. | Every exactly converged ordinary pull becomes the next accepted baseline. A later removal becomes an active exclusion and an older proposal cannot produce an add/restore operation. | PostgreSQL baseline/removal regression plus exclusion-archive lifecycle proof. Complete. |
 | Alpha.15 → alpha.16 | A newly liked track already present in a managed playlist was silently summarized only as “Remove from Likes,” without naming its destination or remembering whether the user wanted both memberships. | Liked Songs is a virtual intake surface. Name every verified destination, require and revision a per-track keep/clear decision, default to no cleanup when undecided, and treat a later direct Unlike as superseding an older keep directive. | Fake-binary human-review regression plus disposable-PostgreSQL keep, clear, undecided, and direct-Unlike proof. Complete. |
 | Alpha.17 → alpha.18 | Five Rasa Archive → Cinema Monsoon moves appeared twice, duplicate IDs stopped assignment, and the interrupted editable proposal made a retry label 1,439 existing tracks as direct intake. A later copy also replayed two excluded tracks into managed destinations. | One provider gesture yields one canonical move; an editable copy does not erase accepted coverage; active exclusions always outrank historical assignment revisions; interrupted work resumes cumulatively without expanding scope. | Exact paired-row fake-binary regression, classifier unit proof, disposable-PostgreSQL copy/exclusion proof, and live Neon-only recovery to zero pending operations. Complete. |
+| Beta.1 candidate | Disconnect returned HTTP 403, and an out-of-band Spotify Apps revocation remained displayed as connected after observation failed. | History-preserving disconnect is a session-authenticated same-origin wrapper action. A terminal refresh-token rejection revokes the stale local envelope during the failed read, returns `authentication_required`, and renders Reconnect without deleting history. Connection presentation distinguishes locally authorized from last provider verification. | Same-origin/non-simple wrapper-header regression and terminal-versus-transient OAuth rejection regression. Complete in branch; deployment acceptance pending. |
 
 ## Batched experience-refinement queue
 
