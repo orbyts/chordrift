@@ -2493,6 +2493,122 @@ pub async fn align_provider_order(
     })
 }
 
+/// Applies an account-owner-reviewed exact order to one editable proposal
+/// playlist after proving that the reviewed Spotify IDs and proposal contain
+/// exactly the same unique membership.
+pub async fn set_reviewed_order(
+    database: &Database,
+    account_label: &str,
+    stable_key: &str,
+    spotify_ids: &[String],
+) -> Result<ProviderOrderReport> {
+    if spotify_ids.is_empty() {
+        return Err(ChordriftError::Configuration(
+            "reviewed order must contain at least one Spotify track ID".to_owned(),
+        ));
+    }
+    if spotify_ids.iter().collect::<HashSet<_>>().len() != spotify_ids.len() {
+        return Err(ChordriftError::Configuration(
+            "reviewed order must contain unique Spotify track IDs".to_owned(),
+        ));
+    }
+    let generation = status(database, account_label).await?;
+    require_editable(&generation)?;
+    let account_id = account_id(database, account_label).await?;
+    let row = sqlx::query(
+        "SELECT playlist.id, playlist.name
+         FROM playlists playlist
+         JOIN playlist_concepts concept ON concept.id = playlist.concept_id
+         WHERE playlist.generation_id = $1
+           AND concept.provider_account_id = $2
+           AND concept.stable_key = $3",
+    )
+    .bind(generation.generation_id)
+    .bind(account_id)
+    .bind(stable_key)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(
+            "reviewed-order destination is not in the latest proposal".to_owned(),
+        )
+    })?;
+    let playlist_id: Uuid = row.try_get("id")?;
+    let name: String = row.try_get("name")?;
+    let resolved = sqlx::query(
+        "SELECT provider_track.provider_track_id AS spotify_id, provider_track.track_id
+         FROM provider_tracks provider_track
+         WHERE provider_track.provider = 'spotify'
+           AND provider_track.provider_track_id = ANY($1)",
+    )
+    .bind(spotify_ids)
+    .fetch_all(database.pool())
+    .await?;
+    let track_by_spotify_id = resolved
+        .into_iter()
+        .map(|row| {
+            Ok((
+                row.try_get::<String, _>("spotify_id")?,
+                row.try_get::<Uuid, _>("track_id")?,
+            ))
+        })
+        .collect::<Result<HashMap<_, _>>>()?;
+    if track_by_spotify_id.len() != spotify_ids.len() {
+        return Err(ChordriftError::Configuration(
+            "one or more reviewed-order Spotify IDs are not in the observed provider catalog"
+                .to_owned(),
+        ));
+    }
+    let reviewed_order = spotify_ids
+        .iter()
+        .map(|spotify_id| track_by_spotify_id[spotify_id])
+        .collect::<Vec<_>>();
+    let proposal_order = sqlx::query_scalar::<_, Uuid>(
+        "SELECT track_id FROM playlist_tracks
+         WHERE playlist_id = $1 ORDER BY position",
+    )
+    .bind(playlist_id)
+    .fetch_all(database.pool())
+    .await?;
+    if !orders_have_equal_unique_membership(&reviewed_order, &proposal_order) {
+        return Err(ChordriftError::Configuration(format!(
+            "cannot apply reviewed order to `{stable_key}` unless reviewed and proposal memberships are exactly equal"
+        )));
+    }
+    if reviewed_order != proposal_order {
+        let offset = i32::try_from(reviewed_order.len())
+            .ok()
+            .and_then(|count| count.checked_add(1_000_000))
+            .ok_or_else(|| {
+                ChordriftError::Configuration("playlist is too large to order safely".to_owned())
+            })?;
+        let mut transaction = database.pool().begin().await?;
+        sqlx::query("UPDATE playlist_tracks SET position = position + $2 WHERE playlist_id = $1")
+            .bind(playlist_id)
+            .bind(offset)
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            "UPDATE playlist_tracks membership
+             SET position = ordered.position::integer - 1
+             FROM unnest($2::uuid[]) WITH ORDINALITY AS ordered(track_id, position)
+             WHERE membership.playlist_id = $1
+               AND membership.track_id = ordered.track_id",
+        )
+        .bind(playlist_id)
+        .bind(&reviewed_order)
+        .execute(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+    }
+    Ok(ProviderOrderReport {
+        generation_id: generation.generation_id,
+        stable_key: stable_key.to_owned(),
+        name,
+        track_count: reviewed_order.len(),
+    })
+}
+
 fn orders_have_equal_unique_membership(provider: &[Uuid], proposal: &[Uuid]) -> bool {
     let provider_set = provider.iter().copied().collect::<HashSet<_>>();
     let proposal_set = proposal.iter().copied().collect::<HashSet<_>>();
