@@ -226,6 +226,7 @@ impl ExternalIdentityVerifier for OidcVerifier {
 struct LoginAttempt {
     state: String,
     code_verifier: Zeroizing<String>,
+    return_to: Option<String>,
     expires_at: DateTime<Utc>,
 }
 
@@ -1463,11 +1464,20 @@ async fn ready(State(state): State<HostedState>) -> Response {
         .into_response()
 }
 
-async fn login(State(state): State<HostedState>) -> Response {
+#[derive(Default, Deserialize)]
+struct LoginQuery {
+    return_to: Option<String>,
+}
+
+async fn login(
+    State(state): State<HostedState>,
+    AxumQuery(query): AxumQuery<LoginQuery>,
+) -> Response {
     let flow_id = random_url_token();
     let csrf_state = random_url_token();
     let code_verifier = Zeroizing::new(random_url_token());
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(code_verifier.as_bytes()));
+    let return_to = query.return_to.as_deref().and_then(valid_login_return_to);
     {
         let mut attempts = state.login_attempts.lock().await;
         attempts.retain(|_, attempt| attempt.expires_at > Utc::now());
@@ -1479,6 +1489,7 @@ async fn login(State(state): State<HostedState>) -> Response {
             LoginAttempt {
                 state: csrf_state.clone(),
                 code_verifier,
+                return_to,
                 expires_at: Utc::now() + TimeDelta::minutes(LOGIN_TTL_MINUTES),
             },
         );
@@ -1581,8 +1592,13 @@ async fn callback(
         Ok(grant) => grant,
         Err(_) => return StatusCode::FORBIDDEN.into_response(),
     };
+    let destination = attempt
+        .return_to
+        .as_deref()
+        .and_then(|return_to| state.config.public_origin.join(return_to).ok())
+        .unwrap_or_else(|| state.config.public_origin.clone());
     redirect_with_cookie(
-        state.config.public_origin.as_str(),
+        destination.as_str(),
         &format!(
             "{SESSION_COOKIE}={}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={}",
             grant.access_token,
@@ -1651,13 +1667,6 @@ async fn cli_authorize(
     AxumQuery(query): AxumQuery<CliAuthorizeQuery>,
     headers: HeaderMap,
 ) -> Response {
-    let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Html("Sign in to Chordrift in this browser, then run the CLI login again."),
-        )
-            .into_response();
-    };
     let Ok(redirect_uri) = Url::parse(&query.redirect_uri) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
@@ -1672,6 +1681,18 @@ async fn cli_authorize(
     {
         return StatusCode::BAD_REQUEST.into_response();
     }
+    let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
+        let return_to = cli_authorize_return_to(&query);
+        let mut login_url = state
+            .config
+            .public_origin
+            .join("/auth/login")
+            .expect("public origin must accept a relative login path");
+        login_url
+            .query_pairs_mut()
+            .append_pair("return_to", &return_to);
+        return (StatusCode::SEE_OTHER, [(LOCATION, login_url.to_string())]).into_response();
+    };
     let flow_id = random_url_token();
     let consent_token = random_url_token();
     let consent_token_sha256 = Sha256::digest(consent_token.as_bytes()).into();
@@ -1698,6 +1719,35 @@ async fn cli_authorize(
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize Chordrift CLI</title></head><body><main><h1>Connect the Chordrift CLI?</h1><p>This creates a separate revocable Chordrift session on this computer. It does not share Spotify or database credentials.</p><form method=\"post\" action=\"/auth/cli/approve\"><input type=\"hidden\" name=\"flow_id\" value=\"{flow_id}\"><input type=\"hidden\" name=\"consent_token\" value=\"{consent_token}\"><button type=\"submit\">Authorize CLI</button></form></main></body></html>"
     ))
     .into_response()
+}
+
+fn cli_authorize_return_to(query: &CliAuthorizeQuery) -> String {
+    let mut return_to = Url::parse("https://chordrift.invalid/auth/cli/authorize")
+        .expect("fixed CLI authorization URL must parse");
+    return_to
+        .query_pairs_mut()
+        .append_pair("redirect_uri", &query.redirect_uri)
+        .append_pair("state", &query.state)
+        .append_pair("code_challenge", &query.code_challenge)
+        .append_pair("code_challenge_method", &query.code_challenge_method);
+    format!(
+        "{}?{}",
+        return_to.path(),
+        return_to.query().unwrap_or_default()
+    )
+}
+
+fn valid_login_return_to(value: &str) -> Option<String> {
+    if value.contains(['\r', '\n']) {
+        return None;
+    }
+    let base = Url::parse("https://chordrift.invalid/").expect("fixed return base must parse");
+    let target = base.join(value).ok()?;
+    (target.origin() == base.origin()
+        && target.path() == "/auth/cli/authorize"
+        && target.query().is_some()
+        && target.fragment().is_none())
+    .then(|| value.to_owned())
 }
 
 async fn cli_approve(
@@ -2197,6 +2247,47 @@ mod tests {
         ));
         attempt.approved = true;
         assert!(!valid_cli_consent(&attempt, subject, consent_token, now));
+    }
+
+    #[test]
+    fn cli_authorization_survives_a_product_login_round_trip() {
+        let query = CliAuthorizeQuery {
+            redirect_uri: "http://127.0.0.1:43117/callback".to_owned(),
+            state: "opaque-client-state".to_owned(),
+            code_challenge: URL_SAFE_NO_PAD.encode([9_u8; 32]),
+            code_challenge_method: "S256".to_owned(),
+        };
+
+        let return_to = cli_authorize_return_to(&query);
+        assert_eq!(valid_login_return_to(&return_to), Some(return_to.clone()));
+
+        let parsed = Url::parse(&format!("https://chordrift.example{return_to}"))
+            .expect("generated continuation must be a URL");
+        let parameters = parsed.query_pairs().collect::<HashMap<_, _>>();
+        assert_eq!(parameters.get("redirect_uri").unwrap(), &query.redirect_uri);
+        assert_eq!(parameters.get("state").unwrap(), &query.state);
+        assert_eq!(
+            parameters.get("code_challenge").unwrap(),
+            &query.code_challenge
+        );
+        assert_eq!(
+            parameters.get("code_challenge_method").unwrap(),
+            &query.code_challenge_method
+        );
+    }
+
+    #[test]
+    fn product_login_continuation_cannot_become_an_open_redirect() {
+        for rejected in [
+            "https://attacker.example/auth/cli/authorize?flow=x",
+            "//attacker.example/auth/cli/authorize?flow=x",
+            "/auth/callback?code=stolen",
+            "/auth/cli/authorize",
+            "/auth/cli/authorize?flow=x#fragment",
+            "/auth/cli/authorize?flow=x\r\nLocation:https://attacker.example",
+        ] {
+            assert_eq!(valid_login_return_to(rejected), None, "{rejected}");
+        }
     }
 
     #[test]

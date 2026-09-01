@@ -4,6 +4,16 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.5] - 2026-09-01
+
+- Preserve an installed CLI's exact loopback PKCE authorization request while
+  a browser without an existing Chordrift session signs in through Google.
+- Return the browser to the original one-time CLI consent page after product
+  login instead of returning HTTP 401 and requiring the command to be rerun.
+- Restrict post-login continuation to the internal CLI authorization route so
+  external, scheme-relative, fragment-bearing, and header-injection targets
+  cannot turn the convenience flow into an open redirect.
+
 ## [0.2.1-beta.4] - 2026-09-01
 
 - Bind CLI consent submission to a server-issued, one-time token stored only as
