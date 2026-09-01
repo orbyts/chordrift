@@ -11,6 +11,8 @@ sign-in and typed durable maintenance commands over the same contract:
 ```bash
 chordrift service session login --url https://chordrift.suhail.ink \
   --profile default
+chordrift service session login --url https://chordrift.suhail.ink \
+  --profile default --no-open
 chordrift service session status --profile default
 chordrift service compatibility --url https://service.example --profile default
 chordrift service command --url https://service.example --file command.json
@@ -34,7 +36,9 @@ chordrift service session remove --profile default
 
 `session login` opens Chordrift in the browser, asks for explicit approval, and
 stores a separate revocable CLI session in the OS credential store. The token
-is never placed in a URL or printed. `session save` remains an operator-only
+is never placed in a URL or printed. Add `--no-open` to stream the one-time
+authorization URL without launching the operating-system default browser; the
+same authenticated approval and PKCE callback remain mandatory. `session save` remains an operator-only
 recovery command that reads an already issued token from standard input.
 Command/query files must be exact public
 `CommandRequest`/`QueryRequest` JSON. HTTPS is mandatory except for loopback
