@@ -4,6 +4,18 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.3] - 2026-09-01
+
+- Stream browser-mediated CLI login output directly even in an interactive
+  terminal, instead of buffering the authorization URL until after the
+  five-minute callback wait.
+- Add `service session login --no-open` so users can copy the one-time PKCE
+  authorization URL into a trusted browser without launching a default browser
+  that has blocked the private-beta hostname.
+- Keep Google Safe Browsing reputation handling separate from Chordrift's
+  authentication contract; the CLI fallback does not bypass a browser warning
+  or weaken authenticated approval, PKCE, expiry, or session revocation.
+
 ## [0.2.1-beta.2] - 2026-09-01
 
 - Accept an exact same-origin `Referer` when a browser or privacy boundary

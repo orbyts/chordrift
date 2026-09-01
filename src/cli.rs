@@ -361,6 +361,9 @@ pub enum ServiceSessionCommand {
         /// Local credential-store profile.
         #[arg(long, default_value = "default")]
         profile: String,
+        /// Print the authorization URL without opening the default browser.
+        #[arg(long)]
+        no_open: bool,
     },
     /// Read an opaque Chordrift session from standard input and store it securely.
     Save {
@@ -1937,7 +1940,7 @@ pub enum ClearPolicyArg {
 pub async fn run(cli: Cli) -> Result<()> {
     let stdout = io::stdout();
     let mut output = stdout.lock();
-    if terminal::stdout_is_terminal() {
+    if terminal::stdout_is_terminal() && !streams_output_while_running(&cli) {
         let mut command_output = Vec::new();
         run_with_writer(cli, &mut command_output).await?;
         let command_output = String::from_utf8(command_output).map_err(|_| {
@@ -1948,6 +1951,17 @@ pub async fn run(cli: Cli) -> Result<()> {
     } else {
         run_with_writer(cli, &mut output).await
     }
+}
+
+fn streams_output_while_running(cli: &Cli) -> bool {
+    matches!(
+        &cli.command,
+        Command::Service {
+            command: ServiceCommand::Session {
+                command: ServiceSessionCommand::Login { .. }
+            }
+        }
+    )
 }
 
 async fn run_with_writer(cli: Cli, output: &mut impl Write) -> Result<()> {
@@ -2687,8 +2701,12 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
             result?;
         }
         ServiceCommand::Session { command } => match command {
-            ServiceSessionCommand::Login { url, profile } => {
-                login_service_session(&url, &profile, output).await?;
+            ServiceSessionCommand::Login {
+                url,
+                profile,
+                no_open,
+            } => {
+                login_service_session(&url, &profile, no_open, output).await?;
             }
             ServiceSessionCommand::Save { profile } => {
                 let mut token = Zeroizing::new(String::new());
@@ -2888,7 +2906,12 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
     Ok(())
 }
 
-async fn login_service_session(url: &str, profile: &str, output: &mut impl Write) -> Result<()> {
+async fn login_service_session(
+    url: &str,
+    profile: &str,
+    no_open: bool,
+    output: &mut impl Write,
+) -> Result<()> {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
     let base = url::Url::parse(url)
@@ -2917,18 +2940,27 @@ async fn login_service_session(url: &str, profile: &str, output: &mut impl Write
         .append_pair("state", state.as_str())
         .append_pair("code_challenge", &challenge)
         .append_pair("code_challenge_method", "S256");
-    writeln!(
-        output,
-        "Opening Chordrift to authorize profile '{profile}'. Sign in there first if needed."
-    )?;
+    if no_open {
+        writeln!(
+            output,
+            "Authorize profile '{profile}' in a trusted browser. Sign in there first if needed."
+        )?;
+    } else {
+        writeln!(
+            output,
+            "Opening Chordrift to authorize profile '{profile}'. Sign in there first if needed."
+        )?;
+    }
     writeln!(output, "Authorize at: {authorize}")?;
     output.flush()?;
-    webbrowser::open(authorize.as_str()).map_err(|_| {
-        ChordriftError::Configuration(format!(
-            "could not open the browser; visit {}",
-            authorize.as_str()
-        ))
-    })?;
+    if !no_open {
+        webbrowser::open(authorize.as_str()).map_err(|_| {
+            ChordriftError::Configuration(format!(
+                "could not open the browser; visit {}",
+                authorize.as_str()
+            ))
+        })?;
+    }
 
     let (mut socket, _) = tokio::time::timeout(Duration::from_secs(300), listener.accept())
         .await
@@ -7543,9 +7575,36 @@ mod tests {
             cli.command,
             Command::Service {
                 command: ServiceCommand::Session {
-                    command: ServiceSessionCommand::Login { url, profile }
+                    command: ServiceSessionCommand::Login {
+                        url,
+                        profile,
+                        no_open: false
+                    }
                 }
             } if url == "https://chordrift.example" && profile == "daily"
+        ));
+    }
+
+    #[test]
+    fn parses_non_opening_browser_authorized_service_session_login() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "session",
+            "login",
+            "--url",
+            "https://chordrift.example",
+            "--no-open",
+        ])
+        .expect("valid command");
+        assert!(super::streams_output_while_running(&cli));
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Session {
+                    command: ServiceSessionCommand::Login { no_open: true, .. }
+                }
+            }
         ));
     }
     use crate::db::DatabaseStatus;
