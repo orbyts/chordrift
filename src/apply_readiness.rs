@@ -273,7 +273,14 @@ pub async fn assess(
         && operations.iter().all(|operation| {
             operation.kind == "reorder_playlist"
                 && operation.safety.get("destructive") == Some(&Value::Bool(false))
-                && operation.safety.get("membership_unchanged") == Some(&Value::Bool(true))
+                && (operation.safety.get("membership_unchanged") == Some(&Value::Bool(true))
+                    || (operation.safety.get("reviewed_catalog_collapse")
+                        == Some(&Value::Bool(true))
+                        && operation
+                            .safety
+                            .get("allowed_live_only_spotify_ids")
+                            .and_then(Value::as_array)
+                            .is_some_and(|values| !values.is_empty())))
         });
     let unrelated_unresolved_may_be_deferred = bounded_append_only || bounded_reorder_only;
     let probe_passed = probe.is_some_and(|status| has_required_apply_scopes(&status.scopes));

@@ -424,6 +424,113 @@ pub async fn create_reviewed_addition_plan(
     .await
 }
 
+/// Persists one exact, reviewed catalog-edition collapse as a replacement
+/// order. Only the enumerated obsolete Spotify IDs may disappear; every
+/// desired canonical recording must already be present in the approved model.
+pub async fn create_reviewed_catalog_collapse_plan(
+    database: &Database,
+    account_label: &str,
+    playlist_name: &str,
+    required_spotify_ids: &[String],
+    removable_spotify_ids: &[String],
+) -> Result<PlanReport> {
+    if playlist_name.trim().is_empty()
+        || required_spotify_ids.is_empty()
+        || removable_spotify_ids.is_empty()
+        || required_spotify_ids.iter().collect::<BTreeSet<_>>().len() != required_spotify_ids.len()
+        || removable_spotify_ids.iter().collect::<BTreeSet<_>>().len()
+            != removable_spotify_ids.len()
+        || required_spotify_ids
+            .iter()
+            .any(|spotify_id| removable_spotify_ids.contains(spotify_id))
+    {
+        return Err(ChordriftError::Configuration(
+            "catalog collapse requires a named destination and unique, disjoint required and removable Spotify IDs"
+                .to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let proposal_id = approved_proposal(database, account_id, None).await?;
+    let snapshot_id = latest_snapshot(database, account_id).await?;
+    validate_proposal(database, proposal_id).await?;
+    let desired = desired_playlists(database, account_id, proposal_id).await?;
+    let current = current_managed_playlists(database, account_id, snapshot_id).await?;
+    let playlist = desired
+        .into_iter()
+        .find(|playlist| playlist.name.eq_ignore_ascii_case(playlist_name))
+        .ok_or_else(|| {
+            ChordriftError::Configuration(
+                "catalog-collapse destination is not in the approved model".to_owned(),
+            )
+        })?;
+    let observed = current.get(&playlist.concept_id).ok_or_else(|| {
+        ChordriftError::Configuration(
+            "catalog-collapse destination is not currently observed".to_owned(),
+        )
+    })?;
+    let desired_ids = playlist
+        .tracks
+        .iter()
+        .map(|track| track.spotify_id.as_str())
+        .collect::<BTreeSet<_>>();
+    if required_spotify_ids
+        .iter()
+        .any(|spotify_id| !desired_ids.contains(spotify_id.as_str()))
+    {
+        return Err(ChordriftError::Configuration(
+            "every required catalog replacement must already be in the approved destination"
+                .to_owned(),
+        ));
+    }
+    let historical_count: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT provider_track_id)::bigint
+         FROM historical_provider_track_identities
+         WHERE provider = 'spotify' AND provider_track_id = ANY($1)",
+    )
+    .bind(removable_spotify_ids)
+    .fetch_one(database.pool())
+    .await?;
+    if usize::try_from(historical_count).ok() != Some(removable_spotify_ids.len()) {
+        return Err(ChordriftError::Configuration(
+            "every removable catalog edition must retain historical identity evidence".to_owned(),
+        ));
+    }
+    let operation = PlanOperationInput {
+        phase: "publish".to_owned(),
+        operation_type: "reorder_playlist".to_owned(),
+        operation_key: format!("reviewed-catalog-collapse:{}", playlist.stable_key),
+        playlist_id: Some(playlist.playlist_id),
+        provider_playlist_id: Some(observed.provider_playlist_id),
+        playlist_name: playlist.name.clone(),
+        spotify_playlist_id: Some(observed.spotify_id.clone()),
+        spotify_track_id: None,
+        payload: json!({
+            "concept_id": playlist.concept_id,
+            "track_count": playlist.tracks.len(),
+            "expected_snapshot_id": observed.provider_snapshot_id,
+            "required_spotify_ids": required_spotify_ids,
+            "allowed_live_only_spotify_ids": removable_spotify_ids,
+            "reason": "account_owner_reviewed_catalog_edition_collapse"
+        }),
+        safety: json!({
+            "destructive": false,
+            "exact_order_replacement": true,
+            "membership_unchanged": false,
+            "reviewed_catalog_collapse": true,
+            "allowed_live_only_spotify_ids": removable_spotify_ids
+        }),
+    };
+    persist_operations(
+        database,
+        account_id,
+        proposal_id,
+        snapshot_id,
+        vec![operation],
+        "reviewed_catalog_collapse_v1",
+    )
+    .await
+}
+
 /// Builds a one-cover immutable update plan for an approved playlist artifact.
 pub async fn create_artwork_update(
     database: &Database,

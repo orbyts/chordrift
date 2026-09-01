@@ -323,6 +323,24 @@ fn playlist_membership_write<'operation>(
         if live_membership != desired_membership {
             let live_only = multiset_difference(&live_membership, &desired_membership);
             let desired_only = multiset_difference(&desired_membership, &live_membership);
+            let mut allowed_live_only = pending
+                .first()
+                .and_then(|operation| operation.detail.get("allowed_live_only_spotify_ids"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            allowed_live_only.sort();
+            let mut sorted_live_only = live_only.clone();
+            sorted_live_only.sort();
+            if desired_only.is_empty()
+                && !allowed_live_only.is_empty()
+                && sorted_live_only == allowed_live_only
+            {
+                return Ok(PlaylistMembershipWrite::ExactReorder);
+            }
             return Err(configuration(format!(
                 "a reorder requires identical current and desired membership: live={}, desired={}, live_only={:?}, desired_only={:?}",
                 live_items.len(),
@@ -1988,5 +2006,20 @@ mod tests {
         let right = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
         assert_eq!(multiset_difference(&left, &right), vec!["a"]);
         assert_eq!(multiset_difference(&right, &left), vec!["c"]);
+    }
+
+    #[test]
+    fn reviewed_catalog_collapse_allows_only_enumerated_live_extras() {
+        let mut operation = addition("unused");
+        operation.kind = "reorder_playlist".to_owned();
+        operation.spotify_track_id = None;
+        operation.detail = json!({"allowed_live_only_spotify_ids": ["obsolete"]});
+        let result = playlist_membership_write(
+            &["canonical".to_owned(), "obsolete".to_owned()],
+            &["canonical".to_owned()],
+            &[&operation],
+        )
+        .expect("enumerated catalog collapse is exact");
+        assert!(matches!(result, PlaylistMembershipWrite::ExactReorder));
     }
 }
