@@ -263,6 +263,12 @@ pub async fn assess(
     let excluded_count: i64 = inventory.try_get("excluded")?;
     let unresolved_count: i64 = inventory.try_get("unresolved")?;
     let conflicting_count: i64 = inventory.try_get("conflicting")?;
+    let bounded_append_only = !operations.is_empty()
+        && operations.iter().all(|operation| {
+            operation.kind == "add_track"
+                && operation.safety.get("append_only") == Some(&Value::Bool(true))
+                && operation.safety.get("destructive") == Some(&Value::Bool(false))
+        });
     let probe_passed = probe.is_some_and(|status| has_required_apply_scopes(&status.scopes));
     let checks = vec![
         check(
@@ -284,12 +290,14 @@ pub async fn assess(
         ),
         check(
             "complete_library_inventory",
-            unresolved_count == 0
-                && conflicting_count == 0
-                && inventory_count == placed_count + excluded_count,
+            conflicting_count == 0
+                && (unresolved_count == 0 || bounded_append_only)
+                && inventory_count == placed_count + excluded_count + unresolved_count,
             json!({"inventory": inventory_count, "placed": placed_count,
                 "excluded": excluded_count, "unresolved": unresolved_count,
-                "conflicting_dispositions": conflicting_count}),
+                "conflicting_dispositions": conflicting_count,
+                "unrelated_unresolved_deferred_by_bounded_append":
+                    bounded_append_only && unresolved_count > 0}),
         ),
         check(
             "artwork_approved",
