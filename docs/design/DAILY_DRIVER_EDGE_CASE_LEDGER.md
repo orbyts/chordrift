@@ -18,6 +18,16 @@ provider write.
 
 ## Incidents and permanent regressions
 
+The first hosted Spotify reconnect was rejected before consent with
+`redirect_uri: Not matching configuration`. The deployed Rust authority
+correctly requested
+`https://chordrift.suhail.ink/providers/spotify/callback`, while the Spotify
+application retained only the local CLI callback. Callback URLs remain server-
+derived and exact: clients cannot override them, product login stays separate,
+and a rejected request creates no credential or library mutation. The operator
+resolution is to allowlist the exact hosted callback alongside any retained
+loopback callback and retry **Reconnect Spotify**.
+
 | Checkpoint | Observed failure | Durable rule | Regression/status |
 | --- | --- | --- | --- |
 | Pre-alpha / A021-01 | Several UUID-heavy workflows made ordinary cleanup slow and confusing. | One capability-checked maintenance entry point hides internal IDs and asks once only for a provider mutation. | Unified fake-binary workflow suite. Complete. |

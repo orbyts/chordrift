@@ -28,6 +28,15 @@ Reconnect and disables observation. The next live gate is one user-completed
 Spotify reconnect; do not manufacture or import a token around that OAuth
 boundary.
 
+The first hosted Reconnect attempt was rejected by Spotify with
+`redirect_uri: Not matching configuration`. Chordrift correctly derives the
+server callback as
+`https://chordrift.suhail.ink/providers/spotify/callback`; the Spotify
+developer application must allowlist that exact string in addition to any
+retained local CLI loopback callback. No authorization code, provider
+credential, Neon intent change, or Spotify library mutation resulted from the
+rejected attempt.
+
 The V021-06 beta branch keeps Chordrift product login and Spotify provider
 authorization separate. Server-owned Spotify PKCE routes implement Connect,
 Reconnect, Add Account, and Disconnect. Stable Spotify identity selects the

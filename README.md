@@ -343,16 +343,30 @@ application-owned migrations through Storexa.
 
 Create an application in the
 [Spotify developer dashboard](https://developer.spotify.com/dashboard) with
-Web API access and register this exact redirect URI:
+Web API access. Register every callback surface that you actually use. The
+local CLI callback is:
 
 ```text
 http://127.0.0.1:8888/callback
 ```
 
+The hosted private-beta callback is separately allowlisted as:
+
+```text
+https://chordrift.suhail.ink/providers/spotify/callback
+```
+
+Do not append a trailing slash. Spotify compares the authorization request
+with its application allowlist exactly. The local and hosted entries may both
+remain registered; they select different Chordrift transports and do not
+merge product login with Spotify authorization.
+
 Expose its public Client ID as `CHORDRIFT_SPOTIFY_CLIENT_ID`. Chordrift does
-not require or store a Spotify client secret. An alternate loopback callback
-can be set with `CHORDRIFT_SPOTIFY_REDIRECT_URI`, but it must use an explicit
-loopback IP address and port and must exactly match the dashboard entry.
+not require or store a Spotify client secret. An alternate local loopback
+callback can be set with `CHORDRIFT_SPOTIFY_REDIRECT_URI`, but it must use an
+explicit loopback IP address and port and must exactly match the dashboard
+entry. The hosted server derives its callback from
+`CHORDRIFT_PUBLIC_ORIGIN`; it never accepts a browser-supplied callback URL.
 
 ```console
 $ chordrift spotify auth --account personal
