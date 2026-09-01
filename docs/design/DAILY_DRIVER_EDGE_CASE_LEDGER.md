@@ -44,6 +44,15 @@ an unverified local envelope **Authorized** and separately shows when provider
 access was last verified; the next explicit provider check is the freshness
 boundary.
 
+The same rehearsal then reached Spotify consent successfully but returned to a
+still-disabled Reconnect state. The encrypted vault correctly retained revoked
+history, but rotation calculated its next generation from only an active row.
+After Disconnect there was no active row, so reconnect attempted generation 1
+again and collided with immutable generation-1 history. Credential generations
+are now monotonic across both active and revoked rows, serialized on the stable
+provider account. Reconnect after disconnect creates the next generation,
+activates it, and retains every older encrypted audit row.
+
 | Checkpoint | Observed failure | Durable rule | Regression/status |
 | --- | --- | --- | --- |
 | Pre-alpha / A021-01 | Several UUID-heavy workflows made ordinary cleanup slow and confusing. | One capability-checked maintenance entry point hides internal IDs and asks once only for a provider mutation. | Unified fake-binary workflow suite. Complete. |
@@ -60,6 +69,7 @@ boundary.
 | Alpha.15 → alpha.16 | A newly liked track already present in a managed playlist was silently summarized only as “Remove from Likes,” without naming its destination or remembering whether the user wanted both memberships. | Liked Songs is a virtual intake surface. Name every verified destination, require and revision a per-track keep/clear decision, default to no cleanup when undecided, and treat a later direct Unlike as superseding an older keep directive. | Fake-binary human-review regression plus disposable-PostgreSQL keep, clear, undecided, and direct-Unlike proof. Complete. |
 | Alpha.17 → alpha.18 | Five Rasa Archive → Cinema Monsoon moves appeared twice, duplicate IDs stopped assignment, and the interrupted editable proposal made a retry label 1,439 existing tracks as direct intake. A later copy also replayed two excluded tracks into managed destinations. | One provider gesture yields one canonical move; an editable copy does not erase accepted coverage; active exclusions always outrank historical assignment revisions; interrupted work resumes cumulatively without expanding scope. | Exact paired-row fake-binary regression, classifier unit proof, disposable-PostgreSQL copy/exclusion proof, and live Neon-only recovery to zero pending operations. Complete. |
 | Beta.1 candidate | Disconnect returned HTTP 403, and an out-of-band Spotify Apps revocation remained displayed as connected after observation failed. | History-preserving disconnect is a session-authenticated same-origin wrapper action. A terminal refresh-token rejection revokes the stale local envelope during the failed read, returns `authentication_required`, and renders Reconnect without deleting history. Connection presentation distinguishes locally authorized from last provider verification. | Same-origin/non-simple wrapper-header regression and terminal-versus-transient OAuth rejection regression. Complete in branch; deployment acceptance pending. |
+| Beta.1 candidate | Spotify consent succeeded after Disconnect, but the callback left the connection disabled. | Vault generation is monotonic across active and revoked history and serialized by stable provider account; reconnect never reuses generation 1 or deletes audit history. | In-memory disconnect→reconnect regression and disposable-PostgreSQL provider lifecycle regression. Complete in branch; deployment acceptance pending. |
 
 ## Batched experience-refinement queue
 

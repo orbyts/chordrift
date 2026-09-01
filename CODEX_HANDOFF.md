@@ -54,6 +54,15 @@ repair is deployed and public liveness/readiness plus repaired-asset checks
 pass. One authenticated browser Disconnect or post-revocation provider check
 remains to accept the corrected live transition.
 
+That browser acceptance then uncovered a second reconnect defect: Spotify
+displayed consent and returned successfully, but the callback could not store
+the credential because the vault computed generation from only an active row.
+With generation 1 retained but revoked, it attempted generation 1 again and
+failed the immutable uniqueness constraint. The branch repair locks the stable
+provider account, advances from the greatest active-or-revoked generation, and
+activates the new encrypted envelope without deleting audit history. In-memory
+and PostgreSQL lifecycle regressions cover Disconnect → Reconnect explicitly.
+
 The V021-06 beta branch keeps Chordrift product login and Spotify provider
 authorization separate. Server-owned Spotify PKCE routes implement Connect,
 Reconnect, Add Account, and Disconnect. Stable Spotify identity selects the

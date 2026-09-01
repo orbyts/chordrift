@@ -3138,6 +3138,27 @@ async fn provider_connect_reconnect_disconnect_preserves_identity_and_history()
     .await?;
     assert!(retained_after_disconnect);
     assert!(!active_credential);
+    let after_disconnect = authority
+        .connect_spotify(
+            owner,
+            Some(first),
+            "stable-spotify-account",
+            Some("Reconnected after disconnect"),
+            &ProviderRefreshCredential::new("third-secret", ["user-library-read".to_owned()])
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(after_disconnect, first);
+    let (active_after_reconnect, newest_generation): (bool, i32) = sqlx::query_as(
+        "SELECT bool_or(revoked_at IS NULL), max(generation)
+           FROM provider_credential_vault WHERE provider_account_id = $1",
+    )
+    .bind(first.as_uuid())
+    .fetch_one(database.pool())
+    .await?;
+    assert!(active_after_reconnect);
+    assert_eq!(newest_generation, 3);
     database.close().await;
     Ok(())
 }

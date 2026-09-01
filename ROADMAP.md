@@ -480,6 +480,14 @@ and later Chordrift refactor begin.
   deployment, HTTPS health, and public repaired-asset checks pass. One
   authenticated browser transition remains before beta.1 acceptance.
 
+  The first post-Disconnect OAuth consent exposed a retained-history generation
+  defect: the vault attempted to reuse generation 1 because no envelope was
+  active, so the callback failed its immutable uniqueness constraint. Rotation
+  now serializes on the stable provider account and advances from the greatest
+  active-or-revoked generation. Disconnect → Reconnect retains history and
+  activates the next encrypted generation. In-memory and disposable-PostgreSQL
+  lifecycle regressions are required before redeployment.
+
   Record-only maintenance checkpoint: migration 0051 persistence, the real
   PostgreSQL provider-first interpreter, durable Start/Refresh/Resolve worker
   dispatch, and shared web/remote-CLI session access are implemented on the
