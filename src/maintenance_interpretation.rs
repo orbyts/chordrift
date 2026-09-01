@@ -18,7 +18,7 @@ use crate::{
         MaintenanceResolution, MaintenanceSessionView, MaintenanceSurfaceView,
         MaintenanceTrackView, ResourceId,
     },
-    intake,
+    intake::{self, IntakeItem, IntakeState},
     maintenance::MaintenanceProjection,
     service::AuthenticatedSubject,
     sync_plan::{self, MaintenanceAnnotation, PlanOrigin, PlannedOperation},
@@ -99,7 +99,7 @@ impl<'a> PostgresMaintenanceInterpreter<'a> {
         let tracks = track_views(self.database, &interpreted_operations).await?;
         let mut projection =
             projection_from_plan(snapshot_id, &interpreted_operations, &annotations, &tracks)?;
-        append_saved_intake(
+        append_intake(
             self.database,
             &account_label,
             snapshot_id,
@@ -110,7 +110,7 @@ impl<'a> PostgresMaintenanceInterpreter<'a> {
     }
 }
 
-async fn append_saved_intake(
+async fn append_intake(
     database: &Database,
     account_label: &str,
     snapshot_id: ResourceId,
@@ -119,23 +119,76 @@ async fn append_saved_intake(
     let audit = intake::audit(database, account_label)
         .await
         .map_err(map_domain_error)?;
-    let liked: Vec<_> = audit
+    let relevant = audit
         .items
         .iter()
-        .filter(|item| item.sources.iter().any(|source| source == "Liked Songs"))
-        .collect();
-    let spotify_ids = liked
+        .filter(|item| {
+            item.state == IntakeState::DirectManagedAddition
+                || item.sources.iter().any(|source| source == "Liked Songs")
+        })
+        .collect::<Vec<_>>();
+    let spotify_ids = relevant
         .iter()
         .map(|item| item.spotify_id.clone())
         .collect::<BTreeSet<_>>();
     let tracks = track_views_for_ids(database, &spotify_ids).await?;
-    let already_placed: BTreeSet<_> = changes
+    append_intake_items(snapshot_id, &relevant, &tracks, changes)
+}
+
+fn append_intake_items(
+    snapshot_id: ResourceId,
+    items: &[&IntakeItem],
+    tracks: &BTreeMap<String, MaintenanceTrackView>,
+    changes: &mut Vec<MaintenanceChangeView>,
+) -> Result<(), ClientError> {
+    let mut already_placed: BTreeSet<_> = changes
         .iter()
         .filter_map(|change| change.track.as_ref().map(|track| track.track_id))
         .collect();
     let liked_surface = surface("Liked Songs");
-    for item in liked {
+    for item in items {
         let track = tracks.get(&item.spotify_id).cloned().ok_or_else(invalid)?;
+        if item.state == IntakeState::DirectManagedAddition && already_placed.insert(track.track_id)
+        {
+            let destinations = item
+                .current_destinations
+                .iter()
+                .map(|name| surface(name))
+                .collect::<Vec<_>>();
+            let (current_surface, resolution, summary) = match destinations.as_slice() {
+                [destination] => (
+                    Some(destination.clone()),
+                    Some(MaintenanceResolution::Place {
+                        destination: destination.clone(),
+                    }),
+                    format!(
+                        "Accepted direct placement of {} in {}",
+                        track.title, destination.name
+                    ),
+                ),
+                _ => (
+                    None,
+                    None,
+                    format!(
+                        "Choose one canonical destination for {} from: {}",
+                        track.title,
+                        item.current_destinations.join(", ")
+                    ),
+                ),
+            };
+            changes.push(MaintenanceChangeView {
+                change_id: change_id(snapshot_id, &format!("direct:{}", item.spotify_id)),
+                kind: MaintenanceChangeKind::DirectIntake,
+                track: Some(track.clone()),
+                previous_surface: Some(surface("New intake")),
+                current_surface,
+                summary,
+                resolution,
+            });
+        }
+        if !item.sources.iter().any(|source| source == "Liked Songs") {
+            continue;
+        }
         let represented = !item.current_destinations.is_empty()
             || !item.proposal_destinations.is_empty()
             || already_placed.contains(&track.track_id);
@@ -358,6 +411,47 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn intake_item(
+        spotify_id: &str,
+        state: IntakeState,
+        sources: &[&str],
+        destinations: &[&str],
+    ) -> IntakeItem {
+        IntakeItem {
+            spotify_id: spotify_id.to_owned(),
+            title: format!("Song {spotify_id}"),
+            artists: "Fixture Artist".to_owned(),
+            sources: sources.iter().map(|value| (*value).to_owned()).collect(),
+            state,
+            current_destinations: destinations
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
+            saved_track_disposition: None,
+            proposal_destinations: Vec::new(),
+            proposal_state: None,
+            exclusion_history: false,
+            active_exclusion_reason: None,
+            listening_events: 0,
+            play_count: 0,
+        }
+    }
+
+    fn fixture_tracks(ids: &[&str]) -> BTreeMap<String, MaintenanceTrackView> {
+        ids.iter()
+            .map(|id| {
+                (
+                    (*id).to_owned(),
+                    MaintenanceTrackView {
+                        track_id: ResourceId::from_uuid(stable_uuid("fixture-track", id)),
+                        title: format!("Song {id}"),
+                        artists: vec!["Fixture Artist".to_owned()],
+                    },
+                )
+            })
+            .collect()
+    }
+
     fn operation(sequence: i32, kind: &str, spotify_id: Option<&str>) -> PlannedOperation {
         PlannedOperation {
             sequence,
@@ -424,5 +518,184 @@ mod tests {
         let snapshot = ResourceId::new();
         assert_eq!(change_id(snapshot, "move:a"), change_id(snapshot, "move:a"));
         assert_ne!(change_id(snapshot, "move:a"), change_id(snapshot, "move:b"));
+    }
+
+    #[test]
+    fn direct_managed_addition_is_visible_and_pre_resolved() {
+        let snapshot = ResourceId::new();
+        let item = intake_item(
+            "track-new",
+            IntakeState::DirectManagedAddition,
+            &["Cinema Monsoon"],
+            &["Cinema Monsoon"],
+        );
+        let mut changes = Vec::new();
+
+        append_intake_items(
+            snapshot,
+            &[&item],
+            &fixture_tracks(&["track-new"]),
+            &mut changes,
+        )
+        .expect("direct intake projects");
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].kind, MaintenanceChangeKind::DirectIntake);
+        assert_eq!(
+            changes[0]
+                .current_surface
+                .as_ref()
+                .map(|surface| surface.name.as_str()),
+            Some("Cinema Monsoon")
+        );
+        assert!(matches!(
+            changes[0].resolution,
+            Some(MaintenanceResolution::Place { ref destination })
+                if destination.name == "Cinema Monsoon"
+        ));
+    }
+
+    #[test]
+    fn ambiguous_direct_addition_requires_one_destination_decision() {
+        let item = intake_item(
+            "track-ambiguous",
+            IntakeState::DirectManagedAddition,
+            &["Cinema Monsoon", "Neon Affection"],
+            &["Cinema Monsoon", "Neon Affection"],
+        );
+        let mut changes = Vec::new();
+
+        append_intake_items(
+            ResourceId::new(),
+            &[&item],
+            &fixture_tracks(&["track-ambiguous"]),
+            &mut changes,
+        )
+        .expect("ambiguous intake projects");
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].kind, MaintenanceChangeKind::DirectIntake);
+        assert!(changes[0].current_surface.is_none());
+        assert!(changes[0].resolution.is_none());
+    }
+
+    #[test]
+    fn direct_addition_that_is_also_liked_keeps_both_intents() {
+        let item = intake_item(
+            "track-liked",
+            IntakeState::DirectManagedAddition,
+            &["Cinema Monsoon", "Liked Songs"],
+            &["Cinema Monsoon"],
+        );
+        let mut changes = Vec::new();
+
+        append_intake_items(
+            ResourceId::new(),
+            &[&item],
+            &fixture_tracks(&["track-liked"]),
+            &mut changes,
+        )
+        .expect("composite direct and liked intake projects");
+
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes[0].kind, MaintenanceChangeKind::DirectIntake);
+        assert_eq!(changes[1].kind, MaintenanceChangeKind::SavedState);
+        assert!(changes[1].resolution.is_none());
+    }
+
+    #[test]
+    fn composite_provider_changes_survive_one_projection_without_duplicates() {
+        let snapshot = ResourceId::new();
+        let operations = vec![
+            operation(0, "exclude_track", Some("track-removed")),
+            operation(1, "exclude_track", Some("track-moved")),
+            operation(2, "remove_track", Some("track-moved")),
+            operation(3, "reorder_playlist", None),
+        ];
+        let annotations = BTreeMap::from([
+            (
+                0,
+                MaintenanceAnnotation {
+                    title: Some("Removed".to_owned()),
+                    artists: Some("Artist".to_owned()),
+                    interpretation: "ordinary".to_owned(),
+                    old_destination: None,
+                    destination: None,
+                },
+            ),
+            (
+                1,
+                MaintenanceAnnotation {
+                    title: Some("Moved".to_owned()),
+                    artists: Some("Artist".to_owned()),
+                    interpretation: "direct_move".to_owned(),
+                    old_destination: Some("Rasa Archive".to_owned()),
+                    destination: Some("Cinema Monsoon".to_owned()),
+                },
+            ),
+            (
+                2,
+                MaintenanceAnnotation {
+                    title: Some("Moved".to_owned()),
+                    artists: Some("Artist".to_owned()),
+                    interpretation: "direct_move".to_owned(),
+                    old_destination: Some("Rasa Archive".to_owned()),
+                    destination: Some("Cinema Monsoon".to_owned()),
+                },
+            ),
+            (
+                3,
+                MaintenanceAnnotation {
+                    title: None,
+                    artists: None,
+                    interpretation: "ordinary".to_owned(),
+                    old_destination: None,
+                    destination: None,
+                },
+            ),
+        ]);
+        let tracks = fixture_tracks(&[
+            "track-removed",
+            "track-moved",
+            "track-direct",
+            "track-liked",
+        ]);
+        let mut projection =
+            projection_from_plan(snapshot, &operations, &annotations, &tracks).unwrap();
+        let direct = intake_item(
+            "track-direct",
+            IntakeState::DirectManagedAddition,
+            &["Cinema Monsoon"],
+            &["Cinema Monsoon"],
+        );
+        let liked = intake_item(
+            "track-liked",
+            IntakeState::GenuinelyNew,
+            &["Liked Songs"],
+            &[],
+        );
+        append_intake_items(
+            snapshot,
+            &[&direct, &liked],
+            &tracks,
+            &mut projection.observed_changes,
+        )
+        .unwrap();
+
+        assert_eq!(
+            projection.observed_changes.len(),
+            6,
+            "an unplaced Like needs both destination and saved-state decisions"
+        );
+        assert_eq!(
+            projection
+                .observed_changes
+                .iter()
+                .filter(|change| change.kind == MaintenanceChangeKind::Reclassification)
+                .count(),
+            1,
+            "two plan halves must remain one inferred move"
+        );
+        assert!(projection.provider_effects.is_empty());
     }
 }

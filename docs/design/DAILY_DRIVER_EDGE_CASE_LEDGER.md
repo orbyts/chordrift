@@ -70,6 +70,7 @@ activates it, and retains every older encrypted audit row.
 | Alpha.17 → alpha.18 | Five Rasa Archive → Cinema Monsoon moves appeared twice, duplicate IDs stopped assignment, and the interrupted editable proposal made a retry label 1,439 existing tracks as direct intake. A later copy also replayed two excluded tracks into managed destinations. | One provider gesture yields one canonical move; an editable copy does not erase accepted coverage; active exclusions always outrank historical assignment revisions; interrupted work resumes cumulatively without expanding scope. | Exact paired-row fake-binary regression, classifier unit proof, disposable-PostgreSQL copy/exclusion proof, and live Neon-only recovery to zero pending operations. Complete. |
 | Beta.1 candidate | Disconnect returned HTTP 403, and an out-of-band Spotify Apps revocation remained displayed as connected after observation failed. | History-preserving disconnect is a session-authenticated same-origin wrapper action. A terminal refresh-token rejection revokes the stale local envelope during the failed read, returns `authentication_required`, and renders Reconnect without deleting history. Connection presentation distinguishes locally authorized from last provider verification. | Same-origin/non-simple wrapper-header regression and terminal-versus-transient OAuth rejection regression. Complete in branch; deployment acceptance pending. |
 | Beta.1 candidate | Spotify consent succeeded after Disconnect, but the callback left the connection disabled. | Vault generation is monotonic across active and revoked history and serialized by stable provider account; reconnect never reuses generation 1 or deletes audit history. | In-memory disconnect→reconnect regression and disposable-PostgreSQL provider lifecycle regression. Complete in branch; deployment acceptance pending. |
+| Beta.1 candidate | Spotify observation captured a newly added eighth track in a managed playlist, while hosted maintenance reported `in sync` with zero changes and left the canonical model at seven. | Every direct addition to a managed provider surface must pass from the shared intake audit into the Rust maintenance DTO. One unambiguous destination is recorded automatically; simultaneous placement in multiple managed destinations remains one explicit decision. Liked state remains a separate choice. | Rust interpretation regressions cover unambiguous, ambiguous, and direct-add-plus-Like cases. A six-track fake provider account covers isolated gestures, composite snapshots, delayed observation, and interrupted retry on every CI run. Complete in branch; deployment acceptance pending. |
 
 ## Batched experience-refinement queue
 
@@ -111,6 +112,11 @@ For every new failure, record:
 5. the durable product rule, including authority and confirmation boundaries;
 6. the smallest fake-provider/fake-binary regression that reproduces it; and
 7. the checkpoint that ships the repair.
+
+The always-on test fixture is `tests/provider_behavior_acceptance.rs`. Keep its
+catalog deliberately small and synthetic. Add both one-gesture and composite
+snapshots when a new incident is found; production account data and provider
+credentials never belong in this harness.
 
 Never normalize a failure as “operator error” merely because the user edited
 Spotify between runs. Chaotic, cumulative provider use is the normal product

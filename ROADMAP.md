@@ -411,6 +411,14 @@ and later Chordrift refactor begin.
     rehearsal, and private deployment checks; document the exact deployed
     image digest and commit; then tag, publish, install, and verify
     `v0.2.1-beta.1` through the normal release path.
+  - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
+    provider account through the wrapper-neutral Rust maintenance contract on
+    every CI push. Keep single-gesture cases for add, remove, move, reorder,
+    and Like, plus composite, delayed-observation, and interrupted-retry
+    snapshots. The fixture is small, credential-free, and cannot contact or
+    mutate Spotify or production Neon. The real PostgreSQL interpreter also
+    has regressions for direct managed intake, ambiguous placement, combined
+    direct-add-plus-Like intent, and duplicate move halves.
 
   Current implementation checkpoint (2026-08-31): the Rust server entry point,
   Auth0/Google authorization-code + PKCE boundary, verified-email adoption
@@ -543,8 +551,9 @@ and later Chordrift refactor begin.
   4. [implementation complete; deployment gated] exercise provider reads first,
      then open the bounded saved-state write only behind one separately approved
      exact-review gate; broader publication remains a separate workflow;
-  5. add fake-provider, disposable-PostgreSQL, browser, restart/recovery,
-     tenant-isolation, rate-limit, and secret-redaction acceptance tests;
+  5. [fake provider matrix complete; remaining suites pending] add
+     disposable-PostgreSQL, browser, restart/recovery, tenant-isolation,
+     rate-limit, and secret-redaction acceptance tests;
   6. profile observation/planning database paths, remove superseded wrappers
      and dead code, tighten dependencies and container contents, and prove that
      no cleanup changes behavior; and
