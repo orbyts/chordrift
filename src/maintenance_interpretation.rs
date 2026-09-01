@@ -204,12 +204,21 @@ fn append_intake_items(
                 recommendation_reason: item.recommendation_reason.clone(),
             });
         }
-        let resolution = match item.saved_track_disposition.as_deref() {
+        let (resolution, summary) = match item.saved_track_disposition.as_deref() {
             Some("preserve") => continue,
-            Some("clear_after_verified_assignment") => Some(MaintenanceResolution::ConsumeIntake {
-                source: liked_surface.clone(),
-            }),
-            _ => None,
+            Some("clear_after_verified_assignment") => (
+                Some(MaintenanceResolution::ConsumeIntake {
+                    source: liked_surface.clone(),
+                }),
+                format!(
+                    "Remove {} from Liked Songs now that it is placed",
+                    track.title
+                ),
+            ),
+            _ => (
+                None,
+                format!("Choose whether {} remains in Liked Songs", track.title),
+            ),
         };
         changes.push(MaintenanceChangeView {
             change_id: change_id(snapshot_id, &format!("liked-state:{}", item.spotify_id)),
@@ -217,7 +226,7 @@ fn append_intake_items(
             track: Some(track.clone()),
             previous_surface: None,
             current_surface: Some(liked_surface.clone()),
-            summary: format!("Choose whether {} remains in Liked Songs", track.title),
+            summary,
             resolution,
             recommended_resolution: None,
             recommendation_reason: None,
@@ -720,6 +729,10 @@ mod tests {
             changes[0].resolution,
             Some(MaintenanceResolution::ConsumeIntake { .. })
         ));
+        assert_eq!(
+            changes[0].summary,
+            "Remove Song track-clear from Liked Songs now that it is placed"
+        );
     }
 
     #[test]
