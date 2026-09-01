@@ -330,7 +330,7 @@ and later Chordrift refactor begin.
     encrypted provider-credential vault, durable operation queue, and a real
     Spotify/PostgreSQL maintenance adapter. A deployed route must never invoke
     a CLI command, shell, arbitrary SQL, or a client-supplied provider URL.
-  - [ ] **Bounded storage lifecycle.** Keep durable listening evidence,
+  - [x] **Bounded storage lifecycle.** Keep durable listening evidence,
     accepted user intent, current provider anchors, and exact write receipts.
     Define and rehearse a lossless retention/compaction policy for superseded
     playlist generations, verification history, and routine sync audit rows;
@@ -348,12 +348,12 @@ and later Chordrift refactor begin.
     music ownership IDs, re-import Spotify, or mutate provider state. Compare
     account, inventory, exclusion, directive, history, and playlist invariants
     before and after the identity cutover.
-  - [ ] **Thin browser workbench.** Serve a small HTML/CSS/JavaScript client
+  - [x] **Thin browser workbench.** Serve a small HTML/CSS/JavaScript client
     that logs in, negotiates compatibility, submits only typed command/query
     DTOs, follows durable progress/events, renders structured results, and
     requires exact review authorization for provider effects. It must not be a
     browser terminal or accept arbitrary commands.
-  - [ ] **Provider connection lifecycle.** Keep Chordrift login independent
+  - [x] **Provider connection lifecycle.** Keep Chordrift login independent
     from provider authorization. Add explicit Connect, Reconnect, Disconnect,
     and connection-status flows. Reconnecting the same stable Spotify identity
     must recover the same account-owned Neon history, intent, exclusions, and
@@ -361,7 +361,7 @@ and later Chordrift refactor begin.
     separate isolated provider connection without overwriting either account.
     Multiple provider connections are first-class even though Spotify is the
     only launch adapter. Cross-account/provider transfer remains later work.
-  - [ ] **Daily-driver web maintenance.** Make observation, cumulative
+  - [x] **Daily-driver web maintenance.** Make observation, cumulative
     provider-first reconciliation, ambiguity decisions, exact provider-effect
     review, progress, cancellation, retry, and verification usable without a
     terminal. The web client may omit expert forensic queries, but it must make
@@ -404,12 +404,12 @@ and later Chordrift refactor begin.
     schema and post-cleanup invariants were rehearsed before the intended
     project was promoted. The retained legacy project was not migrated or
     promoted wholesale, and Spotify remained unchanged throughout cutover.
-  - [ ] **Observability and operations.** Add secret-redacted structured logs,
+  - [x] **Observability and operations.** Add secret-redacted structured logs,
     request/operation correlation, health/readiness endpoints, worker lease and
     retry visibility, container restart policy, documented rollback, and a
     tested alert/inspection path. Logs must never contain product sessions,
     OIDC credentials, provider credentials, database URLs, or vault plaintext.
-  - [ ] **Read-only acceptance gate.** After login, prove the existing library
+  - [x] **Read-only acceptance gate.** After login, prove the existing library
     is visible through the authenticated account, cross-tenant requests fail,
     logout/revocation works, backup restore works, and no Spotify mutation was
     made. Enable provider writes only through a later explicit user-approved
@@ -568,13 +568,31 @@ and later Chordrift refactor begin.
   hosted maintenance capability is branch-only rather than deployed. See
   `docs/design/DURABLE_MAINTENANCE_SESSIONS_V021_06.md`.
 
+  Private-beta acceptance checkpoint (2026-09-01): Google/Chordrift login,
+  independent Spotify Connect/Reconnect/Disconnect, retained-account adoption,
+  shared Library/Excluded/Activity inspection, durable browser maintenance,
+  exact provider-effect review, and the API/worker operational surface have
+  passed authenticated daily-driver use on Vortex. The release candidate also
+  exposed and repaired a provider-observation-lag sequence: a removal-only pull
+  may activate an exclusion, but any later single placement—back in the same
+  playlist or in a new one—supersedes it without a timing window or provider
+  write. The exclusion's prior surface remains provenance so the event is
+  recorded as restoration/reclassification rather than new intake. Multiple
+  later destinations still require an exact decision. The canonical sequence
+  and track lifecycle diagrams, CLI wrapper parity, planner annotations, and
+  fake-provider single/composite matrix carry the rule. Live proof retained
+  **Indiraiyo Ival Sundariyo** in Dakshina Pulse with one accepted observation
+  and zero exact provider changes; the final candidate additionally resolves
+  Cinema Monsoon as its retained prior source. Only the immutable release proof
+  remains before `v0.2.1-beta.1` is accepted.
+
   Ordered remaining work for `v0.2.1-beta.1`:
 
   1. [complete] read-only encrypted-vault observation, durable API/worker
      runtime, maintenance-session persistence, PostgreSQL interpretation, and
      Start/Refresh/Resolve routing, canonical record-only projection, and saved-
      intake interpretation are composed and proven on disposable PostgreSQL;
-  2. [implementation complete; deployment/browser proof gated] implement
+  2. [complete] implement
      Connect/Reconnect/Disconnect and multiple isolated Spotify connections
      without changing Chordrift product identity; the Rust authority now uses
      hosted PKCE, stable-identity matching, encrypted in-place rotation, and
@@ -583,23 +601,24 @@ and later Chordrift refactor begin.
      retention, credential generation rotation, cross-tenant rejection, and
      history-preserving disconnect, after which its container and source copy
      were deleted;
-  3. [comparison complete; maintenance/browser acceptance remains] finish the
+  3. [complete] finish the
      web maintenance journey and the shared provider/model comparison query
      while preserving remote CLI parity; contract v1.4 now returns set-based
      directional membership, unresolved-identity, and order explanations to
      both the web dashboard and `service library compare`;
-  4. [repair complete; CI/deployment/browser recovery proof gated] exercise
+  4. [complete] exercise
      provider reads first, publish and verify an enumerated destination addition
      before offering a separately reviewed saved-state removal, and never mix
      placement with intake cleanup in one executable review; broader
      publication remains a separate workflow;
-  5. [stateful fake database/provider matrix complete; remaining suites pending] add
+  5. [complete] add
      disposable-PostgreSQL, browser, restart/recovery, tenant-isolation,
      rate-limit, and secret-redaction acceptance tests;
-  6. profile observation/planning database paths, remove superseded wrappers
+  6. [complete for beta.1] profile observation/planning database paths, remove superseded wrappers
      and dead code, tighten dependencies and container contents, and prove that
      no cleanup changes behavior; and
-  7. publish, install, and deploy the exact `v0.2.1-beta.1` artifact through CI.
+  7. [in progress] publish, install, and deploy the exact
+     `v0.2.1-beta.1` artifact through CI.
 
 ### v0.2.1 beta hardening and final release
 
