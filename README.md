@@ -18,20 +18,16 @@ make the active library enjoyable again without silently losing history.
 
 ## Release status
 
-**v0.2.1-alpha.18 is the current daily-driver prerelease.** It preserves the
-proven maintenance CLI through one application facade and adds the provider-
-neutral product domain, onboarding and audit boundaries, deterministic recipe/
-Spin previews, explicit plan origins, and additive schema migrations 0046 and
-0047. The personal
-cutover pairs the v0.2.0 binary with the verified 47/47 database candidate;
-mixing a v0.1.4 binary with that database is not a supported operating mode.
-The `v0.1.4` tag remains the exact historical reference and rollback source.
+**v0.2.1-beta.1 is the current private-beta daily driver.** The authenticated
+web workbench and installed remote CLI are thin clients of the same hosted Rust
+contract and durable worker. Google proves Chordrift identity; Spotify remains
+a separate revocable provider connection; Neon and provider credentials stay
+server-side. The local developer/forensic CLI remains available explicitly.
 
-The v0.2.1 alpha line provides official installable checkpoints on the path to
-the hosted-authority v0.2.1 final daily driver. The installed CLI and verified
-47/47 account database may continue handling ordinary maintenance while later
-architecture work is paused; no hosted service or Classification Authority is
-required for the current workflow. Alpha.18 makes interrupted direct moves
+The v0.2.1 beta line hardens this dual-client daily driver before the final
+v0.2.1 release. Beta.1 includes the complete hosted authority, web maintenance
+journey, browser-authorized remote CLI, encrypted provider vault, durable jobs,
+and shared investigation queries. Alpha.18 made interrupted direct moves
 idempotent: paired plan evidence is recorded once, an editable proposal cannot
 turn the full accepted library into intake, and active exclusions win over
 historical assignment revisions. Alpha.17 adds the authenticated remote CLI,
@@ -60,18 +56,20 @@ does not select an identity vendor or expose a hosted endpoint. Migration 0048
 belongs to the hosted identity deployment; the
 local maintenance client remains explicitly compatible with the verified
 47-migration music database. Hosted identity and credential work use additive
-migrations 0048 through 0050 only when deployed. The rest of the v0.2.1 hosted-authority sequence
-remains intact. The separate
+migrations 0048 through 0050 on the current deployment. V021-06 stages
+migration 0051 for restart-safe maintenance sessions; it is disposable-
+PostgreSQL-proven but not yet part of the live migration-50 baseline. The rest
+of the v0.2.1 hosted-authority sequence remains intact. The separate
 Classification Authority project and a later Chordrift refactor follow v0.2.1
 final.
 
 Install the locked release with:
 
 ```console
-$ cargo install chordrift --version 0.2.1-alpha.18 --locked --force
+$ cargo install chordrift --version 0.2.1-beta.1 --locked --force
 ```
 
-Read the [v0.2.1-alpha.18 release notes](docs/releases/V0.2.1-alpha.18.md), the
+Read the [v0.2.1-beta.1 release notes](docs/releases/V0.2.1-beta.1.md), the
 [provider-first convergence contract](docs/design/PROVIDER_FIRST_CONVERGENCE.md),
 the [provider credential vault contract](docs/design/PROVIDER_CREDENTIAL_VAULT_V021_03.md),
 the [web workflow capability matrix](docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md),
@@ -154,11 +152,11 @@ makes background operations durable, preserves remote/local CLI parity, and
 finishes with an observable recoverable service release. See the
 [roadmap](ROADMAP.md).
 
-V021-05 adds an authenticated remote CLI over the same DTO contract. It stores
-only an opaque Chordrift session in the OS credential store, negotiates service
-compatibility before work, requires HTTPS outside loopback testing, and keeps
-an explicit in-process development transport. Hosting and product-login
-selection remain V021-06; there is no public service URL yet.
+V021-05 adds an authenticated remote CLI over the same DTO contract. V021-06
+adds browser-mediated PKCE sign-in at `chordrift service session login`, stores
+only a separate revocable Chordrift session in the OS credential store,
+negotiates service compatibility before work, requires HTTPS outside loopback
+testing, and keeps an explicit in-process development transport.
 
 Learned shared classification is a separate product and future Chordrift
 dependency, not a Chordrift database module or v0.2.1 slice. That project owns
@@ -341,16 +339,30 @@ application-owned migrations through Storexa.
 
 Create an application in the
 [Spotify developer dashboard](https://developer.spotify.com/dashboard) with
-Web API access and register this exact redirect URI:
+Web API access. Register every callback surface that you actually use. The
+local CLI callback is:
 
 ```text
 http://127.0.0.1:8888/callback
 ```
 
+The hosted private-beta callback is separately allowlisted as:
+
+```text
+https://chordrift.suhail.ink/providers/spotify/callback
+```
+
+Do not append a trailing slash. Spotify compares the authorization request
+with its application allowlist exactly. The local and hosted entries may both
+remain registered; they select different Chordrift transports and do not
+merge product login with Spotify authorization.
+
 Expose its public Client ID as `CHORDRIFT_SPOTIFY_CLIENT_ID`. Chordrift does
-not require or store a Spotify client secret. An alternate loopback callback
-can be set with `CHORDRIFT_SPOTIFY_REDIRECT_URI`, but it must use an explicit
-loopback IP address and port and must exactly match the dashboard entry.
+not require or store a Spotify client secret. An alternate local loopback
+callback can be set with `CHORDRIFT_SPOTIFY_REDIRECT_URI`, but it must use an
+explicit loopback IP address and port and must exactly match the dashboard
+entry. The hosted server derives its callback from
+`CHORDRIFT_PUBLIC_ORIGIN`; it never accepts a browser-supplied callback URL.
 
 ```console
 $ chordrift spotify auth --account personal

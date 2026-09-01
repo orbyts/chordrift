@@ -46,6 +46,10 @@ pub struct IntakeItem {
     pub proposal_destinations: Vec<String>,
     /// Latest proposal state when proposal destinations exist.
     pub proposal_state: Option<String>,
+    /// One retained accepted destination that still exists in the latest model.
+    pub recommended_destination: Option<String>,
+    /// Durable evidence supporting the retained destination recommendation.
+    pub recommendation_reason: Option<String>,
     /// Whether any exclusion exists in durable history.
     pub exclusion_history: bool,
     /// Active exclusion reason, when currently excluded.
@@ -179,6 +183,14 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
                 candidates.sources,
                 COALESCE(current_destinations.names, ARRAY[]::text[]) AS current_destinations,
                 COALESCE(proposal_destinations.names, ARRAY[]::text[]) AS proposal_destinations,
+                COALESCE(active_recommendation.name, historical_recommendation.name)
+                    AS recommended_destination,
+                CASE
+                    WHEN active_recommendation.name IS NOT NULL
+                        THEN 'Your latest accepted placement'
+                    WHEN historical_recommendation.name IS NOT NULL
+                        THEN 'Your latest unambiguous Chordrift placement'
+                END AS recommendation_reason,
                 EXISTS (
                     SELECT 1 FROM excluded_tracks historical_exclusion
                     WHERE historical_exclusion.provider_account_id = $1
@@ -217,6 +229,55 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
              WHERE playlist.generation_id = $3
                AND membership.track_id = track.id
          ) proposal_destinations ON $3 IS NOT NULL
+         LEFT JOIN LATERAL (
+             SELECT COALESCE(name_revision.name, destination.name) AS name
+             FROM track_playlist_assignment_revisions assignment
+             JOIN playlists destination
+               ON destination.generation_id = $3
+              AND destination.concept_id = assignment.destination_concept_id
+             LEFT JOIN playlist_name_revisions name_revision
+               ON name_revision.playlist_id = destination.id AND name_revision.selected
+             WHERE assignment.provider_account_id = $1
+               AND assignment.track_id = track.id
+               AND assignment.decision = 'assign'
+               AND assignment.superseded_at IS NULL
+             ORDER BY assignment.created_at DESC, assignment.id DESC
+             LIMIT 1
+         ) active_recommendation ON $3 IS NOT NULL
+         LEFT JOIN LATERAL (
+             WITH latest_prior_generation AS (
+                 SELECT generation.id
+                 FROM playlist_generations generation
+                 JOIN playlists historical_playlist
+                   ON historical_playlist.generation_id = generation.id
+                 JOIN playlist_tracks historical_membership
+                   ON historical_membership.playlist_id = historical_playlist.id
+                  AND historical_membership.track_id = track.id
+                 WHERE generation.provider_account_id = $1
+                   AND generation.status IN ('approved', 'published')
+                   AND generation.id IS DISTINCT FROM $3
+                 ORDER BY generation.created_at DESC, generation.id DESC
+                 LIMIT 1
+             ), candidates AS (
+                 SELECT DISTINCT destination.id,
+                        COALESCE(name_revision.name, destination.name) AS name
+                 FROM latest_prior_generation prior
+                 JOIN playlists historical_playlist
+                   ON historical_playlist.generation_id = prior.id
+                 JOIN playlist_tracks historical_membership
+                   ON historical_membership.playlist_id = historical_playlist.id
+                  AND historical_membership.track_id = track.id
+                 JOIN playlists destination
+                   ON destination.generation_id = $3
+                  AND destination.concept_id = historical_playlist.concept_id
+                 LEFT JOIN playlist_name_revisions name_revision
+                   ON name_revision.playlist_id = destination.id AND name_revision.selected
+             )
+             SELECT min(name) AS name
+             FROM candidates
+             HAVING count(*) = 1
+         ) historical_recommendation
+           ON $3 IS NOT NULL AND active_recommendation.name IS NULL
          LEFT JOIN LATERAL (
              SELECT exclusion.exclusion_reason
              FROM excluded_tracks exclusion
@@ -284,6 +345,8 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
             saved_track_disposition: row.try_get("saved_track_disposition")?,
             proposal_destinations,
             proposal_state: item_proposal_state,
+            recommended_destination: row.try_get("recommended_destination")?,
+            recommendation_reason: row.try_get("recommendation_reason")?,
             exclusion_history: row.try_get("exclusion_history")?,
             active_exclusion_reason,
             listening_events: nonnegative(event_count, "event count")?,

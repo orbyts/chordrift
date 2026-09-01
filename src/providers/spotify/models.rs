@@ -137,6 +137,11 @@ pub(crate) struct SpotifyTrack {
     pub external_urls: ExternalUrls,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct SeveralTracks {
+    pub tracks: Vec<Option<SpotifyTrack>>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct PlaylistItem {
     pub added_at: Option<DateTime<Utc>>,

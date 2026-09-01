@@ -5,8 +5,11 @@ use chordrift::{
     apply, config,
     contract::{
         CONTRACT_VERSION, CancellationOutcome, CancellationRequest, ClientError, Command,
-        CommandRequest, ErrorCode, IdempotencyKey, OperationState, Progress, ProgressUnit, Query,
-        QueryRequest, RequestId, ResourceId,
+        CommandRequest, ErrorCode, IdempotencyKey, MaintenanceChangeId, MaintenanceChangeKind,
+        MaintenanceChangeView, MaintenanceProviderEffectKind, MaintenanceProviderEffectView,
+        MaintenanceResolution, MaintenanceReviewId, MaintenanceSessionId, MaintenanceSessionState,
+        MaintenanceSurfaceView, MaintenanceTrackView, OperationState, Progress, ProgressUnit,
+        Query, QueryRequest, RequestId, ResourceId,
     },
     db, db_reports,
     domain::{
@@ -26,6 +29,12 @@ use chordrift::{
         VerifiedExternalIdentity,
     },
     intake::{self, IntakeState},
+    library_comparison,
+    maintenance::{MaintenanceProjection, MaintenanceWorkflow},
+    maintenance_projection::CanonicalMaintenanceProjector,
+    maintenance_store::{
+        DurableMaintenanceAuthority, MaintenanceTransition, PostgresMaintenanceSessionStore,
+    },
     onboarding::{
         ContentFingerprint, OnboardingEvidence, OnboardingInputs, OnboardingInventory,
         OnboardingProviderReader, OnboardingReadSelection, OnboardingSessionBoundary,
@@ -37,6 +46,7 @@ use chordrift::{
     },
     product_rehearsal::{CollectionReviewBoundary, RecipeReviewBoundary},
     proposals,
+    provider_connections::PostgresProviderConnectionAuthority,
     provider_vault::{
         PostgresProviderCredentialStore, ProviderCredentialIdentity, ProviderCredentialVault,
         ProviderRefreshCredential, ProviderVaultKeyring,
@@ -45,7 +55,7 @@ use chordrift::{
         CandidateEligibility, RecipeCandidate, RecipeExecutionRequest, RecipeExecutor,
         SelectionBudgets,
     },
-    service::ServiceClock,
+    service::{AuthenticatedSubject, ServiceClock},
     spin_preview::{SpinPreviewBoundary, SpinPreviewInput},
     spin_publication::{SpinPublicationBoundary, SpinPublicationRequest},
     sync_plan::{self, PlanOrigin},
@@ -556,6 +566,17 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     assert_eq!(audit.items[1].state, IntakeState::GenuinelyNew);
     assert_eq!(audit.items[2].state, IntakeState::KnownFromHistory);
     assert_eq!(audit.items[3].state, IntakeState::PreviouslyExcluded);
+    let comparison = library_comparison::query(database.pool(), ResourceId::from_uuid(account_id))
+        .await
+        .expect("provider/model comparison query");
+    assert!(
+        !comparison.playlists.is_empty(),
+        "seeded provider/model surfaces must be comparable"
+    );
+    assert_eq!(
+        comparison.aligned_playlists + comparison.differing_playlists,
+        u64::try_from(comparison.playlists.len()).expect("fixture playlist count fits u64")
+    );
 
     let already_covered_spotify_id = format!("intake-track-0-{suffix}");
     intake::set_saved_track_disposition(
@@ -891,14 +912,125 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     .bind(reduced_saved_revision_id)
     .execute(database.pool())
     .await?;
-    track_ops::exclude(
-        &database,
-        &account_label,
-        &removed_spotify_id,
-        "Observed provider removal",
-        &removed_spotify_id,
+    let artwork_generation_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM playlist_generations
+         WHERE provider_account_id = $1 AND status = 'approved'
+         ORDER BY approved_at DESC, created_at DESC, id DESC LIMIT 1",
     )
+    .bind(account_id)
+    .fetch_one(database.pool())
     .await?;
+    let artwork_playlist_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM playlists WHERE generation_id = $1 AND concept_id = $2")
+            .bind(artwork_generation_id)
+            .bind(concept_id)
+            .fetch_one(database.pool())
+            .await?;
+    let artwork_batch_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlist_artwork_batches
+         (provider_account_id, proposal_generation_id, input_hash, state,
+          visual_system, generator_provider, generator_model, generator_version,
+          manifest_path, contact_sheet_path, artifact_count, approved_at)
+         VALUES ($1, $2, $3, 'approved', 'fixture', 'fixture', 'fixture', '1',
+                 'fixture/manifest.json', 'fixture/contact.png', 1, now()) RETURNING id",
+    )
+    .bind(account_id)
+    .bind(artwork_generation_id)
+    .bind("6".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    sqlx::query(
+        "INSERT INTO playlist_artwork_artifacts
+         (batch_id, playlist_id, stable_key, playlist_name, artifact_path,
+          media_type, pixel_width, pixel_height, byte_size, content_sha256,
+          prompt, semantic_tags, target_kind)
+         VALUES ($1, $2, 'fixture-canonical', 'Fixture Canonical',
+                 'fixture/cover.png', 'image/png', 1000, 1000, 100,
+                 $3, 'fixture prompt', '[]', 'canonical')",
+    )
+    .bind(artwork_batch_id)
+    .bind(artwork_playlist_id)
+    .bind("7".repeat(64))
+    .execute(database.pool())
+    .await?;
+
+    let removal_view = MaintenanceWorkflow::new(
+        MaintenanceSessionId::new(),
+        MaintenanceProjection {
+            provider_snapshot_id: ResourceId::from_uuid(removed_snapshot_id),
+            observed_changes: vec![MaintenanceChangeView {
+                change_id: MaintenanceChangeId::new(),
+                kind: MaintenanceChangeKind::Removal,
+                track: Some(MaintenanceTrackView {
+                    track_id: ResourceId::from_uuid(tracks[2].0),
+                    title: "Known From History".to_owned(),
+                    artists: Vec::new(),
+                }),
+                previous_surface: Some(MaintenanceSurfaceView {
+                    surface_id: ResourceId::new(),
+                    name: "Fixture Canonical".to_owned(),
+                }),
+                current_surface: None,
+                summary: "Accepted provider removal".to_owned(),
+                resolution: Some(MaintenanceResolution::Exclude),
+                recommended_resolution: None,
+                recommendation_reason: None,
+            }],
+            provider_effects: Vec::new(),
+            review_id: None,
+        },
+    )
+    .expect("fixture removal is valid")
+    .view();
+    let subject = AuthenticatedSubject {
+        subject_id: ResourceId::new(),
+        account_id: ResourceId::from_uuid(chordrift_account_id),
+    };
+    CanonicalMaintenanceProjector::new(&database)
+        .project(subject, ResourceId::from_uuid(account_id), &removal_view)
+        .await
+        .expect("record-only removal projects into canonical intent");
+    let projected_generation_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM playlist_generations
+         WHERE provider_account_id = $1",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    CanonicalMaintenanceProjector::new(&database)
+        .project(subject, ResourceId::from_uuid(account_id), &removal_view)
+        .await
+        .expect("retrying projected removal is a no-op");
+    let retried_generation_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM playlist_generations
+         WHERE provider_account_id = $1",
+    )
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(projected_generation_count, retried_generation_count);
+    let inherited_artwork: (i64, i64) = sqlx::query_as(
+        "WITH latest AS (
+           SELECT id FROM playlist_generations
+           WHERE provider_account_id = $1 AND status = 'approved'
+           ORDER BY created_at DESC, id DESC LIMIT 1
+         )
+         SELECT count(DISTINCT batch.id)::bigint,
+                count(artifact.id)::bigint
+         FROM latest
+         JOIN playlist_generations generation ON generation.id = latest.id
+         JOIN playlist_artwork_batches batch
+           ON batch.proposal_generation_id = generation.id AND batch.state = 'approved'
+         JOIN playlist_artwork_artifacts artifact ON artifact.batch_id = batch.id
+         WHERE generation.provider_account_id = $1
+           AND generation.status = 'approved'
+           AND artifact.content_sha256 = $2",
+    )
+    .bind(account_id)
+    .bind("7".repeat(64))
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(inherited_artwork, (1, 1));
     let accepted_removal = apply::accept_current_provider_state(&database, &account_label).await?;
     assert_eq!(accepted_removal.snapshot_id, removed_snapshot_id);
     let old_keep_still_active: bool = sqlx::query_scalar(
@@ -969,6 +1101,10 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
         .execute(database.pool())
         .await?;
     sqlx::query("DELETE FROM track_playlist_assignment_revisions WHERE provider_account_id = $1")
+        .bind(account_id)
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM playlist_artwork_batches WHERE provider_account_id = $1")
         .bind(account_id)
         .execute(database.pool())
         .await?;
@@ -2883,6 +3019,152 @@ async fn encrypts_rotates_and_revokes_provider_credentials_with_tenant_isolation
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for a disposable PostgreSQL database"]
+async fn provider_connect_reconnect_disconnect_preserves_identity_and_history()
+-> chordrift::Result<()> {
+    let config = DatabaseConfig::from_env_var("CHORDRIFT_TEST_DATABASE_URL")?
+        .with_name("chordrift-provider-connections-test")?
+        .with_provider(PostgresProvider::Neon)?
+        .with_min_connections(0)
+        .with_max_connections(2);
+    let database = db::connect(config).await?;
+    db::migrate(&database).await?;
+    let account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name) VALUES ('Connection Fixture') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let other_account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name) VALUES ('Connection Other') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let identities = PostgresProductIdentityStore::new(database.pool().clone());
+    let owner = identities
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "connection-owner").unwrap(),
+            ResourceId::from_uuid(account_id),
+        )
+        .await
+        .unwrap();
+    let other_owner = identities
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "connection-other").unwrap(),
+            ResourceId::from_uuid(other_account_id),
+        )
+        .await
+        .unwrap();
+    let keyring = ProviderVaultKeyring::new(
+        "connection-test-key",
+        [("connection-test-key".to_owned(), vec![73_u8; 32])],
+    )
+    .unwrap();
+    let authority = PostgresProviderConnectionAuthority::new(
+        database.pool().clone(),
+        ProviderCredentialVault::new(
+            PostgresProviderCredentialStore::new(database.pool().clone()),
+            keyring,
+        ),
+    );
+    let first = authority
+        .connect_spotify(
+            owner,
+            None,
+            "stable-spotify-account",
+            Some("First name"),
+            &ProviderRefreshCredential::new("first-secret", ["user-library-read".to_owned()])
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE provider_accounts SET metadata = '{\"retained_history\":true}'::jsonb WHERE id = $1",
+    )
+    .bind(first.as_uuid())
+    .execute(database.pool())
+    .await?;
+    let reconnected = authority
+        .connect_spotify(
+            owner,
+            Some(first),
+            "stable-spotify-account",
+            Some("Renamed account"),
+            &ProviderRefreshCredential::new("second-secret", ["user-library-read".to_owned()])
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reconnected, first);
+    let (display_name, retained, generations): (Option<String>, bool, i64) = sqlx::query_as(
+        "SELECT account.display_name,
+                (account.metadata ->> 'retained_history')::boolean,
+                count(credential.id)
+           FROM provider_accounts account
+           JOIN provider_credential_vault credential ON credential.provider_account_id = account.id
+          WHERE account.id = $1
+          GROUP BY account.id",
+    )
+    .bind(first.as_uuid())
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(display_name.as_deref(), Some("Renamed account"));
+    assert!(retained);
+    assert_eq!(generations, 2);
+    assert_eq!(
+        authority
+            .connect_spotify(
+                other_owner,
+                None,
+                "stable-spotify-account",
+                None,
+                &ProviderRefreshCredential::new("cross-tenant", Vec::<String>::new()).unwrap(),
+            )
+            .await
+            .expect_err("stable identity cannot cross tenants")
+            .code,
+        ErrorCode::StateConflict
+    );
+    authority.disconnect_spotify(owner, first).await.unwrap();
+    let retained_after_disconnect: bool = sqlx::query_scalar(
+        "SELECT (metadata ->> 'retained_history')::boolean FROM provider_accounts WHERE id = $1",
+    )
+    .bind(first.as_uuid())
+    .fetch_one(database.pool())
+    .await?;
+    let active_credential: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM provider_credential_vault WHERE provider_account_id = $1 AND revoked_at IS NULL)",
+    )
+    .bind(first.as_uuid())
+    .fetch_one(database.pool())
+    .await?;
+    assert!(retained_after_disconnect);
+    assert!(!active_credential);
+    let after_disconnect = authority
+        .connect_spotify(
+            owner,
+            Some(first),
+            "stable-spotify-account",
+            Some("Reconnected after disconnect"),
+            &ProviderRefreshCredential::new("third-secret", ["user-library-read".to_owned()])
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(after_disconnect, first);
+    let (active_after_reconnect, newest_generation): (bool, i32) = sqlx::query_as(
+        "SELECT bool_or(revoked_at IS NULL), max(generation)
+           FROM provider_credential_vault WHERE provider_account_id = $1",
+    )
+    .bind(first.as_uuid())
+    .fetch_one(database.pool())
+    .await?;
+    assert!(active_after_reconnect);
+    assert_eq!(newest_generation, 3);
+    database.close().await;
+    Ok(())
+}
+
 #[derive(Clone)]
 struct DurableFixedClock(DateTime<Utc>);
 
@@ -3156,6 +3438,255 @@ async fn persists_restart_safe_operation_replay_recovery_retry_and_cancellation(
             .operations
             .len(),
         2
+    );
+
+    database.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for a disposable PostgreSQL database"]
+async fn persists_tenant_isolated_maintenance_sessions_and_exact_revision_events()
+-> chordrift::Result<()> {
+    let config = DatabaseConfig::from_env_var("CHORDRIFT_TEST_DATABASE_URL")?
+        .with_name("chordrift-maintenance-session-test")?
+        .with_provider(PostgresProvider::Neon)?
+        .with_min_connections(0)
+        .with_max_connections(3);
+    let database = db::connect(config).await?;
+    db::migrate(&database).await?;
+    let account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name)
+         VALUES ('Maintenance Session Fixture') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let other_account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name)
+         VALUES ('Maintenance Session Other Tenant') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let identity_store = PostgresProductIdentityStore::new(database.pool().clone());
+    let owner = identity_store
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "maintenance-owner").unwrap(),
+            ResourceId::from_uuid(account_id),
+        )
+        .await
+        .unwrap();
+    let other = identity_store
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "maintenance-other-owner")
+                .unwrap(),
+            ResourceId::from_uuid(other_account_id),
+        )
+        .await
+        .unwrap();
+    let provider_account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO provider_accounts
+         (provider, provider_account_id, account_label, chordrift_account_id)
+         VALUES ('spotify', $1, 'maintenance-fixture', $2) RETURNING id",
+    )
+    .bind(format!("maintenance-provider-{account_id}"))
+    .bind(account_id)
+    .fetch_one(database.pool())
+    .await?;
+    let provider_connection_id = ResourceId::from_uuid(provider_account_id);
+    let session_id = MaintenanceSessionId::new();
+    let first_snapshot = ResourceId::new();
+    let mut workflow = MaintenanceWorkflow::new(
+        session_id,
+        MaintenanceProjection {
+            provider_snapshot_id: first_snapshot,
+            observed_changes: Vec::new(),
+            provider_effects: Vec::new(),
+            review_id: None,
+        },
+    )
+    .unwrap();
+    let first = workflow.view();
+    let at: DateTime<Utc> = "2026-08-31T19:00:00Z".parse().unwrap();
+    let store = PostgresMaintenanceSessionStore::new(database.pool().clone());
+    store.verify_schema().await.unwrap();
+    store
+        .create(owner, provider_connection_id, &first, None, at)
+        .await
+        .unwrap();
+
+    let restarted = PostgresMaintenanceSessionStore::new(database.pool().clone());
+    let loaded = restarted.load(owner, session_id).await.unwrap();
+    assert_eq!(loaded.subject, owner);
+    assert_eq!(loaded.provider_connection_id, provider_connection_id);
+    assert_eq!(loaded.view, first);
+    assert_eq!(
+        restarted
+            .load(
+                AuthenticatedSubject {
+                    subject_id: other.subject_id,
+                    account_id: other.account_id,
+                },
+                session_id,
+            )
+            .await
+            .expect_err("other tenant cannot discover the session")
+            .code,
+        ErrorCode::ResourceNotFound
+    );
+
+    let second = workflow
+        .rebase(
+            1,
+            MaintenanceProjection {
+                provider_snapshot_id: ResourceId::new(),
+                observed_changes: Vec::new(),
+                provider_effects: Vec::new(),
+                review_id: None,
+            },
+        )
+        .unwrap();
+    restarted
+        .replace(
+            owner,
+            1,
+            &second,
+            MaintenanceTransition::Refreshed,
+            None,
+            at + TimeDelta::seconds(1),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        restarted.load(owner, session_id).await.unwrap().view,
+        second
+    );
+    assert_eq!(
+        restarted
+            .replace(
+                owner,
+                1,
+                &second,
+                MaintenanceTransition::Refreshed,
+                None,
+                at + TimeDelta::seconds(2),
+            )
+            .await
+            .expect_err("stale writer cannot overwrite the accepted revision")
+            .code,
+        ErrorCode::StateConflict
+    );
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM maintenance_session_events
+          WHERE maintenance_session_id = $1",
+    )
+    .bind(session_id.as_uuid())
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(event_count, 2);
+
+    let authority = DurableMaintenanceAuthority::new(restarted.clone());
+    let review_id = MaintenanceReviewId::new();
+    let reviewed = authority
+        .refresh(
+            owner,
+            session_id,
+            2,
+            MaintenanceProjection {
+                provider_snapshot_id: second.provider_snapshot_id,
+                observed_changes: Vec::new(),
+                provider_effects: vec![MaintenanceProviderEffectView {
+                    effect_id: ResourceId::new(),
+                    kind: MaintenanceProviderEffectKind::UpdateSavedState,
+                    track: Some(MaintenanceTrackView {
+                        track_id: ResourceId::new(),
+                        title: "Fixture saved track".to_owned(),
+                        artists: Vec::new(),
+                    }),
+                    surface: Some(MaintenanceSurfaceView {
+                        surface_id: ResourceId::new(),
+                        name: "Liked Songs".to_owned(),
+                    }),
+                    summary: "Remove Fixture saved track from Liked Songs".to_owned(),
+                }],
+                review_id: Some(review_id),
+            },
+            None,
+            at + TimeDelta::seconds(3),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        reviewed.state,
+        MaintenanceSessionState::ReadyForAuthorization
+    );
+    let authorized = authority
+        .authorize(
+            owner,
+            session_id,
+            reviewed.revision,
+            review_id,
+            None,
+            at + TimeDelta::seconds(4),
+        )
+        .await
+        .unwrap();
+    let applying = authority
+        .mark_execution_state(
+            owner,
+            session_id,
+            authorized.revision,
+            MaintenanceSessionState::Applying,
+            None,
+            at + TimeDelta::seconds(5),
+        )
+        .await
+        .unwrap();
+    let verifying = authority
+        .mark_execution_state(
+            owner,
+            session_id,
+            applying.revision,
+            MaintenanceSessionState::Verifying,
+            None,
+            at + TimeDelta::seconds(6),
+        )
+        .await
+        .unwrap();
+    let completed = authority
+        .complete_verification(
+            owner,
+            session_id,
+            verifying.revision,
+            MaintenanceProjection {
+                provider_snapshot_id: ResourceId::new(),
+                observed_changes: Vec::new(),
+                provider_effects: Vec::new(),
+                review_id: None,
+            },
+            None,
+            at + TimeDelta::seconds(7),
+        )
+        .await
+        .unwrap();
+    assert_eq!(completed.state, MaintenanceSessionState::InSync);
+    let transitions: Vec<String> = sqlx::query_scalar(
+        "SELECT transition_name FROM maintenance_session_events
+          WHERE maintenance_session_id = $1 ORDER BY revision",
+    )
+    .bind(session_id.as_uuid())
+    .fetch_all(database.pool())
+    .await?;
+    assert_eq!(
+        transitions,
+        vec![
+            "started",
+            "refreshed",
+            "refreshed",
+            "authorized",
+            "applying",
+            "verifying",
+            "verified",
+        ]
     );
 
     database.close().await;

@@ -477,18 +477,29 @@ impl ProviderCredentialStore for PostgresProviderCredentialStore {
             .await
             .map_err(|_| dependency_unavailable())?;
         require_postgres_authority(&mut transaction, subject, &credential.identity, true).await?;
-        let previous: Option<(Uuid, i32)> = sqlx::query_as(
-            "SELECT id, generation FROM provider_credential_vault
+        // Serialize every generation change on the stable provider account,
+        // including reconnects made after the active envelope was revoked.
+        sqlx::query_scalar::<_, Uuid>("SELECT id FROM provider_accounts WHERE id = $1 FOR UPDATE")
+            .bind(credential.identity.provider_account_id.as_uuid())
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|_| dependency_unavailable())?;
+        let previous: Option<(Uuid, i32, Option<DateTime<Utc>>)> = sqlx::query_as(
+            "SELECT id, generation, revoked_at FROM provider_credential_vault
              WHERE provider_account_id = $1 AND credential_kind = 'oauth_refresh'
-               AND revoked_at IS NULL
-             FOR UPDATE",
+             ORDER BY generation DESC LIMIT 1",
         )
         .bind(credential.identity.provider_account_id.as_uuid())
         .fetch_optional(&mut *transaction)
         .await
         .map_err(|_| dependency_unavailable())?;
-        let generation = previous.map_or(1_i32, |(_, generation)| generation.saturating_add(1));
-        if let Some((previous_id, _)) = previous {
+        let generation = previous
+            .as_ref()
+            .map_or(1_i32, |(_, generation, _)| generation.saturating_add(1));
+        let rotated = previous
+            .as_ref()
+            .is_some_and(|(_, _, revoked_at)| revoked_at.is_none());
+        if let Some((previous_id, _, None)) = previous {
             sqlx::query(
                 "UPDATE provider_credential_vault
                  SET revoked_at = $2, revoked_by_subject_id = $3,
@@ -532,7 +543,7 @@ impl ProviderCredentialStore for PostgresProviderCredentialStore {
             revision_id: credential.revision_id,
             generation: u32::try_from(generation).map_err(|_| vault_unavailable())?,
             key_id: credential.key_id,
-            rotated: previous.is_some(),
+            rotated,
             created_at: credential.created_at,
         })
     }
@@ -798,7 +809,13 @@ mod tests {
                 return Err(ClientError::new(ErrorCode::PermissionDenied, false));
             }
             let mut state = self.state.lock().expect("memory store lock");
-            let generation = state.active.as_ref().map_or(1, |row| row.generation + 1);
+            let generation = state
+                .active
+                .iter()
+                .chain(state.history.iter())
+                .map(|row| row.generation)
+                .max()
+                .map_or(1, |generation| generation.saturating_add(1));
             let rotated = state.active.is_some();
             if let Some(previous) = state.active.take() {
                 state.history.push(previous);
@@ -1086,5 +1103,25 @@ mod tests {
             .err()
             .expect("revoked credential unavailable");
         assert_eq!(error.code, ErrorCode::PermissionDenied);
+
+        let reconnected = vault
+            .rotate(
+                owner,
+                identity.clone(),
+                &credential("new-session-after-reconnect"),
+                Utc::now(),
+            )
+            .await
+            .expect("reconnect advances beyond revoked history");
+        assert_eq!(reconnected.generation, 2);
+        assert!(!reconnected.rotated);
+        assert_eq!(
+            vault
+                .lease(owner, &identity)
+                .await
+                .expect("reconnected credential active")
+                .refresh_token(),
+            "new-session-after-reconnect"
+        );
     }
 }

@@ -75,18 +75,42 @@ explorer presents Spotify observation state separately from the Chordrift
 model. Playlist order, track detail, personal listening statistics and active
 exclusions are available through tenant-scoped typed queries.
 
+Playlist membership rows and active exclusions also carry album, meaningful
+play count, and last-heard time. The thin browser may sort playlist rows by
+custom order, plays, recency, album, or title and may group exclusions by
+album, prior playlist, or last-heard bucket. These are presentation operations
+over Rust-issued facts. Restoring an exclusion remains an explicit Rust command:
+reuse the prior destination only when its stable surface still exists, otherwise
+request a destination or classification assistance, then show an exact provider
+review. Permanently forgetting an exclusion is a different destructive intent
+change with an explicit confirmation. Provider artwork is deliberately deferred
+until post-beta UI design work.
+
+A canonical provider-track identity answers *which recording is this?*; it does
+not answer *where should it live?* Intake placement recommendations therefore
+come only from retained accepted Chordrift placement evidence. If exactly one
+prior destination still exists in the latest model, the Rust contract supplies
+it as a recommended resolution with a client-safe reason. The browser may
+preselect that exact surface, but the session remains unresolved until the user
+records the decision. Multiple or absent destinations remain blank. A future
+classification authority may add scored evidence without moving this policy or
+consent boundary into a client.
+
 The service and local CLI now target the same canonical `chordrift_cutover`
-database on the single Neon `main` branch. It is at migration 50/50. The
+database on the single Neon `main` branch. It is at migration 51/51. The
 temporary pre-cutover and rehearsal branches, plus the stale duplicate
 `chordrift` database, were deleted after external logical backups and client
 health checks passed. Rehearsal fixture identities, revoked fixture
 credentials, and fixture operations were not promoted. First-owner login and
 encrypted import of the existing Spotify refresh authorization must be
 reverified on this canonical database before beta.1. Provider-backed
-observation, durable worker composition and the maintenance task remain
-unavailable until the real Rust adapter passes the read-only and fake-provider
-gates. Provider writes remain disabled. The service must fail closed rather
-than disguising a test backend or legacy shell workflow as hosted authority.
+observation, durable worker composition and the maintenance task are now wired
+through the real Rust adapter. Provider writes are limited to server-rederived,
+enumerated maintenance effects behind an immutable exact review. A newly
+selected placement must be added, freshly observed, and verified before a
+separate review may consume Liked Songs or another intake surface. The service
+must fail closed rather than disguising a test backend or legacy shell workflow
+as hosted authority.
 
 ## Storage and rehearsal policy
 
@@ -96,6 +120,16 @@ approximately 195 MB. Its largest durable components are normalized listening
 history (about 81 MB), revisioned playlist membership (about 35 MB), verified
 playlist baselines (about 15 MB), and synchronization receipts (about 9 MB).
 Those are product evidence, not branch duplication.
+
+For the private beta the lossless policy is intentionally conservative:
+normalized listening evidence, accepted intent, exclusions, current anchors,
+exact reviews, write receipts, and named recovery checkpoints remain durable.
+Routine import staging is transaction-local and must be empty after every
+successful pull. Superseded full inventory generations are eligible only after
+their current anchor, named-release dependency, pending review, apply receipt,
+and restore proof have all been preserved; derived caches may be regenerated.
+The read-only compaction plan rehearses this classification without deleting
+production rows. No age-only deletion is enabled for beta.1.
 
 Prefer disposable local PostgreSQL for migration and restore rehearsal. When
 Neon branch semantics are specifically being tested, set an expiry at branch
@@ -117,7 +151,9 @@ The complete product/browser acceptance surface is tracked in
    and stale duplicate database are deleted.
 4. Configure Auth0 as a Regular Web Application with Google login and callback
    `https://chordrift.suhail.ink/auth/callback`.
-5. Start the Vortex API with provider writes unavailable.
+5. Start the Vortex API with provider writes limited to server-rederived,
+   enumerated effects behind an immutable exact review. Readiness must report
+   `exact_review_only`; no general publication or client-supplied write exists.
 6. Validate the Nexus configuration before reload, then verify HTTPS headers,
    liveness, readiness, OIDC state/PKCE, first-owner adoption, logout, session
    revocation, and cross-account denial.

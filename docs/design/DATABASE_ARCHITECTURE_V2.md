@@ -26,6 +26,10 @@ plaintext credentials remain outside PostgreSQL. Hosted provider work must
 verify 0049. V021-04 adds migration 0050's typed durable operation ledger and
 append-only event stream; it stores application DTOs, leases, retry, and
 cancellation state but no provider credential. Hosted workers must verify 0050.
+V021-06 stages migration 0051 for the current wrapper-neutral maintenance
+projection and its immutable revision stream. It adds no provider credential,
+music evidence, or provider-write authority. The migration passed disposable
+PostgreSQL proof but is not part of the migration-50 live storage baseline yet.
 The local maintenance client explicitly requires only schema through 0047 and
 remains compatible with the additive hosted tables now present in the canonical
 database.
@@ -45,11 +49,11 @@ are not current instructions. For routine operation use the
 | Boundary | Current status |
 | --- | --- |
 | Released runtime | v0.2.1 alpha is the local daily driver; the hosted authority is under construction. |
-| Schema | The canonical personal database is at 50/50 migrations. Migrations 0048–0050 are additive hosted identity/session, encrypted-credential, and durable-operation storage; local maintenance still exercises only its migration-47-compatible contract. |
+| Schema | The canonical personal database remains at the verified 50/50 live baseline. Migration 0051 is staged and disposable-PostgreSQL-proven for durable maintenance sessions; local maintenance still exercises only its migration-47-compatible contract. |
 | Legacy storage | Database-v1 physical tables and the former rollback project are gone after independently verified exact-confirmed cleanup. |
 | Recovery | The verified pre-compaction dump remains the historical recovery baseline; V020-13 adds its local-rehearsal dump and V020-14 adds the newer verified candidate-source dump. Immutable Spotify archives remain independent evidence sources. |
 | Routine operation | Use `scripts/chordrift-maintain.sh --account personal`; do not replay historical migration or cleanup applies. |
-| v0.2/v0.2.1 relationship | Migrations 0046–0047 are the active product/Spin foundation. Migration 0048 adds hosted product identity/sessions; 0049 adds encrypted provider credentials; 0050 adds durable operations/events. |
+| v0.2/v0.2.1 relationship | Migrations 0046–0047 are the active product/Spin foundation. Migration 0048 adds hosted product identity/sessions; 0049 encrypted provider credentials; 0050 durable operations/events; staged 0051 durable maintenance projections/events. |
 | Saved/liked intake decisions | Liked Songs is a virtual user-authority intake `playlist_surface`, scoped to its provider account. Existing revisioned `playlist_track_directives` remember per-track keep/clear intent; no new migration or provider credential is required. |
 
 The exact migration-0046 reconciliation and ownership model is documented in

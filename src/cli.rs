@@ -5,7 +5,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use clap::{Parser, Subcommand, ValueEnum};
+use rand::RngCore as _;
+use sha2::{Digest as _, Sha256};
 use sqlx::Row as _;
 use zeroize::Zeroizing;
 
@@ -18,7 +21,9 @@ use crate::{
     contract::{
         CAPABILITY_DURABLE_OPERATIONS, CAPABILITY_MAINTENANCE_TASK_SESSION,
         CAPABILITY_PRODUCT_IDENTITY, CAPABILITY_REMOTE_CLI, CONTRACT_VERSION, ClientCompatibility,
-        CommandRequest, ContractVersionRange, QueryRequest, ResourceId, SchemaVersionRange,
+        Command as ContractCommand, CommandRequest, ContractVersionRange, IdempotencyKey,
+        MaintenanceDecision, MaintenanceReviewId, MaintenanceSessionId, Query, QueryRequest,
+        RequestId, ResourceId, SchemaVersionRange,
     },
     credentials::{CredentialStore, SecretId, SystemCredentialStore},
     db, db_cleanup, db_reports, db_v2_migration, embeddings, enrichment, history, intake,
@@ -198,6 +203,18 @@ pub enum ServiceCommand {
         #[command(subcommand)]
         command: ServiceSessionCommand,
     },
+    /// Start, inspect, refresh, or resolve one durable ordinary-maintenance session.
+    Maintenance {
+        /// Maintenance-session operation.
+        #[command(subcommand)]
+        command: ServiceMaintenanceCommand,
+    },
+    /// Inspect hosted library state through typed read-only queries.
+    Library {
+        /// Library query.
+        #[command(subcommand)]
+        command: ServiceLibraryCommand,
+    },
     /// Negotiate contract, schema, and capabilities with one authenticated service.
     Compatibility {
         /// HTTPS service base URL; loopback HTTP is allowed for development tests.
@@ -233,9 +250,118 @@ pub enum ServiceCommand {
     },
 }
 
+/// Thin remote client queries for provider and Chordrift library state.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ServiceLibraryCommand {
+    /// Explain provider/model playlist count, membership, and order differences.
+    Compare {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Provider connection shown by the hosted provider selector.
+        #[arg(long)]
+        provider_connection_id: uuid::Uuid,
+    },
+}
+
+/// Thin remote client operations for durable ordinary maintenance.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ServiceMaintenanceCommand {
+    /// Observe the provider and start a cumulative record-only interpretation.
+    Start {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Provider connection shown by the hosted library view.
+        #[arg(long)]
+        provider_connection_id: uuid::Uuid,
+        /// Stable session identity; generated when omitted.
+        #[arg(long)]
+        session_id: Option<uuid::Uuid>,
+    },
+    /// Read the exact durable maintenance revision.
+    Show {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Maintenance session to inspect.
+        #[arg(long)]
+        session_id: uuid::Uuid,
+    },
+    /// Observe the provider again and cumulatively rebase a session.
+    Refresh {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Maintenance session to refresh.
+        #[arg(long)]
+        session_id: uuid::Uuid,
+        /// Exact revision currently displayed by the client.
+        #[arg(long)]
+        expected_revision: u64,
+    },
+    /// Persist ambiguity decisions from one exact displayed revision.
+    Resolve {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Maintenance session receiving the decisions.
+        #[arg(long)]
+        session_id: uuid::Uuid,
+        /// Exact revision currently displayed by the client.
+        #[arg(long)]
+        expected_revision: u64,
+        /// JSON file containing an array of typed `MaintenanceDecision` values.
+        #[arg(long)]
+        decisions: PathBuf,
+    },
+    /// Authorize exactly the immutable provider effects shown by `show`.
+    Authorize {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Maintenance session containing the review.
+        #[arg(long)]
+        session_id: uuid::Uuid,
+        /// Exact revision currently displayed by the client.
+        #[arg(long)]
+        expected_revision: u64,
+        /// Immutable review identity displayed by the client.
+        #[arg(long)]
+        review_id: uuid::Uuid,
+    },
+}
+
 /// OS credential-store operations for one remote Chordrift session.
 #[derive(Clone, Debug, Subcommand)]
 pub enum ServiceSessionCommand {
+    /// Sign in through the hosted browser and store a separate CLI session.
+    Login {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+    },
     /// Read an opaque Chordrift session from standard input and store it securely.
     Save {
         /// Local credential-store profile.
@@ -2465,7 +2591,7 @@ fn load_service_client(url: &str, profile: &str) -> Result<RemoteHttpClient> {
 fn service_compatibility_offer() -> ClientCompatibility {
     ClientCompatibility {
         contract_versions: ContractVersionRange::exact(CONTRACT_VERSION),
-        schema_versions: SchemaVersionRange::new(0, 50).expect("CLI schema range is valid"),
+        schema_versions: SchemaVersionRange::new(0, 51).expect("CLI schema range is valid"),
         requested_features: vec![
             CAPABILITY_MAINTENANCE_TASK_SESSION.to_owned(),
             CAPABILITY_PRODUCT_IDENTITY.to_owned(),
@@ -2473,6 +2599,15 @@ fn service_compatibility_offer() -> ClientCompatibility {
             CAPABILITY_REMOTE_CLI.to_owned(),
         ],
     }
+}
+
+async fn negotiated_service_client(url: &str, profile: &str) -> Result<RemoteHttpClient> {
+    let client = load_service_client(url, profile)?;
+    client
+        .negotiate(service_compatibility_offer())
+        .await
+        .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+    Ok(client)
 }
 
 async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -> Result<()> {
@@ -2552,6 +2687,9 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
             result?;
         }
         ServiceCommand::Session { command } => match command {
+            ServiceSessionCommand::Login { url, profile } => {
+                login_service_session(&url, &profile, output).await?;
+            }
             ServiceSessionCommand::Save { profile } => {
                 let mut token = Zeroizing::new(String::new());
                 io::stdin().take(4097).read_to_string(&mut token)?;
@@ -2578,6 +2716,138 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
             ServiceSessionCommand::Remove { profile } => {
                 let removed = SystemCredentialStore.delete(&service_session_id(&profile)?)?;
                 writeln!(output, "removed: {removed}\nprofile: {profile}")?;
+            }
+        },
+        ServiceCommand::Maintenance { command } => match command {
+            ServiceMaintenanceCommand::Start {
+                url,
+                profile,
+                provider_connection_id,
+                session_id,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let session_id =
+                    MaintenanceSessionId::from_uuid(session_id.unwrap_or_else(uuid::Uuid::new_v4));
+                let receipt = client
+                    .command(CommandRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        idempotency_key: IdempotencyKey::new(),
+                        command: ContractCommand::StartMaintenance {
+                            session_id,
+                            provider_connection_id: ResourceId::from_uuid(provider_connection_id),
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&receipt)?)?;
+            }
+            ServiceMaintenanceCommand::Show {
+                url,
+                profile,
+                session_id,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let response = client
+                    .query(QueryRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        query: Query::MaintenanceSession {
+                            session_id: MaintenanceSessionId::from_uuid(session_id),
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&response)?)?;
+            }
+            ServiceMaintenanceCommand::Refresh {
+                url,
+                profile,
+                session_id,
+                expected_revision,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let receipt = client
+                    .command(CommandRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        idempotency_key: IdempotencyKey::new(),
+                        command: ContractCommand::RefreshMaintenance {
+                            session_id: MaintenanceSessionId::from_uuid(session_id),
+                            expected_revision,
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&receipt)?)?;
+            }
+            ServiceMaintenanceCommand::Resolve {
+                url,
+                profile,
+                session_id,
+                expected_revision,
+                decisions,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let decisions: Vec<MaintenanceDecision> =
+                    serde_json::from_slice(&std::fs::read(decisions)?)?;
+                let receipt = client
+                    .command(CommandRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        idempotency_key: IdempotencyKey::new(),
+                        command: ContractCommand::ResolveMaintenance {
+                            session_id: MaintenanceSessionId::from_uuid(session_id),
+                            expected_revision,
+                            decisions,
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&receipt)?)?;
+            }
+            ServiceMaintenanceCommand::Authorize {
+                url,
+                profile,
+                session_id,
+                expected_revision,
+                review_id,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let receipt = client
+                    .command(CommandRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        idempotency_key: IdempotencyKey::new(),
+                        command: ContractCommand::AuthorizeMaintenance {
+                            session_id: MaintenanceSessionId::from_uuid(session_id),
+                            expected_revision,
+                            review_id: MaintenanceReviewId::from_uuid(review_id),
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&receipt)?)?;
+            }
+        },
+        ServiceCommand::Library { command } => match command {
+            ServiceLibraryCommand::Compare {
+                url,
+                profile,
+                provider_connection_id,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let response = client
+                    .query(QueryRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        query: Query::LibraryComparison {
+                            provider_connection_id: ResourceId::from_uuid(provider_connection_id),
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&response)?)?;
             }
         },
         ServiceCommand::Compatibility { url, profile } => {
@@ -2615,6 +2885,113 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
             writeln!(output, "{}", serde_json::to_string(&response)?)?;
         }
     }
+    Ok(())
+}
+
+async fn login_service_session(url: &str, profile: &str, output: &mut impl Write) -> Result<()> {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let base = url::Url::parse(url)
+        .map_err(|_| ChordriftError::Configuration("service URL is invalid".to_owned()))?;
+    if base.scheme() != "https" || base.host_str().is_none() {
+        return Err(ChordriftError::Configuration(
+            "service login requires an HTTPS URL".to_owned(),
+        ));
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = listener.local_addr()?.port();
+    let redirect_uri = format!("http://127.0.0.1:{port}/callback");
+    let mut verifier_bytes = [0_u8; 32];
+    rand::rng().fill_bytes(&mut verifier_bytes);
+    let verifier = Zeroizing::new(URL_SAFE_NO_PAD.encode(verifier_bytes));
+    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    let mut state_bytes = [0_u8; 32];
+    rand::rng().fill_bytes(&mut state_bytes);
+    let state = Zeroizing::new(URL_SAFE_NO_PAD.encode(state_bytes));
+    let mut authorize = base.join("/auth/cli/authorize").map_err(|_| {
+        ChordriftError::Configuration("service URL cannot authorize CLI login".to_owned())
+    })?;
+    authorize
+        .query_pairs_mut()
+        .append_pair("redirect_uri", &redirect_uri)
+        .append_pair("state", state.as_str())
+        .append_pair("code_challenge", &challenge)
+        .append_pair("code_challenge_method", "S256");
+    writeln!(
+        output,
+        "Opening Chordrift to authorize profile '{profile}'. Sign in there first if needed."
+    )?;
+    writeln!(output, "Authorize at: {authorize}")?;
+    webbrowser::open(authorize.as_str()).map_err(|_| {
+        ChordriftError::Configuration(format!(
+            "could not open the browser; visit {}",
+            authorize.as_str()
+        ))
+    })?;
+
+    let (mut socket, _) = tokio::time::timeout(Duration::from_secs(300), listener.accept())
+        .await
+        .map_err(|_| {
+            ChordriftError::Configuration("CLI login authorization timed out".to_owned())
+        })??;
+    let mut request_bytes = vec![0_u8; 8192];
+    let length = tokio::time::timeout(Duration::from_secs(5), socket.read(&mut request_bytes))
+        .await
+        .map_err(|_| ChordriftError::Configuration("CLI login callback timed out".to_owned()))??;
+    let request = std::str::from_utf8(&request_bytes[..length])
+        .map_err(|_| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
+    let target = request
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .ok_or_else(|| {
+            ChordriftError::Configuration("CLI login callback was invalid".to_owned())
+        })?;
+    let callback = url::Url::parse(&format!("http://127.0.0.1:{port}{target}"))
+        .map_err(|_| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
+    let values = callback
+        .query_pairs()
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let code = values
+        .get("code")
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ChordriftError::Configuration("CLI login was not authorized".to_owned()))?;
+    if values.get("state").map(|value| value.as_ref()) != Some(state.as_str()) {
+        return Err(ChordriftError::Configuration(
+            "CLI login state did not match".to_owned(),
+        ));
+    }
+    let callback_body = "<!doctype html><title>Chordrift CLI connected</title><p>Chordrift CLI connected. You may close this window.</p>";
+    let callback_response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{callback_body}",
+        callback_body.len()
+    );
+    socket.write_all(callback_response.as_bytes()).await?;
+
+    let exchange = base.join("/auth/cli/exchange").map_err(|_| {
+        ChordriftError::Configuration("service URL cannot exchange CLI login".to_owned())
+    })?;
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?
+        .post(exchange)
+        .json(&crate::hosted::CliSessionExchangeRequest {
+            schema_version: crate::identity::PRODUCT_SESSION_SCHEMA_VERSION,
+            code: code.to_string(),
+            redirect_uri,
+            code_verifier: verifier.to_string(),
+        })
+        .send()
+        .await?;
+    if response.status() != reqwest::StatusCode::CREATED {
+        return Err(ChordriftError::Configuration(
+            "Chordrift rejected the CLI session exchange".to_owned(),
+        ));
+    }
+    let grant: crate::identity::SessionGrant = response.json().await?;
+    let token = Zeroizing::new(grant.access_token);
+    SystemCredentialStore.save(&service_session_id(profile)?, token.as_bytes())?;
+    writeln!(output, "stored: true\nprofile: {profile}")?;
     Ok(())
 }
 
@@ -7048,18 +7425,20 @@ fn write_intake_audit(output: &mut impl Write, report: &intake::IntakeAudit) -> 
     writeln!(output, "spotify_writes: disabled")?;
     writeln!(
         output,
-        "state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id\tsaved_track_disposition"
+        "state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\trecommended_destination\trecommendation_reason\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id\tsaved_track_disposition"
     )?;
     for item in &report.items {
         writeln!(
             output,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             item.state.as_str(),
             clean_cell(&item.title),
             clean_cell(&item.artists),
             clean_cell(&item.sources.join(" / ")),
             clean_cell(&item.current_destinations.join(" / ")),
             clean_cell(&item.proposal_destinations.join(" / ")),
+            clean_cell(item.recommended_destination.as_deref().unwrap_or("-")),
+            clean_cell(item.recommendation_reason.as_deref().unwrap_or("-")),
             item.listening_events,
             item.play_count,
             item.exclusion_history,
@@ -7140,10 +7519,34 @@ mod tests {
         HistoryCommand, IntakeCommand, LikedDispositionArg, LikedSongsPolicyArg, PlaylistCommand,
         PlaylistRoleArg, PlaylistSignalClassArg, ProductAuditMode, ProductCollectionCommand,
         ProductCommand, ProductOnboardingCommand, ProductRecipeCommand, ProductSpinCommand,
-        ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, ServiceCommand, SignalCommand,
+        ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, ServiceCommand,
+        ServiceLibraryCommand, ServiceMaintenanceCommand, ServiceSessionCommand, SignalCommand,
         SpotifyCommand, SyncCommand, TrackCommand, binary_capability_manifest, format_count,
         format_elapsed, write_status,
     };
+
+    #[test]
+    fn parses_browser_authorized_service_session_login() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "session",
+            "login",
+            "--url",
+            "https://chordrift.example",
+            "--profile",
+            "daily",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Session {
+                    command: ServiceSessionCommand::Login { url, profile }
+                }
+            } if url == "https://chordrift.example" && profile == "daily"
+        ));
+    }
     use crate::db::DatabaseStatus;
 
     #[test]
@@ -7200,6 +7603,93 @@ mod tests {
             Command::Service {
                 command: ServiceCommand::Query { profile, .. }
             } if profile == "default"
+        ));
+    }
+
+    #[test]
+    fn parses_typed_remote_library_comparison() {
+        let connection_id = uuid::Uuid::new_v4();
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "library",
+            "compare",
+            "--url",
+            "https://api.chordrift.example",
+            "--provider-connection-id",
+            &connection_id.to_string(),
+        ])
+        .expect("valid remote library comparison");
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Library {
+                    command: ServiceLibraryCommand::Compare {
+                        provider_connection_id,
+                        profile,
+                        ..
+                    }
+                }
+            } if provider_connection_id == connection_id && profile == "default"
+        ));
+    }
+
+    #[test]
+    fn parses_typed_remote_maintenance_commands() {
+        let connection_id = uuid::Uuid::new_v4();
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "maintenance",
+            "start",
+            "--url",
+            "https://api.chordrift.example",
+            "--provider-connection-id",
+            &connection_id.to_string(),
+        ])
+        .expect("valid remote maintenance start");
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Maintenance {
+                    command: ServiceMaintenanceCommand::Start {
+                        provider_connection_id,
+                        profile,
+                        ..
+                    }
+                }
+            } if provider_connection_id == connection_id && profile == "default"
+        ));
+
+        let session_id = uuid::Uuid::new_v4();
+        let review_id = uuid::Uuid::new_v4();
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "maintenance",
+            "authorize",
+            "--url",
+            "https://api.chordrift.example",
+            "--session-id",
+            &session_id.to_string(),
+            "--expected-revision",
+            "4",
+            "--review-id",
+            &review_id.to_string(),
+        ])
+        .expect("valid exact maintenance authorization");
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Maintenance {
+                    command: ServiceMaintenanceCommand::Authorize {
+                        session_id: parsed_session,
+                        review_id: parsed_review,
+                        expected_revision: 4,
+                        ..
+                    }
+                }
+            } if parsed_session == session_id && parsed_review == review_id
         ));
     }
 

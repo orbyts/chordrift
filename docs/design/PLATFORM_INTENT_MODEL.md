@@ -88,6 +88,7 @@ Destructive or history-erasing interpretations are never inferred silently.
 | Add to a named intake | New discovery with explicit provenance | Capture automatically and later propose placement. |
 | Remove from one verified canonical playlist | Exclude, refile, or temporary edit | Stage interpretation; use surrounding actions to disambiguate. |
 | Remove from canonical and add to exactly one other managed playlist | Deliberate reclassification | Infer the move, show it in the maintenance review, and retain the confirmed correction as evidence. |
+| Remove, observe the absence, then later add to exactly one managed playlist | Restoration or delayed reclassification | Supersede the active exclusion with the newest single placement regardless of elapsed time, retain both events, and perform no provider write. Several current destinations remain ambiguous. |
 | Add directly to a canonical playlist | Explicit current placement | Preserve and record the destination automatically; treat any permanent lock or classification claim as a separate inference. |
 | Reorder a canonical playlist | Explicit current sequence | Accept the observed provider order in Neon when exact membership is equal; do not write a reorder back or silently infer a cadence/classification rule. |
 | Remove from Liked Songs | Unsave | Record saved-state change without implying exclusion. |

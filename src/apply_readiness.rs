@@ -221,11 +221,25 @@ pub async fn assess(
              JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
              WHERE playlist.generation_id = $2
              GROUP BY membership.track_id
+         ), planned_placement AS (
+             SELECT identity.canonical_track_id AS track_id,
+                    count(DISTINCT operation.playlist_id)::bigint AS destinations
+             FROM sync_operations operation
+             JOIN historical_provider_track_identities identity
+               ON identity.provider = 'spotify'
+              AND identity.provider_track_id = operation.payload->>'spotify_track_id'
+             WHERE operation.sync_run_id = $3
+               AND operation.operation_type IN ('add_track', 'restore_track')
+               AND identity.canonical_track_id IS NOT NULL
+             GROUP BY identity.canonical_track_id
          ), disposition AS (
-             SELECT candidate.track_id, COALESCE(placement.destinations, 0) AS destinations,
+             SELECT candidate.track_id,
+                    COALESCE(placement.destinations, 0)
+                      + COALESCE(planned_placement.destinations, 0) AS destinations,
                     exclusion.id IS NOT NULL AS excluded
              FROM candidate
              LEFT JOIN placement USING (track_id)
+             LEFT JOIN planned_placement USING (track_id)
              LEFT JOIN excluded_tracks exclusion
                ON exclusion.provider_account_id = $1
               AND exclusion.track_id = candidate.track_id
@@ -241,6 +255,7 @@ pub async fn assess(
     )
     .bind(account_id)
     .bind(proposal_id)
+    .bind(plan_id)
     .fetch_one(database.pool())
     .await?;
     let inventory_count: i64 = inventory.try_get("inventory")?;
@@ -248,6 +263,26 @@ pub async fn assess(
     let excluded_count: i64 = inventory.try_get("excluded")?;
     let unresolved_count: i64 = inventory.try_get("unresolved")?;
     let conflicting_count: i64 = inventory.try_get("conflicting")?;
+    let bounded_append_only = !operations.is_empty()
+        && operations.iter().all(|operation| {
+            operation.kind == "add_track"
+                && operation.safety.get("append_only") == Some(&Value::Bool(true))
+                && operation.safety.get("destructive") == Some(&Value::Bool(false))
+        });
+    let bounded_reorder_only = !operations.is_empty()
+        && operations.iter().all(|operation| {
+            operation.kind == "reorder_playlist"
+                && operation.safety.get("destructive") == Some(&Value::Bool(false))
+                && (operation.safety.get("membership_unchanged") == Some(&Value::Bool(true))
+                    || (operation.safety.get("reviewed_catalog_collapse")
+                        == Some(&Value::Bool(true))
+                        && operation
+                            .safety
+                            .get("allowed_live_only_spotify_ids")
+                            .and_then(Value::as_array)
+                            .is_some_and(|values| !values.is_empty())))
+        });
+    let unrelated_unresolved_may_be_deferred = bounded_append_only || bounded_reorder_only;
     let probe_passed = probe.is_some_and(|status| has_required_apply_scopes(&status.scopes));
     let checks = vec![
         check(
@@ -269,12 +304,16 @@ pub async fn assess(
         ),
         check(
             "complete_library_inventory",
-            unresolved_count == 0
-                && conflicting_count == 0
-                && inventory_count == placed_count + excluded_count,
+            conflicting_count == 0
+                && (unresolved_count == 0 || unrelated_unresolved_may_be_deferred)
+                && inventory_count == placed_count + excluded_count + unresolved_count,
             json!({"inventory": inventory_count, "placed": placed_count,
                 "excluded": excluded_count, "unresolved": unresolved_count,
-                "conflicting_dispositions": conflicting_count}),
+                "conflicting_dispositions": conflicting_count,
+                "unrelated_unresolved_deferred_by_bounded_append":
+                    bounded_append_only && unresolved_count > 0,
+                "unrelated_unresolved_deferred_by_bounded_reorder":
+                    bounded_reorder_only && unresolved_count > 0}),
         ),
         check(
             "artwork_approved",

@@ -325,12 +325,12 @@ and later Chordrift refactor begin.
   are both usable daily drivers over the same Rust contract. This is not yet an
   unrestricted public web launch. Acceptance requires all of the following:
 
-  - [ ] **Production assembly.** Add explicit API and worker entry points that
+  - [x] **Production assembly.** Add explicit API and worker entry points that
     wire the typed application contract, PostgreSQL product sessions,
     encrypted provider-credential vault, durable operation queue, and a real
     Spotify/PostgreSQL maintenance adapter. A deployed route must never invoke
     a CLI command, shell, arbitrary SQL, or a client-supplied provider URL.
-  - [ ] **Bounded storage lifecycle.** Keep durable listening evidence,
+  - [x] **Bounded storage lifecycle.** Keep durable listening evidence,
     accepted user intent, current provider anchors, and exact write receipts.
     Define and rehearse a lossless retention/compaction policy for superseded
     playlist generations, verification history, and routine sync audit rows;
@@ -342,18 +342,18 @@ and later Chordrift refactor begin.
     own stable subject, account ownership, revocable sessions, and future
     identity-linking boundary. Spotify authorization remains a separate,
     revocable provider connection and is never a Chordrift login method.
-  - [ ] **Existing-account adoption.** Bind Suhail's first verified Google
+  - [x] **Existing-account adoption.** Bind Suhail's first verified Google
     issuer/subject to the existing Chordrift account through the trusted
     bootstrap boundary. Do not create an empty replacement account, rewrite
     music ownership IDs, re-import Spotify, or mutate provider state. Compare
     account, inventory, exclusion, directive, history, and playlist invariants
     before and after the identity cutover.
-  - [ ] **Thin browser workbench.** Serve a small HTML/CSS/JavaScript client
+  - [x] **Thin browser workbench.** Serve a small HTML/CSS/JavaScript client
     that logs in, negotiates compatibility, submits only typed command/query
     DTOs, follows durable progress/events, renders structured results, and
     requires exact review authorization for provider effects. It must not be a
     browser terminal or accept arbitrary commands.
-  - [ ] **Provider connection lifecycle.** Keep Chordrift login independent
+  - [x] **Provider connection lifecycle.** Keep Chordrift login independent
     from provider authorization. Add explicit Connect, Reconnect, Disconnect,
     and connection-status flows. Reconnecting the same stable Spotify identity
     must recover the same account-owned Neon history, intent, exclusions, and
@@ -361,25 +361,33 @@ and later Chordrift refactor begin.
     separate isolated provider connection without overwriting either account.
     Multiple provider connections are first-class even though Spotify is the
     only launch adapter. Cross-account/provider transfer remains later work.
-  - [ ] **Daily-driver web maintenance.** Make observation, cumulative
+  - [x] **Daily-driver web maintenance.** Make observation, cumulative
     provider-first reconciliation, ambiguity decisions, exact provider-effect
     review, progress, cancellation, retry, and verification usable without a
     terminal. The web client may omit expert forensic queries, but it must make
     high-level divergence understandable—for example, `12 provider-only, 4
     Chordrift-only` rather than showing unexplained unequal totals.
-  - [ ] **Shared CLI/web investigation.** Expose the same provider connection,
+    Library and Excluded views must expose personal play count, last-heard time,
+    and album through the shared query contract; the browser may sort and group
+    those returned facts without owning restoration policy. A canonical track
+    identity is not a playlist assignment. For newly liked tracks, Rust must
+    recommend a destination only when retained accepted placement evidence
+    yields exactly one still-active surface; thin clients preselect that surface
+    without treating the recommendation as consent. Missing or ambiguous
+    placement evidence remains unselected.
+  - [x] **Shared CLI/web investigation.** Expose the same provider connection,
     state timestamps, playlist summaries, directional membership differences,
     track facts, exclusions, operation state, and safe diagnostics through
     typed queries renderable by both clients. The CLI may offer deeper detail;
     neither client receives shell or SQL access through the service.
-  - [ ] **Reproducible containers.** Use a pinned multi-stage Docker build. The
+  - [x] **Reproducible containers.** Use a pinned multi-stage Docker build. The
     repository may exist in the checked-out build workspace/builder stage, but
     production API and worker images contain only the Rust executable, static
     web assets, certificates/runtime necessities, and provenance labels—not
     Git history, source, compiler caches, or build credentials. Run as a
     non-root user with read-only filesystem, bounded resources, health checks,
     and separately scoped API/worker processes.
-  - [ ] **Vortex compute deployment.** Deploy API and worker containers on the
+  - [x] **Vortex compute deployment.** Deploy API and worker containers on the
     Ubuntu Vortex host. Keep Neon, Spotify, OIDC, session, and vault-key secrets
     outside images and version control. Bind the upstream service only to the
     private LAN/container boundary and prove a restart does not lose accepted
@@ -396,21 +404,33 @@ and later Chordrift refactor begin.
     schema and post-cleanup invariants were rehearsed before the intended
     project was promoted. The retained legacy project was not migrated or
     promoted wholesale, and Spotify remained unchanged throughout cutover.
-  - [ ] **Observability and operations.** Add secret-redacted structured logs,
+  - [x] **Observability and operations.** Add secret-redacted structured logs,
     request/operation correlation, health/readiness endpoints, worker lease and
     retry visibility, container restart policy, documented rollback, and a
     tested alert/inspection path. Logs must never contain product sessions,
     OIDC credentials, provider credentials, database URLs, or vault plaintext.
-  - [ ] **Read-only acceptance gate.** After login, prove the existing library
+  - [x] **Read-only acceptance gate.** After login, prove the existing library
     is visible through the authenticated account, cross-tenant requests fail,
     logout/revocation works, backup restore works, and no Spotify mutation was
     made. Enable provider writes only through a later explicit user-approved
     gate after manual beta testing.
   - [ ] **Release proof.** Pass CI, container smoke and fake-provider browser
     tests, disposable-PostgreSQL identity/tenant tests, migration/restore
-    rehearsal, and private deployment checks; document the exact deployed
-    image digest and commit; then tag, publish, install, and verify
-    `v0.2.1-beta.1` through the normal release path.
+    rehearsal, and private deployment checks. Tag and publish the exact commit
+    to crates.io; install that published version as the local CLI; build the
+    API/worker image from the same tagged source; restart both Vortex services;
+    and record the installed CLI version, deployed image digest, source commit,
+    and live health result. Finally, run one DTO-conformance smoke through both
+    the installed remote CLI and browser against that deployed authority before
+    accepting `v0.2.1-beta.1`.
+  - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
+    provider account through the wrapper-neutral Rust maintenance contract on
+    every CI push. Keep single-gesture cases for add, remove, move, reorder,
+    and Like, plus composite, delayed-observation, and interrupted-retry
+    snapshots. The fixture is small, credential-free, and cannot contact or
+    mutate Spotify or production Neon. The real PostgreSQL interpreter also
+    has regressions for direct managed intake, ambiguous placement, combined
+    direct-add-plus-Like intent, and duplicate move halves.
 
   Current implementation checkpoint (2026-08-31): the Rust server entry point,
   Auth0/Google authorization-code + PKCE boundary, verified-email adoption
@@ -434,6 +454,19 @@ and later Chordrift refactor begin.
   without invalidating the cutover, while legacy-table return, non-empty
   staging, or evidence loss still fails verification. Active Vortex/Nexus
   deployment and provider-aware provider/model library inspection are proven.
+  On 2026-08-31, exact commit
+  `94f35133af725565c87eceaeda8beaf819dd03b5` was rebuilt as the pinned
+  43.2 MB image `chordrift:94f3513` and deployed as separate non-root,
+  read-only API and worker containers on Vortex. A fresh 29.4 MB compressed
+  logical backup was validated before additive migration 0051 moved the
+  canonical database from 50/51 to 51/51. HTTPS readiness, security headers,
+  existing Google-account adoption, provider/model comparison, ordered
+  playlist inspection, the 455-item exclusion archive, and Chordrift-session
+  survival across a full API/worker restart passed in the real browser. The
+  comparison resolves the reported Lightleak Reverie mismatch as 501 provider
+  and 501 Chordrift memberships with only custom-order drift. The retained
+  Spotify connection currently has no active encrypted credential, so provider
+  observation remains correctly disabled until one explicit Reconnect OAuth.
   Consolidation deliberately did not copy rehearsal fixture identities,
   revoked fixture credentials, or fixture operations. Auth0/Google first-owner
   adoption and encrypted generation-1 import of the existing Spotify refresh
@@ -441,35 +474,151 @@ and later Chordrift refactor begin.
   provider selector visibly reports Spotify connection
   and newest-observation state and is designed for future connections. The
   exact web acceptance surface is recorded in
-  `docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md`. Remaining gates are the real
-  maintenance interpretation adapter, durable maintenance-session persistence,
-  the web maintenance journey, operational recovery checks, and beta
-  publication. Read-only provider observation is now a real durable operation:
+  `docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md`. Remaining gates are the
+  Spotify reconnect, canonical provider-effect authorization/apply/verification,
+  the complete web maintenance journey, operational recovery checks, and beta
+  publication. Read-only
+  provider observation is now a real durable operation:
   the authenticated API accepts the typed command, the separately containerized
   worker leases the encrypted account-scoped Spotify credential, verifies the
   stable provider identity, calls the Rust inventory importer directly, rotates
   a returned refresh credential, persists the complete snapshot atomically, and
   exposes reconnectable progress/cancellation. No CLI, shell, arbitrary SQL, or
-  client-supplied provider URL is in that route. Provider writes remain disabled.
-  Provider writes remain disabled.
+  client-supplied provider URL is in that route. The only enabled provider
+  writes are server-rederived enumerated effects behind an immutable exact
+  review; readiness reports this bounded scope explicitly.
+
+  Provider-lifecycle hardening checkpoint (2026-08-31): the first live
+  disconnect returned HTTP 403 because a proxied native form POST did not
+  satisfy the route's exact-Origin guard. The first out-of-band Spotify Apps
+  revocation then proved that a locally active credential cannot truthfully
+  imply current provider validity before another provider call. Disconnect now
+  uses a session-authenticated non-simple same-origin wrapper request. A
+  terminal refresh-token rejection revokes the encrypted local envelope during
+  the failed operation, returns typed `authentication_required`, and exposes
+  Reconnect without removing provider history or Chordrift intent. The UI
+  reports **Authorized** separately from its last provider verification. Unit
+  regressions, full Rust tests, Clippy, JavaScript syntax, exact-image Vortex
+  deployment, HTTPS health, and public repaired-asset checks pass. One
+  authenticated browser transition remains before beta.1 acceptance.
+
+  Browser-decision checkpoint (2026-08-31): the first composite destination
+  plus Liked-state review exposed that the JavaScript dropdown serialized a
+  playlist stable key where the typed Rust contract requires an opaque UUID.
+  Rust now supplies the complete typed destination identity; the thin browser
+  returns it unchanged, keeps the server-issued Liked Songs identity, submits the complete
+  revision-bound decision set, and renders rejected submissions as retryable
+  errors. A browser-DTO harness runs on every CI push alongside a Rust
+  server-identity assertion. CI, exact-image deployment, public health, and
+  repaired-asset checks pass; authenticated browser acceptance remains.
+
+  Composite-effect safety checkpoint (2026-08-31): the first successful
+  destination-plus-clear decision exposed that hosted execution projected only
+  the saved-state removal. Spotify removed the track from Liked Songs before
+  the selected destination membership existed, and later verification failed.
+  Beta.1 now requires a durable two-stage boundary: exact destination add,
+  observe and verify, then a separate exact intake-cleanup review. The
+  production DTO/state-machine harness uses a fake database and fake provider,
+  injects failures at both stages, reloads after worker restart, and proves no
+  loss, no duplicate, and add-before-unlike ordering. The live damaged track
+  must be offered as one recovery addition after the repaired build is deployed;
+  no automatic Spotify recovery write is authorized. The full GitHub gate and
+  exact-image Vortex deployment pass; authenticated recovery review remains.
+  New Liked-only placements default to position zero (the top) through a
+  Rust-owned policy named in the exact review; future top/bottom/specific-
+  position choices remain a contract extension, not client logic.
+
+  The first post-Disconnect OAuth consent exposed a retained-history generation
+  defect: the vault attempted to reuse generation 1 because no envelope was
+  active, so the callback failed its immutable uniqueness constraint. Rotation
+  now serializes on the stable provider account and advances from the greatest
+  active-or-revoked generation. Disconnect → Reconnect retains history and
+  activates the next encrypted generation. In-memory and disposable-PostgreSQL
+  lifecycle regressions are required before redeployment.
+
+  The exact disposable PostgreSQL 18 lifecycle proof now passes generations
+  1 → 2 → revoked → 3 with stable provider identity, one active envelope, and
+  retained history; its container and temporary volumes were deleted
+  immediately. Exact image `chordrift:951ce63` is deployed with matching
+  revision metadata and healthy API/worker/readiness checks. One authenticated
+  browser Reconnect remains for live acceptance.
+
+  Record-only maintenance checkpoint: migration 0051 persistence, the real
+  PostgreSQL provider-first interpreter, durable Start/Refresh/Resolve worker
+  dispatch, and shared web/remote-CLI session access are implemented on the
+  branch. Start and Refresh take a fresh provider observation; paired move rows
+  collapse into one logical gesture. Resolved placement, exclusion, custom-order,
+  and saved-track decisions now project idempotently into canonical intent through
+  an exact maintenance fork that preserves approved artwork and never classifies
+  unrelated tracks. Saved cleanup is withheld until all decisions are resolved
+  and is ordered after destination intent. The disposable-PostgreSQL projection
+  proof passes. Authorize now accepts only a server-rederived saved-state review,
+  rechecks the provider snapshot, executes only its enumerated saved-track
+  removals, observes again, and verifies before completion. Broader provider
+  publication remains unavailable.
+
+  Durable-session checkpoint (2026-08-31): additive migration 0051, a
+  tenant/provider-scoped current session store, immutable accepted-revision
+  events, exact compare-and-swap replacement, restart rehydration validation,
+  and a Rust durable transition authority are implemented. A disposable
+  PostgreSQL 18 proof on Vortex passed restart, cross-tenant isolation, and
+  stale-revision rejection; its container, network, source copy, and build
+  output were removed immediately. The migration remains staged, no Neon
+  branch was created, Spotify was not contacted during that proof, and the
+  hosted maintenance capability is branch-only rather than deployed. See
+  `docs/design/DURABLE_MAINTENANCE_SESSIONS_V021_06.md`.
+
+  Private-beta acceptance checkpoint (2026-09-01): Google/Chordrift login,
+  independent Spotify Connect/Reconnect/Disconnect, retained-account adoption,
+  shared Library/Excluded/Activity inspection, durable browser maintenance,
+  exact provider-effect review, and the API/worker operational surface have
+  passed authenticated daily-driver use on Vortex. The release candidate also
+  exposed and repaired a provider-observation-lag sequence: a removal-only pull
+  may activate an exclusion, but any later single placement—back in the same
+  playlist or in a new one—supersedes it without a timing window or provider
+  write. The exclusion's prior surface remains provenance so the event is
+  recorded as restoration/reclassification rather than new intake. Multiple
+  later destinations still require an exact decision. The canonical sequence
+  and track lifecycle diagrams, CLI wrapper parity, planner annotations, and
+  fake-provider single/composite matrix carry the rule. Live proof retained
+  **Indiraiyo Ival Sundariyo** in Dakshina Pulse with one accepted observation
+  and zero exact provider changes; the final candidate additionally resolves
+  Cinema Monsoon as its retained prior source. Only the immutable release proof
+  remains before `v0.2.1-beta.1` is accepted.
 
   Ordered remaining work for `v0.2.1-beta.1`:
 
-  1. [in progress] read-only encrypted-vault observation and the durable
-     API/worker runtime are composed; persist maintenance sessions and complete
-     the PostgreSQL maintenance interpretation adapter;
-  2. implement Connect/Reconnect/Disconnect and multiple isolated Spotify
-     connections without changing Chordrift product identity;
-  3. finish the web maintenance journey and the shared provider/model
-     comparison query while preserving remote CLI parity;
-  4. exercise provider reads first, then open provider writes only behind one
-     separately approved exact-review gate;
-  5. add fake-provider, disposable-PostgreSQL, browser, restart/recovery,
-     tenant-isolation, rate-limit, and secret-redaction acceptance tests;
-  6. profile observation/planning database paths, remove superseded wrappers
+  1. [complete] read-only encrypted-vault observation, durable API/worker
+     runtime, maintenance-session persistence, PostgreSQL interpretation, and
+     Start/Refresh/Resolve routing, canonical record-only projection, and saved-
+     intake interpretation are composed and proven on disposable PostgreSQL;
+  2. [complete] implement
+     Connect/Reconnect/Disconnect and multiple isolated Spotify connections
+     without changing Chordrift product identity; the Rust authority now uses
+     hosted PKCE, stable-identity matching, encrypted in-place rotation, and
+     history-preserving revocation while the browser only launches and renders
+     the lifecycle; a disposable PostgreSQL 18 proof passed same-row history
+     retention, credential generation rotation, cross-tenant rejection, and
+     history-preserving disconnect, after which its container and source copy
+     were deleted;
+  3. [complete] finish the
+     web maintenance journey and the shared provider/model comparison query
+     while preserving remote CLI parity; contract v1.4 now returns set-based
+     directional membership, unresolved-identity, and order explanations to
+     both the web dashboard and `service library compare`;
+  4. [complete] exercise
+     provider reads first, publish and verify an enumerated destination addition
+     before offering a separately reviewed saved-state removal, and never mix
+     placement with intake cleanup in one executable review; broader
+     publication remains a separate workflow;
+  5. [complete] add
+     disposable-PostgreSQL, browser, restart/recovery, tenant-isolation,
+     rate-limit, and secret-redaction acceptance tests;
+  6. [complete for beta.1] profile observation/planning database paths, remove superseded wrappers
      and dead code, tighten dependencies and container contents, and prove that
      no cleanup changes behavior; and
-  7. publish, install, and deploy the exact `v0.2.1-beta.1` artifact through CI.
+  7. [in progress] publish, install, and deploy the exact
+     `v0.2.1-beta.1` artifact through CI.
 
 ### v0.2.1 beta hardening and final release
 
@@ -478,6 +627,15 @@ stability. Every reproducible defect found through normal Spotify or web use is
 added to the edge-case ledger with a fake-provider/transport regression and is
 released as the next `v0.2.1-beta.N`. Do not skip numbers or publish a beta for
 documentation-only churn.
+
+Every beta and final release uses one immutable source identity across all
+daily-driver surfaces. The crates.io artifact is installed locally as the
+`chordrift` CLI, and API plus worker containers are rebuilt from the same tag,
+deployed to Vortex, and restarted. Release acceptance records the CLI version,
+container image digest, commit, service health, and a cross-client smoke. Web
+and CLI presentation may differ, but both must serialize the same typed DTOs
+and observe identical Rust-owned authorization, state-transition, retry,
+verification, and error semantics.
 
 The final `v0.2.1` release requires Suhail's explicit stability approval plus:
 
@@ -505,6 +663,17 @@ maintenance to restore selected tracks. An active exclusion must be shown as
 `previously_excluded` and explicitly restored; `known_from_history` means no
 active exclusion and may be assigned directly. This audit must not infer a
 Spotify write merely from play count.
+
+The first read-only audit workbook was generated on 2026-08-31. Its strict
+history-only population excludes current provider playlists, Liked Songs,
+saved albums, active exclusions, and current Chordrift-model placements. It
+contains 14,138 identities: 296 canonical matches suitable for explicit
+destination review and 13,842 unmatched archive identities requiring identity
+resolution first. The workbook provides filterable album, meaningful-play,
+last-heard, retained-playlist-history, and safe-next-step fields. No Neon or
+Spotify state changed. Product integration remains: restore to a still-existing
+prior destination or an explicitly selected destination through exact review;
+permanent forget remains a separately confirmed durable-intent operation.
 
 ### Separate dependency — learned Classification Authority
 
@@ -614,6 +783,15 @@ post-hosting client-boundary refactor are proven. Client code owns presentation
 and platform integration only. Accounts, provider inventory,
 evidence, collections, recipes, Spins, publication safety, persistence,
 background work, and diagnostics remain Rust-owned.
+
+The Rust-owned portion is itself split deliberately. A task-oriented
+application/workflow layer interprets gestures, exposes decisions, coordinates
+durable operations, and binds review/authorization. Beneath it, the
+provider-neutral domain core and typed infrastructure ports enforce durable
+intent, playlist/exclusion invariants, persistence, provider effects, receipts,
+and verification. Client skins do not sequence core calls, and provider or
+database adapters do not decide the user workflow. This three-layer boundary is
+the portability contract for CLI, web, iOS, Android, and any later client.
 
 The shippable authority is a hosted Rust service. The web app, optional native
 clients, and the CLI consume one versioned command/query/event contract and

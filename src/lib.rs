@@ -62,14 +62,23 @@ pub mod http_transport;
 pub mod identity;
 /// Read-only current-provider intake joined with durable intent and history.
 pub mod intake;
+/// Set-based current provider versus Chordrift model comparison.
+pub mod library_comparison;
 /// Wrapper-neutral ordinary-maintenance workflow shared by every client.
 pub mod maintenance;
+/// PostgreSQL provider-first interpretation for durable maintenance tasks.
+pub mod maintenance_interpretation;
+pub mod maintenance_projection;
+/// Restart-safe PostgreSQL persistence for wrapper-neutral maintenance sessions.
+pub mod maintenance_store;
 /// Versioned pretrained audio-model inference artifacts.
 pub mod model_inference;
 /// Provider-read-only onboarding input capture and durable provenance.
 pub mod onboarding;
 /// Read-only current-inventory audit for a captured onboarding session.
 pub mod onboarding_audit;
+/// Host-local, read-only catalog resolution for reviewed migration cohorts.
+pub mod operator_catalog;
 /// Account-scoped playlist roles and drift policy.
 pub mod playlists;
 mod presentation;
@@ -77,6 +86,8 @@ mod presentation;
 pub mod product_rehearsal;
 /// Non-destructive, account-scoped proposed playlist libraries.
 pub mod proposals;
+/// Account-owned provider connection linking, credential rotation, and revocation.
+pub mod provider_connections;
 /// Encrypted server-side provider credential storage and lifecycle.
 pub mod provider_vault;
 /// Streaming-provider adapters.

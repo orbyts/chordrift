@@ -1,6 +1,6 @@
 [package]
 name = "chordrift"
-version = "0.2.1-alpha.18"
+version = "0.2.1-beta.1"
 edition = "2024"
 rust-version = "1.94"
 description = "Personal music-library intelligence and synchronization across streaming services."
@@ -12,7 +12,7 @@ categories = ["multimedia::audio", "command-line-utilities"]
 exclude = ["artwork/"]
 
 [dependencies]
-axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+axum = { version = "0.8", default-features = false, features = ["form", "http1", "json", "query", "tokio"] }
 async-trait = "0.1"
 base64 = "0.22.1"
 chrono = { version = "0.4.42", features = ["serde"] }

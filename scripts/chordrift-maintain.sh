@@ -106,13 +106,18 @@ find_ambiguous() {
     : >"$LIKED_DECISIONS_FILE"
     run intake audit --account "$ACCOUNT" >"$AUDIT_FILE"
     awk -F '\t' '
-        $1 == "previously_excluded" || $1 == "known_from_history" || $1 == "genuinely_new" {
+        FILENAME == ARGV[1] {
+            if (NF == 5) inferred[$3] = 1
+            next
+        }
+        ($1 == "previously_excluded" || $1 == "known_from_history" || $1 == "genuinely_new") &&
+            !($11 in inferred) {
             print $1 "\t" $2 "\t" $3 "\t" $11
         }
         $1 == "direct_managed_addition" && index($5, " / ") > 0 {
             print $1 "\t" $2 "\t" $3 "\t" $11
         }
-    ' "$AUDIT_FILE" >>"$AMBIGUOUS_FILE"
+    ' "$AUTO_MOVES_FILE" "$AUDIT_FILE" >>"$AMBIGUOUS_FILE"
 
     awk -F '\t' '$1 == "direct_managed_addition" && index($5, " / ") == 0 {
         print $2 "\t" $3 "\t" $11 "\tNew intake\t" $5

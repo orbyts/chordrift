@@ -24,6 +24,27 @@ provider deltas, assemble plans, decide whether authorization is required, or
 sequence internal safety phases. Those responsibilities stay in the Rust
 application core regardless of the wrapper or visual skin.
 
+The implementation boundary is deliberately three layers, even when all three
+Rust layers ship in one service process:
+
+1. **Client skin:** CLI, browser, and later iOS/Android code performs product or
+   provider login, compatibility negotiation, DTO submission, progress display,
+   and accessible rendering. It owns no maintenance rules.
+2. **Rust application/workflow layer:** task services interpret user gestures,
+   expose genuine decisions, coordinate durable operations, bind exact review
+   and authorization, and sequence core capabilities. This is the reusable
+   machinery behind every skin.
+3. **Rust domain/core and infrastructure ports:** provider-neutral intent,
+   playlist and exclusion invariants, persistence, provider adapters, vaults,
+   receipts, and verification perform the actual work. Provider-specific and
+   PostgreSQL details enter only through typed ports.
+
+A client action such as “keep this Like” therefore selects a Rust-provided
+decision; it does not implement the meaning. A workflow such as maintenance
+may compose multiple core operations, but the provider adapter cannot invent
+the workflow. This separation allows another skin without another product
+implementation.
+
 That contract already provides useful primitives:
 
 - semantic contract and schema compatibility negotiation;
@@ -33,11 +54,11 @@ That contract already provides useful primitives:
 - fixed client-safe errors and capability reporting.
 
 The task DTO/reducer and asynchronous application service own ordinary workflow
-transitions and orchestration behind typed backend ports. The published local
-daily-driver still invokes the established shell until remote CLI parity in
-V021-05; that compatibility shell is not the service contract. A web client
-must never port it to JavaScript or reproduce its sequence with button-specific
-endpoints.
+transitions and orchestration behind typed backend ports. The local development
+CLI and remote CLI are adapters to that application boundary; the historical
+shell remains only a compatibility/operator tool and is not the service
+contract. A web client must never port it to JavaScript or reproduce its
+sequence with button-specific endpoints.
 
 ## Task-oriented application workflows
 
@@ -51,8 +72,11 @@ contract. It supports task-level operations equivalent to:
 - cancel long work; and
 - read progress, recovery state, receipt, and final convergence.
 
-The concrete 1.3 application contract exposes typed start, refresh, resolve,
-authorize, and session-query DTOs. One user action may
+The concrete 1.4 application contract exposes typed start, refresh, resolve,
+authorize, session-query, and provider/model comparison DTOs. The set-based
+comparison reports provider-only, Chordrift-only, unresolved-identity, and
+custom-order differences to web and remote CLI; clients never infer a reason
+from unequal totals alone. One user action may
 create several internal proposals, plans, assessments, and receipts. Those
 objects remain Rust-owned safety evidence and appear in advanced diagnostics,
 not as mandatory web ceremony.

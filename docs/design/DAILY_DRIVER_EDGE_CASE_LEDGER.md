@@ -18,6 +18,41 @@ provider write.
 
 ## Incidents and permanent regressions
 
+The first hosted Spotify reconnect was rejected before consent with
+`redirect_uri: Not matching configuration`. The deployed Rust authority
+correctly requested
+`https://chordrift.suhail.ink/providers/spotify/callback`, while the Spotify
+application retained only the local CLI callback. Callback URLs remain server-
+derived and exact: clients cannot override them, product login stays separate,
+and a rejected request creates no credential or library mutation. The operator
+resolution is to allowlist the exact hosted callback alongside any retained
+loopback callback and retry **Reconnect Spotify**.
+
+The first hosted disconnect test exposed two provider-lifecycle gaps. A native
+same-origin form POST reached the API without the exact `Origin` header required
+by the route and returned HTTP 403 before vault revocation. Removing Chordrift
+from Spotify's Apps page then invalidated the provider grant out of band, but
+the locally active encrypted envelope continued to render as connected after
+the next provider operation failed. Disconnect is now a thin same-origin fetch
+authenticated by the Chordrift session and a non-simple wrapper header. An
+OAuth refresh rejection classified as `invalid_grant`, revoked refresh token,
+or equivalent terminal authorization failure immediately revokes the local
+envelope, returns `authentication_required`, and causes every client to offer
+Reconnect while retaining provider history and Chordrift intent. Because
+Spotify does not push third-party revocation events to Chordrift, the UI calls
+an unverified local envelope **Authorized** and separately shows when provider
+access was last verified; the next explicit provider check is the freshness
+boundary.
+
+The same rehearsal then reached Spotify consent successfully but returned to a
+still-disabled Reconnect state. The encrypted vault correctly retained revoked
+history, but rotation calculated its next generation from only an active row.
+After Disconnect there was no active row, so reconnect attempted generation 1
+again and collided with immutable generation-1 history. Credential generations
+are now monotonic across both active and revoked rows, serialized on the stable
+provider account. Reconnect after disconnect creates the next generation,
+activates it, and retains every older encrypted audit row.
+
 | Checkpoint | Observed failure | Durable rule | Regression/status |
 | --- | --- | --- | --- |
 | Pre-alpha / A021-01 | Several UUID-heavy workflows made ordinary cleanup slow and confusing. | One capability-checked maintenance entry point hides internal IDs and asks once only for a provider mutation. | Unified fake-binary workflow suite. Complete. |
@@ -33,6 +68,12 @@ provider write.
 | Alpha.12 → alpha.13 | Tracks added and later removed returned because record-only convergence had not created the immutable managed verification used to interpret the later removal. | Every exactly converged ordinary pull becomes the next accepted baseline. A later removal becomes an active exclusion and an older proposal cannot produce an add/restore operation. | PostgreSQL baseline/removal regression plus exclusion-archive lifecycle proof. Complete. |
 | Alpha.15 → alpha.16 | A newly liked track already present in a managed playlist was silently summarized only as “Remove from Likes,” without naming its destination or remembering whether the user wanted both memberships. | Liked Songs is a virtual intake surface. Name every verified destination, require and revision a per-track keep/clear decision, default to no cleanup when undecided, and treat a later direct Unlike as superseding an older keep directive. | Fake-binary human-review regression plus disposable-PostgreSQL keep, clear, undecided, and direct-Unlike proof. Complete. |
 | Alpha.17 → alpha.18 | Five Rasa Archive → Cinema Monsoon moves appeared twice, duplicate IDs stopped assignment, and the interrupted editable proposal made a retry label 1,439 existing tracks as direct intake. A later copy also replayed two excluded tracks into managed destinations. | One provider gesture yields one canonical move; an editable copy does not erase accepted coverage; active exclusions always outrank historical assignment revisions; interrupted work resumes cumulatively without expanding scope. | Exact paired-row fake-binary regression, classifier unit proof, disposable-PostgreSQL copy/exclusion proof, and live Neon-only recovery to zero pending operations. Complete. |
+| Beta.1 candidate | Disconnect returned HTTP 403, and an out-of-band Spotify Apps revocation remained displayed as connected after observation failed. | History-preserving disconnect is a session-authenticated same-origin wrapper action. A terminal refresh-token rejection revokes the stale local envelope during the failed read, returns `authentication_required`, and renders Reconnect without deleting history. Connection presentation distinguishes locally authorized from last provider verification. | Same-origin/non-simple wrapper-header regression and terminal-versus-transient OAuth rejection regression. Complete in branch; deployment acceptance pending. |
+| Beta.1 candidate | Spotify consent succeeded after Disconnect, but the callback left the connection disabled. | Vault generation is monotonic across active and revoked history and serialized by stable provider account; reconnect never reuses generation 1 or deletes audit history. | In-memory disconnect→reconnect regression and disposable-PostgreSQL provider lifecycle regression. Complete in branch; deployment acceptance pending. |
+| Beta.1 candidate | Spotify observation captured a newly added eighth track in a managed playlist, while hosted maintenance reported `in sync` with zero changes and left the canonical model at seven. | Every direct addition to a managed provider surface must pass from the shared intake audit into the Rust maintenance DTO. One unambiguous destination is recorded automatically; simultaneous placement in multiple managed destinations remains one explicit decision. Liked state remains a separate choice. | Rust interpretation regressions cover unambiguous, ambiguous, and direct-add-plus-Like cases. A six-track fake provider account covers isolated gestures, composite snapshots, delayed observation, and interrupted retry on every CI run. Deployed; authenticated browser acceptance pending. |
+| Beta.1 candidate | **Record these decisions** appeared inert when a destination plus Liked-state choice were submitted together. | Rust must issue each destination's typed opaque surface identity; the thin browser returns the selected DTO unchanged, submits every unresolved decision against one exact revision, and displays any rejected request without losing the user's ability to retry. | A Node browser-DTO harness covers destination, malformed destination, keep-Liked, remove-from-Likes, missing-choice, and missing-source cases; Rust locks the stable server-issued identity. Deployed; authenticated browser acceptance pending. |
+| Beta.1 candidate | A composite review for a Liked-only track removed it from Liked Songs before its selected Neon Affection placement existed, then verification failed. The track was left in neither Spotify surface. | Consuming intake is never the first provider effect for a newly selected placement. Publish the exact enumerated destination addition, observe and verify it, then create a separate exact review for removing the saved state. Failure or restart at either stage must retain at least one provider copy, and replay must not duplicate membership. | The permanent stateful harness now uses the production maintenance DTO/state machine with a fake durable database and fake provider. It injects failure before both stages, reloads an Applying session after worker restart, replays an already accepted add, proves exact add-before-unlike order, and proves no loss or duplicate. Production recovery also interprets a pending ordinary `publish/add_track` as one exact addition. Full CI and exact-image deployment pass; authenticated recovery review remains and no automatic Spotify write is authorized. |
+| Beta.1 candidate | Spotify exposed a Cinema Monsoon removal one pull before the matching Dakshina Pulse addition. Chordrift correctly accepted the first observed removal, but after the destination appeared it planned `managed_provider_drift` removal from Dakshina and the hosted interpreter failed with `state_conflict`. The first repair preserved Dakshina but labeled the event `direct intake` because the active exclusion had temporarily removed the canonical assignment. | Every new pull is cumulative provider truth. Any later single managed placement—back in the same playlist or in a new one—supersedes the active exclusion, with no timing window. Restore the exclusion in Neon, retain the exclusion's prior surface as provenance, and record restoration/reclassification without a provider write; multiple current destinations remain an explicit ambiguity. | Planner annotation tests cover one and multiple delayed destinations plus retained prior-source provenance. The fake-provider acceptance matrix covers later same-playlist restoration and new-playlist reclassification with zero provider writes. Live candidate proof preserved Dakshina with zero provider effects; beta.1 was held again until the label/provenance repair passed. |
 
 ## Batched experience-refinement queue
 
@@ -49,6 +90,11 @@ checkpoint.
   identifying a rediscovered favorite. The default is no reorder. Moving to the
   top must be a separately reviewed, snapshot-bound provider operation and must
   not be implied by the keep/clear Liked Songs answer.
+- **New placement position.** A Liked-only track being placed into a destination
+  for the first time defaults to the top and says so in the exact review. This
+  is not the optional resurfacing case above: an already-present destination is
+  never reordered implicitly. Future choices may add bottom or an exact
+  position through the shared Rust contract.
 - **Duplicate occurrences.** If the destination contains the same track more
   than once, show every occurrence or ask which occurrence should move; never
   silently collapse duplicates into one position.
@@ -74,6 +120,15 @@ For every new failure, record:
 5. the durable product rule, including authority and confirmation boundaries;
 6. the smallest fake-provider/fake-binary regression that reproduces it; and
 7. the checkpoint that ships the repair.
+
+The always-on test fixture is `tests/provider_behavior_acceptance.rs`. It uses
+the production maintenance DTOs and Rust state machine, a small stateful fake
+provider, and a fake durable database that persists session revisions,
+canonical placement intent, and exact write receipts across simulated worker
+restarts. Keep its catalog deliberately small and synthetic. Add both
+one-gesture and composite snapshots plus failure/retry cases when a new incident
+is found; production account data and provider credentials never belong in this
+harness.
 
 Never normalize a failure as “operator error” merely because the user edited
 Spotify between runs. Chaotic, cumulative provider use is the normal product

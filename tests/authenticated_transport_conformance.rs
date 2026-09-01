@@ -9,12 +9,14 @@ use chordrift::{
     contract::{
         CONTRACT_VERSION, CancellationRequest, ClientCompatibility, ClientError, Command,
         CommandReceipt, CommandRequest, ContractVersion, ContractVersionRange, ErrorCode,
-        IdempotencyKey, MaintenanceChangeId, MaintenanceChangeKind, MaintenanceChangeView,
-        MaintenanceDecision, MaintenanceProviderEffectKind, MaintenanceProviderEffectView,
-        MaintenanceResolution, MaintenanceSessionId, MaintenanceSessionState,
-        MaintenanceSessionView, MaintenanceSurfaceView, MaintenanceTrackView, OperationEventsView,
-        OperationState, Query, QueryRequest, QueryResponse, RequestId, ResourceId,
-        SchemaVersionRange, ServiceCompatibility, WaitingReason,
+        IdempotencyKey, LibraryComparisonStatus, LibraryComparisonView,
+        LibraryPlaylistComparisonView, MaintenanceChangeId, MaintenanceChangeKind,
+        MaintenanceChangeView, MaintenanceDecision, MaintenanceProviderEffectKind,
+        MaintenanceProviderEffectView, MaintenanceResolution, MaintenanceSessionId,
+        MaintenanceSessionState, MaintenanceSessionView, MaintenanceSurfaceView,
+        MaintenanceTrackView, OperationEventsView, OperationState, Query, QueryRequest,
+        QueryResponse, RequestId, ResourceId, SchemaVersionRange, ServiceCompatibility,
+        WaitingReason,
     },
     http_transport::{AuthenticatedHttpTransport, BearerAuthenticator, HttpRequestGate},
     maintenance::{MaintenanceDecisionProjection, MaintenanceProjection},
@@ -82,6 +84,8 @@ impl Fixture {
                     current_surface: None,
                     summary: "Removed Fixture Song from Old Vibe".to_owned(),
                     resolution: None,
+                    recommended_resolution: None,
+                    recommendation_reason: None,
                 }],
                 provider_effects: vec![MaintenanceProviderEffectView {
                     effect_id: ResourceId::new(),
@@ -119,6 +123,34 @@ impl MaintenanceBackend for FakeBackend {
         provider_connection_id: ResourceId,
     ) -> bool {
         subject == self.owner && provider_connection_id == self.provider_connection_id
+    }
+
+    async fn library_comparison(
+        &mut self,
+        _subject: AuthenticatedSubject,
+        _provider_connection_id: ResourceId,
+    ) -> Result<LibraryComparisonView, ClientError> {
+        Ok(LibraryComparisonView {
+            provider_state_at: None,
+            chordrift_state_at: None,
+            aligned_playlists: 0,
+            differing_playlists: 1,
+            playlists: vec![LibraryPlaylistComparisonView {
+                provider_playlist_id: Some("playlist-a".to_owned()),
+                chordrift_playlist_id: Some("model-a".to_owned()),
+                name: "Fixture".to_owned(),
+                provider_track_count: 5,
+                chordrift_track_count: 4,
+                provider_unresolved_track_count: 0,
+                chordrift_unresolved_track_count: 0,
+                provider_only_track_count: 1,
+                chordrift_only_track_count: 0,
+                shared_track_count: 4,
+                order_matches: None,
+                status: LibraryComparisonStatus::MembershipDiffers,
+                explanation: "1 provider-only and 0 Chordrift-only membership(s).".to_owned(),
+            }],
+        })
     }
 
     async fn observe(
@@ -448,6 +480,22 @@ async fn shipped_remote_client_and_explicit_local_transport_share_the_contract()
     assert_eq!(
         serde_json::to_value(remote_view).expect("remote JSON")["type"],
         serde_json::to_value(local_view).expect("local JSON")["type"]
+    );
+    let remote_comparison = remote
+        .query(query_request(Query::LibraryComparison {
+            provider_connection_id: fixture.provider_connection_id,
+        }))
+        .await
+        .expect("remote comparison");
+    let local_comparison = local
+        .query(query_request(Query::LibraryComparison {
+            provider_connection_id: local_fixture.provider_connection_id,
+        }))
+        .await
+        .expect("local comparison");
+    assert_eq!(
+        serde_json::to_value(remote_comparison).expect("remote comparison JSON")["view"]["value"],
+        serde_json::to_value(local_comparison).expect("local comparison JSON")["view"]["value"]
     );
 
     assert!(RemoteHttpClient::new("http://example.com", "secret".to_owned()).is_err());
@@ -898,6 +946,8 @@ async fn http_refresh_accepts_newest_provider_order_and_invalidates_older_review
             }),
             summary: "Accepted current provider order".to_owned(),
             resolution: Some(MaintenanceResolution::KeepObserved),
+            recommended_resolution: None,
+            recommendation_reason: None,
         }],
         provider_effects: Vec::new(),
         review_id: None,

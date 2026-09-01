@@ -1794,6 +1794,14 @@ pub async fn extend_approved(
         playlist_map.insert(old_id, new_id);
         next_positions.insert(old_id, next);
     }
+    inherit_approved_artwork(
+        &mut transaction,
+        account_id,
+        base_generation_id,
+        generation_id,
+        &playlist_map,
+    )
+    .await?;
     for (old_playlist_id, track_id, score) in assignments {
         let new_playlist_id = playlist_map[&old_playlist_id];
         let position = next_positions
@@ -1833,6 +1841,271 @@ pub async fn extend_approved(
             .bind(generation_id)
             .fetch_one(&mut *transaction)
             .await?;
+    let coverage_complete = represented_track_count == required_track_count;
+    sqlx::query(
+        "UPDATE playlist_generations SET required_track_count = $2,
+         represented_track_count = $3, coverage_complete = $4 WHERE id = $1",
+    )
+    .bind(generation_id)
+    .bind(as_i32(required_track_count)?)
+    .bind(as_i32(represented_track_count)?)
+    .bind(coverage_complete)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+    Ok(GenerationReport {
+        generation_id,
+        cluster_generation_id,
+        reused: false,
+        playlist_count: as_usize_i64(playlist_count)?,
+        assigned_track_count: as_usize_i64(assigned_track_count)?,
+        required_track_count,
+        represented_track_count,
+        coverage_complete,
+        input_hash,
+    })
+}
+
+async fn inherit_approved_artwork(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: Uuid,
+    base_generation_id: Uuid,
+    generation_id: Uuid,
+    playlist_map: &HashMap<Uuid, Uuid>,
+) -> Result<()> {
+    let Some(batch) = sqlx::query(
+        "SELECT id, input_hash, visual_system, generator_provider,
+                generator_model, generator_version, manifest_path,
+                contact_sheet_path, artifact_count
+         FROM playlist_artwork_batches
+         WHERE provider_account_id = $1 AND proposal_generation_id = $2
+           AND state = 'approved'
+         ORDER BY approved_at DESC, created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .bind(base_generation_id)
+    .fetch_optional(&mut **transaction)
+    .await?
+    else {
+        return Ok(());
+    };
+    let base_batch_id: Uuid = batch.try_get("id")?;
+    let base_input_hash: String = batch.try_get("input_hash")?;
+    let inherited_hash = hash_parts(&[
+        "approved-artwork-inheritance",
+        &base_batch_id.to_string(),
+        &base_input_hash,
+        &generation_id.to_string(),
+    ]);
+    let batch_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlist_artwork_batches
+         (provider_account_id, proposal_generation_id, input_hash, state,
+          visual_system, generator_provider, generator_model, generator_version,
+          manifest_path, contact_sheet_path, artifact_count, approved_at)
+         VALUES ($1, $2, $3, 'approved', $4, $5, $6, $7, $8, $9, $10, now())
+         RETURNING id",
+    )
+    .bind(account_id)
+    .bind(generation_id)
+    .bind(inherited_hash)
+    .bind(batch.try_get::<String, _>("visual_system")?)
+    .bind(batch.try_get::<String, _>("generator_provider")?)
+    .bind(batch.try_get::<String, _>("generator_model")?)
+    .bind(batch.try_get::<String, _>("generator_version")?)
+    .bind(batch.try_get::<String, _>("manifest_path")?)
+    .bind(batch.try_get::<String, _>("contact_sheet_path")?)
+    .bind(batch.try_get::<i32, _>("artifact_count")?)
+    .fetch_one(&mut **transaction)
+    .await?;
+    let artifacts = sqlx::query(
+        "SELECT playlist_id, stable_key, playlist_name, artifact_path,
+                media_type, pixel_width, pixel_height, byte_size,
+                content_sha256, prompt, semantic_tags, target_kind
+         FROM playlist_artwork_artifacts
+         WHERE batch_id = $1 ORDER BY stable_key, id",
+    )
+    .bind(base_batch_id)
+    .fetch_all(&mut **transaction)
+    .await?;
+    for artifact in artifacts {
+        let target_kind: String = artifact.try_get("target_kind")?;
+        let old_playlist_id: Option<Uuid> = artifact.try_get("playlist_id")?;
+        let playlist_id = if target_kind == "canonical" {
+            Some(
+                *playlist_map
+                    .get(&old_playlist_id.ok_or_else(|| {
+                        ChordriftError::Configuration(
+                            "approved canonical artwork has no playlist identity".to_owned(),
+                        )
+                    })?)
+                    .ok_or_else(|| {
+                        ChordriftError::Configuration(
+                            "approved artwork does not match the inherited playlist set".to_owned(),
+                        )
+                    })?,
+            )
+        } else {
+            None
+        };
+        sqlx::query(
+            "INSERT INTO playlist_artwork_artifacts
+             (batch_id, playlist_id, stable_key, playlist_name, artifact_path,
+              media_type, pixel_width, pixel_height, byte_size, content_sha256,
+              prompt, semantic_tags, target_kind)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+        )
+        .bind(batch_id)
+        .bind(playlist_id)
+        .bind(artifact.try_get::<String, _>("stable_key")?)
+        .bind(artifact.try_get::<String, _>("playlist_name")?)
+        .bind(artifact.try_get::<String, _>("artifact_path")?)
+        .bind(artifact.try_get::<String, _>("media_type")?)
+        .bind(artifact.try_get::<i32, _>("pixel_width")?)
+        .bind(artifact.try_get::<i32, _>("pixel_height")?)
+        .bind(artifact.try_get::<i64, _>("byte_size")?)
+        .bind(artifact.try_get::<String, _>("content_sha256")?)
+        .bind(artifact.try_get::<String, _>("prompt")?)
+        .bind(artifact.try_get::<Value, _>("semantic_tags")?)
+        .bind(target_kind)
+        .execute(&mut **transaction)
+        .await?;
+    }
+    Ok(())
+}
+
+/// Creates an exact editable copy of the approved model for provider-observed
+/// intent. Unlike analytical extension, this never assigns an additional track.
+pub async fn fork_approved_for_maintenance(
+    database: &Database,
+    account_label: &str,
+) -> Result<GenerationReport> {
+    let account_id = account_id(database, account_label).await?;
+    let base = sqlx::query(
+        "SELECT id, cluster_generation_id, input_hash
+         FROM playlist_generations
+         WHERE provider_account_id = $1 AND status = 'approved'
+         ORDER BY approved_at DESC, created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| ChordriftError::Configuration("no approved proposal exists".to_owned()))?;
+    let base_generation_id: Uuid = base.try_get("id")?;
+    let cluster_generation_id: Uuid = base.try_get("cluster_generation_id")?;
+    let base_input_hash: String = base.try_get("input_hash")?;
+    let input_hash = hash_parts(&[
+        "provider-intent-maintenance",
+        "1",
+        &base_generation_id.to_string(),
+        &base_input_hash,
+    ]);
+    if let Some(report) = reused_report(database, account_id, &input_hash).await? {
+        return Ok(report);
+    }
+    let required_track_count = required_track_count(database, account_id).await?;
+    let mut transaction = database.pool().begin().await?;
+    let generation_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO playlist_generations
+         (model, model_version, status, parameters, provider_account_id,
+          cluster_generation_id, input_hash)
+         VALUES ('provider-intent-maintenance', '1', 'proposed', $1, $2, $3, $4)
+         RETURNING id",
+    )
+    .bind(json!({
+        "base_generation_id": base_generation_id,
+        "preserves_existing_membership": true,
+        "omits_active_exclusions": true,
+        "adds_unrequested_tracks": false,
+        "spotify_writes": false
+    }))
+    .bind(account_id)
+    .bind(cluster_generation_id)
+    .bind(&input_hash)
+    .fetch_one(&mut *transaction)
+    .await?;
+    let playlist_rows = sqlx::query(
+        "SELECT id, concept_id, name, description, kind, machine_label, machine_tags
+         FROM playlists WHERE generation_id = $1 ORDER BY id",
+    )
+    .bind(base_generation_id)
+    .fetch_all(&mut *transaction)
+    .await?;
+    let mut playlist_map = HashMap::new();
+    for row in playlist_rows {
+        let old_id: Uuid = row.try_get("id")?;
+        let new_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO playlists
+             (generation_id, concept_id, name, description, kind, machine_label, machine_tags)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+        )
+        .bind(generation_id)
+        .bind(row.try_get::<Uuid, _>("concept_id")?)
+        .bind(row.try_get::<String, _>("name")?)
+        .bind(row.try_get::<Option<String>, _>("description")?)
+        .bind(row.try_get::<String, _>("kind")?)
+        .bind(row.try_get::<Option<String>, _>("machine_label")?)
+        .bind(row.try_get::<Value, _>("machine_tags")?)
+        .fetch_one(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO playlist_tracks (playlist_id, track_id, position, source, provenance)
+             SELECT $2, membership.track_id, row_number() OVER (
+                        ORDER BY membership.position)::integer - 1,
+                    membership.source,
+                    membership.provenance ||
+                    jsonb_build_object('maintenance_fork_of_generation_id', $3::uuid)
+             FROM playlist_tracks membership
+             LEFT JOIN excluded_tracks exclusion
+               ON exclusion.provider_account_id = $4
+              AND exclusion.track_id = membership.track_id
+              AND exclusion.restored_at IS NULL
+             WHERE membership.playlist_id = $1 AND exclusion.id IS NULL
+             ORDER BY membership.position",
+        )
+        .bind(old_id)
+        .bind(new_id)
+        .bind(base_generation_id)
+        .bind(account_id)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO playlist_name_revisions
+             (playlist_id, name, description, machine_tags, generator_provider,
+              generator_model, generator_model_version, artifact_sha256, selected)
+             SELECT $2, name, description, machine_tags, generator_provider,
+                    generator_model, generator_model_version, artifact_sha256, selected
+             FROM playlist_name_revisions WHERE playlist_id = $1 AND selected",
+        )
+        .bind(old_id)
+        .bind(new_id)
+        .execute(&mut *transaction)
+        .await?;
+        playlist_map.insert(old_id, new_id);
+    }
+    inherit_approved_artwork(
+        &mut transaction,
+        account_id,
+        base_generation_id,
+        generation_id,
+        &playlist_map,
+    )
+    .await?;
+    let represented_track_count =
+        represented_required_track_count_tx(&mut transaction, account_id, generation_id).await?;
+    let playlist_count: i64 =
+        sqlx::query_scalar("SELECT count(*)::bigint FROM playlists WHERE generation_id = $1")
+            .bind(generation_id)
+            .fetch_one(&mut *transaction)
+            .await?;
+    let assigned_track_count: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT membership.track_id)::bigint
+         FROM playlists playlist JOIN playlist_tracks membership
+           ON membership.playlist_id = playlist.id
+         WHERE playlist.generation_id = $1",
+    )
+    .bind(generation_id)
+    .fetch_one(&mut *transaction)
+    .await?;
     let coverage_complete = represented_track_count == required_track_count;
     sqlx::query(
         "UPDATE playlist_generations SET required_track_count = $2,
@@ -2220,6 +2493,122 @@ pub async fn align_provider_order(
     })
 }
 
+/// Applies an account-owner-reviewed exact order to one editable proposal
+/// playlist after proving that the reviewed Spotify IDs and proposal contain
+/// exactly the same unique membership.
+pub async fn set_reviewed_order(
+    database: &Database,
+    account_label: &str,
+    stable_key: &str,
+    spotify_ids: &[String],
+) -> Result<ProviderOrderReport> {
+    if spotify_ids.is_empty() {
+        return Err(ChordriftError::Configuration(
+            "reviewed order must contain at least one Spotify track ID".to_owned(),
+        ));
+    }
+    if spotify_ids.iter().collect::<HashSet<_>>().len() != spotify_ids.len() {
+        return Err(ChordriftError::Configuration(
+            "reviewed order must contain unique Spotify track IDs".to_owned(),
+        ));
+    }
+    let generation = status(database, account_label).await?;
+    require_editable(&generation)?;
+    let account_id = account_id(database, account_label).await?;
+    let row = sqlx::query(
+        "SELECT playlist.id, playlist.name
+         FROM playlists playlist
+         JOIN playlist_concepts concept ON concept.id = playlist.concept_id
+         WHERE playlist.generation_id = $1
+           AND concept.provider_account_id = $2
+           AND concept.stable_key = $3",
+    )
+    .bind(generation.generation_id)
+    .bind(account_id)
+    .bind(stable_key)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(
+            "reviewed-order destination is not in the latest proposal".to_owned(),
+        )
+    })?;
+    let playlist_id: Uuid = row.try_get("id")?;
+    let name: String = row.try_get("name")?;
+    let resolved = sqlx::query(
+        "SELECT provider_track.provider_track_id AS spotify_id, provider_track.track_id
+         FROM provider_tracks provider_track
+         WHERE provider_track.provider = 'spotify'
+           AND provider_track.provider_track_id = ANY($1)",
+    )
+    .bind(spotify_ids)
+    .fetch_all(database.pool())
+    .await?;
+    let track_by_spotify_id = resolved
+        .into_iter()
+        .map(|row| {
+            Ok((
+                row.try_get::<String, _>("spotify_id")?,
+                row.try_get::<Uuid, _>("track_id")?,
+            ))
+        })
+        .collect::<Result<HashMap<_, _>>>()?;
+    if track_by_spotify_id.len() != spotify_ids.len() {
+        return Err(ChordriftError::Configuration(
+            "one or more reviewed-order Spotify IDs are not in the observed provider catalog"
+                .to_owned(),
+        ));
+    }
+    let reviewed_order = spotify_ids
+        .iter()
+        .map(|spotify_id| track_by_spotify_id[spotify_id])
+        .collect::<Vec<_>>();
+    let proposal_order = sqlx::query_scalar::<_, Uuid>(
+        "SELECT track_id FROM playlist_tracks
+         WHERE playlist_id = $1 ORDER BY position",
+    )
+    .bind(playlist_id)
+    .fetch_all(database.pool())
+    .await?;
+    if !orders_have_equal_unique_membership(&reviewed_order, &proposal_order) {
+        return Err(ChordriftError::Configuration(format!(
+            "cannot apply reviewed order to `{stable_key}` unless reviewed and proposal memberships are exactly equal"
+        )));
+    }
+    if reviewed_order != proposal_order {
+        let offset = i32::try_from(reviewed_order.len())
+            .ok()
+            .and_then(|count| count.checked_add(1_000_000))
+            .ok_or_else(|| {
+                ChordriftError::Configuration("playlist is too large to order safely".to_owned())
+            })?;
+        let mut transaction = database.pool().begin().await?;
+        sqlx::query("UPDATE playlist_tracks SET position = position + $2 WHERE playlist_id = $1")
+            .bind(playlist_id)
+            .bind(offset)
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            "UPDATE playlist_tracks membership
+             SET position = ordered.position::integer - 1
+             FROM unnest($2::uuid[]) WITH ORDINALITY AS ordered(track_id, position)
+             WHERE membership.playlist_id = $1
+               AND membership.track_id = ordered.track_id",
+        )
+        .bind(playlist_id)
+        .bind(&reviewed_order)
+        .execute(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+    }
+    Ok(ProviderOrderReport {
+        generation_id: generation.generation_id,
+        stable_key: stable_key.to_owned(),
+        name,
+        track_count: reviewed_order.len(),
+    })
+}
+
 fn orders_have_equal_unique_membership(provider: &[Uuid], proposal: &[Uuid]) -> bool {
     let provider_set = provider.iter().copied().collect::<HashSet<_>>();
     let proposal_set = proposal.iter().copied().collect::<HashSet<_>>();
@@ -2413,6 +2802,101 @@ pub async fn import_names(
     }
     transaction.commit().await?;
     Ok(current.len())
+}
+
+/// Explicitly approves a fully named, fully covered proposal.
+///
+/// A provider-intent maintenance fork may explicitly defer newly saved tracks
+/// that were never represented by its approved base generation. This keeps an
+/// unrelated Like visible to the ordinary intake workflow without forcing an
+/// account-owner decision into a reviewed batch operation.
+pub async fn approve_with_deferred_saved_intake(
+    database: &Database,
+    account_label: &str,
+    generation_id: Uuid,
+) -> Result<Status> {
+    let current = status(database, account_label).await?;
+    if current.generation_id != generation_id || current.state != "proposed" {
+        return Err(ChordriftError::Configuration(
+            "deferred-intake approval must target the latest proposed generation".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let base_generation_id: Uuid = sqlx::query_scalar(
+        "SELECT (parameters->>'base_generation_id')::uuid
+         FROM playlist_generations WHERE id = $1",
+    )
+    .bind(generation_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(
+            "deferred-intake approval requires a provider-intent maintenance fork".to_owned(),
+        )
+    })?;
+    let missing = sqlx::query(
+        "WITH missing AS (
+             SELECT track.id
+             FROM tracks track
+             WHERE account_track_is_library_candidate($1, track.id)
+               AND NOT EXISTS (
+                   SELECT 1 FROM excluded_tracks exclusion
+                   WHERE exclusion.provider_account_id = $1
+                     AND exclusion.track_id = track.id
+                     AND exclusion.restored_at IS NULL)
+               AND NOT EXISTS (
+                   SELECT 1 FROM playlists playlist
+                   JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+                   WHERE playlist.generation_id = $2
+                     AND membership.track_id = track.id))
+         SELECT missing.id,
+                EXISTS (
+                    SELECT 1 FROM playlists playlist
+                    JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+                    WHERE playlist.generation_id = $3
+                      AND membership.track_id = missing.id) AS represented_in_base,
+                EXISTS (
+                    SELECT 1 FROM provider_current_inventories inventory
+                    JOIN provider_saved_track_revision_tracks saved
+                      ON saved.revision_id = inventory.saved_track_revision_id
+                    JOIN provider_tracks provider_track
+                      ON provider_track.id = saved.provider_track_id
+                    WHERE inventory.provider_account_id = $1
+                      AND provider_track.track_id = missing.id) AS currently_saved
+         FROM missing ORDER BY missing.id",
+    )
+    .bind(account_id)
+    .bind(generation_id)
+    .bind(base_generation_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut deferred_track_ids = Vec::with_capacity(missing.len());
+    for row in missing {
+        if row.try_get::<bool, _>("represented_in_base")?
+            || !row.try_get::<bool, _>("currently_saved")?
+        {
+            return Err(ChordriftError::Configuration(
+                "only newly saved tracks absent from the approved base may be deferred".to_owned(),
+            ));
+        }
+        deferred_track_ids.push(row.try_get::<Uuid, _>("id")?);
+    }
+    if !deferred_track_ids.is_empty() {
+        sqlx::query(
+            "UPDATE playlist_generations
+             SET required_track_count = represented_track_count,
+                 coverage_complete = true,
+                 parameters = parameters || jsonb_build_object(
+                     'deferred_saved_intake_track_ids', to_jsonb($2::uuid[]),
+                     'deferred_saved_intake_count', cardinality($2::uuid[]))
+             WHERE id = $1 AND status = 'proposed'",
+        )
+        .bind(generation_id)
+        .bind(&deferred_track_ids)
+        .execute(database.pool())
+        .await?;
+    }
+    approve(database, account_label, generation_id).await
 }
 
 /// Explicitly approves a fully named, fully covered proposal.

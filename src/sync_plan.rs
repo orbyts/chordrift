@@ -124,6 +124,31 @@ pub struct PlannedOperation {
     pub safety: Value,
 }
 
+/// One explicitly reviewed provider addition used by a bounded history import.
+///
+/// The track does not need to exist in the current provider catalog yet. Its
+/// exact Spotify identifier is appended to the named, already-managed
+/// destination and becomes canonical only after the following provider pull.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ReviewedAdditionInput {
+    /// Existing managed destination name from the approved model.
+    pub playlist_name: String,
+    /// Exact Spotify track identifier approved by the account owner.
+    pub spotify_track_id: String,
+    /// Historical Spotify identifier that established the reviewed listening
+    /// evidence when the current catalog exposes the recording under a new ID.
+    #[serde(default)]
+    pub historical_spotify_track_id: Option<String>,
+    /// Human title retained only for auditable plan detail.
+    pub title: String,
+    /// Human artist label retained only for auditable plan detail.
+    pub artists: String,
+    /// Intended final cadence position after the later verified reorder.
+    pub final_position: i32,
+    /// Historical listening count used to derive the reviewed cadence.
+    pub play_count: i64,
+}
+
 /// Human-facing context and ordinary-maintenance interpretation for one plan row.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MaintenanceAnnotation {
@@ -145,6 +170,7 @@ struct MaintenanceTrackContext {
     artists: String,
     current_canonical_playlists: Vec<String>,
     canonical_placements: Vec<String>,
+    previous_excluded_playlist: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -258,6 +284,250 @@ pub async fn create(
         snapshot_id,
         operations,
         "full",
+    )
+    .await
+}
+
+/// Persists an immutable append-only plan for one explicitly reviewed history
+/// cohort without first requiring those Spotify IDs in the current catalog.
+///
+/// This is deliberately only phase one of the import. The caller must observe
+/// and accept the resulting provider state before constructing an exact-order
+/// cadence proposal. No removals or replacements are planned here.
+pub async fn create_reviewed_addition_plan(
+    database: &Database,
+    account_label: &str,
+    additions: &[ReviewedAdditionInput],
+) -> Result<PlanReport> {
+    if additions.is_empty() {
+        return Err(ChordriftError::Configuration(
+            "reviewed addition plan must contain at least one track".to_owned(),
+        ));
+    }
+    let mut spotify_ids = BTreeSet::new();
+    let mut historical_spotify_ids = BTreeSet::new();
+    for addition in additions {
+        let historical_spotify_id = addition
+            .historical_spotify_track_id
+            .as_deref()
+            .unwrap_or(&addition.spotify_track_id);
+        if addition.playlist_name.trim().is_empty()
+            || addition.spotify_track_id.trim().is_empty()
+            || historical_spotify_id.trim().is_empty()
+            || addition.final_position < 0
+            || !spotify_ids.insert(addition.spotify_track_id.as_str())
+            || !historical_spotify_ids.insert(historical_spotify_id)
+        {
+            return Err(ChordriftError::Configuration(
+                "reviewed additions require unique current and historical Spotify IDs, named destinations, and non-negative positions"
+                    .to_owned(),
+            ));
+        }
+    }
+
+    let account_id = account_id(database, account_label).await?;
+    let proposal_id = approved_proposal(database, account_id, None).await?;
+    let snapshot_id = latest_snapshot(database, account_id).await?;
+    validate_proposal(database, proposal_id).await?;
+    let desired = desired_playlists(database, account_id, proposal_id).await?;
+    let current = current_managed_playlists(database, account_id, snapshot_id).await?;
+
+    let mut destinations = BTreeMap::new();
+    for playlist in desired {
+        let observed = current.get(&playlist.concept_id).ok_or_else(|| {
+            ChordriftError::Configuration(format!(
+                "reviewed destination {:?} is not an observed managed playlist",
+                playlist.name
+            ))
+        })?;
+        destinations.insert(
+            playlist.name.to_lowercase(),
+            (
+                playlist.playlist_id,
+                playlist.concept_id,
+                observed.provider_playlist_id,
+                observed.spotify_id.clone(),
+                observed.provider_snapshot_id.clone(),
+                playlist.name,
+            ),
+        );
+    }
+
+    let historical_match_count: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT identity.provider_track_id)::bigint
+         FROM historical_provider_track_identities identity
+         WHERE identity.provider = 'spotify'
+           AND identity.provider_track_id = ANY($1)",
+    )
+    .bind(historical_spotify_ids.iter().copied().collect::<Vec<_>>())
+    .fetch_one(database.pool())
+    .await?;
+    if usize::try_from(historical_match_count).ok() != Some(additions.len()) {
+        return Err(ChordriftError::Configuration(
+            "every reviewed Spotify ID must retain a historical identity".to_owned(),
+        ));
+    }
+
+    let mut operations = Vec::with_capacity(additions.len());
+    for addition in additions {
+        let destination = destinations
+            .get(&addition.playlist_name.to_lowercase())
+            .ok_or_else(|| {
+                ChordriftError::Configuration(format!(
+                    "reviewed destination {:?} is not in the approved model",
+                    addition.playlist_name
+                ))
+            })?;
+        operations.push(PlanOperationInput {
+            phase: "publish".to_owned(),
+            operation_type: "add_track".to_owned(),
+            operation_key: format!(
+                "reviewed-history-add:{}:{}",
+                destination.1, addition.spotify_track_id
+            ),
+            playlist_id: Some(destination.0),
+            provider_playlist_id: Some(destination.2),
+            playlist_name: destination.5.clone(),
+            spotify_playlist_id: Some(destination.3.clone()),
+            spotify_track_id: Some(addition.spotify_track_id.clone()),
+            payload: json!({
+                "position": addition.final_position,
+                "concept_id": destination.1,
+                "title": addition.title,
+                "artists": addition.artists,
+                "play_count": addition.play_count,
+                "historical_spotify_track_id": addition.historical_spotify_track_id,
+                "reason": "account_owner_reviewed_history_import",
+                "expected_snapshot_id": destination.4
+            }),
+            safety: json!({
+                "destructive": false,
+                "append_only": true,
+                "requires_snapshot_match": true,
+                "membership_replacement": false
+            }),
+        });
+    }
+    operations.sort_by(|left, right| {
+        left.playlist_name
+            .cmp(&right.playlist_name)
+            .then_with(|| operation_position(left).cmp(&operation_position(right)))
+            .then_with(|| left.operation_key.cmp(&right.operation_key))
+    });
+    persist_operations(
+        database,
+        account_id,
+        proposal_id,
+        snapshot_id,
+        operations,
+        "reviewed_history_additions_v2",
+    )
+    .await
+}
+
+/// Persists one exact, reviewed catalog-edition collapse as a replacement
+/// order. Only the enumerated obsolete Spotify IDs may disappear; every
+/// desired canonical recording must already be present in the approved model.
+pub async fn create_reviewed_catalog_collapse_plan(
+    database: &Database,
+    account_label: &str,
+    playlist_name: &str,
+    required_spotify_ids: &[String],
+    removable_spotify_ids: &[String],
+) -> Result<PlanReport> {
+    if playlist_name.trim().is_empty()
+        || required_spotify_ids.is_empty()
+        || removable_spotify_ids.is_empty()
+        || required_spotify_ids.iter().collect::<BTreeSet<_>>().len() != required_spotify_ids.len()
+        || removable_spotify_ids.iter().collect::<BTreeSet<_>>().len()
+            != removable_spotify_ids.len()
+        || required_spotify_ids
+            .iter()
+            .any(|spotify_id| removable_spotify_ids.contains(spotify_id))
+    {
+        return Err(ChordriftError::Configuration(
+            "catalog collapse requires a named destination and unique, disjoint required and removable Spotify IDs"
+                .to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let proposal_id = approved_proposal(database, account_id, None).await?;
+    let snapshot_id = latest_snapshot(database, account_id).await?;
+    validate_proposal(database, proposal_id).await?;
+    let desired = desired_playlists(database, account_id, proposal_id).await?;
+    let current = current_managed_playlists(database, account_id, snapshot_id).await?;
+    let playlist = desired
+        .into_iter()
+        .find(|playlist| playlist.name.eq_ignore_ascii_case(playlist_name))
+        .ok_or_else(|| {
+            ChordriftError::Configuration(
+                "catalog-collapse destination is not in the approved model".to_owned(),
+            )
+        })?;
+    let observed = current.get(&playlist.concept_id).ok_or_else(|| {
+        ChordriftError::Configuration(
+            "catalog-collapse destination is not currently observed".to_owned(),
+        )
+    })?;
+    let desired_ids = playlist
+        .tracks
+        .iter()
+        .map(|track| track.spotify_id.as_str())
+        .collect::<BTreeSet<_>>();
+    if required_spotify_ids
+        .iter()
+        .any(|spotify_id| !desired_ids.contains(spotify_id.as_str()))
+    {
+        return Err(ChordriftError::Configuration(
+            "every required catalog replacement must already be in the approved destination"
+                .to_owned(),
+        ));
+    }
+    let historical_count: i64 = sqlx::query_scalar(
+        "SELECT count(DISTINCT provider_track_id)::bigint
+         FROM historical_provider_track_identities
+         WHERE provider = 'spotify' AND provider_track_id = ANY($1)",
+    )
+    .bind(removable_spotify_ids)
+    .fetch_one(database.pool())
+    .await?;
+    if usize::try_from(historical_count).ok() != Some(removable_spotify_ids.len()) {
+        return Err(ChordriftError::Configuration(
+            "every removable catalog edition must retain historical identity evidence".to_owned(),
+        ));
+    }
+    let operation = PlanOperationInput {
+        phase: "publish".to_owned(),
+        operation_type: "reorder_playlist".to_owned(),
+        operation_key: format!("reviewed-catalog-collapse:{}", playlist.stable_key),
+        playlist_id: Some(playlist.playlist_id),
+        provider_playlist_id: Some(observed.provider_playlist_id),
+        playlist_name: playlist.name.clone(),
+        spotify_playlist_id: Some(observed.spotify_id.clone()),
+        spotify_track_id: None,
+        payload: json!({
+            "concept_id": playlist.concept_id,
+            "track_count": playlist.tracks.len(),
+            "expected_snapshot_id": observed.provider_snapshot_id,
+            "required_spotify_ids": required_spotify_ids,
+            "allowed_live_only_spotify_ids": removable_spotify_ids,
+            "reason": "account_owner_reviewed_catalog_edition_collapse"
+        }),
+        safety: json!({
+            "destructive": false,
+            "exact_order_replacement": true,
+            "membership_unchanged": false,
+            "reviewed_catalog_collapse": true,
+            "allowed_live_only_spotify_ids": removable_spotify_ids
+        }),
+    };
+    persist_operations(
+        database,
+        account_id,
+        proposal_id,
+        snapshot_id,
+        vec![operation],
+        "reviewed_catalog_collapse_v1",
     )
     .await
 }
@@ -1051,7 +1321,28 @@ pub async fn maintenance_annotations(
                         ORDER BY newest.created_at DESC, newest.id DESC LIMIT 1
                     ) AND membership.track_id = track.id
                     ORDER BY lower(revision.name), membership.position
-                ) AS canonical_placements
+                ) AS canonical_placements,
+                (
+                    SELECT COALESCE(name_revision.name, previous.name)
+                    FROM excluded_tracks exclusion
+                    JOIN playlists previous
+                      ON previous.generation_id = (
+                           SELECT latest.id
+                           FROM playlist_generations latest
+                           WHERE latest.provider_account_id = account.id
+                           ORDER BY latest.created_at DESC, latest.id DESC
+                           LIMIT 1
+                      )
+                     AND previous.concept_id = exclusion.previous_concept_id
+                    LEFT JOIN playlist_name_revisions name_revision
+                      ON name_revision.playlist_id = previous.id
+                     AND name_revision.selected
+                    WHERE exclusion.provider_account_id = account.id
+                      AND exclusion.track_id = track.id
+                      AND exclusion.restored_at IS NULL
+                    ORDER BY exclusion.excluded_at DESC, exclusion.id DESC
+                    LIMIT 1
+                ) AS previous_excluded_playlist
          FROM selected
          CROSS JOIN LATERAL (
              SELECT id FROM provider_accounts
@@ -1077,6 +1368,7 @@ pub async fn maintenance_annotations(
                     artists: row.try_get("artists")?,
                     current_canonical_playlists: row.try_get("current_canonical_playlists")?,
                     canonical_placements: row.try_get("canonical_placements")?,
+                    previous_excluded_playlist: row.try_get("previous_excluded_playlist")?,
                 },
             ))
         })
@@ -1128,6 +1420,31 @@ fn annotate_maintenance_operation(
             .collect::<BTreeSet<_>>(),
         _ => return annotation,
     };
+    if operation.operation_type == "remove_track" && candidates.is_empty() {
+        // A provider addition can arrive one observation after its matching
+        // removal. The first observation may therefore have produced an
+        // exclusion and removed the prior canonical placement. When exactly
+        // one current provider destination now exists, that placement is the
+        // cumulative user intent and supersedes the temporary exclusion.
+        annotation.old_destination = Some(
+            context
+                .previous_excluded_playlist
+                .clone()
+                .unwrap_or_else(|| "New intake".to_owned()),
+        );
+        return match context.current_canonical_playlists.as_slice() {
+            [destination] => {
+                annotation.interpretation = "direct_move".to_owned();
+                annotation.destination = Some(destination.clone());
+                annotation
+            }
+            destinations if destinations.len() > 1 => {
+                annotation.interpretation = "ambiguous_move".to_owned();
+                annotation
+            }
+            _ => annotation,
+        };
+    }
     match candidates.len() {
         1 => {
             let candidate = candidates
@@ -2281,6 +2598,7 @@ mod tests {
             artists: "Fixture Artist".to_owned(),
             current_canonical_playlists: vec!["New Vibe".to_owned()],
             canonical_placements: vec!["Old Vibe".to_owned()],
+            previous_excluded_playlist: None,
         };
         let drift = annotate_maintenance_operation(
             &planned_operation("remove_track", "New Vibe", "managed_provider_drift"),
@@ -2300,12 +2618,56 @@ mod tests {
     }
 
     #[test]
+    fn delayed_destination_retains_prior_source_as_reclassification() {
+        let annotation = annotate_maintenance_operation(
+            &planned_operation("remove_track", "Dakshina Pulse", "managed_provider_drift"),
+            Some(&MaintenanceTrackContext {
+                title: "Fixture Song".to_owned(),
+                artists: "Fixture Artist".to_owned(),
+                current_canonical_playlists: vec!["Dakshina Pulse".to_owned()],
+                canonical_placements: Vec::new(),
+                previous_excluded_playlist: Some("Cinema Monsoon".to_owned()),
+            }),
+        );
+        assert_eq!(annotation.interpretation, "direct_move");
+        assert_eq!(
+            annotation.old_destination.as_deref(),
+            Some("Cinema Monsoon")
+        );
+        assert_eq!(annotation.destination.as_deref(), Some("Dakshina Pulse"));
+    }
+
+    #[test]
+    fn multiple_delayed_destinations_remain_ambiguous() {
+        let annotation = annotate_maintenance_operation(
+            &planned_operation("remove_track", "Dakshina Pulse", "managed_provider_drift"),
+            Some(&MaintenanceTrackContext {
+                title: "Fixture Song".to_owned(),
+                artists: "Fixture Artist".to_owned(),
+                current_canonical_playlists: vec![
+                    "Dakshina Pulse".to_owned(),
+                    "Kaveri Resonance".to_owned(),
+                ],
+                canonical_placements: Vec::new(),
+                previous_excluded_playlist: Some("Cinema Monsoon".to_owned()),
+            }),
+        );
+        assert_eq!(annotation.interpretation, "ambiguous_move");
+        assert_eq!(
+            annotation.old_destination.as_deref(),
+            Some("Cinema Monsoon")
+        );
+        assert!(annotation.destination.is_none());
+    }
+
+    #[test]
     fn bulk_preview_preserves_ambiguous_and_ordinary_removals() {
         let ambiguous = MaintenanceTrackContext {
             title: "Fixture Song".to_owned(),
             artists: "Fixture Artist".to_owned(),
             current_canonical_playlists: vec!["New Vibe".to_owned(), "Third Vibe".to_owned()],
             canonical_placements: vec!["Old Vibe".to_owned()],
+            previous_excluded_playlist: None,
         };
         let annotation = annotate_maintenance_operation(
             &planned_operation("exclude_track", "Old Vibe", "removed"),

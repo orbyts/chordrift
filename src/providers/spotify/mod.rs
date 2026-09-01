@@ -5,12 +5,12 @@ mod client;
 mod import;
 mod models;
 
-pub(crate) use auth::hosted_session;
 pub use auth::{AuthReport, AuthStatus, SpotifyOAuthConfig, authenticate, logout, status};
+pub(crate) use auth::{begin_hosted_authorization, complete_hosted_authorization, hosted_session};
 pub(crate) use auth::{has_required_apply_scopes, local_refresh_credential};
 pub(crate) use client::{RetryPolicy, retry_policy};
-pub(crate) use import::import_hosted;
 pub use import::{ImportReport, import};
+pub(crate) use import::{import_hosted, import_hosted_fresh};
 use models::SpotifyPlaylist;
 
 use crate::{
@@ -20,6 +20,16 @@ use crate::{
 
 pub(crate) struct MutationSession {
     session: auth::SpotifySession,
+}
+
+pub(crate) fn hosted_mutation_session(session: auth::SpotifySession) -> Result<MutationSession> {
+    if !has_required_apply_scopes(&session.scopes) {
+        return Err(ChordriftError::Configuration(
+            "Spotify hosted authorization lacks required write scopes; reconnect the provider"
+                .to_owned(),
+        ));
+    }
+    Ok(MutationSession { session })
 }
 
 pub(crate) async fn mutation_session(account_label: &str) -> Result<MutationSession> {

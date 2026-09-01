@@ -321,9 +321,33 @@ fn playlist_membership_write<'operation>(
         let mut desired_membership = desired.to_vec();
         desired_membership.sort();
         if live_membership != desired_membership {
-            return Err(configuration(
-                "a reorder requires identical current and desired membership",
-            ));
+            let live_only = multiset_difference(&live_membership, &desired_membership);
+            let desired_only = multiset_difference(&desired_membership, &live_membership);
+            let mut allowed_live_only = pending
+                .first()
+                .and_then(|operation| operation.detail.get("allowed_live_only_spotify_ids"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            allowed_live_only.sort();
+            let mut sorted_live_only = live_only.clone();
+            sorted_live_only.sort();
+            if desired_only.is_empty()
+                && !allowed_live_only.is_empty()
+                && sorted_live_only == allowed_live_only
+            {
+                return Ok(PlaylistMembershipWrite::ExactReorder);
+            }
+            return Err(configuration(format!(
+                "a reorder requires identical current and desired membership: live={}, desired={}, live_only={:?}, desired_only={:?}",
+                live_items.len(),
+                desired.len(),
+                live_only.iter().take(10).collect::<Vec<_>>(),
+                desired_only.iter().take(10).collect::<Vec<_>>()
+            )));
         }
         return Ok(PlaylistMembershipWrite::ExactReorder);
     }
@@ -342,6 +366,34 @@ fn playlist_membership_write<'operation>(
         }
     }
     Ok(PlaylistMembershipWrite::EnumeratedAdditions { reused, missing })
+}
+
+fn multiset_difference(left: &[String], right: &[String]) -> Vec<String> {
+    let mut right_counts = std::collections::HashMap::<&str, usize>::new();
+    for value in right {
+        *right_counts.entry(value.as_str()).or_default() += 1;
+    }
+    let mut difference = Vec::new();
+    for value in left {
+        let count = right_counts.entry(value.as_str()).or_default();
+        if *count == 0 {
+            difference.push(value.clone());
+        } else {
+            *count -= 1;
+        }
+    }
+    difference
+}
+
+fn exact_live_membership_reuses_phase(
+    live_items: &[String],
+    desired: &[String],
+    pending: &[&Operation],
+) -> bool {
+    live_items == desired
+        && pending
+            .iter()
+            .all(|operation| operation.kind == "reorder_playlist")
 }
 
 /// Executes one explicitly confirmed phase after revalidating every durable gate.
@@ -364,8 +416,39 @@ pub async fn execute(
         ));
     }
 
-    let gate = load_gate(database, account_label, assessment_id, phase).await?;
     let session = spotify::mutation_session(account_label).await?;
+    execute_with_session(
+        database,
+        account_label,
+        assessment_id,
+        phase,
+        confirmation,
+        allow_destructive,
+        &session,
+    )
+    .await
+}
+
+pub(crate) async fn execute_with_session(
+    database: &Database,
+    account_label: &str,
+    assessment_id: Uuid,
+    phase: ApplyPhase,
+    confirmation: Uuid,
+    allow_destructive: bool,
+    session: &MutationSession,
+) -> Result<ApplyReport> {
+    if confirmation != assessment_id {
+        return Err(configuration(
+            "confirmation must exactly match the apply-readiness assessment ID",
+        ));
+    }
+    if phase.destructive() && !allow_destructive {
+        return Err(configuration(
+            "cleanup and retirement require the explicit destructive gate",
+        ));
+    }
+    let gate = load_gate(database, account_label, assessment_id, phase).await?;
     if session.account_id() != gate.provider_account_id {
         return Err(configuration(
             "Spotify credential identity does not match the planned Neon account",
@@ -376,7 +459,7 @@ pub async fn execute(
     if completed {
         return report(database, apply_run_id, true, started_at).await;
     }
-    let result = execute_phase(database, &session, apply_run_id, phase).await;
+    let result = execute_phase(database, session, apply_run_id, phase).await;
     match result {
         Ok(()) => {
             sqlx::query(
@@ -1324,7 +1407,7 @@ async fn execute_publish(
         .bind(run_id)
         .fetch_all(database.pool())
         .await?;
-        if live_items == desired {
+        if exact_live_membership_reuses_phase(&live_items, &desired, &pending) {
             for operation in &pending {
                 mark_succeeded(
                     database,
@@ -1828,7 +1911,10 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    use super::{ApplyPhase, Operation, PlaylistMembershipWrite, playlist_membership_write};
+    use super::{
+        ApplyPhase, Operation, PlaylistMembershipWrite, exact_live_membership_reuses_phase,
+        multiset_difference, playlist_membership_write,
+    };
 
     fn addition(spotify_track_id: &str) -> Operation {
         Operation {
@@ -1892,5 +1978,48 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["explicit-new-track"]
         );
+    }
+
+    #[test]
+    fn old_model_equality_never_suppresses_an_enumerated_addition() {
+        let operation = addition("reviewed-history-track");
+        assert!(!exact_live_membership_reuses_phase(
+            &["existing-track".to_owned()],
+            &["existing-track".to_owned()],
+            &[&operation],
+        ));
+        let plan = playlist_membership_write(
+            &["existing-track".to_owned()],
+            &["existing-track".to_owned()],
+            &[&operation],
+        )
+        .expect("reviewed addition is valid");
+        let PlaylistMembershipWrite::EnumeratedAdditions { missing, .. } = plan else {
+            panic!("reviewed addition must remain enumerated");
+        };
+        assert_eq!(missing[0].1, "reviewed-history-track");
+    }
+
+    #[test]
+    fn reorder_diagnostics_preserve_duplicate_occurrence_differences() {
+        let left = vec!["a".to_owned(), "a".to_owned(), "b".to_owned()];
+        let right = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+        assert_eq!(multiset_difference(&left, &right), vec!["a"]);
+        assert_eq!(multiset_difference(&right, &left), vec!["c"]);
+    }
+
+    #[test]
+    fn reviewed_catalog_collapse_allows_only_enumerated_live_extras() {
+        let mut operation = addition("unused");
+        operation.kind = "reorder_playlist".to_owned();
+        operation.spotify_track_id = None;
+        operation.detail = json!({"allowed_live_only_spotify_ids": ["obsolete"]});
+        let result = playlist_membership_write(
+            &["canonical".to_owned(), "obsolete".to_owned()],
+            &["canonical".to_owned()],
+            &[&operation],
+        )
+        .expect("enumerated catalog collapse is exact");
+        assert!(matches!(result, PlaylistMembershipWrite::ExactReorder));
     }
 }

@@ -116,6 +116,16 @@ pub(crate) async fn import_hosted(
     import_with_session(account_label, database, reuse, session).await
 }
 
+/// Forces a complete provider read after a Chordrift-authored write whose
+/// top-level Spotify playlist snapshot may not have propagated yet.
+pub(crate) async fn import_hosted_fresh(
+    account_label: &str,
+    database: &Database,
+    session: auth::SpotifySession,
+) -> Result<ImportReport> {
+    import_with_session(account_label, database, ReusePlan::default(), session).await
+}
+
 async fn import_with_session(
     account_label: &str,
     database: &Database,
