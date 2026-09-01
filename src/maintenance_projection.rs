@@ -21,6 +21,23 @@ use crate::{
     tracks,
 };
 
+/// Current placement policy for a newly assigned intake track.
+///
+/// This is deliberately owned by the Rust application layer rather than a
+/// client or Spotify adapter. A future contract may replace it with an exact
+/// top/bottom/specific-position choice; the beta default is the top.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IntakePlacementPolicy {
+    /// Insert before the current first playlist item.
+    Top,
+}
+
+/// Returns the application-owned default for new intake placement.
+#[must_use]
+pub const fn intake_placement_policy() -> IntakePlacementPolicy {
+    IntakePlacementPolicy::Top
+}
+
 /// Applies only record-only, user-authored provider intent to the canonical model.
 pub struct CanonicalMaintenanceProjector<'a> {
     database: &'a Database,
@@ -462,7 +479,7 @@ pub fn maintenance_provider_effects(
                 kind: MaintenanceProviderEffectKind::AddTrack,
                 track: Some(track.clone()),
                 surface: Some(destination.clone()),
-                summary: format!("Add {} to {}", track.title, destination.name),
+                summary: format!("Add {} to the top of {}", track.title, destination.name),
             })
         })
         .collect();

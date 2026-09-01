@@ -98,7 +98,7 @@ impl FakeProviderAccount {
                     .name;
                 let membership = self.playlists.entry(destination.clone()).or_default();
                 if !membership.contains(&track) {
-                    membership.push(track);
+                    membership.insert(0, track);
                     self.writes.push(format!("add:{track}:{destination}"));
                     return Ok(true);
                 }
@@ -598,7 +598,7 @@ fn composite_placement_retry_preserves_each_track_and_never_duplicates() {
     database
         .apply_stage(&mut provider, &additions.provider_effects)
         .expect("whole exact review safely resumes");
-    assert_eq!(provider.playlists[destination], vec![7, 8]);
+    assert_eq!(provider.playlists[destination], vec![8, 7]);
     assert_eq!(
         provider.playlists[destination]
             .iter()
@@ -625,7 +625,7 @@ fn composite_placement_retry_preserves_each_track_and_never_duplicates() {
         .expect("cleanup follows verified composite placement");
 
     assert!(provider.liked.is_empty());
-    assert_eq!(provider.playlists[destination], vec![7, 8]);
+    assert_eq!(provider.playlists[destination], vec![8, 7]);
     assert_eq!(
         provider.writes,
         vec![

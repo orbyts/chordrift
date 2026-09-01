@@ -69,6 +69,13 @@ start maintenance or write Spotify. Authenticated recovery acceptance remains:
 hard-refresh, Check provider changes, require one exact Neon Affection addition,
 then let Suhail separately authorize it.
 
+New Liked-only placements now use a Rust-owned `Top` policy and the exact review
+names that position. The Spotify adapter maps it to zero-based position 0; the
+stateful fake provider proves both single and composite additions land at the
+top without duplication. This does not move an already-present rediscovered
+favorite. A later additive contract may expose top, bottom, or an exact
+position uniformly to web, CLI, iOS, and Android clients.
+
 `tests/provider_behavior_acceptance.rs` is the permanent six-track synthetic
 provider harness. It uses the production maintenance DTO/state machine, a
 stateful fake provider, and a fake durable database. CI covers single add,

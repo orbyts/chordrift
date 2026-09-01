@@ -512,6 +512,9 @@ and later Chordrift refactor begin.
   must be offered as one recovery addition after the repaired build is deployed;
   no automatic Spotify recovery write is authorized. The full GitHub gate and
   exact-image Vortex deployment pass; authenticated recovery review remains.
+  New Liked-only placements default to position zero (the top) through a
+  Rust-owned policy named in the exact review; future top/bottom/specific-
+  position choices remain a contract extension, not client logic.
 
   The first post-Disconnect OAuth consent exposed a retained-history generation
   defect: the vault attempted to reuse generation 1 because no envelope was

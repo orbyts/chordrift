@@ -62,7 +62,7 @@ sequenceDiagram
             Core-->>Client: Review exact suggested destination addition
             User->>Client: Authorize exact placement effect
             Client->>Core: Authorize current review
-            Core->>Provider: Add only the enumerated track
+            Core->>Provider: Add only the enumerated track at the top
             Provider-->>Core: Updated complete snapshot Sₙ₊₁
             Core->>Neon: Persist and verify placement
             opt Track also remains in a temporary intake surface
@@ -114,6 +114,13 @@ A later, batched experience refinement may additionally offer **keep current
 position** or **move this occurrence to the top**. Moving it is a distinct,
 explicitly reviewed provider reorder; the Like itself is useful evidence but
 does not authorize Chordrift to reorder anything automatically.
+
+A genuinely new Liked-only track that receives a new canonical destination is
+different: its beta placement default is the top of that destination. This
+policy is owned by the Rust application layer and is named in the exact review.
+It does not reorder an already-present rediscovered favorite. A future contract
+may expose `top`, `bottom`, or an exact position without moving that policy into
+the web, CLI, iOS, Android, or provider adapter.
 
 ## Convergence rules
 

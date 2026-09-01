@@ -89,6 +89,11 @@ checkpoint.
   identifying a rediscovered favorite. The default is no reorder. Moving to the
   top must be a separately reviewed, snapshot-bound provider operation and must
   not be implied by the keep/clear Liked Songs answer.
+- **New placement position.** A Liked-only track being placed into a destination
+  for the first time defaults to the top and says so in the exact review. This
+  is not the optional resurfacing case above: an already-present destination is
+  never reordered implicitly. Future choices may add bottom or an exact
+  position through the shared Rust contract.
 - **Duplicate occurrences.** If the destination contains the same track more
   than once, show every occurrence or ask which occurrence should move; never
   silently collapse duplicates into one position.

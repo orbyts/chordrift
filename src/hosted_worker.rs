@@ -26,8 +26,8 @@ use crate::{
     maintenance::{MaintenanceDecisionProjection, MaintenanceWorkflow},
     maintenance_interpretation::PostgresMaintenanceInterpreter,
     maintenance_projection::{
-        CanonicalMaintenanceProjector, attach_maintenance_provider_effects,
-        maintenance_provider_effects,
+        CanonicalMaintenanceProjector, IntakePlacementPolicy, attach_maintenance_provider_effects,
+        intake_placement_policy, maintenance_provider_effects,
     },
     maintenance_store::{DurableMaintenanceAuthority, PostgresMaintenanceSessionStore},
     provider_vault::{
@@ -648,7 +648,9 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
                         .add_items(
                             &addition.spotify_playlist_id,
                             std::slice::from_ref(&addition.spotify_track_id),
-                            None,
+                            match intake_placement_policy() {
+                                IntakePlacementPolicy::Top => Some(0),
+                            },
                         )
                         .await
                         .map_err(provider_error)?;
