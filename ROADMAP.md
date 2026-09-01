@@ -488,6 +488,15 @@ and later Chordrift refactor begin.
   deployment, HTTPS health, and public repaired-asset checks pass. One
   authenticated browser transition remains before beta.1 acceptance.
 
+  Browser-decision checkpoint (2026-08-31): the first composite destination
+  plus Liked-state review exposed that the JavaScript dropdown serialized a
+  playlist stable key where the typed Rust contract requires an opaque UUID.
+  Rust now supplies the complete typed destination identity; the thin browser
+  returns it unchanged, keeps the server-issued Liked Songs identity, submits the complete
+  revision-bound decision set, and renders rejected submissions as retryable
+  errors. A browser-DTO harness runs on every CI push alongside a Rust
+  server-identity assertion. Authenticated deployment proof remains.
+
   The first post-Disconnect OAuth consent exposed a retained-history generation
   defect: the vault attempted to reuse generation 1 because no envelope was
   active, so the callback failed its immutable uniqueness constraint. Rotation

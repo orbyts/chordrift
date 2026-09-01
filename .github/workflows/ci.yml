@@ -33,6 +33,8 @@ jobs:
           toolchain: 1.94.0
           components: clippy,rustfmt
       - run: cargo fmt --check
+      - run: node --check web/app.js && node --check web/maintenance-decisions.js
+      - run: node tests/web_maintenance_decisions.mjs
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test --all-targets
       - run: cargo test --doc

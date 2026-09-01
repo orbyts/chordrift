@@ -9,6 +9,7 @@ use crate::contract::{
     ClientError, ErrorCode, LibraryComparisonStatus, LibraryComparisonView,
     LibraryPlaylistComparisonView, LibraryPlaylistView, ResourceId,
 };
+use crate::maintenance_interpretation::surface as maintenance_surface;
 
 /// Compares the newest complete provider observation with the current model.
 pub async fn query(
@@ -38,10 +39,12 @@ pub async fn query(
             .try_get("spotify_playlist_id")
             .map_err(|_| unavailable())?;
         let count: i32 = row.try_get("total_items").map_err(|_| unavailable())?;
+        let name: String = row.try_get("name").map_err(|_| unavailable())?;
         Ok(LibraryPlaylistView {
             playlist_id: id.clone(),
             provider_playlist_id: Some(id),
-            name: row.try_get("name").map_err(|_| unavailable())?,
+            maintenance_surface: maintenance_surface(&name),
+            name,
             track_count: u64::try_from(count).map_err(|_| unavailable())?,
             signal_class: row.try_get("signal_class").map_err(|_| unavailable())?,
             role: row.try_get("role").map_err(|_| unavailable())?,
@@ -91,9 +94,11 @@ pub async fn query(
         .into_iter()
         .map(|row| {
             let count: i64 = row.try_get("track_count").map_err(|_| unavailable())?;
+            let name: String = row.try_get("name").map_err(|_| unavailable())?;
             Ok(LibraryPlaylistView {
                 playlist_id: row.try_get("stable_key").map_err(|_| unavailable())?,
-                name: row.try_get("name").map_err(|_| unavailable())?,
+                maintenance_surface: maintenance_surface(&name),
+                name,
                 provider_playlist_id: row
                     .try_get("provider_playlist_id")
                     .map_err(|_| unavailable())?,
@@ -427,6 +432,7 @@ mod tests {
     fn playlist(provider_id: &str, name: &str, track_count: u64) -> LibraryPlaylistView {
         LibraryPlaylistView {
             playlist_id: provider_id.to_owned(),
+            maintenance_surface: maintenance_surface(name),
             name: name.to_owned(),
             provider_playlist_id: Some(provider_id.to_owned()),
             track_count,

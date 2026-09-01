@@ -214,7 +214,7 @@ function renderMaintenanceSession() {
   }
   if (view.allowed_actions.includes('resolve')) {
     const resolve = node('button', '', 'Record these decisions'); resolve.type = 'button';
-    resolve.addEventListener('click', resolveObservedChanges, { once: true }); panel.append(resolve);
+    resolve.addEventListener('click', resolveObservedChanges); panel.append(resolve);
   }
   if (view.allowed_actions.includes('refresh')) {
     const refresh = node('button', '', 'Check provider again'); refresh.type = 'button';
@@ -231,7 +231,7 @@ function decisionControl(change) {
   if (['direct_intake', 'reclassification', 'removal'].includes(change.kind)) {
     const prompt = node('option', '', 'Choose destination…'); prompt.value = ''; select.append(prompt);
     for (const playlist of state.destinationPlaylists) {
-      const option = node('option', '', playlist.name); option.value = JSON.stringify({ surface_id: playlist.playlist_id, name: playlist.name }); select.append(option);
+      const option = node('option', '', playlist.name); option.value = JSON.stringify(playlist.maintenance_surface); select.append(option);
     }
     if (change.kind === 'removal') {
       const excluded = node('option', '', 'Keep removed · add to Excluded'); excluded.value = 'exclude'; select.append(excluded);
@@ -260,20 +260,23 @@ async function refreshMaintenance() {
   await runMaintenanceCommand({ type: 'refresh_maintenance', parameters: { session_id: view.session_id, expected_revision: view.revision } });
 }
 
-async function resolveObservedChanges() {
+async function resolveObservedChanges(event) {
   const view = state.maintenanceSession;
+  const button = event?.currentTarget;
+  if (button) button.disabled = true;
   const decisions = [];
-  for (const change of view.observed_changes.filter((item) => !item.resolution)) {
-    const select = document.querySelector(`[data-change-id="${change.change_id}"]`); const selected = select?.value;
-    if (!selected) { select?.focus(); return; }
-    let resolution;
-    if (selected === 'keep') resolution = { type: 'keep_observed' };
-    else if (selected === 'exclude') resolution = { type: 'exclude' };
-    else if (selected === 'consume') resolution = { type: 'consume_intake', parameters: { source: change.current_surface } };
-    else resolution = { type: change.kind === 'removal' ? 'restore' : 'place', parameters: { destination: JSON.parse(selected) } };
-    decisions.push({ change_id: change.change_id, resolution });
+  try {
+    for (const change of view.observed_changes.filter((item) => !item.resolution)) {
+      const select = document.querySelector(`[data-change-id="${change.change_id}"]`); const selected = select?.value;
+      if (!selected) { select?.focus(); throw new Error(`Choose an answer for ${change.summary}.`); }
+      const resolution = await ChordriftMaintenance.resolution(change, selected);
+      decisions.push({ change_id: change.change_id, resolution });
+    }
+    await runMaintenanceCommand({ type: 'resolve_maintenance', parameters: { session_id: view.session_id, expected_revision: view.revision, decisions } });
+  } catch (error) {
+    $('#maintenance-session').append(node('p', 'warning', `Decisions were not recorded: ${error.message}`));
+    if (button?.isConnected) button.disabled = false;
   }
-  await runMaintenanceCommand({ type: 'resolve_maintenance', parameters: { session_id: view.session_id, expected_revision: view.revision, decisions } });
 }
 
 async function authorizeMaintenance() {

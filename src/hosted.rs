@@ -64,6 +64,7 @@ use crate::{
         VerifiedExternalIdentity,
     },
     maintenance::{MaintenanceDecisionProjection, MaintenanceProjection},
+    maintenance_interpretation::surface as maintenance_surface,
     maintenance_store::PostgresMaintenanceSessionStore,
     provider_connections::PostgresProviderConnectionAuthority,
     provider_vault::{
@@ -82,6 +83,7 @@ const LOGIN_TTL_MINUTES: i64 = 10;
 const MAX_LOGIN_ATTEMPTS: usize = 128;
 const INDEX_HTML: &str = include_str!("../web/index.html");
 const APP_JS: &str = include_str!("../web/app.js");
+const MAINTENANCE_DECISIONS_JS: &str = include_str!("../web/maintenance-decisions.js");
 const APP_CSS: &str = include_str!("../web/app.css");
 
 /// Environment-backed deployment settings. Secret values are never included
@@ -534,6 +536,10 @@ impl MaintenanceBackend for DeploymentMaintenanceBackend {
                             .try_get("total_items")
                             .map_err(|_| client_unavailable())?;
                         Ok(LibraryPlaylistView {
+                            maintenance_surface: maintenance_surface(
+                                &row.try_get::<String, _>("name")
+                                    .map_err(|_| client_unavailable())?,
+                            ),
                             provider_playlist_id: Some(playlist_id.clone()),
                             playlist_id,
                             name: row.try_get("name").map_err(|_| client_unavailable())?,
@@ -601,6 +607,10 @@ impl MaintenanceBackend for DeploymentMaintenanceBackend {
                             .try_get("track_count")
                             .map_err(|_| client_unavailable())?;
                         Ok(LibraryPlaylistView {
+                            maintenance_surface: maintenance_surface(
+                                &row.try_get::<String, _>("name")
+                                    .map_err(|_| client_unavailable())?,
+                            ),
                             playlist_id: row
                                 .try_get("stable_key")
                                 .map_err(|_| client_unavailable())?,
@@ -1116,6 +1126,10 @@ pub async fn run_from_env() -> Result<()> {
     let router = Router::new()
         .route("/", get(index))
         .route("/assets/app.js", get(javascript))
+        .route(
+            "/assets/maintenance-decisions.js",
+            get(maintenance_decisions_javascript),
+        )
         .route("/assets/app.css", get(stylesheet))
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
@@ -1267,6 +1281,10 @@ async fn index() -> Response {
 
 async fn javascript() -> Response {
     static_asset(APP_JS, "text/javascript; charset=utf-8")
+}
+
+async fn maintenance_decisions_javascript() -> Response {
+    static_asset(MAINTENANCE_DECISIONS_JS, "text/javascript; charset=utf-8")
 }
 
 async fn stylesheet() -> Response {

@@ -369,7 +369,7 @@ async fn track_views_for_ids(
         .collect()
 }
 
-fn surface(name: &str) -> MaintenanceSurfaceView {
+pub(crate) fn surface(name: &str) -> MaintenanceSurfaceView {
     MaintenanceSurfaceView {
         surface_id: ResourceId::from_uuid(stable_uuid("surface", name)),
         name: name.to_owned(),
@@ -518,6 +518,14 @@ mod tests {
         let snapshot = ResourceId::new();
         assert_eq!(change_id(snapshot, "move:a"), change_id(snapshot, "move:a"));
         assert_ne!(change_id(snapshot, "move:a"), change_id(snapshot, "move:b"));
+    }
+
+    #[test]
+    fn browser_destination_identity_matches_rust_surface_identity() {
+        assert_eq!(
+            surface("Neon Affection").surface_id.to_string(),
+            "5fdad879-f894-5f70-810b-57ace590e9b0"
+        );
     }
 
     #[test]

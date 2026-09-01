@@ -551,6 +551,9 @@ pub struct ProviderConnectionsView {
 pub struct LibraryPlaylistView {
     /// Provider playlist ID or Chordrift stable collection key.
     pub playlist_id: String,
+    /// Rust-issued opaque identity to use when this playlist is selected as a
+    /// maintenance destination. Clients must return it unchanged.
+    pub maintenance_surface: MaintenanceSurfaceView,
     /// Human-facing playlist name.
     pub name: String,
     /// Optional provider playlist identity when the model is published.

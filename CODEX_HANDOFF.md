@@ -35,6 +35,17 @@ placement without a provider write; multiple simultaneous destinations remain
 one decision; a Like remains a separate saved-state choice. The deployed
 image is healthy privately and through HTTPS, with `provider_writes=false`.
 
+The next authenticated review exposed a thin-client DTO defect: **Record these
+decisions** appeared inert for one destination choice plus one Liked-state
+choice. The destination dropdown had submitted the model playlist's stable key
+where `MaintenanceSurfaceView` requires a Rust-issued opaque resource ID; the
+HTTP rejection was also not rendered. The branch now includes the complete
+typed `maintenance_surface` in every playlist query, returns that DTO unchanged
+from the browser, keeps the server-issued Liked Songs source, and renders a
+retryable error for any rejected submission. A Node browser-DTO harness covers
+single and composite choice shapes and runs on every CI push. Deployment and
+authenticated acceptance remain pending; no Spotify write was attempted.
+
 `tests/provider_behavior_acceptance.rs` is the permanent six-track synthetic
 provider harness. CI now runs on every branch push. It covers single add,
 remove, move, reorder, and Like gestures plus composite snapshots, delayed
