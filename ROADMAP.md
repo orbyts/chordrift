@@ -488,6 +488,13 @@ and later Chordrift refactor begin.
   activates the next encrypted generation. In-memory and disposable-PostgreSQL
   lifecycle regressions are required before redeployment.
 
+  The exact disposable PostgreSQL 18 lifecycle proof now passes generations
+  1 → 2 → revoked → 3 with stable provider identity, one active envelope, and
+  retained history; its container and temporary volumes were deleted
+  immediately. Exact image `chordrift:951ce63` is deployed with matching
+  revision metadata and healthy API/worker/readiness checks. One authenticated
+  browser Reconnect remains for live acceptance.
+
   Record-only maintenance checkpoint: migration 0051 persistence, the real
   PostgreSQL provider-first interpreter, durable Start/Refresh/Resolve worker
   dispatch, and shared web/remote-CLI session access are implemented on the

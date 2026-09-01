@@ -11,8 +11,8 @@ Last updated: 2026-08-31.
 ## Hosted Spotify connection checkpoint
 
 The active private deployment now runs exact code commit
-`7d869ea1db0c3cd4ea85576b597332b312f87e41` as image
-`chordrift:7d869ea` on Vortex. Both API and worker run as UID/GID 65532 with
+`951ce637055f964c92d8e0794b32c389a1f257bb` as image
+`chordrift:951ce63` on Vortex. Both API and worker run as UID/GID 65532 with
 read-only root filesystems and `unless-stopped`; the 43.2 MB runtime contains
 only `chordrift-server`, `chordrift-worker`, and runtime necessities. Before
 deployment, a validated 29.4 MB compressed logical backup was written to the
@@ -62,6 +62,12 @@ failed the immutable uniqueness constraint. The branch repair locks the stable
 provider account, advances from the greatest active-or-revoked generation, and
 activates the new encrypted envelope without deleting audit history. In-memory
 and PostgreSQL lifecycle regressions cover Disconnect → Reconnect explicitly.
+The exact disposable PostgreSQL 18 proof passed generations 1 → 2 → revoked →
+3, one active envelope, stable provider identity, and retained history; its
+database container and temporary build/cache volumes were deleted immediately.
+Exact image `chordrift:951ce63` is deployed with a matching OCI revision label;
+container health and public readiness pass. The corrected authenticated
+Reconnect callback is the remaining live acceptance action.
 
 The V021-06 beta branch keeps Chordrift product login and Spotify provider
 authorization separate. Server-owned Spotify PKCE routes implement Connect,
