@@ -86,6 +86,16 @@ review. Permanently forgetting an exclusion is a different destructive intent
 change with an explicit confirmation. Provider artwork is deliberately deferred
 until post-beta UI design work.
 
+A canonical provider-track identity answers *which recording is this?*; it does
+not answer *where should it live?* Intake placement recommendations therefore
+come only from retained accepted Chordrift placement evidence. If exactly one
+prior destination still exists in the latest model, the Rust contract supplies
+it as a recommended resolution with a client-safe reason. The browser may
+preselect that exact surface, but the session remains unresolved until the user
+records the decision. Multiple or absent destinations remain blank. A future
+classification authority may add scored evidence without moving this policy or
+consent boundary into a client.
+
 The service and local CLI now target the same canonical `chordrift_cutover`
 database on the single Neon `main` branch. It is at migration 50/50. The
 temporary pre-cutover and rehearsal branches, plus the stale duplicate

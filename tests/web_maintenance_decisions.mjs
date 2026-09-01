@@ -21,6 +21,12 @@ const destinationSurface = {
   surface_id: '5fdad879-f894-5f70-810b-57ace590e9b0',
   name: 'Neon Affection'
 };
+const recommendedPlacement = {
+  ...placement,
+  recommended_resolution: { type: 'place', parameters: { destination: destinationSurface } }
+};
+assert.equal(helper.recommendedDestinationId(recommendedPlacement), destinationSurface.surface_id);
+assert.equal(helper.recommendedDestinationId(placement), null);
 const destination = await helper.resolution(placement, JSON.stringify(destinationSurface));
 assert.deepEqual(destination, {
   type: 'place',

@@ -82,6 +82,7 @@ th, td { padding: 11px 14px; border-bottom: 1px solid #2c2925; }
 .record-card span, .compact-card span { color: #847c74; font-size: .78rem; margin-top: 3px; }
 .record-meta { text-align: right; }
 .group-heading { margin: 20px 2px 7px; color: #c9a878; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; }
+.record-card span.recommendation { color: #c9a878; }
 .decision-select { min-width: min(290px, 42vw); background: #0f0e0d; color: #ddd7cf; border: 1px solid #4a433b; border-radius: 10px; padding: 9px 12px; }
 .workbench { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .pane { min-width: 0; overflow: hidden; }

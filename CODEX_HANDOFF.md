@@ -87,6 +87,12 @@ command must reuse a surviving prior surface only after review or request a new
 destination; permanent forget is a separately confirmed destructive intent
 change. Provider artwork remains deferred until post-beta UI polish.
 
+Contract 1.5 distinguishes canonical identity from placement evidence. Newly
+liked tracks receive a preselected destination only when an active accepted
+assignment or the latest prior approved/published generation yields exactly one
+destination that still exists. The recommendation includes its reason, is not
+consent, and ambiguous or absent evidence stays blank.
+
 A read-only personal history-only audit was generated outside the repository at
 `/Users/suhail/Documents/ChatGPT/Music/outputs/chordrift-history-audit-20260831/Chordrift-History-Only-Listening-Audit-2026-08-31.xlsx`.
 It excludes current provider library membership, active exclusions, and current

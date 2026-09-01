@@ -185,6 +185,8 @@ fn append_intake_items(
                 current_surface,
                 summary,
                 resolution,
+                recommended_resolution: None,
+                recommendation_reason: None,
             });
         }
         if !item.sources.iter().any(|source| source == "Liked Songs") {
@@ -194,6 +196,12 @@ fn append_intake_items(
             || !item.proposal_destinations.is_empty()
             || already_placed.contains(&track.track_id);
         if !represented {
+            let recommended_resolution =
+                item.recommended_destination
+                    .as_deref()
+                    .map(|name| MaintenanceResolution::Place {
+                        destination: surface(name),
+                    });
             changes.push(MaintenanceChangeView {
                 change_id: change_id(snapshot_id, &format!("liked-place:{}", item.spotify_id)),
                 kind: MaintenanceChangeKind::DirectIntake,
@@ -202,6 +210,8 @@ fn append_intake_items(
                 current_surface: None,
                 summary: format!("Choose a destination for {}", track.title),
                 resolution: None,
+                recommended_resolution,
+                recommendation_reason: item.recommendation_reason.clone(),
             });
         }
         let resolution = match item.saved_track_disposition.as_deref() {
@@ -219,6 +229,8 @@ fn append_intake_items(
             current_surface: Some(liked_surface.clone()),
             summary: format!("Choose whether {} remains in Liked Songs", track.title),
             resolution,
+            recommended_resolution: None,
+            recommendation_reason: None,
         });
     }
     Ok(())
@@ -269,6 +281,8 @@ fn projection_from_plan(
                     format!("Accepted provider reclassification of {}", track.title)
                 },
                 resolution,
+                recommended_resolution: None,
+                recommendation_reason: None,
             });
             continue;
         }
@@ -288,6 +302,8 @@ fn projection_from_plan(
                     current_surface: None,
                     summary: format!("Place {} in {}", track.title, operation.playlist_name),
                     resolution: Some(MaintenanceResolution::Place { destination }),
+                    recommended_resolution: None,
+                    recommendation_reason: None,
                 });
             }
             "exclude_track" => {
@@ -304,6 +320,8 @@ fn projection_from_plan(
                     current_surface: None,
                     summary: format!("Accepted provider removal of {}", track.title),
                     resolution: Some(MaintenanceResolution::Exclude),
+                    recommended_resolution: None,
+                    recommendation_reason: None,
                 });
             }
             "reorder_playlist" => {
@@ -324,6 +342,8 @@ fn projection_from_plan(
                         operation.playlist_name
                     ),
                     resolution: Some(MaintenanceResolution::KeepObserved),
+                    recommended_resolution: None,
+                    recommendation_reason: None,
                 });
             }
             _ => return Err(ClientError::new(ErrorCode::StateConflict, false)),
@@ -448,6 +468,8 @@ mod tests {
             saved_track_disposition: None,
             proposal_destinations: Vec::new(),
             proposal_state: None,
+            recommended_destination: None,
+            recommendation_reason: None,
             exclusion_history: false,
             active_exclusion_reason: None,
             listening_events: 0,
@@ -659,6 +681,39 @@ mod tests {
         assert_eq!(changes[0].kind, MaintenanceChangeKind::DirectIntake);
         assert_eq!(changes[1].kind, MaintenanceChangeKind::SavedState);
         assert!(changes[1].resolution.is_none());
+    }
+
+    #[test]
+    fn retained_unambiguous_placement_is_a_default_not_consent() {
+        let mut item = intake_item(
+            "track-rediscovered",
+            IntakeState::KnownFromHistory,
+            &["Liked Songs"],
+            &[],
+        );
+        item.recommended_destination = Some("Neon Affection".to_owned());
+        item.recommendation_reason = Some("Your latest accepted placement".to_owned());
+        let mut changes = Vec::new();
+
+        append_intake_items(
+            ResourceId::new(),
+            &[&item],
+            &fixture_tracks(&["track-rediscovered"]),
+            &mut changes,
+        )
+        .expect("rediscovery projects");
+
+        assert_eq!(changes.len(), 2);
+        assert!(changes[0].resolution.is_none());
+        assert!(matches!(
+            changes[0].recommended_resolution,
+            Some(MaintenanceResolution::Place { ref destination })
+                if destination.name == "Neon Affection"
+        ));
+        assert_eq!(
+            changes[0].recommendation_reason.as_deref(),
+            Some("Your latest accepted placement")
+        );
     }
 
     #[test]

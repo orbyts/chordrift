@@ -648,6 +648,8 @@ mod tests {
             current_surface: None,
             summary: "Removed from Old Vibe".to_owned(),
             resolution: None,
+            recommended_resolution: None,
+            recommendation_reason: None,
         }
     }
 
@@ -824,6 +826,8 @@ mod tests {
             current_surface: Some(surface("Celluloid Mehfil")),
             summary: "Accepted current provider order".to_owned(),
             resolution: Some(MaintenanceResolution::KeepObserved),
+            recommended_resolution: None,
+            recommendation_reason: None,
         };
         let workflow = MaintenanceWorkflow::new(
             MaintenanceSessionId::new(),

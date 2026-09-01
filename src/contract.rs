@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Current backward-compatible application-contract feature generation.
-pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 4);
+pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 5);
 
 macro_rules! uuid_id {
     ($name:ident, $description:literal) => {
@@ -838,6 +838,10 @@ pub struct MaintenanceChangeView {
     pub summary: String,
     /// Current broader interpretation; absent only when a decision is required.
     pub resolution: Option<MaintenanceResolution>,
+    /// Server-derived default that a client may preselect without treating it as consent.
+    pub recommended_resolution: Option<MaintenanceResolution>,
+    /// Concise evidence behind the recommendation, when one exists.
+    pub recommendation_reason: Option<String>,
 }
 
 /// Chordrift-authored provider mutation shown for explicit authorization.

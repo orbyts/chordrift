@@ -973,6 +973,8 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
                 current_surface: None,
                 summary: "Accepted provider removal".to_owned(),
                 resolution: Some(MaintenanceResolution::Exclude),
+                recommended_resolution: None,
+                recommendation_reason: None,
             }],
             provider_effects: Vec::new(),
             review_id: None,

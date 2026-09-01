@@ -1,7 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const uuid = () => crypto.randomUUID();
-const contractVersion = { major: 1, minor: 4 };
+const contractVersion = { major: 1, minor: 5 };
 const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null, maintenanceSession: null, destinationPlaylists: [], playlistTracks: [], excludedTracks: [] };
 
 function queryEnvelope(query) { return { contract_version: contractVersion, request_id: uuid(), query }; }
@@ -201,7 +201,9 @@ function renderMaintenanceSession() {
   const list = node('div', 'card-list');
   for (const change of view.observed_changes) {
     const card = node('div', 'record-card');
-    const label = node('div'); label.append(node('strong', '', change.summary), node('span', '', change.resolution ? `Recorded · ${change.kind.replaceAll('_', ' ')}` : `Decision needed · ${change.kind.replaceAll('_', ' ')}`)); card.append(label);
+    const label = node('div'); label.append(node('strong', '', change.summary), node('span', '', change.resolution ? `Recorded · ${change.kind.replaceAll('_', ' ')}` : `Decision needed · ${change.kind.replaceAll('_', ' ')}`));
+    if (!change.resolution && change.recommendation_reason) label.append(node('span', 'recommendation', `Suggested from ${change.recommendation_reason.toLowerCase()}. Review or change it before recording.`));
+    card.append(label);
     if (!change.resolution) card.append(decisionControl(change));
     list.append(card);
   }
@@ -236,9 +238,12 @@ function renderMaintenanceSession() {
 function decisionControl(change) {
   const select = node('select', 'decision-select'); select.dataset.changeId = change.change_id; select.dataset.kind = change.kind;
   if (['direct_intake', 'reclassification', 'removal'].includes(change.kind)) {
+    const recommendedDestinationId = ChordriftMaintenance.recommendedDestinationId(change);
     const prompt = node('option', '', 'Choose destination…'); prompt.value = ''; select.append(prompt);
     for (const playlist of state.destinationPlaylists) {
-      const option = node('option', '', playlist.name); option.value = JSON.stringify(playlist.maintenance_surface); select.append(option);
+      const option = node('option', '', playlist.name); option.value = JSON.stringify(playlist.maintenance_surface);
+      if (recommendedDestinationId === playlist.maintenance_surface.surface_id) option.selected = true;
+      select.append(option);
     }
     if (change.kind === 'removal') {
       const excluded = node('option', '', 'Keep removed · add to Excluded'); excluded.value = 'exclude'; select.append(excluded);

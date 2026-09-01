@@ -369,7 +369,12 @@ and later Chordrift refactor begin.
     Chordrift-only` rather than showing unexplained unequal totals.
     Library and Excluded views must expose personal play count, last-heard time,
     and album through the shared query contract; the browser may sort and group
-    those returned facts without owning restoration policy.
+    those returned facts without owning restoration policy. A canonical track
+    identity is not a playlist assignment. For newly liked tracks, Rust must
+    recommend a destination only when retained accepted placement evidence
+    yields exactly one still-active surface; thin clients preselect that surface
+    without treating the recommendation as consent. Missing or ambiguous
+    placement evidence remains unselected.
   - [x] **Shared CLI/web investigation.** Expose the same provider connection,
     state timestamps, playlist summaries, directional membership differences,
     track facts, exclusions, operation state, and safe diagnostics through

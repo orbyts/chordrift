@@ -1,4 +1,9 @@
 (function attachMaintenanceDecisions(root) {
+  function recommendedDestinationId(change) {
+    if (change?.recommended_resolution?.type !== 'place') return null;
+    return change.recommended_resolution.parameters?.destination?.surface_id || null;
+  }
+
   async function resolution(change, selected) {
     if (!selected) throw new Error(`Choose an answer for ${change.summary}.`);
     if (selected === 'keep') return { type: 'keep_observed' };
@@ -13,5 +18,5 @@
     return { type: change.kind === 'removal' ? 'restore' : 'place', parameters: { destination } };
   }
 
-  root.ChordriftMaintenance = Object.freeze({ resolution });
+  root.ChordriftMaintenance = Object.freeze({ recommendedDestinationId, resolution });
 }(globalThis));

@@ -577,6 +577,8 @@ mod tests {
             }),
             summary: "Observed".to_owned(),
             resolution: Some(resolution),
+            recommended_resolution: None,
+            recommendation_reason: None,
         }
     }
 

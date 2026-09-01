@@ -84,6 +84,8 @@ impl Fixture {
                     current_surface: None,
                     summary: "Removed Fixture Song from Old Vibe".to_owned(),
                     resolution: None,
+                    recommended_resolution: None,
+                    recommendation_reason: None,
                 }],
                 provider_effects: vec![MaintenanceProviderEffectView {
                     effect_id: ResourceId::new(),
@@ -944,6 +946,8 @@ async fn http_refresh_accepts_newest_provider_order_and_invalidates_older_review
             }),
             summary: "Accepted current provider order".to_owned(),
             resolution: Some(MaintenanceResolution::KeepObserved),
+            recommended_resolution: None,
+            recommendation_reason: None,
         }],
         provider_effects: Vec::new(),
         review_id: None,

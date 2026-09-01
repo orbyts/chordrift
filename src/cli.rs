@@ -7303,18 +7303,20 @@ fn write_intake_audit(output: &mut impl Write, report: &intake::IntakeAudit) -> 
     writeln!(output, "spotify_writes: disabled")?;
     writeln!(
         output,
-        "state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id\tsaved_track_disposition"
+        "state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\trecommended_destination\trecommendation_reason\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id\tsaved_track_disposition"
     )?;
     for item in &report.items {
         writeln!(
             output,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             item.state.as_str(),
             clean_cell(&item.title),
             clean_cell(&item.artists),
             clean_cell(&item.sources.join(" / ")),
             clean_cell(&item.current_destinations.join(" / ")),
             clean_cell(&item.proposal_destinations.join(" / ")),
+            clean_cell(item.recommended_destination.as_deref().unwrap_or("-")),
+            clean_cell(item.recommendation_reason.as_deref().unwrap_or("-")),
             item.listening_events,
             item.play_count,
             item.exclusion_history,

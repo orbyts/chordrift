@@ -210,6 +210,8 @@ fn projection(snapshot: u128, gestures: Vec<Gesture>) -> MaintenanceProjection {
                     resolution: Some(MaintenanceResolution::Place {
                         destination: surface(destination),
                     }),
+                    recommended_resolution: None,
+                    recommendation_reason: None,
                 },
                 Gesture::Remove {
                     track: value,
@@ -222,6 +224,8 @@ fn projection(snapshot: u128, gestures: Vec<Gesture>) -> MaintenanceProjection {
                     current_surface: None,
                     summary: format!("Accepted removal from {source}"),
                     resolution: Some(MaintenanceResolution::Exclude),
+                    recommended_resolution: None,
+                    recommendation_reason: None,
                 },
                 Gesture::Move {
                     track: value,
@@ -237,6 +241,8 @@ fn projection(snapshot: u128, gestures: Vec<Gesture>) -> MaintenanceProjection {
                     resolution: Some(MaintenanceResolution::Place {
                         destination: surface(destination),
                     }),
+                    recommended_resolution: None,
+                    recommendation_reason: None,
                 },
                 Gesture::Reorder { playlist } => MaintenanceChangeView {
                     change_id,
@@ -246,6 +252,8 @@ fn projection(snapshot: u128, gestures: Vec<Gesture>) -> MaintenanceProjection {
                     current_surface: Some(surface(playlist)),
                     summary: format!("Accepted provider order for {playlist}"),
                     resolution: Some(MaintenanceResolution::KeepObserved),
+                    recommended_resolution: None,
+                    recommendation_reason: None,
                 },
                 Gesture::Like { track: value } => MaintenanceChangeView {
                     change_id,
@@ -255,6 +263,8 @@ fn projection(snapshot: u128, gestures: Vec<Gesture>) -> MaintenanceProjection {
                     current_surface: Some(surface("Liked Songs")),
                     summary: "Choose whether the track remains liked".to_owned(),
                     resolution: None,
+                    recommended_resolution: None,
+                    recommendation_reason: None,
                 },
             }
         })
@@ -288,6 +298,8 @@ fn liked_placement_changes(
         resolution: Some(MaintenanceResolution::Place {
             destination: destination_surface,
         }),
+        recommended_resolution: None,
+        recommendation_reason: None,
     }];
     if provider.liked.contains(&track_id) {
         changes.push(MaintenanceChangeView {
@@ -300,6 +312,8 @@ fn liked_placement_changes(
             resolution: Some(MaintenanceResolution::ConsumeIntake {
                 source: liked_surface,
             }),
+            recommended_resolution: None,
+            recommendation_reason: None,
         });
     }
     changes

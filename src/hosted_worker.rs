@@ -1128,6 +1128,8 @@ mod tests {
             current_surface: Some(liked.clone()),
             summary: "Choose saved state".to_owned(),
             resolution: Some(MaintenanceResolution::ConsumeIntake { source: liked }),
+            recommended_resolution: None,
+            recommendation_reason: None,
         }];
         let exact = maintenance_provider_effects(snapshot, &changes);
         let mut view = MaintenanceSessionView {
