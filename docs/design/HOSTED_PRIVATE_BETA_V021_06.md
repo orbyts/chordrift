@@ -120,7 +120,9 @@ The complete product/browser acceptance surface is tracked in
    and stale duplicate database are deleted.
 4. Configure Auth0 as a Regular Web Application with Google login and callback
    `https://chordrift.suhail.ink/auth/callback`.
-5. Start the Vortex API with provider writes unavailable.
+5. Start the Vortex API with provider writes limited to server-rederived,
+   enumerated effects behind an immutable exact review. Readiness must report
+   `exact_review_only`; no general publication or client-supplied write exists.
 6. Validate the Nexus configuration before reload, then verify HTTPS headers,
    liveness, readiness, OIDC state/PKCE, first-owner adoption, logout, session
    revocation, and cross-account denial.
