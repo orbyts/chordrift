@@ -11,8 +11,10 @@ Last updated: 2026-08-31.
 ## Hosted Spotify connection checkpoint
 
 The active private deployment now runs exact code commit
-`b37204b67384d59569d81368bbc04c2d46a6d202` as image
-`chordrift:b37204b` on Vortex. Both API and worker run as UID/GID 65532 with
+`cc597b0cea197e1eb23aeff1a286be22d23d9789` as image
+`chordrift:cc597b0` (manifest
+`sha256:82e030b42ab56a1cd5bfce4355dee6e9f563fef004971eafc855066ca0cc5289`)
+on Vortex. Both API and worker run as UID/GID 65532 with
 read-only root filesystems and `unless-stopped`; the 43.2 MB runtime contains
 only `chordrift-server`, `chordrift-worker`, and runtime necessities. Before
 deployment, a validated 29.4 MB compressed logical backup was written to the
@@ -60,9 +62,9 @@ destination addition first, observes and verifies it, then offers saved-state
 cleanup only as a separate exact review. It also interprets the already-pending
 ordinary `publish/add_track` as the one recovery addition the user may review
 after deployment. Failed operations no longer claim Spotify was unchanged.
-The complete GitHub gate passed for repair commit `727bc8f` and documentation
-tip `1022066`. Exact image `chordrift:1022066` (manifest
-`sha256:b5da1ce31568c0242a5ea8dc17c899eb1f33c04b87ebbb4650f20a23ebf5f524`)
+The complete GitHub gate passed for repair commit `727bc8f` and the current
+top-placement tip `cc597b0`. Exact image `chordrift:cc597b0` (manifest
+`sha256:82e030b42ab56a1cd5bfce4355dee6e9f563fef004971eafc855066ca0cc5289`)
 is deployed on Vortex as both API and worker. Private and public readiness are
 healthy and report `provider_write_scope=exact_review_only`. Deployment did not
 start maintenance or write Spotify. Authenticated recovery acceptance remains:
