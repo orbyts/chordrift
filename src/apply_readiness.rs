@@ -221,11 +221,25 @@ pub async fn assess(
              JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
              WHERE playlist.generation_id = $2
              GROUP BY membership.track_id
+         ), planned_placement AS (
+             SELECT identity.canonical_track_id AS track_id,
+                    count(DISTINCT operation.playlist_id)::bigint AS destinations
+             FROM sync_operations operation
+             JOIN historical_provider_track_identities identity
+               ON identity.provider = 'spotify'
+              AND identity.provider_track_id = operation.payload->>'spotify_track_id'
+             WHERE operation.sync_run_id = $3
+               AND operation.operation_type IN ('add_track', 'restore_track')
+               AND identity.canonical_track_id IS NOT NULL
+             GROUP BY identity.canonical_track_id
          ), disposition AS (
-             SELECT candidate.track_id, COALESCE(placement.destinations, 0) AS destinations,
+             SELECT candidate.track_id,
+                    COALESCE(placement.destinations, 0)
+                      + COALESCE(planned_placement.destinations, 0) AS destinations,
                     exclusion.id IS NOT NULL AS excluded
              FROM candidate
              LEFT JOIN placement USING (track_id)
+             LEFT JOIN planned_placement USING (track_id)
              LEFT JOIN excluded_tracks exclusion
                ON exclusion.provider_account_id = $1
               AND exclusion.track_id = candidate.track_id
@@ -241,6 +255,7 @@ pub async fn assess(
     )
     .bind(account_id)
     .bind(proposal_id)
+    .bind(plan_id)
     .fetch_one(database.pool())
     .await?;
     let inventory_count: i64 = inventory.try_get("inventory")?;
