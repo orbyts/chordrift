@@ -652,6 +652,10 @@ pub struct LibraryPlaylistTrackView {
     pub artists: String,
     /// Album title when known.
     pub album: Option<String>,
+    /// Meaningful historical plays for the selected account.
+    pub play_count: u64,
+    /// Most recent retained playback for the selected account.
+    pub last_played_at: Option<DateTime<Utc>>,
 }
 
 /// Ordered contents of one playlist in one explicit state plane.
@@ -718,6 +722,14 @@ pub struct ExcludedTrackView {
     pub title: String,
     /// Ordered display artist string.
     pub artists: String,
+    /// Album title when known.
+    pub album: Option<String>,
+    /// Meaningful historical plays for the selected account.
+    pub play_count: u64,
+    /// Raw retained listening events for the selected account.
+    pub event_count: u64,
+    /// Most recent retained playback for the selected account.
+    pub last_played_at: Option<DateTime<Utc>>,
     /// Durable exclusion reason.
     pub reason: String,
     /// Time the active exclusion was created.

@@ -367,6 +367,9 @@ and later Chordrift refactor begin.
     terminal. The web client may omit expert forensic queries, but it must make
     high-level divergence understandable—for example, `12 provider-only, 4
     Chordrift-only` rather than showing unexplained unequal totals.
+    Library and Excluded views must expose personal play count, last-heard time,
+    and album through the shared query contract; the browser may sort and group
+    those returned facts without owning restoration policy.
   - [x] **Shared CLI/web investigation.** Expose the same provider connection,
     state timestamps, playlist summaries, directional membership differences,
     track facts, exclusions, operation state, and safe diagnostics through
@@ -623,6 +626,17 @@ maintenance to restore selected tracks. An active exclusion must be shown as
 `previously_excluded` and explicitly restored; `known_from_history` means no
 active exclusion and may be assigned directly. This audit must not infer a
 Spotify write merely from play count.
+
+The first read-only audit workbook was generated on 2026-08-31. Its strict
+history-only population excludes current provider playlists, Liked Songs,
+saved albums, active exclusions, and current Chordrift-model placements. It
+contains 14,138 identities: 296 canonical matches suitable for explicit
+destination review and 13,842 unmatched archive identities requiring identity
+resolution first. The workbook provides filterable album, meaningful-play,
+last-heard, retained-playlist-history, and safe-next-step fields. No Neon or
+Spotify state changed. Product integration remains: restore to a still-existing
+prior destination or an explicitly selected destination through exact review;
+permanent forget remains a separately confirmed durable-intent operation.
 
 ### Separate dependency — learned Classification Authority
 

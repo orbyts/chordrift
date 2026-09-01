@@ -78,6 +78,22 @@ top without duplication. This does not move an already-present rediscovered
 favorite. A later additive contract may expose top, bottom, or an exact
 position uniformly to web, CLI, iOS, and Android clients.
 
+The library/exclusion explorer now receives album, meaningful-play count, and
+last-heard time in its typed Rust query results. The browser can sort playlist
+membership by custom order, plays, recency, album, or title and sort/group the
+Excluded archive by plays, recency, album, prior playlist, or last-heard bucket.
+This does not authorize restoration or forgetting. A future explicit restore
+command must reuse a surviving prior surface only after review or request a new
+destination; permanent forget is a separately confirmed destructive intent
+change. Provider artwork remains deferred until post-beta UI polish.
+
+A read-only personal history-only audit was generated outside the repository at
+`/Users/suhail/Documents/ChatGPT/Music/outputs/chordrift-history-audit-20260831/Chordrift-History-Only-Listening-Audit-2026-08-31.xlsx`.
+It excludes current provider library membership, active exclusions, and current
+Chordrift-model placement. The snapshot contains 14,138 identities: 296
+canonical matches and 13,842 unmatched archive identities. No database or
+provider state was changed.
+
 `tests/provider_behavior_acceptance.rs` is the permanent six-track synthetic
 provider harness. It uses the production maintenance DTO/state machine, a
 stateful fake provider, and a fake durable database. CI covers single add,

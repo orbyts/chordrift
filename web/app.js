@@ -2,7 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const uuid = () => crypto.randomUUID();
 const contractVersion = { major: 1, minor: 4 };
-const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null, maintenanceSession: null, destinationPlaylists: [] };
+const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null, maintenanceSession: null, destinationPlaylists: [], playlistTracks: [], excludedTracks: [] };
 
 function queryEnvelope(query) { return { contract_version: contractVersion, request_id: uuid(), query }; }
 
@@ -325,20 +325,25 @@ async function loadPlaylistTracks(playlist, button) {
   const table = $('#playlist-tracks'); showTableError(table, 'Loading ordered membership…');
   try {
     const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'library_playlist_tracks', parameters: { provider_connection_id: state.provider.provider_connection_id, playlist_id: playlist.playlist_id, source: state.source } }));
-    table.replaceChildren();
-    for (const track of response.view.value.tracks) {
-      const row = node('tr', 'track-row'); row.tabIndex = 0; row.append(node('td', 'position', track.position));
-      const identity = node('td', 'track-identity'); identity.append(node('strong', '', track.title), node('span', '', track.artists));
-      row.append(identity, node('td', 'album', track.album || '—'));
-      row.addEventListener('click', () => loadTrack(track.provider_track_id));
-      row.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadTrack(track.provider_track_id); });
-      table.append(row);
-    }
+    state.playlistTracks = response.view.value.tracks; renderPlaylistTracks();
   } catch (error) { showTableError(table, error.message); }
 }
 
+function renderPlaylistTracks() {
+  const table = $('#playlist-tracks'); table.replaceChildren();
+  const tracks = ChordriftLibraryExplorer.sortPlaylistTracks(state.playlistTracks, $('#playlist-sort').value);
+  for (const track of tracks) {
+    const row = node('tr', 'track-row'); row.tabIndex = 0; row.append(node('td', 'position', track.position));
+    const identity = node('td', 'track-identity'); identity.append(node('strong', '', track.title), node('span', '', track.artists));
+    row.append(identity, node('td', 'album', track.album || '—'), node('td', 'listening-cell', track.play_count.toLocaleString()), node('td', 'listening-cell', formatTime(track.last_played_at)));
+    row.addEventListener('click', () => loadTrack(track.provider_track_id));
+    row.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadTrack(track.provider_track_id); });
+    table.append(row);
+  }
+}
+
 function showTableError(table, message) {
-  table.replaceChildren(); const row = node('tr'); const cell = node('td', 'empty', message); cell.colSpan = 3; row.append(cell); table.append(row);
+  table.replaceChildren(); const row = node('tr'); const cell = node('td', 'empty', message); cell.colSpan = 5; row.append(cell); table.append(row);
 }
 
 async function loadTrack(providerTrackId) {
@@ -365,16 +370,24 @@ async function loadExclusions() {
   if (!state.provider) return;
   try {
     const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'excluded_tracks', parameters: { provider_connection_id: state.provider.provider_connection_id } }));
-    const tracks = response.view.value.tracks; $('#exclusion-count').textContent = tracks.length.toLocaleString();
-    const list = $('#exclusion-list'); list.replaceChildren();
-    for (const track of tracks) {
-      const card = node('button', 'record-card'); card.type = 'button';
-      const text = node('div'); text.append(node('strong', '', track.title), node('span', '', track.artists));
-      const meta = node('div', 'record-meta'); meta.append(node('span', '', track.previous_playlist || 'No prior playlist'), node('span', '', formatTime(track.excluded_at)));
-      card.append(text, meta); card.addEventListener('click', () => loadTrack(track.provider_track_id)); list.append(card);
-    }
-    if (!tracks.length) list.append(node('p', 'empty', 'The exclusion archive is empty.'));
+    state.excludedTracks = response.view.value.tracks; $('#exclusion-count').textContent = state.excludedTracks.length.toLocaleString(); renderExclusions();
   } catch (error) { $('#exclusion-list').replaceChildren(node('p', 'warning', error.message)); }
+}
+
+function renderExclusions() {
+  const list = $('#exclusion-list'); list.replaceChildren();
+  const tracks = ChordriftLibraryExplorer.sortExcludedTracks(state.excludedTracks, $('#exclusion-sort').value);
+  const groupMode = $('#exclusion-group').value; let previousGroup = null;
+  for (const track of tracks) {
+    const group = ChordriftLibraryExplorer.excludedGroup(track, groupMode);
+    if (group && group !== previousGroup) { list.append(node('h2', 'group-heading', group)); previousGroup = group; }
+    const card = node('button', 'record-card'); card.type = 'button';
+    const text = node('div'); text.append(node('strong', '', track.title), node('span', '', `${track.artists}${track.album ? ` · ${track.album}` : ''}`));
+    const meta = node('div', 'record-meta');
+    meta.append(node('strong', '', `${track.play_count.toLocaleString()} plays · ${formatTime(track.last_played_at)}`), node('span', '', `${track.previous_playlist || 'No prior playlist'} · excluded ${formatTime(track.excluded_at)}`));
+    card.append(text, meta); card.addEventListener('click', () => loadTrack(track.provider_track_id)); list.append(card);
+  }
+  if (!tracks.length) list.append(node('p', 'empty', 'The exclusion archive is empty.'));
 }
 
 async function loadComparison() {
@@ -442,6 +455,9 @@ $('#provider-select').addEventListener('change', async (event) => {
   state.provider = state.connections.find((connection) => connection.provider_connection_id === event.target.value); renderProviderState(); await Promise.all([loadPlaylists(), loadComparison(), loadExclusions()]);
 });
 $('#preset').addEventListener('change', selectPreset); $('#send').addEventListener('click', sendDeveloperRequest);
+$('#playlist-sort').addEventListener('change', renderPlaylistTracks);
+$('#exclusion-sort').addEventListener('change', renderExclusions);
+$('#exclusion-group').addEventListener('change', renderExclusions);
 $('#start-maintenance').addEventListener('click', startMaintenance);
 $('#spotify-disconnect').addEventListener('submit', disconnectSpotify);
 $('.dialog-close').addEventListener('click', () => $('#track-dialog').close());

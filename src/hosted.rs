@@ -83,6 +83,7 @@ const LOGIN_TTL_MINUTES: i64 = 10;
 const MAX_LOGIN_ATTEMPTS: usize = 128;
 const INDEX_HTML: &str = include_str!("../web/index.html");
 const APP_JS: &str = include_str!("../web/app.js");
+const LIBRARY_EXPLORER_JS: &str = include_str!("../web/library-explorer.js");
 const MAINTENANCE_DECISIONS_JS: &str = include_str!("../web/maintenance-decisions.js");
 const APP_CSS: &str = include_str!("../web/app.css");
 
@@ -658,7 +659,9 @@ impl MaintenanceBackend for DeploymentMaintenanceBackend {
                 let rows = sqlx::query(
                     "SELECT membership.position, provider_track.provider_track_id, track.title,
                             COALESCE(string_agg(artist.name, ', ' ORDER BY track_artist.position), '') AS artists,
-                            album.title AS album
+                            album.title AS album,
+                            COALESCE(statistics.play_count, 0) AS play_count,
+                            statistics.last_played_at
                        FROM provider_current_inventories inventory
                        JOIN provider_current_playlists current_playlist
                          ON current_playlist.provider_account_id = inventory.provider_account_id
@@ -668,12 +671,16 @@ impl MaintenanceBackend for DeploymentMaintenanceBackend {
                          ON membership.revision_id = current_playlist.revision_id
                        JOIN provider_tracks provider_track ON provider_track.id = membership.provider_track_id
                        JOIN tracks track ON track.id = provider_track.track_id
+                       LEFT JOIN account_listening_track_statistics statistics
+                         ON statistics.provider_account_id = inventory.provider_account_id
+                        AND statistics.provider_track_id = provider_track.provider_track_id
                        LEFT JOIN albums album ON album.id = track.album_id
                        LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
                        LEFT JOIN artists artist ON artist.id = track_artist.artist_id
                       WHERE inventory.provider_account_id = $1
                         AND provider_playlist.provider_playlist_id = $2
-                      GROUP BY membership.position, provider_track.provider_track_id, track.title, album.title
+                      GROUP BY membership.position, provider_track.provider_track_id, track.title,
+                               album.title, statistics.play_count, statistics.last_played_at
                       ORDER BY membership.position",
                 )
                 .bind(provider_connection_id.as_uuid())
@@ -717,19 +724,26 @@ impl MaintenanceBackend for DeploymentMaintenanceBackend {
                 let rows = sqlx::query(
                     "SELECT membership.position, provider.provider_track_id, track.title,
                             COALESCE(string_agg(artist.name, ', ' ORDER BY track_artist.position), '') AS artists,
-                            album.title AS album
+                            album.title AS album,
+                            COALESCE(statistics.play_count, 0) AS play_count,
+                            statistics.last_played_at
                        FROM playlist_tracks membership
                        JOIN tracks track ON track.id = membership.track_id
                        JOIN provider_tracks provider
                          ON provider.track_id = track.id AND provider.provider = 'spotify'
+                       LEFT JOIN account_listening_track_statistics statistics
+                         ON statistics.provider_account_id = $2
+                        AND statistics.provider_track_id = provider.provider_track_id
                        LEFT JOIN albums album ON album.id = track.album_id
                        LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
                        LEFT JOIN artists artist ON artist.id = track_artist.artist_id
                       WHERE membership.playlist_id = $1
-                      GROUP BY membership.position, provider.provider_track_id, track.title, album.title
+                      GROUP BY membership.position, provider.provider_track_id, track.title,
+                               album.title, statistics.play_count, statistics.last_played_at
                       ORDER BY membership.position",
                 )
                 .bind(model_playlist_id)
+                .bind(provider_connection_id.as_uuid())
                 .fetch_all(&self.pool)
                 .await
                 .map_err(|_| client_unavailable())?;
@@ -756,6 +770,14 @@ impl MaintenanceBackend for DeploymentMaintenanceBackend {
                     title: row.try_get("title").map_err(|_| client_unavailable())?,
                     artists: row.try_get("artists").map_err(|_| client_unavailable())?,
                     album: row.try_get("album").map_err(|_| client_unavailable())?,
+                    play_count: u64::try_from(
+                        row.try_get::<i64, _>("play_count")
+                            .map_err(|_| client_unavailable())?,
+                    )
+                    .map_err(|_| client_unavailable())?,
+                    last_played_at: row
+                        .try_get("last_played_at")
+                        .map_err(|_| client_unavailable())?,
                 })
             })
             .collect::<std::result::Result<Vec<_>, crate::contract::ClientError>>()?;
@@ -951,12 +973,20 @@ impl MaintenanceBackend for DeploymentMaintenanceBackend {
         let rows = sqlx::query(
             "SELECT min(provider.provider_track_id) AS provider_track_id, track.title,
                     COALESCE(string_agg(DISTINCT artist.name, ', '), '') AS artists,
+                    album.title AS album,
+                    COALESCE(max(statistics.play_count), 0) AS play_count,
+                    COALESCE(max(statistics.event_count), 0) AS event_count,
+                    max(statistics.last_played_at) AS last_played_at,
                     exclusion.exclusion_reason, exclusion.excluded_at,
                     current_playlist.name AS previous_playlist
                FROM excluded_tracks exclusion
                JOIN tracks track ON track.id = exclusion.track_id
                JOIN provider_tracks provider
                  ON provider.track_id = track.id AND provider.provider = 'spotify'
+               LEFT JOIN account_listening_track_statistics statistics
+                 ON statistics.provider_account_id = exclusion.provider_account_id
+                AND statistics.provider_track_id = provider.provider_track_id
+               LEFT JOIN albums album ON album.id = track.album_id
                LEFT JOIN track_artists track_artist ON track_artist.track_id = track.id
                LEFT JOIN artists artist ON artist.id = track_artist.artist_id
                LEFT JOIN provider_playlists previous
@@ -966,8 +996,8 @@ impl MaintenanceBackend for DeploymentMaintenanceBackend {
                 AND current_playlist.provider_playlist_id = previous.id
               WHERE exclusion.provider_account_id = $1 AND exclusion.restored_at IS NULL
                 AND exclusion.source_provider <> 'chordrift_forget'
-              GROUP BY exclusion.id, track.id, track.title, exclusion.exclusion_reason,
-                       exclusion.excluded_at, current_playlist.name
+              GROUP BY exclusion.id, track.id, track.title, album.title,
+                       exclusion.exclusion_reason, exclusion.excluded_at, current_playlist.name
               ORDER BY exclusion.excluded_at DESC, exclusion.id DESC",
         )
         .bind(provider_connection_id.as_uuid())
@@ -983,6 +1013,20 @@ impl MaintenanceBackend for DeploymentMaintenanceBackend {
                         .map_err(|_| client_unavailable())?,
                     title: row.try_get("title").map_err(|_| client_unavailable())?,
                     artists: row.try_get("artists").map_err(|_| client_unavailable())?,
+                    album: row.try_get("album").map_err(|_| client_unavailable())?,
+                    play_count: u64::try_from(
+                        row.try_get::<i64, _>("play_count")
+                            .map_err(|_| client_unavailable())?,
+                    )
+                    .map_err(|_| client_unavailable())?,
+                    event_count: u64::try_from(
+                        row.try_get::<i64, _>("event_count")
+                            .map_err(|_| client_unavailable())?,
+                    )
+                    .map_err(|_| client_unavailable())?,
+                    last_played_at: row
+                        .try_get("last_played_at")
+                        .map_err(|_| client_unavailable())?,
                     reason: row
                         .try_get("exclusion_reason")
                         .map_err(|_| client_unavailable())?,
@@ -1126,6 +1170,10 @@ pub async fn run_from_env() -> Result<()> {
     let router = Router::new()
         .route("/", get(index))
         .route("/assets/app.js", get(javascript))
+        .route(
+            "/assets/library-explorer.js",
+            get(library_explorer_javascript),
+        )
         .route(
             "/assets/maintenance-decisions.js",
             get(maintenance_decisions_javascript),
@@ -1281,6 +1329,10 @@ async fn index() -> Response {
 
 async fn javascript() -> Response {
     static_asset(APP_JS, "text/javascript; charset=utf-8")
+}
+
+async fn library_explorer_javascript() -> Response {
+    static_asset(LIBRARY_EXPLORER_JS, "text/javascript; charset=utf-8")
 }
 
 async fn maintenance_decisions_javascript() -> Response {

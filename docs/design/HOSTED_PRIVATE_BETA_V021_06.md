@@ -75,6 +75,17 @@ explorer presents Spotify observation state separately from the Chordrift
 model. Playlist order, track detail, personal listening statistics and active
 exclusions are available through tenant-scoped typed queries.
 
+Playlist membership rows and active exclusions also carry album, meaningful
+play count, and last-heard time. The thin browser may sort playlist rows by
+custom order, plays, recency, album, or title and may group exclusions by
+album, prior playlist, or last-heard bucket. These are presentation operations
+over Rust-issued facts. Restoring an exclusion remains an explicit Rust command:
+reuse the prior destination only when its stable surface still exists, otherwise
+request a destination or classification assistance, then show an exact provider
+review. Permanently forgetting an exclusion is a different destructive intent
+change with an explicit confirmation. Provider artwork is deliberately deferred
+until post-beta UI design work.
+
 The service and local CLI now target the same canonical `chordrift_cutover`
 database on the single Neon `main` branch. It is at migration 50/50. The
 temporary pre-cutover and rehearsal branches, plus the stale duplicate

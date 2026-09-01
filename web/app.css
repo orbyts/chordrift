@@ -60,7 +60,11 @@ h2 { margin-bottom: 8px; font-size: 1.15rem; }
 .track-list { min-width: 0; overflow: hidden; }
 .track-list-heading, .pane-heading { min-height: 78px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #38332e; }
 .track-list-heading h2 { margin: 0; }
-.track-list-heading > span { color: #80786f; font-size: .8rem; }
+.track-list-heading > span, .view-controls > span { color: #80786f; font-size: .8rem; }
+.view-controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; color: #8f877e; font-size: .76rem; }
+.view-controls label { display: flex; align-items: center; gap: 7px; }
+.view-controls select { background: #0f0e0d; padding: 7px 28px 7px 10px; }
+.exclusion-controls { justify-content: flex-start; margin: 0 0 16px; }
 .table-wrap { max-height: 64vh; overflow: auto; }
 table { width: 100%; border-collapse: collapse; }
 th { position: sticky; top: 0; z-index: 1; background: #171513; color: #766f67; font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; text-align: left; }
@@ -77,6 +81,7 @@ th, td { padding: 11px 14px; border-bottom: 1px solid #2c2925; }
 .record-card > div:first-child strong, .record-card > div:first-child span, .compact-card strong, .compact-card span { display: block; }
 .record-card span, .compact-card span { color: #847c74; font-size: .78rem; margin-top: 3px; }
 .record-meta { text-align: right; }
+.group-heading { margin: 20px 2px 7px; color: #c9a878; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; }
 .decision-select { min-width: min(290px, 42vw); background: #0f0e0d; color: #ddd7cf; border: 1px solid #4a433b; border-radius: 10px; padding: 9px 12px; }
 .workbench { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .pane { min-width: 0; overflow: hidden; }
@@ -95,4 +100,4 @@ dialog::backdrop { background: #000b; backdrop-filter: blur(5px); }
 .warning { border-left: 2px solid #cf8e5c; padding: 8px 12px; color: #d7a780; }
 [hidden] { display: none !important; }
 @media (max-width: 900px) { .masthead { grid-template-columns: 1fr auto; } .provider-context { grid-column: 1 / -1; grid-row: 2; padding-bottom: 14px; } .hero-grid, .library-grid, .workbench { grid-template-columns: 1fr; } .hero-grid { padding: 50px 0; min-height: auto; } .playlist-list { max-height: 320px; } }
-@media (max-width: 620px) { .masthead, main { width: min(100% - 24px, 1380px); } .section-heading { align-items: start; flex-direction: column; } .metrics { grid-template-columns: 1fr 1fr; } .record-meta, .album, th:last-child { display: none; } }
+@media (max-width: 620px) { .masthead, main { width: min(100% - 24px, 1380px); } .section-heading, .track-list-heading { align-items: start; flex-direction: column; } .view-controls { align-items: start; flex-wrap: wrap; justify-content: flex-start; } .metrics { grid-template-columns: 1fr 1fr; } .record-meta, .album, .listening-cell { display: none; } }

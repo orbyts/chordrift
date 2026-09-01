@@ -77,8 +77,8 @@
         <div class="library-grid">
           <aside class="playlist-list" id="playlist-list" aria-label="Playlists"></aside>
           <section class="track-list">
-            <div class="track-list-heading"><div><p class="eyebrow">Selected playlist</p><h2 id="playlist-title">Choose a playlist</h2></div><span id="playlist-count"></span></div>
-            <div class="table-wrap"><table><thead><tr><th>#</th><th>Track</th><th>Album</th></tr></thead><tbody id="playlist-tracks"><tr><td colspan="3" class="empty">Select a playlist to inspect its recorded order.</td></tr></tbody></table></div>
+            <div class="track-list-heading"><div><p class="eyebrow">Selected playlist</p><h2 id="playlist-title">Choose a playlist</h2></div><div class="view-controls"><span id="playlist-count"></span><label>Sort <select id="playlist-sort"><option value="custom_order">Custom order</option><option value="most_played">Most played</option><option value="recently_heard">Recently heard</option><option value="album">Album</option><option value="title">Title</option></select></label></div></div>
+            <div class="table-wrap"><table><thead><tr><th>#</th><th>Track</th><th>Album</th><th>Plays</th><th>Last heard</th></tr></thead><tbody id="playlist-tracks"><tr><td colspan="5" class="empty">Select a playlist to inspect its recorded order.</td></tr></tbody></table></div>
           </section>
         </div>
       </section>
@@ -86,6 +86,7 @@
       <section class="view" id="view-exclusions">
         <div class="section-heading"><div><p class="eyebrow">Reversible archive</p><h1>Excluded tracks</h1></div><span class="count-pill" id="exclusion-count">—</span></div>
         <p class="context-note">An exclusion prevents old intent from silently restoring a removal. Restoring or emptying this archive is always explicit.</p>
+        <div class="view-controls exclusion-controls"><label>Sort <select id="exclusion-sort"><option value="recently_excluded">Recently excluded</option><option value="most_played">Most played</option><option value="recently_heard">Recently heard</option><option value="album">Album</option><option value="previous_playlist">Previous playlist</option><option value="title">Title</option></select></label><label>Group <select id="exclusion-group"><option value="none">None</option><option value="last_heard">Last heard</option><option value="album">Album</option><option value="previous_playlist">Previous playlist</option></select></label></div>
         <div class="card-list" id="exclusion-list"></div>
       </section>
 
@@ -111,6 +112,7 @@
 
   <dialog id="track-dialog"><button class="dialog-close" type="button" aria-label="Close track details">×</button><div id="track-detail"></div></dialog>
   <script src="/assets/maintenance-decisions.js?v=decision-contract-1" defer></script>
-  <script src="/assets/app.js?v=decision-contract-1" defer></script>
+  <script src="/assets/library-explorer.js?v=listening-sort-1" defer></script>
+  <script src="/assets/app.js?v=listening-sort-1" defer></script>
 </body>
 </html>
