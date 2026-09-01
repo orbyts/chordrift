@@ -170,6 +170,7 @@ struct MaintenanceTrackContext {
     artists: String,
     current_canonical_playlists: Vec<String>,
     canonical_placements: Vec<String>,
+    previous_excluded_playlist: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1320,7 +1321,28 @@ pub async fn maintenance_annotations(
                         ORDER BY newest.created_at DESC, newest.id DESC LIMIT 1
                     ) AND membership.track_id = track.id
                     ORDER BY lower(revision.name), membership.position
-                ) AS canonical_placements
+                ) AS canonical_placements,
+                (
+                    SELECT COALESCE(name_revision.name, previous.name)
+                    FROM excluded_tracks exclusion
+                    JOIN playlists previous
+                      ON previous.generation_id = (
+                           SELECT latest.id
+                           FROM playlist_generations latest
+                           WHERE latest.provider_account_id = account.id
+                           ORDER BY latest.created_at DESC, latest.id DESC
+                           LIMIT 1
+                      )
+                     AND previous.concept_id = exclusion.previous_concept_id
+                    LEFT JOIN playlist_name_revisions name_revision
+                      ON name_revision.playlist_id = previous.id
+                     AND name_revision.selected
+                    WHERE exclusion.provider_account_id = account.id
+                      AND exclusion.track_id = track.id
+                      AND exclusion.restored_at IS NULL
+                    ORDER BY exclusion.excluded_at DESC, exclusion.id DESC
+                    LIMIT 1
+                ) AS previous_excluded_playlist
          FROM selected
          CROSS JOIN LATERAL (
              SELECT id FROM provider_accounts
@@ -1346,6 +1368,7 @@ pub async fn maintenance_annotations(
                     artists: row.try_get("artists")?,
                     current_canonical_playlists: row.try_get("current_canonical_playlists")?,
                     canonical_placements: row.try_get("canonical_placements")?,
+                    previous_excluded_playlist: row.try_get("previous_excluded_playlist")?,
                 },
             ))
         })
@@ -1403,7 +1426,12 @@ fn annotate_maintenance_operation(
         // exclusion and removed the prior canonical placement. When exactly
         // one current provider destination now exists, that placement is the
         // cumulative user intent and supersedes the temporary exclusion.
-        annotation.old_destination = Some("New intake".to_owned());
+        annotation.old_destination = Some(
+            context
+                .previous_excluded_playlist
+                .clone()
+                .unwrap_or_else(|| "New intake".to_owned()),
+        );
         return match context.current_canonical_playlists.as_slice() {
             [destination] => {
                 annotation.interpretation = "direct_move".to_owned();
@@ -2570,6 +2598,7 @@ mod tests {
             artists: "Fixture Artist".to_owned(),
             current_canonical_playlists: vec!["New Vibe".to_owned()],
             canonical_placements: vec!["Old Vibe".to_owned()],
+            previous_excluded_playlist: None,
         };
         let drift = annotate_maintenance_operation(
             &planned_operation("remove_track", "New Vibe", "managed_provider_drift"),
@@ -2589,7 +2618,7 @@ mod tests {
     }
 
     #[test]
-    fn delayed_destination_supersedes_a_prior_exclusion_as_direct_intake() {
+    fn delayed_destination_retains_prior_source_as_reclassification() {
         let annotation = annotate_maintenance_operation(
             &planned_operation("remove_track", "Dakshina Pulse", "managed_provider_drift"),
             Some(&MaintenanceTrackContext {
@@ -2597,10 +2626,14 @@ mod tests {
                 artists: "Fixture Artist".to_owned(),
                 current_canonical_playlists: vec!["Dakshina Pulse".to_owned()],
                 canonical_placements: Vec::new(),
+                previous_excluded_playlist: Some("Cinema Monsoon".to_owned()),
             }),
         );
         assert_eq!(annotation.interpretation, "direct_move");
-        assert_eq!(annotation.old_destination.as_deref(), Some("New intake"));
+        assert_eq!(
+            annotation.old_destination.as_deref(),
+            Some("Cinema Monsoon")
+        );
         assert_eq!(annotation.destination.as_deref(), Some("Dakshina Pulse"));
     }
 
@@ -2616,10 +2649,14 @@ mod tests {
                     "Kaveri Resonance".to_owned(),
                 ],
                 canonical_placements: Vec::new(),
+                previous_excluded_playlist: Some("Cinema Monsoon".to_owned()),
             }),
         );
         assert_eq!(annotation.interpretation, "ambiguous_move");
-        assert_eq!(annotation.old_destination.as_deref(), Some("New intake"));
+        assert_eq!(
+            annotation.old_destination.as_deref(),
+            Some("Cinema Monsoon")
+        );
         assert!(annotation.destination.is_none());
     }
 
@@ -2630,6 +2667,7 @@ mod tests {
             artists: "Fixture Artist".to_owned(),
             current_canonical_playlists: vec!["New Vibe".to_owned(), "Third Vibe".to_owned()],
             canonical_placements: vec!["Old Vibe".to_owned()],
+            previous_excluded_playlist: None,
         };
         let annotation = annotate_maintenance_operation(
             &planned_operation("exclude_track", "Old Vibe", "removed"),
