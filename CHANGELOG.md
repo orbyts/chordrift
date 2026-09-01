@@ -4,6 +4,17 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.4] - 2026-09-01
+
+- Bind CLI consent submission to a server-issued, one-time token stored only as
+  a SHA-256 digest in the pending authenticated PKCE flow.
+- Accept legitimate browser form submission when privacy boundaries omit both
+  `Origin` and `Referer`, while rejecting forged tokens, cross-subject flows,
+  expired flows, and replay without consuming a valid pending attempt.
+- Preserve the stricter origin/header guard for unrelated browser mutations;
+  this repair is scoped only to the independently authenticated CLI consent
+  protocol.
+
 ## [0.2.1-beta.3] - 2026-09-01
 
 - Stream browser-mediated CLI login output directly even in an interactive

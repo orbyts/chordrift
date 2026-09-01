@@ -242,6 +242,7 @@ struct CliLoginAttempt {
     redirect_uri: Url,
     client_state: String,
     code_challenge: String,
+    consent_token_sha256: [u8; 32],
     approved: bool,
     expires_at: DateTime<Utc>,
 }
@@ -1629,6 +1630,7 @@ struct CliAuthorizeQuery {
 #[derive(Deserialize)]
 struct CliApproveForm {
     flow_id: String,
+    consent_token: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1671,6 +1673,8 @@ async fn cli_authorize(
         return StatusCode::BAD_REQUEST.into_response();
     }
     let flow_id = random_url_token();
+    let consent_token = random_url_token();
+    let consent_token_sha256 = Sha256::digest(consent_token.as_bytes()).into();
     {
         let mut attempts = state.cli_login_attempts.lock().await;
         attempts.retain(|_, attempt| attempt.expires_at > Utc::now());
@@ -1684,13 +1688,14 @@ async fn cli_authorize(
                 redirect_uri,
                 client_state: query.state,
                 code_challenge: query.code_challenge,
+                consent_token_sha256,
                 approved: false,
                 expires_at: Utc::now() + TimeDelta::minutes(CLI_LOGIN_TTL_MINUTES),
             },
         );
     }
     Html(format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize Chordrift CLI</title></head><body><main><h1>Connect the Chordrift CLI?</h1><p>This creates a separate revocable Chordrift session on this computer. It does not share Spotify or database credentials.</p><form method=\"post\" action=\"/auth/cli/approve\"><input type=\"hidden\" name=\"flow_id\" value=\"{flow_id}\"><button type=\"submit\">Authorize CLI</button></form></main></body></html>"
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize Chordrift CLI</title></head><body><main><h1>Connect the Chordrift CLI?</h1><p>This creates a separate revocable Chordrift session on this computer. It does not share Spotify or database credentials.</p><form method=\"post\" action=\"/auth/cli/approve\"><input type=\"hidden\" name=\"flow_id\" value=\"{flow_id}\"><input type=\"hidden\" name=\"consent_token\" value=\"{consent_token}\"><button type=\"submit\">Authorize CLI</button></form></main></body></html>"
     ))
     .into_response()
 }
@@ -1700,18 +1705,20 @@ async fn cli_approve(
     headers: HeaderMap,
     Form(form): Form<CliApproveForm>,
 ) -> Response {
-    if !same_origin(&state, &headers) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
     let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    let Some(mut attempt) = state.cli_login_attempts.lock().await.remove(&form.flow_id) else {
+    let mut attempts = state.cli_login_attempts.lock().await;
+    let Some(attempt) = attempts.get(&form.flow_id) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    if attempt.expires_at <= Utc::now() || attempt.subject != subject || attempt.approved {
+    if !valid_cli_consent(attempt, subject, &form.consent_token, Utc::now()) {
         return StatusCode::FORBIDDEN.into_response();
     }
+    let mut attempt = attempts
+        .remove(&form.flow_id)
+        .expect("validated CLI login attempt remains present");
+    drop(attempts);
     attempt.approved = true;
     let code = random_url_token();
     let mut redirect = attempt.redirect_uri.clone();
@@ -1725,6 +1732,19 @@ async fn cli_approve(
         [(LOCATION, redirect.as_str().to_owned())],
     )
         .into_response()
+}
+
+fn valid_cli_consent(
+    attempt: &CliLoginAttempt,
+    subject: AuthenticatedSubject,
+    consent_token: &str,
+    now: DateTime<Utc>,
+) -> bool {
+    let consent_token_sha256: [u8; 32] = Sha256::digest(consent_token.as_bytes()).into();
+    attempt.expires_at > now
+        && attempt.subject == subject
+        && !attempt.approved
+        && consent_token_sha256 == attempt.consent_token_sha256
 }
 
 async fn cli_exchange(
@@ -2138,6 +2158,45 @@ mod tests {
         wrapper.insert("x-chordrift-browser", HeaderValue::from_static("1"));
         assert!(same_origin_for(&state.public_origin, &wrapper));
         assert!(!same_origin_for(&state.public_origin, &HeaderMap::new()));
+    }
+
+    #[test]
+    fn cli_consent_token_supports_headerless_browsers_without_accepting_forgery() {
+        let subject = AuthenticatedSubject {
+            subject_id: ResourceId::new(),
+            account_id: ResourceId::new(),
+        };
+        let now = Utc::now();
+        let consent_token = "one-time-consent";
+        let mut attempt = CliLoginAttempt {
+            subject,
+            redirect_uri: Url::parse("http://127.0.0.1:43117/callback").unwrap(),
+            client_state: "client-state".to_owned(),
+            code_challenge: URL_SAFE_NO_PAD.encode([7_u8; 32]),
+            consent_token_sha256: Sha256::digest(consent_token.as_bytes()).into(),
+            approved: false,
+            expires_at: now + TimeDelta::minutes(5),
+        };
+
+        assert!(valid_cli_consent(&attempt, subject, consent_token, now));
+        assert!(!valid_cli_consent(&attempt, subject, "forged", now));
+        assert!(!valid_cli_consent(
+            &attempt,
+            AuthenticatedSubject {
+                subject_id: ResourceId::new(),
+                account_id: subject.account_id,
+            },
+            consent_token,
+            now,
+        ));
+        assert!(!valid_cli_consent(
+            &attempt,
+            subject,
+            consent_token,
+            attempt.expires_at,
+        ));
+        attempt.approved = true;
+        assert!(!valid_cli_consent(&attempt, subject, consent_token, now));
     }
 
     #[test]
