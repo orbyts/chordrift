@@ -344,6 +344,17 @@ fn playlist_membership_write<'operation>(
     Ok(PlaylistMembershipWrite::EnumeratedAdditions { reused, missing })
 }
 
+fn exact_live_membership_reuses_phase(
+    live_items: &[String],
+    desired: &[String],
+    pending: &[&Operation],
+) -> bool {
+    live_items == desired
+        && pending
+            .iter()
+            .all(|operation| operation.kind == "reorder_playlist")
+}
+
 /// Executes one explicitly confirmed phase after revalidating every durable gate.
 pub async fn execute(
     database: &Database,
@@ -1355,7 +1366,7 @@ async fn execute_publish(
         .bind(run_id)
         .fetch_all(database.pool())
         .await?;
-        if live_items == desired {
+        if exact_live_membership_reuses_phase(&live_items, &desired, &pending) {
             for operation in &pending {
                 mark_succeeded(
                     database,
@@ -1859,7 +1870,10 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    use super::{ApplyPhase, Operation, PlaylistMembershipWrite, playlist_membership_write};
+    use super::{
+        ApplyPhase, Operation, PlaylistMembershipWrite, exact_live_membership_reuses_phase,
+        playlist_membership_write,
+    };
 
     fn addition(spotify_track_id: &str) -> Operation {
         Operation {
@@ -1923,5 +1937,25 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["explicit-new-track"]
         );
+    }
+
+    #[test]
+    fn old_model_equality_never_suppresses_an_enumerated_addition() {
+        let operation = addition("reviewed-history-track");
+        assert!(!exact_live_membership_reuses_phase(
+            &["existing-track".to_owned()],
+            &["existing-track".to_owned()],
+            &[&operation],
+        ));
+        let plan = playlist_membership_write(
+            &["existing-track".to_owned()],
+            &["existing-track".to_owned()],
+            &[&operation],
+        )
+        .expect("reviewed addition is valid");
+        let PlaylistMembershipWrite::EnumeratedAdditions { missing, .. } = plan else {
+            panic!("reviewed addition must remain enumerated");
+        };
+        assert_eq!(missing[0].1, "reviewed-history-track");
     }
 }

@@ -407,7 +407,7 @@ pub async fn create_reviewed_addition_plan(
         proposal_id,
         snapshot_id,
         operations,
-        "reviewed_history_additions",
+        "reviewed_history_additions_v2",
     )
     .await
 }
