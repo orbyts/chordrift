@@ -416,9 +416,13 @@ and later Chordrift refactor begin.
     gate after manual beta testing.
   - [ ] **Release proof.** Pass CI, container smoke and fake-provider browser
     tests, disposable-PostgreSQL identity/tenant tests, migration/restore
-    rehearsal, and private deployment checks; document the exact deployed
-    image digest and commit; then tag, publish, install, and verify
-    `v0.2.1-beta.1` through the normal release path.
+    rehearsal, and private deployment checks. Tag and publish the exact commit
+    to crates.io; install that published version as the local CLI; build the
+    API/worker image from the same tagged source; restart both Vortex services;
+    and record the installed CLI version, deployed image digest, source commit,
+    and live health result. Finally, run one DTO-conformance smoke through both
+    the installed remote CLI and browser against that deployed authority before
+    accepting `v0.2.1-beta.1`.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,
@@ -604,6 +608,15 @@ stability. Every reproducible defect found through normal Spotify or web use is
 added to the edge-case ledger with a fake-provider/transport regression and is
 released as the next `v0.2.1-beta.N`. Do not skip numbers or publish a beta for
 documentation-only churn.
+
+Every beta and final release uses one immutable source identity across all
+daily-driver surfaces. The crates.io artifact is installed locally as the
+`chordrift` CLI, and API plus worker containers are rebuilt from the same tag,
+deployed to Vortex, and restarted. Release acceptance records the CLI version,
+container image digest, commit, service health, and a cross-client smoke. Web
+and CLI presentation may differ, but both must serialize the same typed DTOs
+and observe identical Rust-owned authorization, state-transition, retry,
+verification, and error semantics.
 
 The final `v0.2.1` release requires Suhail's explicit stability approval plus:
 

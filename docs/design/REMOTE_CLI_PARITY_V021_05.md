@@ -53,6 +53,17 @@ Real loopback HTTP tests run the shipped client against Axum and compare it with
 the explicit local client. They prove negotiation, authenticated typed command,
 typed query, HTTPS policy, and response-shape parity.
 
+## Release identity
+
+For every beta and final release, the locally installed CLI and the deployed
+API/worker containers must come from the same tagged source commit. The CLI is
+installed from the published crates.io version; Vortex rebuilds and restarts
+both services from that tag and records the image digest. A cross-client smoke
+then sends equivalent typed requests through the installed CLI and browser.
+Their wording and controls may differ, but authorization, durable revisions,
+reviews, provider effects, verification, and structured errors must be
+contract-identical because those behaviors belong to the Rust authority.
+
 ## Next boundary
 
 V021-06 selects hosting and external product authentication, configures the
