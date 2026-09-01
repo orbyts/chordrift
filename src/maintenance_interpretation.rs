@@ -15,8 +15,7 @@ use uuid::Uuid;
 use crate::{
     contract::{
         ClientError, ErrorCode, MaintenanceChangeId, MaintenanceChangeKind, MaintenanceChangeView,
-        MaintenanceResolution, MaintenanceSessionView, MaintenanceSurfaceView,
-        MaintenanceTrackView, ResourceId,
+        MaintenanceResolution, MaintenanceSurfaceView, MaintenanceTrackView, ResourceId,
     },
     intake::{self, IntakeItem, IntakeState},
     maintenance::MaintenanceProjection,
@@ -40,7 +39,6 @@ impl<'a> PostgresMaintenanceInterpreter<'a> {
         &self,
         subject: AuthenticatedSubject,
         provider_connection_id: ResourceId,
-        current: Option<&MaintenanceSessionView>,
     ) -> Result<MaintenanceProjection, ClientError> {
         let account_label: String = sqlx::query_scalar(
             "SELECT account_label FROM provider_accounts
@@ -59,14 +57,6 @@ impl<'a> PostgresMaintenanceInterpreter<'a> {
             return Err(ClientError::new(ErrorCode::StateConflict, false));
         }
         let snapshot_id = ResourceId::from_uuid(plan.source_snapshot_id);
-        if let Some(view) = current.filter(|view| view.provider_snapshot_id == snapshot_id) {
-            return Ok(MaintenanceProjection {
-                provider_snapshot_id: snapshot_id,
-                observed_changes: view.observed_changes.clone(),
-                provider_effects: view.provider_effects.clone(),
-                review_id: view.review_id,
-            });
-        }
         let (_, current_snapshot, operations) =
             sync_plan::show(self.database, &account_label, Some(plan.plan_id))
                 .await
@@ -681,6 +671,55 @@ mod tests {
         assert_eq!(changes[0].kind, MaintenanceChangeKind::DirectIntake);
         assert_eq!(changes[1].kind, MaintenanceChangeKind::SavedState);
         assert!(changes[1].resolution.is_none());
+    }
+
+    #[test]
+    fn already_covered_like_with_recorded_keep_converges_without_a_card() {
+        let mut item = intake_item(
+            "track-kept",
+            IntakeState::AlreadyCovered,
+            &["Liked Songs"],
+            &["Neon Affection"],
+        );
+        item.saved_track_disposition = Some("preserve".to_owned());
+        let mut changes = Vec::new();
+
+        append_intake_items(
+            ResourceId::new(),
+            &[&item],
+            &fixture_tracks(&["track-kept"]),
+            &mut changes,
+        )
+        .expect("recorded keep converges");
+
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn already_covered_like_with_recorded_clear_keeps_only_exact_cleanup() {
+        let mut item = intake_item(
+            "track-clear",
+            IntakeState::AlreadyCovered,
+            &["Liked Songs"],
+            &["Neon Affection"],
+        );
+        item.saved_track_disposition = Some("clear_after_verified_assignment".to_owned());
+        let mut changes = Vec::new();
+
+        append_intake_items(
+            ResourceId::new(),
+            &[&item],
+            &fixture_tracks(&["track-clear"]),
+            &mut changes,
+        )
+        .expect("recorded cleanup converges");
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].kind, MaintenanceChangeKind::SavedState);
+        assert!(matches!(
+            changes[0].resolution,
+            Some(MaintenanceResolution::ConsumeIntake { .. })
+        ));
     }
 
     #[test]

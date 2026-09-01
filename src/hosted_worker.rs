@@ -600,7 +600,7 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
         self.observe(subject, provider_connection_id).await?;
         let projection = attach_maintenance_provider_effects(
             PostgresMaintenanceInterpreter::new(&self.database)
-                .project(subject, provider_connection_id, None)
+                .project(subject, provider_connection_id)
                 .await?,
         );
         let projected_view = MaintenanceWorkflow::new(session_id, projection.clone())
@@ -630,15 +630,15 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
         expected_revision: u64,
     ) -> std::result::Result<ResourceId, ClientError> {
         let current = self.sessions.load(subject, session_id).await?;
-        let observed_snapshot = self
-            .observe(subject, current.provider_connection_id)
+        self.observe(subject, current.provider_connection_id)
             .await?;
-        if observed_snapshot == current.view.provider_snapshot_id {
-            return Ok(ResourceId::from_uuid(session_id.as_uuid()));
-        }
+        // A provider snapshot is only one input to the maintenance projection.
+        // Canonical intent can change through another client or an approved
+        // import while Spotify itself remains unchanged. Always rebuild the
+        // projection so stale recorded decisions converge against both stores.
         let projection = attach_maintenance_provider_effects(
             PostgresMaintenanceInterpreter::new(&self.database)
-                .project(subject, current.provider_connection_id, Some(&current.view))
+                .project(subject, current.provider_connection_id)
                 .await?,
         );
         let mut projected_workflow = MaintenanceWorkflow::from_view(current.view.clone())
@@ -828,7 +828,7 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
                 .await?;
             let projection = attach_maintenance_provider_effects(
                 PostgresMaintenanceInterpreter::new(&self.database)
-                    .project(subject, current.provider_connection_id, Some(&current.view))
+                    .project(subject, current.provider_connection_id)
                     .await?,
             );
             let projected_view = MaintenanceWorkflow::new(session_id, projection.clone())
