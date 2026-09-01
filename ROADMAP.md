@@ -482,8 +482,15 @@ and later Chordrift refactor begin.
      runtime, maintenance-session persistence, PostgreSQL interpretation, and
      Start/Refresh/Resolve routing, canonical record-only projection, and saved-
      intake interpretation are composed and proven on disposable PostgreSQL;
-  2. implement Connect/Reconnect/Disconnect and multiple isolated Spotify
-     connections without changing Chordrift product identity;
+  2. [implementation complete; deployment/browser proof gated] implement
+     Connect/Reconnect/Disconnect and multiple isolated Spotify connections
+     without changing Chordrift product identity; the Rust authority now uses
+     hosted PKCE, stable-identity matching, encrypted in-place rotation, and
+     history-preserving revocation while the browser only launches and renders
+     the lifecycle; a disposable PostgreSQL 18 proof passed same-row history
+     retention, credential generation rotation, cross-tenant rejection, and
+     history-preserving disconnect, after which its container and source copy
+     were deleted;
   3. finish the web maintenance journey and the shared provider/model
      comparison query while preserving remote CLI parity;
   4. [implementation complete; deployment gated] exercise provider reads first,

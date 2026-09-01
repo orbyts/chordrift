@@ -1,10 +1,10 @@
 //! Production hosted-service assembly for the private beta.
 //!
 //! This module owns HTTPS-origin policy, OIDC login, browser-cookie bridging,
-//! health checks, and the static contract workbench. It deliberately does not
-//! expose a shell, SQL, provider URLs, database credentials, or provider
-//! credentials. Record-only maintenance is available; provider mutation stays
-//! disabled until the separate exact-review cutover gate is verified.
+//! health checks, provider OAuth transport, and the static contract workbench.
+//! It deliberately does not expose a shell, SQL, client-supplied provider URLs,
+//! database credentials, or provider credentials. Provider writes remain
+//! bounded by the separate exact-review maintenance authority.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -17,9 +17,9 @@ use std::{
 use async_trait::async_trait;
 use axum::{
     Json, Router,
-    extract::{Query as AxumQuery, Request, State},
+    extract::{Path as AxumPath, Query as AxumQuery, Request, State},
     http::{
-        HeaderName, HeaderValue, StatusCode,
+        HeaderMap, HeaderName, HeaderValue, StatusCode,
         header::{
             AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, LOCATION, ORIGIN, SET_COOKIE,
         },
@@ -65,7 +65,11 @@ use crate::{
     },
     maintenance::{MaintenanceDecisionProjection, MaintenanceProjection},
     maintenance_store::PostgresMaintenanceSessionStore,
-    provider_vault::{PostgresProviderCredentialStore, ProviderVaultKeyring},
+    provider_connections::PostgresProviderConnectionAuthority,
+    provider_vault::{
+        PostgresProviderCredentialStore, ProviderCredentialVault, ProviderVaultKeyring,
+    },
+    providers::spotify::{begin_hosted_authorization, complete_hosted_authorization},
     service::{
         AuthenticatedSubject, ContractApplication, MaintenanceApplication, MaintenanceBackend,
     },
@@ -73,6 +77,7 @@ use crate::{
 
 const SESSION_COOKIE: &str = "chordrift_session";
 const LOGIN_COOKIE: &str = "chordrift_login";
+const SPOTIFY_LOGIN_COOKIE: &str = "chordrift_spotify_login";
 const LOGIN_TTL_MINUTES: i64 = 10;
 const MAX_LOGIN_ATTEMPTS: usize = 128;
 const INDEX_HTML: &str = include_str!("../web/index.html");
@@ -92,6 +97,7 @@ struct HostedConfig {
     oidc_userinfo_url: Url,
     oidc_client_id: String,
     oidc_client_secret: Zeroizing<String>,
+    spotify_client_id: String,
 }
 
 impl HostedConfig {
@@ -121,6 +127,7 @@ impl HostedConfig {
         let oidc_userinfo_url = https_url("CHORDRIFT_OIDC_USERINFO_URL")?;
         let oidc_client_id = required("CHORDRIFT_OIDC_CLIENT_ID")?;
         let oidc_client_secret = Zeroizing::new(required("CHORDRIFT_OIDC_CLIENT_SECRET")?);
+        let spotify_client_id = required("CHORDRIFT_SPOTIFY_CLIENT_ID")?;
         Ok(Self {
             bind,
             public_origin,
@@ -132,6 +139,7 @@ impl HostedConfig {
             oidc_userinfo_url,
             oidc_client_id,
             oidc_client_secret,
+            spotify_client_id,
         })
     }
 
@@ -140,6 +148,12 @@ impl HostedConfig {
             .join("auth/callback")
             .expect("validated origin accepts a relative callback")
             .to_string()
+    }
+
+    fn spotify_callback_url(&self) -> Url {
+        self.public_origin
+            .join("providers/spotify/callback")
+            .expect("validated origin accepts a relative callback")
     }
 }
 
@@ -210,6 +224,14 @@ struct LoginAttempt {
     expires_at: DateTime<Utc>,
 }
 
+struct SpotifyLoginAttempt {
+    state: String,
+    code_verifier: Zeroizing<String>,
+    subject: AuthenticatedSubject,
+    expected_provider_connection_id: Option<ResourceId>,
+    expires_at: DateTime<Utc>,
+}
+
 #[derive(Clone)]
 struct HostedState {
     config: Arc<HostedConfig>,
@@ -219,6 +241,8 @@ struct HostedState {
     session_authenticator: Arc<ProductSessionAuthenticator<PostgresProductIdentityStore>>,
     oidc: Arc<OidcVerifier>,
     login_attempts: Arc<Mutex<HashMap<String, LoginAttempt>>>,
+    spotify_login_attempts: Arc<Mutex<HashMap<String, SpotifyLoginAttempt>>>,
+    provider_connections: Arc<PostgresProviderConnectionAuthority>,
 }
 
 #[derive(Clone)]
@@ -1015,7 +1039,10 @@ pub async fn run_from_env() -> Result<()> {
         .map_err(|_| configuration("hosted provider credential schema is not ready"))?;
     let provider_keyring = ProviderVaultKeyring::from_environment()
         .map_err(|_| configuration("hosted provider credential key is not ready"))?;
-    let _provider_vault_ready = (provider_store, provider_keyring);
+    let provider_connections = Arc::new(PostgresProviderConnectionAuthority::new(
+        pool.clone(),
+        ProviderCredentialVault::new(provider_store, provider_keyring),
+    ));
     let operation_store = Arc::new(PostgresDurableOperationStore::new(pool.clone()));
     operation_store
         .verify_schema()
@@ -1055,6 +1082,8 @@ pub async fn run_from_env() -> Result<()> {
         session_authenticator: Arc::clone(&session_authenticator),
         oidc,
         login_attempts: Arc::new(Mutex::new(HashMap::new())),
+        spotify_login_attempts: Arc::new(Mutex::new(HashMap::new())),
+        provider_connections,
     };
 
     let application = DeploymentApplication::new(pool, DurableOperationQueue::new(operation_store));
@@ -1086,6 +1115,12 @@ pub async fn run_from_env() -> Result<()> {
         .route("/auth/callback", get(callback))
         .route("/auth/session", get(session_status))
         .route("/auth/logout", post(logout))
+        .route("/providers/spotify/connect", get(spotify_connect))
+        .route("/providers/spotify/callback", get(spotify_callback))
+        .route(
+            "/providers/spotify/{provider_connection_id}/disconnect",
+            post(spotify_disconnect),
+        )
         .with_state(state)
         .merge(typed)
         .layer(middleware::from_fn(security_headers));
@@ -1433,6 +1468,171 @@ async fn logout(State(state): State<HostedState>, request: Request) -> Response 
     redirect_with_cookie(
         state.config.public_origin.as_str(),
         &format!("{SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"),
+    )
+}
+
+#[derive(Deserialize)]
+struct SpotifyConnectQuery {
+    provider_connection_id: Option<ResourceId>,
+}
+
+async fn spotify_connect(
+    State(state): State<HostedState>,
+    AxumQuery(query): AxumQuery<SpotifyConnectQuery>,
+    headers: HeaderMap,
+) -> Response {
+    let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if let Some(connection_id) = query.provider_connection_id
+        && !state
+            .provider_connections
+            .owns_spotify_connection(subject, connection_id)
+            .await
+    {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let callback = state.config.spotify_callback_url();
+    let authorization = match begin_hosted_authorization(&state.config.spotify_client_id, &callback)
+    {
+        Ok(value) => value,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let flow_id = random_url_token();
+    {
+        let mut attempts = state.spotify_login_attempts.lock().await;
+        attempts.retain(|_, attempt| attempt.expires_at > Utc::now());
+        if attempts.len() >= MAX_LOGIN_ATTEMPTS {
+            return StatusCode::TOO_MANY_REQUESTS.into_response();
+        }
+        attempts.insert(
+            flow_id.clone(),
+            SpotifyLoginAttempt {
+                state: authorization.state,
+                code_verifier: authorization.code_verifier,
+                subject,
+                expected_provider_connection_id: query.provider_connection_id,
+                expires_at: Utc::now() + TimeDelta::minutes(LOGIN_TTL_MINUTES),
+            },
+        );
+    }
+    redirect_with_cookie(
+        authorization.authorization_url.as_str(),
+        &format!(
+            "{SPOTIFY_LOGIN_COOKIE}={flow_id}; Path=/providers/spotify; HttpOnly; Secure; SameSite=Lax; Max-Age={}",
+            LOGIN_TTL_MINUTES * 60
+        ),
+    )
+}
+
+#[derive(Deserialize)]
+struct SpotifyCallbackQuery {
+    code: Option<String>,
+    state: Option<String>,
+    error: Option<String>,
+}
+
+async fn spotify_callback(
+    State(state): State<HostedState>,
+    AxumQuery(query): AxumQuery<SpotifyCallbackQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if query.error.is_some() {
+        return spotify_redirect(&state, "cancelled");
+    }
+    let Some(flow_id) = cookie(&headers, SPOTIFY_LOGIN_COOKIE) else {
+        return auth_failure();
+    };
+    let Some(attempt) = state.spotify_login_attempts.lock().await.remove(&flow_id) else {
+        return auth_failure();
+    };
+    let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
+        return auth_failure();
+    };
+    if subject != attempt.subject
+        || attempt.expires_at <= Utc::now()
+        || query.state.as_deref() != Some(attempt.state.as_str())
+    {
+        return auth_failure();
+    }
+    let Some(code) = query.code else {
+        return auth_failure();
+    };
+    let authorization = match complete_hosted_authorization(
+        &state.config.spotify_client_id,
+        &state.config.spotify_callback_url(),
+        &code,
+        attempt.code_verifier.as_str(),
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => return spotify_redirect(&state, "failed"),
+    };
+    if state
+        .provider_connections
+        .connect_spotify(
+            subject,
+            attempt.expected_provider_connection_id,
+            &authorization.account_id,
+            authorization.display_name.as_deref(),
+            &authorization.credential,
+        )
+        .await
+        .is_err()
+    {
+        return spotify_redirect(&state, "failed");
+    }
+    spotify_redirect(&state, "connected")
+}
+
+async fn spotify_disconnect(
+    State(state): State<HostedState>,
+    AxumPath(provider_connection_id): AxumPath<ResourceId>,
+    headers: HeaderMap,
+) -> Response {
+    if !same_origin(&state, &headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if state
+        .provider_connections
+        .disconnect_spotify(subject, provider_connection_id)
+        .await
+        .is_err()
+    {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    spotify_redirect(&state, "disconnected")
+}
+
+async fn authenticated_browser_subject(
+    state: &HostedState,
+    headers: &HeaderMap,
+) -> Option<AuthenticatedSubject> {
+    let token = cookie(headers, SESSION_COOKIE)?;
+    state.session_authenticator.authenticate(&token).await.ok()
+}
+
+fn same_origin(state: &HostedState, headers: &HeaderMap) -> bool {
+    headers
+        .get(ORIGIN)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|origin| {
+            origin.trim_end_matches('/')
+                == state.config.public_origin.as_str().trim_end_matches('/')
+        })
+}
+
+fn spotify_redirect(state: &HostedState, outcome: &str) -> Response {
+    let location = format!("{}?spotify={outcome}", state.config.public_origin);
+    redirect_with_cookie(
+        &location,
+        &format!(
+            "{SPOTIFY_LOGIN_COOKIE}=; Path=/providers/spotify; HttpOnly; Secure; SameSite=Lax; Max-Age=0"
+        ),
     )
 }
 

@@ -82,6 +82,8 @@ mod presentation;
 pub mod product_rehearsal;
 /// Non-destructive, account-scoped proposed playlist libraries.
 pub mod proposals;
+/// Account-owned provider connection linking, credential rotation, and revocation.
+pub mod provider_connections;
 /// Encrypted server-side provider credential storage and lifecycle.
 pub mod provider_vault;
 /// Streaming-provider adapters.

@@ -8,6 +8,23 @@ archive contents.
 
 Last updated: 2026-08-31.
 
+## Hosted Spotify connection checkpoint
+
+The V021-06 beta branch keeps Chordrift product login and Spotify provider
+authorization separate. Server-owned Spotify PKCE routes implement Connect,
+Reconnect, Add Account, and Disconnect. Stable Spotify identity selects the
+existing account-owned `provider_accounts` row and rotates its encrypted vault
+credential without losing Neon history; a different identity creates a new
+isolated connection; a mismatched pinned reconnect or cross-tenant identity
+fails closed. Disconnect revokes only the encrypted credential and retains all
+observations and intent. The web client only launches these routes, renders
+status, and selects a connection. A disposable PostgreSQL 18 proof on Vortex
+passed same-row history retention, encrypted credential rotation, cross-tenant
+rejection, and history-preserving disconnect; its database container, source
+copy, and root-owned build output were removed. Deployment and browser
+acceptance remain gated; no Spotify or production Neon operation occurred while
+implementing this checkpoint.
+
 Every daily-driver failure and its permanent regression belongs in
 `docs/design/DAILY_DRIVER_EDGE_CASE_LEDGER.md`. Treat chaotic cumulative
 Spotify use as the normal product environment, not operator error.

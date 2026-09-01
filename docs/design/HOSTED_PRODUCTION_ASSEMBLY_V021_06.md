@@ -52,11 +52,37 @@ PostgreSQL read models              Chordrift worker
                               atomic PostgreSQL persistence
 ```
 
-The API never receives a refresh token and does not contact Spotify. It checks
-that the authenticated Chordrift account owns the selected provider connection,
-then durably accepts `ObserveProvider`. Idempotency and operation history are
-stored before a worker starts. The browser follows the same operation DTOs that
-the remote CLI uses.
+The typed command/query API never receives a refresh token and does not contact
+Spotify. It checks that the authenticated Chordrift account owns the selected
+provider connection, then durably accepts `ObserveProvider`. Idempotency and
+operation history are stored before a worker starts. The separate OAuth
+callback exchanges a short-lived authorization code server-side and passes the
+result directly to the encrypted connection authority. The browser follows the
+same operation DTOs that the remote CLI uses.
+
+## Product login and provider connections
+
+Chordrift login and provider authorization are deliberately separate. Google
+through Auth0 establishes the product subject and Chordrift-account session.
+Spotify Authorization Code with PKCE then adds a provider connection owned by
+that account; the browser never receives the refresh token or a Spotify client
+secret.
+
+The hosted Rust authority resolves Spotify's stable account identity before it
+changes credential state. Reconnecting a known identity rotates the encrypted
+credential on the same `provider_accounts` row, preserving every observation
+and intent record. Adding a different identity creates a separate account-owned
+connection. A reconnect pinned to one connection fails if Spotify returns a
+different identity, and an identity owned by another Chordrift account cannot
+be claimed. Disconnect revokes the active encrypted credential without deleting
+provider observations, history, intent, or the Chordrift product session. It
+performs no music-library mutation.
+
+The browser only launches these routes, renders connection status, and selects
+the active connection. Identity matching, ownership checks, encrypted rotation,
+and revocation remain Rust behavior. An authorization flow interrupted by an
+API restart expires safely and can be started again; no provider credential has
+changed before its successful callback.
 
 The separately scoped worker is the only process that may decrypt a provider
 credential. It rechecks current subject membership and provider ownership,

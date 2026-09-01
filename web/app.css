@@ -12,6 +12,9 @@ button.primary, .button.primary, .button { background: #eee5d7; color: #171411; 
 .provider-context { display: flex; align-items: center; gap: 9px; color: #999087; font-size: .82rem; }
 .provider-context label { position: absolute; width: 1px; height: 1px; overflow: hidden; }
 .provider-context select { padding: 8px 32px 8px 12px; background: #191714; border-color: #3e3933; }
+.provider-context form { margin: 0; }
+.provider-action { appearance: none; border: 0; background: transparent; color: #c9a878; padding: 4px; font: inherit; text-decoration: none; cursor: pointer; }
+.provider-action:hover { color: #eee5d7; }
 .account-actions { justify-self: end; display: flex; gap: 10px; }
 .account-actions form { margin: 0; }
 main { width: min(1380px, calc(100% - 40px)); margin: auto; }

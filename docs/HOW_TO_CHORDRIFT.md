@@ -12,9 +12,10 @@ and verified 50/50 database together; see
 
 > **Hosted-service status:** V021-05's authenticated remote CLI transport is
 > implemented, and the V021-06 private deployment foundation is running with
-> Chordrift login through Google/Auth0. The full browser daily driver, Spotify
-> connection lifecycle, existing-account adoption, and beta.1 release gate
-> remain open. Continue using the local maintenance workflow for provider-backed
+> Chordrift login through Google/Auth0. Spotify Connect/Reconnect/Disconnect is
+> implemented on the beta branch but not yet deployed and browser-accepted.
+> The full browser daily driver, existing-account adoption re-verification, and
+> beta.1 release gate remain open. Continue using the local maintenance workflow for provider-backed
 > daily work; remote failure never causes an implicit local fallback.
 
 ## Documentation map

@@ -45,6 +45,7 @@ use chordrift::{
     },
     product_rehearsal::{CollectionReviewBoundary, RecipeReviewBoundary},
     proposals,
+    provider_connections::PostgresProviderConnectionAuthority,
     provider_vault::{
         PostgresProviderCredentialStore, ProviderCredentialIdentity, ProviderCredentialVault,
         ProviderRefreshCredential, ProviderVaultKeyring,
@@ -3000,6 +3001,131 @@ async fn encrypts_rotates_and_revokes_provider_credentials_with_tenant_isolation
         chordrift::contract::ErrorCode::PermissionDenied
     );
 
+    database.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires CHORDRIFT_TEST_DATABASE_URL for a disposable PostgreSQL database"]
+async fn provider_connect_reconnect_disconnect_preserves_identity_and_history()
+-> chordrift::Result<()> {
+    let config = DatabaseConfig::from_env_var("CHORDRIFT_TEST_DATABASE_URL")?
+        .with_name("chordrift-provider-connections-test")?
+        .with_provider(PostgresProvider::Neon)?
+        .with_min_connections(0)
+        .with_max_connections(2);
+    let database = db::connect(config).await?;
+    db::migrate(&database).await?;
+    let account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name) VALUES ('Connection Fixture') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let other_account_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO chordrift_accounts (display_name) VALUES ('Connection Other') RETURNING id",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    let identities = PostgresProductIdentityStore::new(database.pool().clone());
+    let owner = identities
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "connection-owner").unwrap(),
+            ResourceId::from_uuid(account_id),
+        )
+        .await
+        .unwrap();
+    let other_owner = identities
+        .provision_account_owner(
+            &VerifiedExternalIdentity::new("https://identity.test", "connection-other").unwrap(),
+            ResourceId::from_uuid(other_account_id),
+        )
+        .await
+        .unwrap();
+    let keyring = ProviderVaultKeyring::new(
+        "connection-test-key",
+        [("connection-test-key".to_owned(), vec![73_u8; 32])],
+    )
+    .unwrap();
+    let authority = PostgresProviderConnectionAuthority::new(
+        database.pool().clone(),
+        ProviderCredentialVault::new(
+            PostgresProviderCredentialStore::new(database.pool().clone()),
+            keyring,
+        ),
+    );
+    let first = authority
+        .connect_spotify(
+            owner,
+            None,
+            "stable-spotify-account",
+            Some("First name"),
+            &ProviderRefreshCredential::new("first-secret", ["user-library-read".to_owned()])
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE provider_accounts SET metadata = '{\"retained_history\":true}'::jsonb WHERE id = $1",
+    )
+    .bind(first.as_uuid())
+    .execute(database.pool())
+    .await?;
+    let reconnected = authority
+        .connect_spotify(
+            owner,
+            Some(first),
+            "stable-spotify-account",
+            Some("Renamed account"),
+            &ProviderRefreshCredential::new("second-secret", ["user-library-read".to_owned()])
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reconnected, first);
+    let (display_name, retained, generations): (Option<String>, bool, i64) = sqlx::query_as(
+        "SELECT account.display_name,
+                (account.metadata ->> 'retained_history')::boolean,
+                count(credential.id)
+           FROM provider_accounts account
+           JOIN provider_credential_vault credential ON credential.provider_account_id = account.id
+          WHERE account.id = $1
+          GROUP BY account.id",
+    )
+    .bind(first.as_uuid())
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(display_name.as_deref(), Some("Renamed account"));
+    assert!(retained);
+    assert_eq!(generations, 2);
+    assert_eq!(
+        authority
+            .connect_spotify(
+                other_owner,
+                None,
+                "stable-spotify-account",
+                None,
+                &ProviderRefreshCredential::new("cross-tenant", Vec::<String>::new()).unwrap(),
+            )
+            .await
+            .expect_err("stable identity cannot cross tenants")
+            .code,
+        ErrorCode::StateConflict
+    );
+    authority.disconnect_spotify(owner, first).await.unwrap();
+    let retained_after_disconnect: bool = sqlx::query_scalar(
+        "SELECT (metadata ->> 'retained_history')::boolean FROM provider_accounts WHERE id = $1",
+    )
+    .bind(first.as_uuid())
+    .fetch_one(database.pool())
+    .await?;
+    let active_credential: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM provider_credential_vault WHERE provider_account_id = $1 AND revoked_at IS NULL)",
+    )
+    .bind(first.as_uuid())
+    .fetch_one(database.pool())
+    .await?;
+    assert!(retained_after_disconnect);
+    assert!(!active_credential);
     database.close().await;
     Ok(())
 }

@@ -80,15 +80,32 @@ async function loadProviderConnections() {
     const option = node('option', '', `${provider} · ${connection.display_name || 'Account'}`);
     option.value = connection.provider_connection_id; select.append(option);
   }
-  state.provider = state.connections[0] || null; $('#provider-context').hidden = !state.provider; renderProviderState();
+  state.provider = state.connections[0] || null; $('#provider-context').hidden = false; renderProviderState();
   if (state.provider) await Promise.all([loadPlaylists(), loadExclusions(), loadActivity()]);
 }
 
 function renderProviderState() {
-  if (!state.provider) return;
+  const select = $('#provider-select');
+  select.hidden = !state.provider;
+  $('#spotify-add').hidden = !state.provider;
+  if (!state.provider) {
+    $('#provider-dot').classList.remove('online');
+    $('#provider-state').textContent = 'No music provider connected';
+    $('#spotify-connect').hidden = false;
+    $('#spotify-connect').textContent = 'Connect Spotify';
+    $('#spotify-connect').href = '/providers/spotify/connect';
+    $('#spotify-disconnect').hidden = true;
+    $('#start-maintenance').disabled = true;
+    return;
+  }
   const connected = state.provider.credential_ready;
   $('#provider-dot').classList.toggle('online', connected);
   $('#provider-state').textContent = `${connected ? 'Connected' : 'Read-only record'} · observed ${formatTime(state.provider.observed_at)}`;
+  $('#spotify-connect').hidden = connected;
+  $('#spotify-connect').textContent = 'Reconnect Spotify';
+  $('#spotify-connect').href = `/providers/spotify/connect?provider_connection_id=${encodeURIComponent(state.provider.provider_connection_id)}`;
+  $('#spotify-disconnect').hidden = !connected;
+  $('#spotify-disconnect').action = `/providers/spotify/${encodeURIComponent(state.provider.provider_connection_id)}/disconnect`;
   $('#start-maintenance').disabled = !connected || state.compatibility?.features['service.durable-operations.v1'] !== 'available' || Boolean(state.activeOperation);
 }
 

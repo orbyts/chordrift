@@ -11,6 +11,7 @@ use tokio::{
     time::timeout,
 };
 use url::Url;
+use zeroize::Zeroizing;
 
 use crate::{
     ChordriftError, Result,
@@ -102,6 +103,99 @@ impl SpotifyOAuthConfig {
             authorization_url,
         }
     }
+}
+
+/// One server-owned Spotify PKCE request. The verifier must remain inside the
+/// hosted Rust authority; clients receive only the authorization URL.
+pub(crate) struct HostedAuthorizationRequest {
+    pub state: String,
+    pub code_verifier: Zeroizing<String>,
+    pub authorization_url: Url,
+}
+
+/// Completed hosted authorization ready for encrypted vault persistence.
+pub(crate) struct HostedAuthorization {
+    pub account_id: String,
+    pub display_name: Option<String>,
+    pub credential: ProviderRefreshCredential,
+}
+
+/// Starts Authorization Code with PKCE for an HTTPS hosted callback.
+pub(crate) fn begin_hosted_authorization(
+    client_id: &str,
+    redirect_uri: &Url,
+) -> Result<HostedAuthorizationRequest> {
+    validate_client_id(client_id)?;
+    validate_hosted_redirect_uri(redirect_uri)?;
+    let code_verifier = Zeroizing::new(random_urlsafe(64));
+    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(code_verifier.as_bytes()));
+    let state = random_urlsafe(32);
+    let mut authorization_url =
+        Url::parse(AUTHORIZE_ENDPOINT).expect("static Spotify OAuth URL is valid");
+    authorization_url
+        .query_pairs_mut()
+        .append_pair("client_id", client_id)
+        .append_pair("response_type", "code")
+        .append_pair("redirect_uri", redirect_uri.as_str())
+        .append_pair("scope", SCOPES)
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("code_challenge", &challenge)
+        .append_pair("state", &state);
+    Ok(HostedAuthorizationRequest {
+        state,
+        code_verifier,
+        authorization_url,
+    })
+}
+
+/// Completes a hosted PKCE exchange and resolves the stable Spotify identity.
+pub(crate) async fn complete_hosted_authorization(
+    client_id: &str,
+    redirect_uri: &Url,
+    code: &str,
+    code_verifier: &str,
+) -> Result<HostedAuthorization> {
+    validate_client_id(client_id)?;
+    validate_hosted_redirect_uri(redirect_uri)?;
+    let http = oauth_http_client()?;
+    let token = token_request(
+        &http,
+        &[
+            ("grant_type", "authorization_code"),
+            ("client_id", client_id),
+            ("code", code),
+            ("redirect_uri", redirect_uri.as_str()),
+            ("code_verifier", code_verifier),
+        ],
+    )
+    .await?;
+    validate_token(&token)?;
+    let scopes = {
+        let granted = token_scopes(&token);
+        if granted.is_empty() {
+            requested_scopes()
+        } else {
+            granted
+        }
+    };
+    let refresh_token = token.refresh_token.ok_or_else(|| {
+        ChordriftError::Configuration(
+            "Spotify did not issue a refresh token; revoke Chordrift access and authorize again"
+                .to_owned(),
+        )
+    })?;
+    let profile = SpotifyClient::new(token.access_token)?
+        .current_user()
+        .await?;
+    Ok(HostedAuthorization {
+        account_id: profile.account_id,
+        display_name: profile.display_name,
+        credential: ProviderRefreshCredential::new(refresh_token, scopes).map_err(|_| {
+            ChordriftError::Configuration(
+                "Spotify returned an invalid refresh credential".to_owned(),
+            )
+        })?,
+    })
 }
 
 #[derive(Clone, Debug)]
@@ -461,6 +555,33 @@ fn validate_redirect_uri(uri: &Url) -> Result<()> {
     Ok(())
 }
 
+fn validate_client_id(client_id: &str) -> Result<()> {
+    if client_id.trim().is_empty()
+        || !client_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric())
+    {
+        return Err(ChordriftError::Configuration(format!(
+            "{CLIENT_ID_VARIABLE} is not a valid Spotify Client ID"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_hosted_redirect_uri(uri: &Url) -> Result<()> {
+    if uri.scheme() != "https"
+        || uri.host_str().is_none()
+        || uri.query().is_some()
+        || uri.fragment().is_some()
+        || uri.path() == "/"
+    {
+        return Err(ChordriftError::Configuration(
+            "hosted Spotify callback must be an HTTPS URL with a callback path".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn authorization_code(callback: &Url, expected_state: &str) -> Result<String> {
     let values: HashMap<_, _> = callback.query_pairs().collect();
     if let Some(error) = values.get("error") {
@@ -567,7 +688,9 @@ async fn write_callback_response(
 mod tests {
     use url::Url;
 
-    use super::{REQUIRED_SCOPES, SpotifyOAuthConfig, authorization_code};
+    use super::{
+        REQUIRED_SCOPES, SpotifyOAuthConfig, authorization_code, begin_hosted_authorization,
+    };
 
     #[test]
     fn builds_v010_pkce_request() {
@@ -600,5 +723,24 @@ mod tests {
         assert!(
             SpotifyOAuthConfig::new("abc123".to_owned(), "https://example.com/callback").is_err()
         );
+    }
+
+    #[test]
+    fn builds_hosted_pkce_request_without_a_client_secret() {
+        let callback = Url::parse("https://chordrift.example/providers/spotify/callback").unwrap();
+        let request = begin_hosted_authorization("abc123", &callback).expect("hosted request");
+        assert_eq!(
+            request.authorization_url.host_str(),
+            Some("accounts.spotify.com")
+        );
+        assert!(
+            request
+                .authorization_url
+                .query()
+                .unwrap()
+                .contains("code_challenge_method=S256")
+        );
+        assert!(!request.code_verifier.is_empty());
+        assert!(!request.state.is_empty());
     }
 }
