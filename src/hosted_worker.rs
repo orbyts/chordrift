@@ -108,6 +108,35 @@ pub async fn apply_reviewed_sync_plan_from_env(
             .await
             .map_err(|_| configuration("hosted Spotify credential rotation failed"))?;
     }
+    let existing_apply: Option<(uuid::Uuid, String)> = sqlx::query_as(
+        "SELECT id, status FROM sync_apply_runs
+         WHERE provider_account_id = $1 AND plan_id = $2 AND phase = 'publish'
+         ORDER BY started_at DESC, id DESC LIMIT 1",
+    )
+    .bind(provider_account_id)
+    .bind(plan_id)
+    .fetch_optional(database.pool())
+    .await?;
+    if let Some((apply_run_id, status)) = existing_apply {
+        if status == "succeeded" {
+            return apply::show(&database, account_label, Some(apply_run_id)).await;
+        }
+        if status == "awaiting_pull" {
+            drop(spotify_session);
+            SpotifyObservationExecutor::new(database.clone(), vault)
+                .observe(subject, ResourceId::from_uuid(provider_account_id))
+                .await
+                .map_err(|_| configuration("hosted post-apply observation failed"))?;
+            let verified =
+                apply::verify_pending_publications(&database, account_label, false).await?;
+            if verified == 0 {
+                return Err(configuration(
+                    "hosted post-apply observation did not verify the reviewed plan",
+                ));
+            }
+            return apply::show(&database, account_label, Some(apply_run_id)).await;
+        }
+    }
     let assessment =
         apply_readiness::assess(&database, account_label, Some(plan_id), Some(&auth_status))
             .await?;
