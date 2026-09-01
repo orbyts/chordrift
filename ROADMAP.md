@@ -476,7 +476,9 @@ and later Chordrift refactor begin.
   the failed operation, returns typed `authentication_required`, and exposes
   Reconnect without removing provider history or Chordrift intent. The UI
   reports **Authorized** separately from its last provider verification. Unit
-  regressions pass; deployment and browser acceptance remain before beta.1.
+  regressions, full Rust tests, Clippy, JavaScript syntax, exact-image Vortex
+  deployment, HTTPS health, and public repaired-asset checks pass. One
+  authenticated browser transition remains before beta.1 acceptance.
 
   Record-only maintenance checkpoint: migration 0051 persistence, the real
   PostgreSQL provider-first interpreter, durable Start/Refresh/Resolve worker

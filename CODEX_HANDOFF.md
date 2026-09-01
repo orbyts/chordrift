@@ -10,9 +10,9 @@ Last updated: 2026-08-31.
 
 ## Hosted Spotify connection checkpoint
 
-The active private deployment now runs exact commit
-`94f35133af725565c87eceaeda8beaf819dd03b5` as image
-`chordrift:94f3513` on Vortex. Both API and worker run as UID/GID 65532 with
+The active private deployment now runs exact code commit
+`7d869ea1db0c3cd4ea85576b597332b312f87e41` as image
+`chordrift:7d869ea` on Vortex. Both API and worker run as UID/GID 65532 with
 read-only root filesystems and `unless-stopped`; the 43.2 MB runtime contains
 only `chordrift-server`, `chordrift-worker`, and runtime necessities. Before
 deployment, a validated 29.4 MB compressed logical backup was written to the
@@ -49,7 +49,10 @@ typed `authentication_required` failure, and reloads connection state so the
 web and remote CLI both offer Reconnect. The UI now says **Authorized** and
 shows the separate last-verification time because out-of-band revocation cannot
 be known before the next provider call. Neon history and Spotify state remain
-unchanged by either failure.
+unchanged by either failure. Exact image `chordrift:7d869ea` containing the
+repair is deployed and public liveness/readiness plus repaired-asset checks
+pass. One authenticated browser Disconnect or post-revocation provider check
+remains to accept the corrected live transition.
 
 The V021-06 beta branch keeps Chordrift product login and Spotify provider
 authorization separate. Server-owned Spotify PKCE routes implement Connect,
