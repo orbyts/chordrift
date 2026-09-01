@@ -206,6 +206,12 @@ pub enum ServiceCommand {
         #[command(subcommand)]
         command: ServiceMaintenanceCommand,
     },
+    /// Inspect hosted library state through typed read-only queries.
+    Library {
+        /// Library query.
+        #[command(subcommand)]
+        command: ServiceLibraryCommand,
+    },
     /// Negotiate contract, schema, and capabilities with one authenticated service.
     Compatibility {
         /// HTTPS service base URL; loopback HTTP is allowed for development tests.
@@ -238,6 +244,23 @@ pub enum ServiceCommand {
         /// Typed query envelope JSON file.
         #[arg(long)]
         file: PathBuf,
+    },
+}
+
+/// Thin remote client queries for provider and Chordrift library state.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ServiceLibraryCommand {
+    /// Explain provider/model playlist count, membership, and order differences.
+    Compare {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Provider connection shown by the hosted provider selector.
+        #[arg(long)]
+        provider_connection_id: uuid::Uuid,
     },
 }
 
@@ -2790,6 +2813,26 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
                     .await
                     .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
                 writeln!(output, "{}", serde_json::to_string(&receipt)?)?;
+            }
+        },
+        ServiceCommand::Library { command } => match command {
+            ServiceLibraryCommand::Compare {
+                url,
+                profile,
+                provider_connection_id,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let response = client
+                    .query(QueryRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        query: Query::LibraryComparison {
+                            provider_connection_id: ResourceId::from_uuid(provider_connection_id),
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&response)?)?;
             }
         },
         ServiceCommand::Compatibility { url, profile } => {
@@ -7353,8 +7396,9 @@ mod tests {
         PlaylistRoleArg, PlaylistSignalClassArg, ProductAuditMode, ProductCollectionCommand,
         ProductCommand, ProductOnboardingCommand, ProductRecipeCommand, ProductSpinCommand,
         ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, ServiceCommand,
-        ServiceMaintenanceCommand, SignalCommand, SpotifyCommand, SyncCommand, TrackCommand,
-        binary_capability_manifest, format_count, format_elapsed, write_status,
+        ServiceLibraryCommand, ServiceMaintenanceCommand, SignalCommand, SpotifyCommand,
+        SyncCommand, TrackCommand, binary_capability_manifest, format_count, format_elapsed,
+        write_status,
     };
     use crate::db::DatabaseStatus;
 
@@ -7412,6 +7456,34 @@ mod tests {
             Command::Service {
                 command: ServiceCommand::Query { profile, .. }
             } if profile == "default"
+        ));
+    }
+
+    #[test]
+    fn parses_typed_remote_library_comparison() {
+        let connection_id = uuid::Uuid::new_v4();
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "library",
+            "compare",
+            "--url",
+            "https://api.chordrift.example",
+            "--provider-connection-id",
+            &connection_id.to_string(),
+        ])
+        .expect("valid remote library comparison");
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Library {
+                    command: ServiceLibraryCommand::Compare {
+                        provider_connection_id,
+                        profile,
+                        ..
+                    }
+                }
+            } if provider_connection_id == connection_id && profile == "default"
         ));
     }
 

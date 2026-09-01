@@ -73,6 +73,7 @@
           </div>
         </div>
         <p class="context-note" id="library-context"></p>
+        <div class="comparison-summary" id="library-comparison"><p class="empty">Loading provider/model comparison…</p></div>
         <div class="library-grid">
           <aside class="playlist-list" id="playlist-list" aria-label="Playlists"></aside>
           <section class="track-list">
@@ -98,7 +99,7 @@
         <p class="context-note">This submits typed Chordrift DTOs. It cannot run shell commands, SQL, arbitrary URLs, or access credentials.</p>
         <div class="workbench">
           <div class="pane">
-            <div class="pane-heading"><h2>Request</h2><select id="preset" aria-label="Request preset"><option value="compatibility">Compatibility</option><option value="provider_connections">Provider connections</option><option value="operation_history">Operation history</option><option value="custom_query">Custom query</option><option value="custom_command">Custom command</option></select></div>
+            <div class="pane-heading"><h2>Request</h2><select id="preset" aria-label="Request preset"><option value="compatibility">Compatibility</option><option value="provider_connections">Provider connections</option><option value="library_comparison">Provider/model comparison</option><option value="operation_history">Operation history</option><option value="custom_query">Custom query</option><option value="custom_command">Custom command</option></select></div>
             <textarea id="request" spellcheck="false" aria-label="Typed JSON request"></textarea>
             <div class="actions"><button id="send" type="button">Send request</button><span id="request-kind"></span></div>
           </div>

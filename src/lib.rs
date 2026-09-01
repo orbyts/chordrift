@@ -62,6 +62,8 @@ pub mod http_transport;
 pub mod identity;
 /// Read-only current-provider intake joined with durable intent and history.
 pub mod intake;
+/// Set-based current provider versus Chordrift model comparison.
+pub mod library_comparison;
 /// Wrapper-neutral ordinary-maintenance workflow shared by every client.
 pub mod maintenance;
 /// PostgreSQL provider-first interpretation for durable maintenance tasks.

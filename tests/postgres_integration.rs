@@ -29,6 +29,7 @@ use chordrift::{
         VerifiedExternalIdentity,
     },
     intake::{self, IntakeState},
+    library_comparison,
     maintenance::{MaintenanceProjection, MaintenanceWorkflow},
     maintenance_projection::CanonicalMaintenanceProjector,
     maintenance_store::{
@@ -565,6 +566,17 @@ async fn audits_current_intake_without_mutation() -> chordrift::Result<()> {
     assert_eq!(audit.items[1].state, IntakeState::GenuinelyNew);
     assert_eq!(audit.items[2].state, IntakeState::KnownFromHistory);
     assert_eq!(audit.items[3].state, IntakeState::PreviouslyExcluded);
+    let comparison = library_comparison::query(database.pool(), ResourceId::from_uuid(account_id))
+        .await
+        .expect("provider/model comparison query");
+    assert!(
+        !comparison.playlists.is_empty(),
+        "seeded provider/model surfaces must be comparable"
+    );
+    assert_eq!(
+        comparison.aligned_playlists + comparison.differing_playlists,
+        u64::try_from(comparison.playlists.len()).expect("fixture playlist count fits u64")
+    );
 
     let already_covered_spotify_id = format!("intake-track-0-{suffix}");
     intake::set_saved_track_disposition(

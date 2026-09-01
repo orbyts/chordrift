@@ -72,8 +72,11 @@ contract. It supports task-level operations equivalent to:
 - cancel long work; and
 - read progress, recovery state, receipt, and final convergence.
 
-The concrete 1.3 application contract exposes typed start, refresh, resolve,
-authorize, and session-query DTOs. One user action may
+The concrete 1.4 application contract exposes typed start, refresh, resolve,
+authorize, session-query, and provider/model comparison DTOs. The set-based
+comparison reports provider-only, Chordrift-only, unresolved-identity, and
+custom-order differences to web and remote CLI; clients never infer a reason
+from unequal totals alone. One user action may
 create several internal proposals, plans, assessments, and receipts. Those
 objects remain Rust-owned safety evidence and appear in advanced diagnostics,
 not as mandatory web ceremony.

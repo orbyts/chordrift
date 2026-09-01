@@ -48,6 +48,9 @@ h2 { margin-bottom: 8px; font-size: 1.15rem; }
 .segmented button { border: 0; padding: 8px 13px; color: #8d857c; }
 .segmented button.active { background: #2a251f; color: #eee7dd; }
 .context-note { color: #918981; line-height: 1.6; max-width: 820px; }
+.comparison-summary { margin: 0 0 16px; padding: 14px; border: 1px solid #38332e; border-radius: 16px; background: #151311; }
+.comparison-heading { display: flex; justify-content: space-between; gap: 18px; padding: 2px 3px 12px; color: #8f877e; font-size: .8rem; }
+.comparison-heading strong { color: #ded8cf; }
 .library-grid { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; min-height: 600px; }
 .playlist-list { overflow: auto; padding: 8px; max-height: 72vh; }
 .playlist-row { width: 100%; border: 0; border-radius: 12px; padding: 13px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; }

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Current backward-compatible application-contract feature generation.
-pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 3);
+pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 4);
 
 macro_rules! uuid_id {
     ($name:ident, $description:literal) => {
@@ -448,6 +448,11 @@ pub enum Query {
         /// State plane containing the playlist.
         source: LibraryStateSource,
     },
+    /// Compare current provider membership with Chordrift's current model.
+    LibraryComparison {
+        /// Account-owned provider connection.
+        provider_connection_id: ResourceId,
+    },
     /// Read one track's identity, placement, lifecycle, and listening evidence.
     LibraryTrack {
         /// Account-owned provider connection.
@@ -567,6 +572,68 @@ pub struct LibraryPlaylistsView {
     pub state_at: Option<DateTime<Utc>>,
     /// Playlist surfaces in stable display order.
     pub playlists: Vec<LibraryPlaylistView>,
+}
+
+/// High-level relationship between one provider surface and Chordrift's model.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LibraryComparisonStatus {
+    /// Membership and custom order are identical.
+    Aligned,
+    /// Membership is identical but custom order differs.
+    OrderDiffers,
+    /// One or both planes contain membership absent from the other.
+    MembershipDiffers,
+    /// Provider surface has no linked Chordrift model surface.
+    ProviderOnly,
+    /// Chordrift model surface has not been published to the provider.
+    ChordriftOnly,
+}
+
+/// One playlist-level provider/model comparison.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LibraryPlaylistComparisonView {
+    /// Provider playlist identity when published.
+    pub provider_playlist_id: Option<String>,
+    /// Chordrift stable collection key when modeled.
+    pub chordrift_playlist_id: Option<String>,
+    /// Best current human-facing name.
+    pub name: String,
+    /// Current provider membership count.
+    pub provider_track_count: u64,
+    /// Current Chordrift model membership count.
+    pub chordrift_track_count: u64,
+    /// Provider-reported items without a comparable resolved track identity.
+    pub provider_unresolved_track_count: u64,
+    /// Chordrift model items without a comparable provider track identity.
+    pub chordrift_unresolved_track_count: u64,
+    /// Membership occurrences currently present only on the provider.
+    pub provider_only_track_count: u64,
+    /// Membership occurrences currently present only in Chordrift's model.
+    pub chordrift_only_track_count: u64,
+    /// Membership occurrences shared by both planes.
+    pub shared_track_count: u64,
+    /// Whether custom order is identical when membership is identical.
+    pub order_matches: Option<bool>,
+    /// Coarse relationship suitable for UI filtering.
+    pub status: LibraryComparisonStatus,
+    /// Client-safe explanation of the discrepancy.
+    pub explanation: String,
+}
+
+/// Provider/model comparison for one account-owned connection.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LibraryComparisonView {
+    /// Time of the provider observation being compared.
+    pub provider_state_at: Option<DateTime<Utc>>,
+    /// Time of the Chordrift model being compared.
+    pub chordrift_state_at: Option<DateTime<Utc>>,
+    /// Number of surfaces whose membership and order are aligned.
+    pub aligned_playlists: u64,
+    /// Number of surfaces needing explanation or convergence.
+    pub differing_playlists: u64,
+    /// Playlist comparisons in stable display order.
+    pub playlists: Vec<LibraryPlaylistComparisonView>,
 }
 
 /// One ordered playlist membership row.
@@ -1214,6 +1281,8 @@ pub enum QueryResponse {
     LibraryPlaylists(View<LibraryPlaylistsView>),
     /// Ordered playlist contents from one explicit state plane.
     LibraryPlaylistTracks(View<LibraryPlaylistTracksView>),
+    /// Current provider state compared with Chordrift's model.
+    LibraryComparison(View<LibraryComparisonView>),
     /// Track identity, placements, and personal evidence.
     LibraryTrack(View<LibraryTrackView>),
     /// Active reversible exclusion archive.
@@ -1243,7 +1312,7 @@ mod tests {
     #[test]
     fn negotiates_highest_common_minor_and_capabilities() {
         let client = ClientCompatibility {
-            contract_versions: range(1, 3),
+            contract_versions: range(1, 4),
             schema_versions: SchemaVersionRange::new(40, 50).expect("range is valid"),
             requested_features: vec!["spin_preview".to_owned(), "artwork".to_owned()],
         };

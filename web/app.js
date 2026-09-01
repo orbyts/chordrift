@@ -1,7 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const uuid = () => crypto.randomUUID();
-const contractVersion = { major: 1, minor: 3 };
+const contractVersion = { major: 1, minor: 4 };
 const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null, maintenanceSession: null, destinationPlaylists: [] };
 
 function queryEnvelope(query) { return { contract_version: contractVersion, request_id: uuid(), query }; }
@@ -81,7 +81,7 @@ async function loadProviderConnections() {
     option.value = connection.provider_connection_id; select.append(option);
   }
   state.provider = state.connections[0] || null; $('#provider-context').hidden = false; renderProviderState();
-  if (state.provider) await Promise.all([loadPlaylists(), loadExclusions(), loadActivity()]);
+  if (state.provider) await Promise.all([loadPlaylists(), loadComparison(), loadExclusions(), loadActivity()]);
 }
 
 function renderProviderState() {
@@ -339,6 +339,27 @@ async function loadExclusions() {
   } catch (error) { $('#exclusion-list').replaceChildren(node('p', 'warning', error.message)); }
 }
 
+async function loadComparison() {
+  if (!state.provider) return;
+  const panel = $('#library-comparison');
+  try {
+    const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'library_comparison', parameters: { provider_connection_id: state.provider.provider_connection_id } }));
+    const comparison = response.view.value; panel.replaceChildren();
+    const summary = node('div', 'comparison-heading');
+    summary.append(node('strong', '', `${comparison.aligned_playlists} aligned`), node('span', '', `${comparison.differing_playlists} need explanation`)); panel.append(summary);
+    const differing = comparison.playlists.filter((playlist) => playlist.status !== 'aligned');
+    if (!differing.length) { panel.append(node('p', 'empty', 'Provider membership, Chordrift membership, and custom order are aligned.')); return; }
+    const list = node('div', 'card-list');
+    for (const playlist of differing) {
+      const card = node('div', 'compact-card');
+      const identity = node('div'); identity.append(node('strong', '', playlist.name), node('span', '', playlist.explanation));
+      const counts = node('div', 'record-meta'); counts.append(node('strong', '', `${playlist.provider_track_count} provider · ${playlist.chordrift_track_count} Chordrift`), node('span', '', playlist.status.replaceAll('_', ' ')));
+      card.append(identity, counts); list.append(card);
+    }
+    panel.append(list);
+  } catch (error) { panel.replaceChildren(node('p', 'warning', `Comparison unavailable: ${error.message}`)); }
+}
+
 async function loadActivity() {
   if (!state.session) return;
   try {
@@ -354,6 +375,7 @@ async function loadActivity() {
 function requestFor(name) {
   if (name === 'compatibility') return { path: '/v1/compatibility', body: { contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 51 }, requested_features: ['service.authenticated-transport.v1', 'service.product-identity.v1', 'service.provider-credential-vault.v1', 'service.durable-operations.v1', 'service.remote-cli.v1', 'maintenance.task-session.v1'] } };
   if (name === 'provider_connections') return { path: '/v1/queries', body: queryEnvelope({ type: 'provider_connections' }) };
+  if (name === 'library_comparison') return { path: '/v1/queries', body: queryEnvelope({ type: 'library_comparison', parameters: { provider_connection_id: state.provider?.provider_connection_id || 'UUID' } }) };
   if (name === 'operation_history') return { path: '/v1/queries', body: queryEnvelope({ type: 'operation_history', parameters: { account_id: state.session?.account_id || 'ACCOUNT_ID' } }) };
   return { path: name === 'custom_command' ? '/v1/commands' : '/v1/queries', body: name === 'custom_command'
     ? { contract_version: contractVersion, request_id: uuid(), idempotency_key: uuid(), command: { type: 'observe_provider', parameters: { provider_connection_id: state.provider?.provider_connection_id || 'UUID' } } }
@@ -379,7 +401,7 @@ $$('[data-source]').forEach((button) => button.addEventListener('click', () => {
   $('#playlist-title').textContent = 'Choose a playlist'; $('#playlist-count').textContent = ''; showTableError($('#playlist-tracks'), 'Select a playlist to inspect its recorded order.'); loadPlaylists();
 }));
 $('#provider-select').addEventListener('change', async (event) => {
-  state.provider = state.connections.find((connection) => connection.provider_connection_id === event.target.value); renderProviderState(); await Promise.all([loadPlaylists(), loadExclusions()]);
+  state.provider = state.connections.find((connection) => connection.provider_connection_id === event.target.value); renderProviderState(); await Promise.all([loadPlaylists(), loadComparison(), loadExclusions()]);
 });
 $('#preset').addEventListener('change', selectPreset); $('#send').addEventListener('click', sendDeveloperRequest);
 $('#start-maintenance').addEventListener('click', startMaintenance);

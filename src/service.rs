@@ -14,12 +14,12 @@ use sha2::{Digest, Sha256};
 use crate::{
     contract::{
         CONTRACT_VERSION, CancellationId, ClientError, Command, CommandReceipt, CommandRequest,
-        ErrorCode, ExcludedTracksView, IdempotencyKey, LibraryPlaylistTracksView,
-        LibraryPlaylistsView, LibraryStateSource, LibraryTrackView, MaintenanceReviewId,
-        MaintenanceSessionId, MaintenanceSessionState, MaintenanceSessionView, OperationEvent,
-        OperationEventsView, OperationHistoryView, OperationId, OperationState, OperationView,
-        Progress, ProgressUnit, ProviderConnectionsView, Query, QueryRequest, QueryResponse,
-        RequestId, ResourceId, View, WaitingReason,
+        ErrorCode, ExcludedTracksView, IdempotencyKey, LibraryComparisonView,
+        LibraryPlaylistTracksView, LibraryPlaylistsView, LibraryStateSource, LibraryTrackView,
+        MaintenanceReviewId, MaintenanceSessionId, MaintenanceSessionState, MaintenanceSessionView,
+        OperationEvent, OperationEventsView, OperationHistoryView, OperationId, OperationState,
+        OperationView, Progress, ProgressUnit, ProviderConnectionsView, Query, QueryRequest,
+        QueryResponse, RequestId, ResourceId, View, WaitingReason,
     },
     maintenance::{MaintenanceDecisionProjection, MaintenanceProjection, MaintenanceSessions},
 };
@@ -62,6 +62,15 @@ pub trait MaintenanceBackend: Send {
         _playlist_id: &str,
         _source: LibraryStateSource,
     ) -> Result<LibraryPlaylistTracksView, ClientError> {
+        Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
+    }
+
+    /// Compares the newest provider observation with the current Chordrift model.
+    async fn library_comparison(
+        &mut self,
+        _subject: AuthenticatedSubject,
+        _provider_connection_id: ResourceId,
+    ) -> Result<LibraryComparisonView, ClientError> {
         Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
     }
 
@@ -579,6 +588,27 @@ where
                     .library_playlist_tracks(subject, provider_connection_id, &playlist_id, source)
                     .await?;
                 Ok(QueryResponse::LibraryPlaylistTracks(View {
+                    contract_version: CONTRACT_VERSION,
+                    request_id: request.request_id,
+                    generated_at,
+                    value,
+                }))
+            }
+            Query::LibraryComparison {
+                provider_connection_id,
+            } => {
+                if !self
+                    .backend
+                    .owns_provider_connection(subject, provider_connection_id)
+                    .await
+                {
+                    return Err(ClientError::new(ErrorCode::PermissionDenied, false));
+                }
+                let value = self
+                    .backend
+                    .library_comparison(subject, provider_connection_id)
+                    .await?;
+                Ok(QueryResponse::LibraryComparison(View {
                     contract_version: CONTRACT_VERSION,
                     request_id: request.request_id,
                     generated_at,

@@ -47,11 +47,11 @@ use crate::{
         CAPABILITY_MAINTENANCE_TASK_SESSION, CAPABILITY_PRODUCT_IDENTITY,
         CAPABILITY_PROVIDER_CREDENTIAL_VAULT, CAPABILITY_REMOTE_CLI, CONTRACT_VERSION,
         CapabilityAvailability, Command, CommandReceipt, CommandRequest, ContractVersionRange,
-        ErrorCode, ExcludedTrackView, ExcludedTracksView, LibraryPlaylistTrackView,
-        LibraryPlaylistTracksView, LibraryPlaylistView, LibraryPlaylistsView, LibraryStateSource,
-        LibraryTrackPlacementView, LibraryTrackView, ProviderConnectionView,
-        ProviderConnectionsView, Query, QueryRequest, QueryResponse, ResourceId,
-        ServiceCompatibility, View,
+        ErrorCode, ExcludedTrackView, ExcludedTracksView, LibraryComparisonView,
+        LibraryPlaylistTrackView, LibraryPlaylistTracksView, LibraryPlaylistView,
+        LibraryPlaylistsView, LibraryStateSource, LibraryTrackPlacementView, LibraryTrackView,
+        ProviderConnectionView, ProviderConnectionsView, Query, QueryRequest, QueryResponse,
+        ResourceId, ServiceCompatibility, View,
     },
     db,
     durable_operations::{
@@ -756,6 +756,14 @@ impl MaintenanceBackend for DeploymentMaintenanceBackend {
             state_at,
             tracks,
         })
+    }
+
+    async fn library_comparison(
+        &mut self,
+        _subject: AuthenticatedSubject,
+        provider_connection_id: ResourceId,
+    ) -> std::result::Result<LibraryComparisonView, crate::contract::ClientError> {
+        crate::library_comparison::query(&self.pool, provider_connection_id).await
     }
 
     async fn library_track(

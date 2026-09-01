@@ -491,8 +491,11 @@ and later Chordrift refactor begin.
      retention, credential generation rotation, cross-tenant rejection, and
      history-preserving disconnect, after which its container and source copy
      were deleted;
-  3. finish the web maintenance journey and the shared provider/model
-     comparison query while preserving remote CLI parity;
+  3. [comparison complete; maintenance/browser acceptance remains] finish the
+     web maintenance journey and the shared provider/model comparison query
+     while preserving remote CLI parity; contract v1.4 now returns set-based
+     directional membership, unresolved-identity, and order explanations to
+     both the web dashboard and `service library compare`;
   4. [implementation complete; deployment gated] exercise provider reads first,
      then open the bounded saved-state write only behind one separately approved
      exact-review gate; broader publication remains a separate workflow;

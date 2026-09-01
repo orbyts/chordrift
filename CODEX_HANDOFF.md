@@ -25,6 +25,15 @@ copy, and root-owned build output were removed. Deployment and browser
 acceptance remain gated; no Spotify or production Neon operation occurred while
 implementing this checkpoint.
 
+Contract v1.4 adds one Rust-owned, set-based provider/model comparison query.
+It distinguishes provider-only occurrences, Chordrift-only occurrences,
+unresolved identities, order-only drift, unlinked provider surfaces, and
+unpublished Chordrift surfaces. The web Library view and typed remote
+`service library compare` command consume the same DTO. Unit tests cover
+duplicates, unresolved counts, and reorder-only state; HTTP/local transport
+parity is covered, and the disposable PostgreSQL intake fixture exercises the
+real SQL path. Deployment/browser acceptance remains pending.
+
 Every daily-driver failure and its permanent regression belongs in
 `docs/design/DAILY_DRIVER_EDGE_CASE_LEDGER.md`. Treat chaotic cumulative
 Spotify use as the normal product environment, not operator error.

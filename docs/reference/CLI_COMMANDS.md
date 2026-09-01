@@ -16,6 +16,8 @@ chordrift service session status --profile default
 chordrift service compatibility --url https://service.example --profile default
 chordrift service command --url https://service.example --file command.json
 chordrift service query --url https://service.example --file query.json
+chordrift service library compare --url https://service.example \
+  --provider-connection-id PROVIDER_CONNECTION_UUID
 chordrift service maintenance start --url https://service.example \
   --provider-connection-id PROVIDER_CONNECTION_UUID
 chordrift service maintenance show --url https://service.example \

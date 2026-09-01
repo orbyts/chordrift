@@ -117,6 +117,6 @@ mod tests {
             ApplicationFacade::new().contract_version(),
             CONTRACT_VERSION
         );
-        assert_eq!(CONTRACT_VERSION, ContractVersion::new(1, 3));
+        assert_eq!(CONTRACT_VERSION, ContractVersion::new(1, 4));
     }
 }

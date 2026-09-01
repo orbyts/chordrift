@@ -38,7 +38,7 @@ from the provider observation while maintenance is pending.
 | Provider playlist tracks | Query exact ordered observed membership | Render one-based custom order, title, artists and album | None | Deployed |
 | Chordrift model playlists | Query newest current model generation | Render separately from provider state | None | Deployed |
 | Chordrift model tracks | Query exact ordered model membership | Render separately from provider state | None | Deployed |
-| Provider/model comparison | Return directional membership and order differences with both state timestamps | Explain provider-only and model-only tracks instead of only unequal totals | None | Pending typed query and shared CLI/web rendering |
+| Provider/model comparison | Return directional membership, unresolved-identity and custom-order differences with both state timestamps | Explain provider-only and model-only counts instead of only unequal totals | None | Contract v1.4 query plus shared web/remote-CLI rendering implemented; deployment proof pending |
 | Track detail | Join identity, placements, saved state, exclusions and personal listening statistics | Render facts without inferring classification | None | Deployed |
 | Exclusion archive | Query active reversible exclusions and prior placement | Search/filter, inspect and begin an explicit restore or forget flow | None until separately confirmed | Read-only deployed; actions pending |
 | Observe changes | Lease provider credential, verify stable identity, pull one complete snapshot, refresh derived state and persist durable progress | Start/reconnect, display progress and allow cancellation | Provider reads only | Implemented; deployment/read-only acceptance proof pending |
