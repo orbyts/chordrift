@@ -11,8 +11,8 @@ Last updated: 2026-08-31.
 ## Hosted Spotify connection checkpoint
 
 The active private deployment now runs exact code commit
-`951ce637055f964c92d8e0794b32c389a1f257bb` as image
-`chordrift:951ce63` on Vortex. Both API and worker run as UID/GID 65532 with
+`ce6f0e1ad96fc0eb21329576779ae20a394119d3` as image
+`chordrift:ce6f0e1` on Vortex. Both API and worker run as UID/GID 65532 with
 read-only root filesystems and `unless-stopped`; the 43.2 MB runtime contains
 only `chordrift-server`, `chordrift-worker`, and runtime necessities. Before
 deployment, a validated 29.4 MB compressed logical backup was written to the
@@ -22,11 +22,25 @@ pass through Nexus/Cloudflare. The same authenticated Chordrift browser
 session survived an API/worker restart and retained the existing account,
 Spotify connection identity, playlists, track views, and 455 active reversible
 exclusions. Lightleak Reverie now compares as 501 provider and 501 Chordrift
-memberships with order-only drift. The current Spotify connection is retained
-but its encrypted credential is not active, so the browser truthfully shows
-Reconnect and disables observation. The next live gate is one user-completed
-Spotify reconnect; do not manufacture or import a token around that OAuth
-boundary.
+memberships with order-only drift. Provider writes remain disabled.
+
+The live Disconnect → Reconnect lifecycle now succeeds and the encrypted
+credential is active. The next daily-driver incident showed that observation
+captured a direct managed-playlist addition while the hosted session displayed
+zero changes: the shared intake audit classified it correctly, but the hosted
+PostgreSQL interpreter appended only Liked Songs intake. Commit `ce6f0e1`
+projects direct managed additions into the same Rust maintenance DTO used by
+web and remote CLI. One observed destination is pre-resolved as canonical
+placement without a provider write; multiple simultaneous destinations remain
+one decision; a Like remains a separate saved-state choice. The deployed
+image is healthy privately and through HTTPS, with `provider_writes=false`.
+
+`tests/provider_behavior_acceptance.rs` is the permanent six-track synthetic
+provider harness. CI now runs on every branch push. It covers single add,
+remove, move, reorder, and Like gestures plus composite snapshots, delayed
+observation, and interrupted retry. Production interpretation unit regressions
+cover direct, ambiguous, direct-plus-Like, and duplicate move-half cases. Add
+both isolated and composite cases here whenever daily use finds another edge.
 
 The first hosted Reconnect attempt was rejected by Spotify with
 `redirect_uri: Not matching configuration`. Chordrift correctly derives the
