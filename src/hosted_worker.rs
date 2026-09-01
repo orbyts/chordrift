@@ -104,7 +104,7 @@ pub async fn apply_reviewed_sync_plan_from_env(
     };
     if let Some(rotated) = rotated.as_ref() {
         vault
-            .rotate(subject, identity, rotated, Utc::now())
+            .rotate(subject, identity.clone(), rotated, Utc::now())
             .await
             .map_err(|_| configuration("hosted Spotify credential rotation failed"))?;
     }
@@ -118,7 +118,7 @@ pub async fn apply_reviewed_sync_plan_from_env(
         )));
     }
     let mutation_session = spotify::hosted_mutation_session(spotify_session)?;
-    apply::execute_with_session(
+    let report = apply::execute_with_session(
         &database,
         account_label,
         assessment.assessment_id,
@@ -127,7 +127,21 @@ pub async fn apply_reviewed_sync_plan_from_env(
         false,
         &mutation_session,
     )
-    .await
+    .await?;
+    if report.status == "awaiting_pull" {
+        SpotifyObservationExecutor::new(database.clone(), vault)
+            .observe(subject, ResourceId::from_uuid(provider_account_id))
+            .await
+            .map_err(|_| configuration("hosted post-apply observation failed"))?;
+        let verified = apply::verify_pending_publications(&database, account_label, false).await?;
+        if verified == 0 {
+            return Err(configuration(
+                "hosted post-apply observation did not verify the reviewed plan",
+            ));
+        }
+        return apply::show(&database, account_label, Some(report.apply_run_id)).await;
+    }
+    Ok(report)
 }
 
 /// Provider-side work accepted by the durable hosted command boundary.
