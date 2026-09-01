@@ -18,7 +18,7 @@ base64 = "0.22.1"
 chrono = { version = "0.4.42", features = ["serde"] }
 chacha20poly1305 = "0.10.1"
 clap = { version = "4.5.50", features = ["derive"] }
-comfy-table = "7"
+comfy-table = "8"
 csv = "1.4"
 indicatif = "0.18"
 keyring = "4.1.5"
