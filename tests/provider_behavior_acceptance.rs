@@ -456,6 +456,46 @@ fn delayed_observation_and_interrupted_retry_rebase_to_cumulative_truth() {
 }
 
 #[test]
+fn removal_then_delayed_destination_converges_as_one_cumulative_move() {
+    let mut provider = FakeProviderAccount::new();
+    let mut database = FakeDatabase::default();
+    database.record_placement(5, "Cinema Monsoon");
+
+    let mut workflow = MaintenanceWorkflow::new(
+        MaintenanceSessionId::new(),
+        provider.observe(vec![Gesture::Remove {
+            track: 5,
+            source: "Cinema Monsoon",
+        }]),
+    )
+    .expect("a removal-only provider observation is accepted without a write");
+    assert_eq!(workflow.view().state, MaintenanceSessionState::InSync);
+
+    // Spotify exposes the destination only on the next observation. The
+    // cumulative state is a user move, not permission to restore the source or
+    // remove the newly observed destination.
+    let revision = workflow.view().revision;
+    let current = workflow
+        .rebase(
+            revision,
+            provider.observe(vec![Gesture::Move {
+                track: 5,
+                source: "Cinema Monsoon",
+                destination: "Dakshina Pulse",
+            }]),
+        )
+        .expect("the later destination supersedes the partial removal");
+    assert_eq!(current.state, MaintenanceSessionState::InSync);
+    assert_eq!(current.observed_changes.len(), 1);
+    assert!(matches!(
+        current.observed_changes[0].resolution,
+        Some(MaintenanceResolution::Place { ref destination })
+            if destination.name == "Dakshina Pulse"
+    ));
+    assert!(provider.writes.is_empty());
+}
+
+#[test]
 fn fake_database_and_provider_never_consume_liked_before_verified_placement() {
     let track_id = 6;
     let destination = "Neon Affection";

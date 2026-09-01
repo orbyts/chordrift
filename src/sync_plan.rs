@@ -1397,6 +1397,26 @@ fn annotate_maintenance_operation(
             .collect::<BTreeSet<_>>(),
         _ => return annotation,
     };
+    if operation.operation_type == "remove_track" && candidates.is_empty() {
+        // A provider addition can arrive one observation after its matching
+        // removal. The first observation may therefore have produced an
+        // exclusion and removed the prior canonical placement. When exactly
+        // one current provider destination now exists, that placement is the
+        // cumulative user intent and supersedes the temporary exclusion.
+        annotation.old_destination = Some("New intake".to_owned());
+        return match context.current_canonical_playlists.as_slice() {
+            [destination] => {
+                annotation.interpretation = "direct_move".to_owned();
+                annotation.destination = Some(destination.clone());
+                annotation
+            }
+            destinations if destinations.len() > 1 => {
+                annotation.interpretation = "ambiguous_move".to_owned();
+                annotation
+            }
+            _ => annotation,
+        };
+    }
     match candidates.len() {
         1 => {
             let candidate = candidates
@@ -2566,6 +2586,41 @@ mod tests {
         assert_eq!(exclusion.interpretation, "direct_move");
         assert_eq!(exclusion.old_destination.as_deref(), Some("Old Vibe"));
         assert_eq!(exclusion.destination.as_deref(), Some("New Vibe"));
+    }
+
+    #[test]
+    fn delayed_destination_supersedes_a_prior_exclusion_as_direct_intake() {
+        let annotation = annotate_maintenance_operation(
+            &planned_operation("remove_track", "Dakshina Pulse", "managed_provider_drift"),
+            Some(&MaintenanceTrackContext {
+                title: "Fixture Song".to_owned(),
+                artists: "Fixture Artist".to_owned(),
+                current_canonical_playlists: vec!["Dakshina Pulse".to_owned()],
+                canonical_placements: Vec::new(),
+            }),
+        );
+        assert_eq!(annotation.interpretation, "direct_move");
+        assert_eq!(annotation.old_destination.as_deref(), Some("New intake"));
+        assert_eq!(annotation.destination.as_deref(), Some("Dakshina Pulse"));
+    }
+
+    #[test]
+    fn multiple_delayed_destinations_remain_ambiguous() {
+        let annotation = annotate_maintenance_operation(
+            &planned_operation("remove_track", "Dakshina Pulse", "managed_provider_drift"),
+            Some(&MaintenanceTrackContext {
+                title: "Fixture Song".to_owned(),
+                artists: "Fixture Artist".to_owned(),
+                current_canonical_playlists: vec![
+                    "Dakshina Pulse".to_owned(),
+                    "Kaveri Resonance".to_owned(),
+                ],
+                canonical_placements: Vec::new(),
+            }),
+        );
+        assert_eq!(annotation.interpretation, "ambiguous_move");
+        assert_eq!(annotation.old_destination.as_deref(), Some("New intake"));
+        assert!(annotation.destination.is_none());
     }
 
     #[test]

@@ -23,8 +23,8 @@ All notable changes to Chordrift are documented here.
   exclusion, and operation queries for web and CLI investigation.
 - Harden direct intake, moves, duplicate catalog editions, manual order,
   Liked Songs disposition, safe add-before-remove sequencing, interrupted
-  cumulative intent, and stale-session rebasing with permanent fake-provider
-  single/composite regressions.
+  cumulative intent, delayed split move observation, and stale-session rebasing
+  with permanent fake-provider single/composite regressions.
 - Add pinned non-root API/worker containers, health/readiness checks,
   controlled-field JSON request/worker logs, bounded host logging, request and
   operation correlation, backup/restore proof, and a conservative lossless
