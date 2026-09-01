@@ -11,8 +11,8 @@ Last updated: 2026-08-31.
 ## Hosted Spotify connection checkpoint
 
 The active private deployment now runs exact code commit
-`ce6f0e1ad96fc0eb21329576779ae20a394119d3` as image
-`chordrift:ce6f0e1` on Vortex. Both API and worker run as UID/GID 65532 with
+`b37204b67384d59569d81368bbc04c2d46a6d202` as image
+`chordrift:b37204b` on Vortex. Both API and worker run as UID/GID 65532 with
 read-only root filesystems and `unless-stopped`; the 43.2 MB runtime contains
 only `chordrift-server`, `chordrift-worker`, and runtime necessities. Before
 deployment, a validated 29.4 MB compressed logical backup was written to the
@@ -39,12 +39,13 @@ The next authenticated review exposed a thin-client DTO defect: **Record these
 decisions** appeared inert for one destination choice plus one Liked-state
 choice. The destination dropdown had submitted the model playlist's stable key
 where `MaintenanceSurfaceView` requires a Rust-issued opaque resource ID; the
-HTTP rejection was also not rendered. The branch now includes the complete
+HTTP rejection was also not rendered. The deployed repair includes the complete
 typed `maintenance_surface` in every playlist query, returns that DTO unchanged
 from the browser, keeps the server-issued Liked Songs source, and renders a
 retryable error for any rejected submission. A Node browser-DTO harness covers
-single and composite choice shapes and runs on every CI push. Deployment and
-authenticated acceptance remain pending; no Spotify write was attempted.
+single and composite choice shapes and runs on every CI push. CI, exact-image
+deployment, API/worker health, public readiness, and repaired-asset checks pass;
+authenticated acceptance remains pending. No Spotify write was attempted.
 
 `tests/provider_behavior_acceptance.rs` is the permanent six-track synthetic
 provider harness. CI now runs on every branch push. It covers single add,

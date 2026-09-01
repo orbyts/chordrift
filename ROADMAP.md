@@ -495,7 +495,8 @@ and later Chordrift refactor begin.
   returns it unchanged, keeps the server-issued Liked Songs identity, submits the complete
   revision-bound decision set, and renders rejected submissions as retryable
   errors. A browser-DTO harness runs on every CI push alongside a Rust
-  server-identity assertion. Authenticated deployment proof remains.
+  server-identity assertion. CI, exact-image deployment, public health, and
+  repaired-asset checks pass; authenticated browser acceptance remains.
 
   The first post-Disconnect OAuth consent exposed a retained-history generation
   defect: the vault attempted to reuse generation 1 because no envelope was
