@@ -11,9 +11,9 @@ Last updated: 2026-08-31.
 ## Hosted Spotify connection checkpoint
 
 The active private deployment now runs exact code commit
-`cc597b0cea197e1eb23aeff1a286be22d23d9789` as image
-`chordrift:cc597b0` (manifest
-`sha256:82e030b42ab56a1cd5bfce4355dee6e9f563fef004971eafc855066ca0cc5289`)
+`386334c67c0ca32d59c573389277f6bee81056f7` as image
+`chordrift:386334c` (image
+`sha256:3fb5a938fc4103b21fe01416177da9abd96ed88e4d7b2be790431a1440a7aaa9`)
 on Vortex. Both API and worker run as UID/GID 65532 with
 read-only root filesystems and `unless-stopped`; the 43.2 MB runtime contains
 only `chordrift-server`, `chordrift-worker`, and runtime necessities. Before
@@ -91,7 +91,10 @@ Contract 1.5 distinguishes canonical identity from placement evidence. Newly
 liked tracks receive a preselected destination only when an active accepted
 assignment or the latest prior approved/published generation yields exactly one
 destination that still exists. The recommendation includes its reason, is not
-consent, and ambiguous or absent evidence stays blank.
+consent, and ambiguous or absent evidence stays blank. Commit `386334c` passed
+the complete GitHub gate and is deployed as both API and worker. Private and
+public liveness/readiness are healthy; deployment did not start maintenance or
+write Spotify.
 
 A read-only personal history-only audit was generated outside the repository at
 `/Users/suhail/Documents/ChatGPT/Music/outputs/chordrift-history-audit-20260831/Chordrift-History-Only-Listening-Audit-2026-08-31.xlsx`.
