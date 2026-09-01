@@ -60,6 +60,14 @@ destination addition first, observes and verifies it, then offers saved-state
 cleanup only as a separate exact review. It also interprets the already-pending
 ordinary `publish/add_track` as the one recovery addition the user may review
 after deployment. Failed operations no longer claim Spotify was unchanged.
+The complete GitHub gate passed for repair commit `727bc8f` and documentation
+tip `1022066`. Exact image `chordrift:1022066` (manifest
+`sha256:b5da1ce31568c0242a5ea8dc17c899eb1f33c04b87ebbb4650f20a23ebf5f524`)
+is deployed on Vortex as both API and worker. Private and public readiness are
+healthy and report `provider_write_scope=exact_review_only`. Deployment did not
+start maintenance or write Spotify. Authenticated recovery acceptance remains:
+hard-refresh, Check provider changes, require one exact Neon Affection addition,
+then let Suhail separately authorize it.
 
 `tests/provider_behavior_acceptance.rs` is the permanent six-track synthetic
 provider harness. It uses the production maintenance DTO/state machine, a

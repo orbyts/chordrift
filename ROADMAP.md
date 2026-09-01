@@ -510,7 +510,8 @@ and later Chordrift refactor begin.
   injects failures at both stages, reloads after worker restart, and proves no
   loss, no duplicate, and add-before-unlike ordering. The live damaged track
   must be offered as one recovery addition after the repaired build is deployed;
-  no automatic Spotify recovery write is authorized.
+  no automatic Spotify recovery write is authorized. The full GitHub gate and
+  exact-image Vortex deployment pass; authenticated recovery review remains.
 
   The first post-Disconnect OAuth consent exposed a retained-history generation
   defect: the vault attempted to reuse generation 1 because no envelope was
