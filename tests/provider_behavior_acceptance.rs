@@ -4,13 +4,17 @@
 //! wrapper-neutral maintenance DTOs and Rust state machine used by web and CLI,
 //! never open a network connection, and intentionally use only six tracks.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use chordrift::{
     contract::{
-        MaintenanceChangeId, MaintenanceChangeKind, MaintenanceChangeView, MaintenanceResolution,
+        MaintenanceChangeId, MaintenanceChangeKind, MaintenanceChangeView,
+        MaintenanceProviderEffectKind, MaintenanceProviderEffectView, MaintenanceResolution,
         MaintenanceSessionId, MaintenanceSessionState, MaintenanceSurfaceView,
         MaintenanceTrackView, ResourceId,
     },
     maintenance::{MaintenanceProjection, MaintenanceWorkflow},
+    maintenance_projection::maintenance_provider_effects,
 };
 use uuid::Uuid;
 
@@ -40,6 +44,10 @@ enum Gesture {
 struct FakeProviderAccount {
     next_snapshot: u128,
     delayed: Option<Vec<Gesture>>,
+    playlists: BTreeMap<String, Vec<u128>>,
+    liked: BTreeSet<u128>,
+    writes: Vec<String>,
+    fail_next_write: bool,
 }
 
 impl FakeProviderAccount {
@@ -47,6 +55,10 @@ impl FakeProviderAccount {
         Self {
             next_snapshot: 100,
             delayed: None,
+            playlists: BTreeMap::new(),
+            liked: BTreeSet::new(),
+            writes: Vec::new(),
+            fail_next_write: false,
         }
     }
 
@@ -63,6 +75,91 @@ impl FakeProviderAccount {
     fn observe_delayed(&mut self) -> MaintenanceProjection {
         let gestures = self.delayed.take().expect("one delayed observation exists");
         self.observe(gestures)
+    }
+
+    fn apply(&mut self, effect: &MaintenanceProviderEffectView) -> Result<bool, &'static str> {
+        if self.fail_next_write {
+            self.fail_next_write = false;
+            return Err("injected provider failure");
+        }
+        let track = effect
+            .track
+            .as_ref()
+            .expect("fixture provider effect names a track")
+            .track_id
+            .as_uuid()
+            .as_u128();
+        match effect.kind {
+            MaintenanceProviderEffectKind::AddTrack => {
+                let destination = &effect
+                    .surface
+                    .as_ref()
+                    .expect("addition names a destination")
+                    .name;
+                let membership = self.playlists.entry(destination.clone()).or_default();
+                if !membership.contains(&track) {
+                    membership.push(track);
+                    self.writes.push(format!("add:{track}:{destination}"));
+                    return Ok(true);
+                }
+            }
+            MaintenanceProviderEffectKind::UpdateSavedState => {
+                if !self
+                    .playlists
+                    .values()
+                    .any(|tracks| tracks.contains(&track))
+                {
+                    return Err("refused to consume the track before verified placement");
+                }
+                if self.liked.remove(&track) {
+                    self.writes.push(format!("unlike:{track}"));
+                    return Ok(true);
+                }
+            }
+            _ => return Err("unsupported fixture provider effect"),
+        }
+        Ok(false)
+    }
+}
+
+#[derive(Default)]
+struct FakeDatabase {
+    canonical_placements: BTreeMap<u128, String>,
+    sessions: BTreeMap<MaintenanceSessionId, chordrift::contract::MaintenanceSessionView>,
+    write_receipts: BTreeSet<String>,
+}
+
+impl FakeDatabase {
+    fn record_placement(&mut self, track: u128, destination: &str) {
+        self.canonical_placements
+            .insert(track, destination.to_owned());
+    }
+
+    fn apply_stage(
+        &mut self,
+        provider: &mut FakeProviderAccount,
+        effects: &[MaintenanceProviderEffectView],
+    ) -> Result<(), &'static str> {
+        for effect in effects {
+            if provider.apply(effect)? {
+                self.write_receipts.insert(effect.effect_id.to_string());
+            }
+        }
+        Ok(())
+    }
+
+    fn persist(&mut self, view: chordrift::contract::MaintenanceSessionView) {
+        self.sessions.insert(view.session_id, view);
+    }
+
+    fn restart(&self, session_id: MaintenanceSessionId) -> MaintenanceWorkflow {
+        MaintenanceWorkflow::from_view(
+            self.sessions
+                .get(&session_id)
+                .expect("fake database contains durable session")
+                .clone(),
+        )
+        .expect("persisted production DTO rehydrates")
     }
 }
 
@@ -167,6 +264,60 @@ fn projection(snapshot: u128, gestures: Vec<Gesture>) -> MaintenanceProjection {
         observed_changes,
         provider_effects: Vec::new(),
         review_id: None,
+    }
+}
+
+fn liked_placement_changes(
+    provider: &FakeProviderAccount,
+    track_id: u128,
+    destination: &str,
+) -> Vec<MaintenanceChangeView> {
+    let destination_surface = surface(destination);
+    let liked_surface = surface("Liked Songs");
+    let placed = provider
+        .playlists
+        .get(destination)
+        .is_some_and(|tracks| tracks.contains(&track_id));
+    let mut changes = vec![MaintenanceChangeView {
+        change_id: MaintenanceChangeId::from_uuid(Uuid::from_u128(9001)),
+        kind: MaintenanceChangeKind::DirectIntake,
+        track: Some(track(track_id)),
+        previous_surface: Some(liked_surface.clone()),
+        current_surface: placed.then_some(destination_surface.clone()),
+        summary: format!("Place Fixture Track {track_id} in {destination}"),
+        resolution: Some(MaintenanceResolution::Place {
+            destination: destination_surface,
+        }),
+    }];
+    if provider.liked.contains(&track_id) {
+        changes.push(MaintenanceChangeView {
+            change_id: MaintenanceChangeId::from_uuid(Uuid::from_u128(9002)),
+            kind: MaintenanceChangeKind::SavedState,
+            track: Some(track(track_id)),
+            previous_surface: None,
+            current_surface: Some(liked_surface.clone()),
+            summary: format!("Remove Fixture Track {track_id} from Liked Songs after placement"),
+            resolution: Some(MaintenanceResolution::ConsumeIntake {
+                source: liked_surface,
+            }),
+        });
+    }
+    changes
+}
+
+fn liked_placement_projection(
+    snapshot: u128,
+    provider: &FakeProviderAccount,
+    track_id: u128,
+    destination: &str,
+) -> MaintenanceProjection {
+    let observed_changes = liked_placement_changes(provider, track_id, destination);
+    let decision = maintenance_provider_effects(id(snapshot), &observed_changes);
+    MaintenanceProjection {
+        provider_snapshot_id: id(snapshot),
+        observed_changes,
+        provider_effects: decision.provider_effects,
+        review_id: decision.review_id,
     }
 }
 
@@ -288,4 +439,200 @@ fn delayed_observation_and_interrupted_retry_rebase_to_cumulative_truth() {
         .expect("retrying the same complete truth remains valid");
     assert_eq!(replay.observed_changes.len(), 2);
     assert!(replay.provider_effects.is_empty());
+}
+
+#[test]
+fn fake_database_and_provider_never_consume_liked_before_verified_placement() {
+    let track_id = 6;
+    let destination = "Neon Affection";
+    let mut provider = FakeProviderAccount::new();
+    provider.liked.insert(track_id);
+    let mut database = FakeDatabase::default();
+    database.record_placement(track_id, destination);
+
+    let first = liked_placement_projection(201, &provider, track_id, destination);
+    assert_eq!(first.provider_effects.len(), 1);
+    assert_eq!(
+        first.provider_effects[0].kind,
+        MaintenanceProviderEffectKind::AddTrack
+    );
+
+    let session_id = MaintenanceSessionId::new();
+    let mut workflow = MaintenanceWorkflow::new(session_id, first.clone())
+        .expect("exact addition is a valid durable review");
+    let first_view = workflow.view();
+    assert_eq!(
+        first_view.state,
+        MaintenanceSessionState::ReadyForAuthorization
+    );
+    let first_review = first_view.review_id.expect("addition has exact review");
+    workflow
+        .authorize(first_view.revision, first_review)
+        .expect("user authorizes only the reviewed addition");
+    let first_view = workflow
+        .mark_execution_state(MaintenanceSessionState::Applying)
+        .expect("durable executor starts applying");
+    database.persist(first_view);
+
+    provider.fail_next_write = true;
+    assert!(
+        database
+            .apply_stage(&mut provider, &first.provider_effects)
+            .is_err()
+    );
+    assert!(provider.liked.contains(&track_id));
+    assert!(
+        !provider
+            .playlists
+            .values()
+            .any(|tracks| tracks.contains(&track_id))
+    );
+
+    // A worker restart reloads the same production session DTO and retries
+    // the exact effect rather than recomputing arbitrary work.
+    workflow = database.restart(session_id);
+    database
+        .apply_stage(&mut provider, &first.provider_effects)
+        .expect("retry adds the exact reviewed track");
+    let first_view = workflow
+        .mark_execution_state(MaintenanceSessionState::Verifying)
+        .expect("successful apply advances to verification");
+    database.persist(first_view);
+
+    // Simulate a crash after the provider accepted the write but before a new
+    // receipt. Replaying the effect is idempotent and adds no duplicate.
+    database
+        .apply_stage(&mut provider, &first.provider_effects)
+        .expect("replay does not duplicate membership");
+    assert!(provider.liked.contains(&track_id));
+    assert_eq!(provider.playlists[destination], vec![track_id]);
+
+    let second = liked_placement_projection(202, &provider, track_id, destination);
+    assert_eq!(second.provider_effects.len(), 1);
+    assert_eq!(
+        second.provider_effects[0].kind,
+        MaintenanceProviderEffectKind::UpdateSavedState
+    );
+    let second_view = workflow
+        .complete_verification(second.clone())
+        .expect("fresh observation advances the same durable session");
+    assert_eq!(
+        second_view.state,
+        MaintenanceSessionState::ReadyForAuthorization
+    );
+    let second_review = second_view
+        .review_id
+        .expect("cleanup has a separate review");
+    workflow
+        .authorize(second_view.revision, second_review)
+        .expect("user separately authorizes intake cleanup");
+    let second_view = workflow
+        .mark_execution_state(MaintenanceSessionState::Applying)
+        .expect("cleanup starts only after verified placement");
+    database.persist(second_view);
+
+    provider.fail_next_write = true;
+    assert!(
+        database
+            .apply_stage(&mut provider, &second.provider_effects)
+            .is_err()
+    );
+    assert!(provider.liked.contains(&track_id));
+    assert_eq!(provider.playlists[destination], vec![track_id]);
+
+    workflow = database.restart(session_id);
+    database
+        .apply_stage(&mut provider, &second.provider_effects)
+        .expect("verified placement permits saved intake cleanup");
+    let final_view = workflow
+        .mark_execution_state(MaintenanceSessionState::Verifying)
+        .expect("cleanup becomes verifiable");
+    database.persist(final_view);
+
+    assert!(!provider.liked.contains(&track_id));
+    assert_eq!(provider.playlists[destination], vec![track_id]);
+    assert_eq!(
+        provider.writes,
+        vec!["add:6:Neon Affection".to_owned(), "unlike:6".to_owned()]
+    );
+    assert_eq!(database.canonical_placements[&track_id], destination);
+    assert_eq!(database.write_receipts.len(), 2);
+}
+
+#[test]
+fn composite_placement_retry_preserves_each_track_and_never_duplicates() {
+    let destination = "Cinema Monsoon";
+    let mut provider = FakeProviderAccount::new();
+    provider.liked.extend([7, 8]);
+    let mut database = FakeDatabase::default();
+    database.record_placement(7, destination);
+    database.record_placement(8, destination);
+
+    let mut changes = liked_placement_changes(&provider, 7, destination);
+    let mut second = liked_placement_changes(&provider, 8, destination);
+    second[0].change_id = MaintenanceChangeId::from_uuid(Uuid::from_u128(9011));
+    second[1].change_id = MaintenanceChangeId::from_uuid(Uuid::from_u128(9012));
+    changes.extend(second);
+    let additions = maintenance_provider_effects(id(301), &changes);
+    assert_eq!(additions.provider_effects.len(), 2);
+    assert!(
+        additions
+            .provider_effects
+            .iter()
+            .all(|effect| effect.kind == MaintenanceProviderEffectKind::AddTrack)
+    );
+
+    database
+        .apply_stage(&mut provider, &additions.provider_effects[..1])
+        .expect("first enumerated addition succeeds");
+    provider.fail_next_write = true;
+    assert!(
+        database
+            .apply_stage(&mut provider, &additions.provider_effects[1..])
+            .is_err()
+    );
+    assert_eq!(provider.playlists[destination], vec![7]);
+    assert!(provider.liked.contains(&7));
+    assert!(provider.liked.contains(&8));
+
+    database
+        .apply_stage(&mut provider, &additions.provider_effects)
+        .expect("whole exact review safely resumes");
+    assert_eq!(provider.playlists[destination], vec![7, 8]);
+    assert_eq!(
+        provider.playlists[destination]
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([7, 8])
+    );
+
+    let mut cleanup_changes = liked_placement_changes(&provider, 7, destination);
+    let mut second_cleanup = liked_placement_changes(&provider, 8, destination);
+    second_cleanup[0].change_id = MaintenanceChangeId::from_uuid(Uuid::from_u128(9021));
+    second_cleanup[1].change_id = MaintenanceChangeId::from_uuid(Uuid::from_u128(9022));
+    cleanup_changes.extend(second_cleanup);
+    let cleanup = maintenance_provider_effects(id(302), &cleanup_changes);
+    assert_eq!(cleanup.provider_effects.len(), 2);
+    assert!(
+        cleanup
+            .provider_effects
+            .iter()
+            .all(|effect| effect.kind == MaintenanceProviderEffectKind::UpdateSavedState)
+    );
+    database
+        .apply_stage(&mut provider, &cleanup.provider_effects)
+        .expect("cleanup follows verified composite placement");
+
+    assert!(provider.liked.is_empty());
+    assert_eq!(provider.playlists[destination], vec![7, 8]);
+    assert_eq!(
+        provider.writes,
+        vec![
+            "add:7:Cinema Monsoon".to_owned(),
+            "add:8:Cinema Monsoon".to_owned(),
+            "unlike:7".to_owned(),
+            "unlike:8".to_owned(),
+        ]
+    );
 }

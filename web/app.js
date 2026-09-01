@@ -163,11 +163,15 @@ async function followOperation(operationId) {
     const progress = current.details?.progress;
     const credentialExpired = ['failed', 'recoverable'].includes(current.state)
       && current.details?.error?.code === 'authentication_required';
+    const failed = current.state === 'failed';
+    const errorCode = current.details?.error?.code?.replaceAll('_', ' ');
     panel.replaceChildren(
       node('strong', '', current.state.replaceAll('_', ' ')),
-      node('p', credentialExpired ? 'warning' : 'availability', credentialExpired
+      node('p', credentialExpired || failed ? 'warning' : 'availability', credentialExpired
         ? 'Spotify access was removed or expired. Reconnect Spotify; your Chordrift library is unchanged.'
-        : progress ? `${progress.phase.replaceAll('_', ' ')} · ${progress.completed}${progress.total == null ? '' : ` / ${progress.total}`}` : 'Spotify remains unchanged during observation.')
+        : failed
+          ? `Chordrift stopped${errorCode ? ` · ${errorCode}` : ''}. Provider state will be checked again before any retry.`
+          : progress ? `${progress.phase.replaceAll('_', ' ')} · ${progress.completed}${progress.total == null ? '' : ` / ${progress.total}`}` : 'Checking the latest provider state.')
     );
     if (['completed', 'failed', 'cancelled'].includes(current.state)) {
       await Promise.all([loadProviderConnections(), loadActivity()]);
@@ -205,6 +209,9 @@ function renderMaintenanceSession() {
   panel.append(list);
   if (view.provider_effects.length) {
     panel.append(node('h3', '', 'Exact provider changes'));
+    if (view.provider_effects.some((effect) => effect.kind === 'add_track') && view.observed_changes.some((change) => change.kind === 'saved_state' && change.resolution?.type === 'consume_intake')) {
+      panel.append(node('p', 'availability', 'Safe placement: Chordrift will add and verify the destination first. Removing the track from Liked Songs will be offered as a separate exact review afterward.'));
+    }
     const effects = node('div', 'card-list');
     for (const effect of view.provider_effects) {
       const card = node('div', 'record-card');

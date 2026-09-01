@@ -22,7 +22,9 @@ pass through Nexus/Cloudflare. The same authenticated Chordrift browser
 session survived an API/worker restart and retained the existing account,
 Spotify connection identity, playlists, track views, and 455 active reversible
 exclusions. Lightleak Reverie now compares as 501 provider and 501 Chordrift
-memberships with order-only drift. Provider writes remain disabled.
+memberships with order-only drift. The hosted executor can perform only
+server-rederived, exact-review maintenance effects; this surface is not a
+general publication API.
 
 The live Disconnect → Reconnect lifecycle now succeeds and the encrypted
 credential is active. The next daily-driver incident showed that observation
@@ -32,8 +34,9 @@ PostgreSQL interpreter appended only Liked Songs intake. Commit `ce6f0e1`
 projects direct managed additions into the same Rust maintenance DTO used by
 web and remote CLI. One observed destination is pre-resolved as canonical
 placement without a provider write; multiple simultaneous destinations remain
-one decision; a Like remains a separate saved-state choice. The deployed
-image is healthy privately and through HTTPS, with `provider_writes=false`.
+one decision; a Like remains a separate saved-state choice. The deployed image
+is healthy privately and through HTTPS. Its readiness response still reports
+the old read-only capability until the current exact-review repair is deployed.
 
 The next authenticated review exposed a thin-client DTO defect: **Record these
 decisions** appeared inert for one destination choice plus one Liked-state
@@ -45,14 +48,29 @@ from the browser, keeps the server-issued Liked Songs source, and renders a
 retryable error for any rejected submission. A Node browser-DTO harness covers
 single and composite choice shapes and runs on every CI push. CI, exact-image
 deployment, API/worker health, public readiness, and repaired-asset checks pass;
-authenticated acceptance remains pending. No Spotify write was attempted.
+authenticated acceptance then reached execution.
+
+That execution exposed a beta-blocking partial-apply defect. For the Liked-only
+track **It Must Have Been Love**, the chosen Neon Affection placement was
+recorded as Chordrift intent, but the hosted review contained only the saved-
+track removal. Spotify accepted the Unlike; no destination addition occurred;
+verification failed; the track is currently absent from both Spotify surfaces.
+Do not perform an automatic recovery write. The branch repair emits the exact
+destination addition first, observes and verifies it, then offers saved-state
+cleanup only as a separate exact review. It also interprets the already-pending
+ordinary `publish/add_track` as the one recovery addition the user may review
+after deployment. Failed operations no longer claim Spotify was unchanged.
 
 `tests/provider_behavior_acceptance.rs` is the permanent six-track synthetic
-provider harness. CI now runs on every branch push. It covers single add,
-remove, move, reorder, and Like gestures plus composite snapshots, delayed
-observation, and interrupted retry. Production interpretation unit regressions
-cover direct, ambiguous, direct-plus-Like, and duplicate move-half cases. Add
-both isolated and composite cases here whenever daily use finds another edge.
+provider harness. It uses the production maintenance DTO/state machine, a
+stateful fake provider, and a fake durable database. CI covers single add,
+remove, move, reorder, and Like gestures; composite snapshots; delayed
+observation; failures before both placement and saved-state cleanup; worker
+restart; idempotent replay; exact add-before-unlike order; and no-loss/no-
+duplicate invariants. Production interpretation unit regressions cover direct,
+ambiguous, direct-plus-Like, duplicate move halves, and pending ordinary
+recovery additions. Add isolated and composite failure cases here whenever
+daily use finds another edge.
 
 The first hosted Reconnect attempt was rejected by Spotify with
 `redirect_uri: Not matching configuration`. Chordrift correctly derives the

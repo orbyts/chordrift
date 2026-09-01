@@ -411,11 +411,15 @@ fn canonical_action(change: &MaintenanceChangeView) -> Option<CanonicalAction> {
     }
 }
 
-/// Adds the exact saved-state provider review implied by resolved intake choices.
-pub fn attach_saved_provider_effects(
+/// Adds the exact next provider review implied by resolved intake choices.
+///
+/// A new canonical placement is always published and verified before a saved
+/// intake source may be consumed. Consequently one review contains additions
+/// or saved-state removals, never both.
+pub fn attach_maintenance_provider_effects(
     mut projection: MaintenanceProjection,
 ) -> MaintenanceProjection {
-    let decision = saved_provider_effects(
+    let decision = maintenance_provider_effects(
         projection.provider_snapshot_id,
         &projection.observed_changes,
     );
@@ -424,8 +428,8 @@ pub fn attach_saved_provider_effects(
     projection
 }
 
-/// Computes provider effects after applying one exact set of maintenance decisions.
-pub fn saved_provider_effects(
+/// Computes the next safe provider stage after one exact decision set.
+pub fn maintenance_provider_effects(
     snapshot_id: ResourceId,
     changes: &[MaintenanceChangeView],
 ) -> MaintenanceDecisionProjection {
@@ -435,32 +439,63 @@ pub fn saved_provider_effects(
             review_id: None,
         };
     }
-    let effects: Vec<_> = changes
+    let additions: Vec<_> = changes
         .iter()
         .filter_map(|change| {
-            if change.kind != MaintenanceChangeKind::SavedState {
+            if change.kind != MaintenanceChangeKind::DirectIntake
+                || change.current_surface.is_some()
+            {
                 return None;
             }
-            let MaintenanceResolution::ConsumeIntake { source } = change.resolution.as_ref()?
-            else {
+            let MaintenanceResolution::Place { destination } = change.resolution.as_ref()? else {
                 return None;
             };
-            if change.current_surface.as_ref() != Some(source) {
-                return None;
-            }
             let track = change.track.clone()?;
             Some(MaintenanceProviderEffectView {
                 effect_id: ResourceId::from_uuid(stable_uuid(
-                    "saved-effect",
-                    &format!("{}:{}", snapshot_id, track.track_id),
+                    "placement-effect",
+                    &format!(
+                        "{}:{}:{}",
+                        snapshot_id, track.track_id, destination.surface_id
+                    ),
                 )),
-                kind: MaintenanceProviderEffectKind::UpdateSavedState,
+                kind: MaintenanceProviderEffectKind::AddTrack,
                 track: Some(track.clone()),
-                surface: Some(source.clone()),
-                summary: format!("Remove {} from Liked Songs", track.title),
+                surface: Some(destination.clone()),
+                summary: format!("Add {} to {}", track.title, destination.name),
             })
         })
         .collect();
+    let effects: Vec<_> = if additions.is_empty() {
+        changes
+            .iter()
+            .filter_map(|change| {
+                if change.kind != MaintenanceChangeKind::SavedState {
+                    return None;
+                }
+                let MaintenanceResolution::ConsumeIntake { source } = change.resolution.as_ref()?
+                else {
+                    return None;
+                };
+                if change.current_surface.as_ref() != Some(source) {
+                    return None;
+                }
+                let track = change.track.clone()?;
+                Some(MaintenanceProviderEffectView {
+                    effect_id: ResourceId::from_uuid(stable_uuid(
+                        "saved-effect",
+                        &format!("{}:{}", snapshot_id, track.track_id),
+                    )),
+                    kind: MaintenanceProviderEffectKind::UpdateSavedState,
+                    track: Some(track.clone()),
+                    surface: Some(source.clone()),
+                    summary: format!("Remove {} from Liked Songs", track.title),
+                })
+            })
+            .collect()
+    } else {
+        additions
+    };
     let review_id = (!effects.is_empty()).then(|| {
         MaintenanceReviewId::from_uuid(stable_uuid(
             "saved-review",
@@ -572,16 +607,60 @@ mod tests {
         );
         unresolved.resolution = None;
         let snapshot = ResourceId::new();
-        let withheld = saved_provider_effects(snapshot, &[consume.clone(), unresolved]);
+        let withheld = maintenance_provider_effects(snapshot, &[consume.clone(), unresolved]);
         assert!(withheld.provider_effects.is_empty());
         assert!(withheld.review_id.is_none());
 
-        let reviewed = saved_provider_effects(snapshot, &[consume]);
+        let reviewed = maintenance_provider_effects(snapshot, &[consume]);
         assert_eq!(reviewed.provider_effects.len(), 1);
         assert_eq!(
             reviewed.provider_effects[0].kind,
             MaintenanceProviderEffectKind::UpdateSavedState
         );
         assert!(reviewed.review_id.is_some());
+    }
+
+    #[test]
+    fn liked_only_placement_is_added_before_saved_intake_can_be_consumed() {
+        let liked = MaintenanceSurfaceView {
+            surface_id: ResourceId::new(),
+            name: "Liked Songs".to_owned(),
+        };
+        let destination = MaintenanceSurfaceView {
+            surface_id: ResourceId::new(),
+            name: "Neon Affection".to_owned(),
+        };
+        let mut placement = change(
+            MaintenanceChangeKind::DirectIntake,
+            MaintenanceResolution::Place {
+                destination: destination.clone(),
+            },
+        );
+        placement.previous_surface = Some(liked.clone());
+        placement.current_surface = None;
+        let mut consume = change(
+            MaintenanceChangeKind::SavedState,
+            MaintenanceResolution::ConsumeIntake {
+                source: liked.clone(),
+            },
+        );
+        consume.current_surface = Some(liked);
+
+        let first =
+            maintenance_provider_effects(ResourceId::new(), &[placement.clone(), consume.clone()]);
+        assert_eq!(first.provider_effects.len(), 1);
+        assert_eq!(
+            first.provider_effects[0].kind,
+            MaintenanceProviderEffectKind::AddTrack
+        );
+        assert_eq!(first.provider_effects[0].surface, Some(destination.clone()));
+
+        placement.current_surface = Some(destination);
+        let second = maintenance_provider_effects(ResourceId::new(), &[placement, consume]);
+        assert_eq!(second.provider_effects.len(), 1);
+        assert_eq!(
+            second.provider_effects[0].kind,
+            MaintenanceProviderEffectKind::UpdateSavedState
+        );
     }
 }

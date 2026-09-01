@@ -83,10 +83,13 @@ health checks passed. Rehearsal fixture identities, revoked fixture
 credentials, and fixture operations were not promoted. First-owner login and
 encrypted import of the existing Spotify refresh authorization must be
 reverified on this canonical database before beta.1. Provider-backed
-observation, durable worker composition and the maintenance task remain
-unavailable until the real Rust adapter passes the read-only and fake-provider
-gates. Provider writes remain disabled. The service must fail closed rather
-than disguising a test backend or legacy shell workflow as hosted authority.
+observation, durable worker composition and the maintenance task are now wired
+through the real Rust adapter. Provider writes are limited to server-rederived,
+enumerated maintenance effects behind an immutable exact review. A newly
+selected placement must be added, freshly observed, and verified before a
+separate review may consume Liked Songs or another intake surface. The service
+must fail closed rather than disguising a test backend or legacy shell workflow
+as hosted authority.
 
 ## Storage and rehearsal policy
 

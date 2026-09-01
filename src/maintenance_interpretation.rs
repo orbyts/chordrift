@@ -78,6 +78,7 @@ impl<'a> PostgresMaintenanceInterpreter<'a> {
             !matches!(
                 (operation.phase.as_str(), operation.operation_type.as_str()),
                 ("reconcile", _)
+                    | ("publish", "add_track")
                     | ("publish", "reorder_playlist")
                     | ("cleanup", "remove_saved_track")
             )
@@ -272,6 +273,23 @@ fn projection_from_plan(
             continue;
         }
         match operation.operation_type.as_str() {
+            "add_track" => {
+                let spotify_id = operation.spotify_track_id.as_ref().ok_or_else(invalid)?;
+                if !interpreted_tracks.insert(spotify_id.clone()) {
+                    continue;
+                }
+                let track = tracks.get(spotify_id).cloned().ok_or_else(invalid)?;
+                let destination = surface(&operation.playlist_name);
+                changes.push(MaintenanceChangeView {
+                    change_id: change_id(snapshot_id, &format!("publish-add:{spotify_id}")),
+                    kind: MaintenanceChangeKind::DirectIntake,
+                    track: Some(track.clone()),
+                    previous_surface: Some(surface("Pending placement")),
+                    current_surface: None,
+                    summary: format!("Place {} in {}", track.title, operation.playlist_name),
+                    resolution: Some(MaintenanceResolution::Place { destination }),
+                });
+            }
             "exclude_track" => {
                 let spotify_id = operation.spotify_track_id.as_ref().ok_or_else(invalid)?;
                 if !interpreted_tracks.insert(spotify_id.clone()) {
@@ -464,6 +482,38 @@ mod tests {
             payload: json!({}),
             safety: json!({}),
         }
+    }
+
+    #[test]
+    fn pending_publish_add_becomes_one_exact_ordinary_placement() {
+        let snapshot = ResourceId::new();
+        let mut add = operation(0, "add_track", Some("track-recovery"));
+        add.phase = "publish".to_owned();
+        add.playlist_name = "Neon Affection".to_owned();
+        let annotations = BTreeMap::from([(
+            0,
+            MaintenanceAnnotation {
+                title: Some("Recovery Song".to_owned()),
+                artists: Some("Fixture Artist".to_owned()),
+                interpretation: "ordinary".to_owned(),
+                old_destination: None,
+                destination: Some("Neon Affection".to_owned()),
+            },
+        )]);
+        let tracks = fixture_tracks(&["track-recovery"]);
+
+        let projection = projection_from_plan(snapshot, &[add], &annotations, &tracks)
+            .expect("enumerated recovery addition is ordinary maintenance");
+
+        assert_eq!(projection.observed_changes.len(), 1);
+        let change = &projection.observed_changes[0];
+        assert_eq!(change.kind, MaintenanceChangeKind::DirectIntake);
+        assert!(change.current_surface.is_none());
+        assert!(matches!(
+            change.resolution,
+            Some(MaintenanceResolution::Place { ref destination })
+                if destination.name == "Neon Affection"
+        ));
     }
 
     #[test]

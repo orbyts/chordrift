@@ -472,7 +472,9 @@ and later Chordrift refactor begin.
   stable provider identity, calls the Rust inventory importer directly, rotates
   a returned refresh credential, persists the complete snapshot atomically, and
   exposes reconnectable progress/cancellation. No CLI, shell, arbitrary SQL, or
-  client-supplied provider URL is in that route. Provider writes remain disabled.
+  client-supplied provider URL is in that route. The only enabled provider
+  writes are server-rederived enumerated effects behind an immutable exact
+  review; readiness reports this bounded scope explicitly.
 
   Provider-lifecycle hardening checkpoint (2026-08-31): the first live
   disconnect returned HTTP 403 because a proxied native form POST did not
@@ -497,6 +499,18 @@ and later Chordrift refactor begin.
   errors. A browser-DTO harness runs on every CI push alongside a Rust
   server-identity assertion. CI, exact-image deployment, public health, and
   repaired-asset checks pass; authenticated browser acceptance remains.
+
+  Composite-effect safety checkpoint (2026-08-31): the first successful
+  destination-plus-clear decision exposed that hosted execution projected only
+  the saved-state removal. Spotify removed the track from Liked Songs before
+  the selected destination membership existed, and later verification failed.
+  Beta.1 now requires a durable two-stage boundary: exact destination add,
+  observe and verify, then a separate exact intake-cleanup review. The
+  production DTO/state-machine harness uses a fake database and fake provider,
+  injects failures at both stages, reloads after worker restart, and proves no
+  loss, no duplicate, and add-before-unlike ordering. The live damaged track
+  must be offered as one recovery addition after the repaired build is deployed;
+  no automatic Spotify recovery write is authorized.
 
   The first post-Disconnect OAuth consent exposed a retained-history generation
   defect: the vault attempted to reuse generation 1 because no envelope was
@@ -558,10 +572,12 @@ and later Chordrift refactor begin.
      while preserving remote CLI parity; contract v1.4 now returns set-based
      directional membership, unresolved-identity, and order explanations to
      both the web dashboard and `service library compare`;
-  4. [implementation complete; deployment gated] exercise provider reads first,
-     then open the bounded saved-state write only behind one separately approved
-     exact-review gate; broader publication remains a separate workflow;
-  5. [fake provider matrix complete; remaining suites pending] add
+  4. [repair complete; CI/deployment/browser recovery proof gated] exercise
+     provider reads first, publish and verify an enumerated destination addition
+     before offering a separately reviewed saved-state removal, and never mix
+     placement with intake cleanup in one executable review; broader
+     publication remains a separate workflow;
+  5. [stateful fake database/provider matrix complete; remaining suites pending] add
      disposable-PostgreSQL, browser, restart/recovery, tenant-isolation,
      rate-limit, and secret-redaction acceptance tests;
   6. profile observation/planning database paths, remove superseded wrappers

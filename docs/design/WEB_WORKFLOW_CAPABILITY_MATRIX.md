@@ -68,8 +68,9 @@ from the provider observation while maintenance is pending.
 5. Record-only gestures converge without provider authorization. Chordrift-
    authored writes require one exact, human-readable review tied to the newest
    provider snapshot.
-6. Provider writes remain disabled during the read-only private-beta gate even
-   if an authorization DTO can be rendered.
+6. Provider writes are limited to exact, server-rederived maintenance effects.
+   Placement and intake cleanup are separate durable reviews: add, observe and
+   verify first; only then may a later review remove temporary membership.
 7. Browser tests cover login visibility, provider context, both library state
    planes, track details, exclusions, session expiry and the critical
    maintenance journey. Transport/fake-provider tests remain the primary proof

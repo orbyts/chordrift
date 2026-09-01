@@ -65,6 +65,14 @@ sequenceDiagram
             Core->>Provider: Add only the enumerated track
             Provider-->>Core: Updated complete snapshot Sₙ₊₁
             Core->>Neon: Persist and verify placement
+            opt Track also remains in a temporary intake surface
+                Core-->>Client: New exact review to consume intake
+                User->>Client: Authorize intake cleanup separately
+                Client->>Core: Authorize current cleanup review
+                Core->>Provider: Remove only the verified temporary membership
+                Provider-->>Core: Updated complete snapshot Sₙ₊₂
+                Core->>Neon: Verify destination remains before accepting cleanup
+            end
         end
     else Destination or meaning is genuinely ambiguous
         Core-->>Client: Return bounded decision request

@@ -1335,7 +1335,8 @@ async fn ready(State(state): State<HostedState>) -> Response {
             "status": if status == StatusCode::OK { "ready" } else { "not_ready" },
             "database": database_ready,
             "identity_schema": schema_ready,
-            "provider_writes": false,
+            "provider_writes": true,
+            "provider_write_scope": "exact_review_only",
         })),
     )
         .into_response()

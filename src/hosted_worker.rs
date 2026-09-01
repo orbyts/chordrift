@@ -26,7 +26,8 @@ use crate::{
     maintenance::{MaintenanceDecisionProjection, MaintenanceWorkflow},
     maintenance_interpretation::PostgresMaintenanceInterpreter,
     maintenance_projection::{
-        CanonicalMaintenanceProjector, attach_saved_provider_effects, saved_provider_effects,
+        CanonicalMaintenanceProjector, attach_maintenance_provider_effects,
+        maintenance_provider_effects,
     },
     maintenance_store::{DurableMaintenanceAuthority, PostgresMaintenanceSessionStore},
     provider_vault::{
@@ -104,6 +105,19 @@ pub struct SpotifyObservationExecutor {
     sessions: PostgresMaintenanceSessionStore,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ReviewedAddition {
+    track_id: uuid::Uuid,
+    spotify_track_id: String,
+    spotify_playlist_id: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct ReviewedProviderWork {
+    additions: Vec<ReviewedAddition>,
+    saved_removals: Vec<(uuid::Uuid, String)>,
+}
+
 impl SpotifyObservationExecutor {
     /// Builds the executor after the caller verifies schemas 0049 through 0051.
     pub fn new(
@@ -172,12 +186,13 @@ impl SpotifyObservationExecutor {
         spotify::hosted_mutation_session(session).map_err(provider_error)
     }
 
-    async fn reviewed_saved_track_removals(
+    async fn reviewed_provider_work(
         &self,
+        provider_connection_id: ResourceId,
         view: &crate::contract::MaintenanceSessionView,
-    ) -> std::result::Result<Vec<(uuid::Uuid, String)>, ClientError> {
-        let mut removals = Vec::new();
-        for track_id in trusted_saved_track_removal_ids(view)? {
+    ) -> std::result::Result<ReviewedProviderWork, ClientError> {
+        let mut work = ReviewedProviderWork::default();
+        for (kind, track_id, surface_name) in trusted_provider_effects(view)? {
             let spotify_id: String = sqlx::query_scalar(
                 "SELECT provider_track_id FROM provider_tracks
                   WHERE provider = 'spotify' AND track_id = $1
@@ -188,11 +203,88 @@ impl SpotifyObservationExecutor {
             .await
             .map_err(|_| unavailable())?
             .ok_or_else(|| ClientError::new(ErrorCode::StateConflict, false))?;
-            removals.push((track_id, spotify_id));
+            match kind {
+                MaintenanceProviderEffectKind::AddTrack => {
+                    let playlist_ids: Vec<String> = sqlx::query_scalar(
+                        "SELECT spotify_playlist_id FROM current_spotify_playlists
+                          WHERE provider_account_id = $1 AND lower(name) = lower($2)",
+                    )
+                    .bind(provider_connection_id.as_uuid())
+                    .bind(&surface_name)
+                    .fetch_all(self.database.pool())
+                    .await
+                    .map_err(|_| unavailable())?;
+                    let [playlist_id] = playlist_ids.as_slice() else {
+                        // A reviewed human name must resolve to exactly one
+                        // current provider container. Missing or ambiguous
+                        // destinations fail closed before any provider write.
+                        return Err(ClientError::new(ErrorCode::StateConflict, false));
+                    };
+                    work.additions.push(ReviewedAddition {
+                        track_id,
+                        spotify_track_id: spotify_id,
+                        spotify_playlist_id: playlist_id.clone(),
+                    });
+                }
+                MaintenanceProviderEffectKind::UpdateSavedState => {
+                    work.saved_removals.push((track_id, spotify_id));
+                }
+                _ => return Err(ClientError::new(ErrorCode::CapabilityUnavailable, false)),
+            }
         }
-        removals.sort_by(|left, right| left.1.cmp(&right.1));
-        removals.dedup_by(|left, right| left.0 == right.0);
-        Ok(removals)
+        work.additions.sort_by(|left, right| {
+            (&left.spotify_playlist_id, &left.spotify_track_id)
+                .cmp(&(&right.spotify_playlist_id, &right.spotify_track_id))
+        });
+        work.additions.dedup_by(|left, right| {
+            left.track_id == right.track_id && left.spotify_playlist_id == right.spotify_playlist_id
+        });
+        work.saved_removals
+            .sort_by(|left, right| left.1.cmp(&right.1));
+        work.saved_removals
+            .dedup_by(|left, right| left.0 == right.0);
+        Ok(work)
+    }
+
+    async fn playlist_addition_present(
+        &self,
+        provider_connection_id: ResourceId,
+        addition: &ReviewedAddition,
+    ) -> std::result::Result<bool, ClientError> {
+        sqlx::query_scalar(
+            "SELECT EXISTS (
+               SELECT 1 FROM current_spotify_playlists playlist
+               JOIN provider_observed_playlist_tracks membership
+                 ON membership.snapshot_id = playlist.snapshot_id
+                AND membership.provider_playlist_id = playlist.provider_playlist_id
+               JOIN provider_tracks provider_track
+                 ON provider_track.id = membership.provider_track_id
+              WHERE playlist.provider_account_id = $1
+                AND playlist.spotify_playlist_id = $2
+                AND provider_track.track_id = $3)",
+        )
+        .bind(provider_connection_id.as_uuid())
+        .bind(&addition.spotify_playlist_id)
+        .bind(addition.track_id)
+        .fetch_one(self.database.pool())
+        .await
+        .map_err(|_| unavailable())
+    }
+
+    async fn verify_playlist_additions(
+        &self,
+        provider_connection_id: ResourceId,
+        additions: &[ReviewedAddition],
+    ) -> std::result::Result<(), ClientError> {
+        for addition in additions {
+            if !self
+                .playlist_addition_present(provider_connection_id, addition)
+                .await?
+            {
+                return Err(ClientError::new(ErrorCode::StateConflict, true));
+            }
+        }
+        Ok(())
     }
 
     async fn verify_saved_track_removals(
@@ -265,27 +357,33 @@ impl SpotifyObservationExecutor {
     }
 }
 
-fn trusted_saved_track_removal_ids(
+fn trusted_provider_effects(
     view: &crate::contract::MaintenanceSessionView,
-) -> std::result::Result<Vec<uuid::Uuid>, ClientError> {
-    let expected = saved_provider_effects(view.provider_snapshot_id, &view.observed_changes);
+) -> std::result::Result<Vec<(MaintenanceProviderEffectKind, uuid::Uuid, String)>, ClientError> {
+    let expected = maintenance_provider_effects(view.provider_snapshot_id, &view.observed_changes);
     if expected.provider_effects != view.provider_effects || expected.review_id != view.review_id {
         return Err(ClientError::new(ErrorCode::StateConflict, false));
     }
-    let mut track_ids = Vec::new();
+    let mut effects = Vec::new();
     for effect in &view.provider_effects {
-        if effect.kind != MaintenanceProviderEffectKind::UpdateSavedState {
+        if !matches!(
+            effect.kind,
+            MaintenanceProviderEffectKind::AddTrack
+                | MaintenanceProviderEffectKind::UpdateSavedState
+        ) {
             return Err(ClientError::new(ErrorCode::CapabilityUnavailable, false));
         }
         let track = effect
             .track
             .as_ref()
             .ok_or_else(|| ClientError::new(ErrorCode::InvalidRequest, false))?;
-        track_ids.push(track.track_id.as_uuid());
+        let surface = effect
+            .surface
+            .as_ref()
+            .ok_or_else(|| ClientError::new(ErrorCode::InvalidRequest, false))?;
+        effects.push((effect.kind, track.track_id.as_uuid(), surface.name.clone()));
     }
-    track_ids.sort_unstable();
-    track_ids.dedup();
-    Ok(track_ids)
+    Ok(effects)
 }
 
 #[async_trait]
@@ -358,7 +456,7 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
         provider_connection_id: ResourceId,
     ) -> std::result::Result<ResourceId, ClientError> {
         self.observe(subject, provider_connection_id).await?;
-        let projection = attach_saved_provider_effects(
+        let projection = attach_maintenance_provider_effects(
             PostgresMaintenanceInterpreter::new(&self.database)
                 .project(subject, provider_connection_id, None)
                 .await?,
@@ -396,7 +494,7 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
         if observed_snapshot == current.view.provider_snapshot_id {
             return Ok(ResourceId::from_uuid(session_id.as_uuid()));
         }
-        let projection = attach_saved_provider_effects(
+        let projection = attach_maintenance_provider_effects(
             PostgresMaintenanceInterpreter::new(&self.database)
                 .project(subject, current.provider_connection_id, Some(&current.view))
                 .await?,
@@ -443,7 +541,7 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
                 },
             )
             .map_err(|error| error.client_error())?;
-        let decision_projection = saved_provider_effects(
+        let decision_projection = maintenance_provider_effects(
             preliminary_view.provider_snapshot_id,
             &preliminary_view.observed_changes,
         );
@@ -510,9 +608,16 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
         } else if current.view.review_id != Some(review_id) {
             return Err(ClientError::new(ErrorCode::StateConflict, false));
         }
-        let removals = self.reviewed_saved_track_removals(&current.view).await?;
-        if removals.is_empty() {
+        let work = self
+            .reviewed_provider_work(current.provider_connection_id, &current.view)
+            .await?;
+        if work.additions.is_empty() && work.saved_removals.is_empty() {
             return Err(ClientError::new(ErrorCode::InvalidRequest, false));
+        }
+        if !work.additions.is_empty() && !work.saved_removals.is_empty() {
+            // Intake cleanup is deliberately a later reviewed stage. Never
+            // combine it with placement until placement has been observed.
+            return Err(ClientError::new(ErrorCode::StateConflict, false));
         }
         if current.view.state == MaintenanceSessionState::Authorized {
             current.view = authority
@@ -527,10 +632,29 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
                 .await?;
         }
         if current.view.state == MaintenanceSessionState::Applying {
+            // A fresh read makes operation replay idempotent after an
+            // interruption between a provider write and durable completion.
+            self.observe(subject, current.provider_connection_id)
+                .await?;
             let session = self
                 .hosted_mutation_session(subject, current.provider_connection_id)
                 .await?;
-            for chunk in removals.chunks(40) {
+            for addition in &work.additions {
+                if !self
+                    .playlist_addition_present(current.provider_connection_id, addition)
+                    .await?
+                {
+                    session
+                        .add_items(
+                            &addition.spotify_playlist_id,
+                            std::slice::from_ref(&addition.spotify_track_id),
+                            None,
+                        )
+                        .await
+                        .map_err(provider_error)?;
+                }
+            }
+            for chunk in work.saved_removals.chunks(40) {
                 let spotify_ids = chunk
                     .iter()
                     .map(|(_, spotify_id)| spotify_id.clone())
@@ -554,9 +678,11 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
         if current.view.state == MaintenanceSessionState::Verifying {
             self.observe(subject, current.provider_connection_id)
                 .await?;
-            self.verify_saved_track_removals(current.provider_connection_id, &removals)
+            self.verify_playlist_additions(current.provider_connection_id, &work.additions)
                 .await?;
-            let projection = attach_saved_provider_effects(
+            self.verify_saved_track_removals(current.provider_connection_id, &work.saved_removals)
+                .await?;
+            let projection = attach_maintenance_provider_effects(
                 PostgresMaintenanceInterpreter::new(&self.database)
                     .project(subject, current.provider_connection_id, Some(&current.view))
                     .await?,
@@ -846,7 +972,7 @@ mod tests {
             MaintenanceResolution, MaintenanceSessionView, MaintenanceSurfaceView,
             MaintenanceTrackView,
         },
-        maintenance_projection::saved_provider_effects,
+        maintenance_projection::maintenance_provider_effects,
     };
 
     struct FakeExecutor;
@@ -1001,7 +1127,7 @@ mod tests {
             summary: "Choose saved state".to_owned(),
             resolution: Some(MaintenanceResolution::ConsumeIntake { source: liked }),
         }];
-        let exact = saved_provider_effects(snapshot, &changes);
+        let exact = maintenance_provider_effects(snapshot, &changes);
         let mut view = MaintenanceSessionView {
             session_id: MaintenanceSessionId::new(),
             revision: 2,
@@ -1013,14 +1139,18 @@ mod tests {
             allowed_actions: vec![crate::contract::MaintenanceAllowedAction::Authorize],
         };
         assert_eq!(
-            trusted_saved_track_removal_ids(&view).unwrap(),
-            vec![track.track_id.as_uuid()]
+            trusted_provider_effects(&view).unwrap(),
+            vec![(
+                MaintenanceProviderEffectKind::UpdateSavedState,
+                track.track_id.as_uuid(),
+                "Liked Songs".to_owned()
+            )]
         );
         view.provider_effects[0]
             .summary
             .push_str(" plus anything else");
         assert_eq!(
-            trusted_saved_track_removal_ids(&view).unwrap_err().code,
+            trusted_provider_effects(&view).unwrap_err().code,
             ErrorCode::StateConflict
         );
     }
