@@ -2805,6 +2805,101 @@ pub async fn import_names(
 }
 
 /// Explicitly approves a fully named, fully covered proposal.
+///
+/// A provider-intent maintenance fork may explicitly defer newly saved tracks
+/// that were never represented by its approved base generation. This keeps an
+/// unrelated Like visible to the ordinary intake workflow without forcing an
+/// account-owner decision into a reviewed batch operation.
+pub async fn approve_with_deferred_saved_intake(
+    database: &Database,
+    account_label: &str,
+    generation_id: Uuid,
+) -> Result<Status> {
+    let current = status(database, account_label).await?;
+    if current.generation_id != generation_id || current.state != "proposed" {
+        return Err(ChordriftError::Configuration(
+            "deferred-intake approval must target the latest proposed generation".to_owned(),
+        ));
+    }
+    let account_id = account_id(database, account_label).await?;
+    let base_generation_id: Uuid = sqlx::query_scalar(
+        "SELECT (parameters->>'base_generation_id')::uuid
+         FROM playlist_generations WHERE id = $1",
+    )
+    .bind(generation_id)
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or_else(|| {
+        ChordriftError::Configuration(
+            "deferred-intake approval requires a provider-intent maintenance fork".to_owned(),
+        )
+    })?;
+    let missing = sqlx::query(
+        "WITH missing AS (
+             SELECT track.id
+             FROM tracks track
+             WHERE account_track_is_library_candidate($1, track.id)
+               AND NOT EXISTS (
+                   SELECT 1 FROM excluded_tracks exclusion
+                   WHERE exclusion.provider_account_id = $1
+                     AND exclusion.track_id = track.id
+                     AND exclusion.restored_at IS NULL)
+               AND NOT EXISTS (
+                   SELECT 1 FROM playlists playlist
+                   JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+                   WHERE playlist.generation_id = $2
+                     AND membership.track_id = track.id))
+         SELECT missing.id,
+                EXISTS (
+                    SELECT 1 FROM playlists playlist
+                    JOIN playlist_tracks membership ON membership.playlist_id = playlist.id
+                    WHERE playlist.generation_id = $3
+                      AND membership.track_id = missing.id) AS represented_in_base,
+                EXISTS (
+                    SELECT 1 FROM provider_current_inventories inventory
+                    JOIN provider_saved_track_revision_tracks saved
+                      ON saved.revision_id = inventory.saved_track_revision_id
+                    JOIN provider_tracks provider_track
+                      ON provider_track.id = saved.provider_track_id
+                    WHERE inventory.provider_account_id = $1
+                      AND provider_track.track_id = missing.id) AS currently_saved
+         FROM missing ORDER BY missing.id",
+    )
+    .bind(account_id)
+    .bind(generation_id)
+    .bind(base_generation_id)
+    .fetch_all(database.pool())
+    .await?;
+    let mut deferred_track_ids = Vec::with_capacity(missing.len());
+    for row in missing {
+        if row.try_get::<bool, _>("represented_in_base")?
+            || !row.try_get::<bool, _>("currently_saved")?
+        {
+            return Err(ChordriftError::Configuration(
+                "only newly saved tracks absent from the approved base may be deferred".to_owned(),
+            ));
+        }
+        deferred_track_ids.push(row.try_get::<Uuid, _>("id")?);
+    }
+    if !deferred_track_ids.is_empty() {
+        sqlx::query(
+            "UPDATE playlist_generations
+             SET required_track_count = represented_track_count,
+                 coverage_complete = true,
+                 parameters = parameters || jsonb_build_object(
+                     'deferred_saved_intake_track_ids', to_jsonb($2::uuid[]),
+                     'deferred_saved_intake_count', cardinality($2::uuid[]))
+             WHERE id = $1 AND status = 'proposed'",
+        )
+        .bind(generation_id)
+        .bind(&deferred_track_ids)
+        .execute(database.pool())
+        .await?;
+    }
+    approve(database, account_label, generation_id).await
+}
+
+/// Explicitly approves a fully named, fully covered proposal.
 pub async fn approve(
     database: &Database,
     account_label: &str,

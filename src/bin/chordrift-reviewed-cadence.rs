@@ -112,7 +112,12 @@ async fn run() -> chordrift::Result<()> {
             .await?
             .track_count;
     }
-    let approved = proposals::approve(&database, &account, generation.generation_id).await?;
+    let approved = proposals::approve_with_deferred_saved_intake(
+        &database,
+        &account,
+        generation.generation_id,
+    )
+    .await?;
     println!("generation_id: {}", approved.generation_id);
     println!("playlists: {}", cadence.playlists.len());
     println!("assigned_tracks: {assigned}");

@@ -269,6 +269,13 @@ pub async fn assess(
                 && operation.safety.get("append_only") == Some(&Value::Bool(true))
                 && operation.safety.get("destructive") == Some(&Value::Bool(false))
         });
+    let bounded_reorder_only = !operations.is_empty()
+        && operations.iter().all(|operation| {
+            operation.kind == "reorder_playlist"
+                && operation.safety.get("destructive") == Some(&Value::Bool(false))
+                && operation.safety.get("membership_unchanged") == Some(&Value::Bool(true))
+        });
+    let unrelated_unresolved_may_be_deferred = bounded_append_only || bounded_reorder_only;
     let probe_passed = probe.is_some_and(|status| has_required_apply_scopes(&status.scopes));
     let checks = vec![
         check(
@@ -291,13 +298,15 @@ pub async fn assess(
         check(
             "complete_library_inventory",
             conflicting_count == 0
-                && (unresolved_count == 0 || bounded_append_only)
+                && (unresolved_count == 0 || unrelated_unresolved_may_be_deferred)
                 && inventory_count == placed_count + excluded_count + unresolved_count,
             json!({"inventory": inventory_count, "placed": placed_count,
                 "excluded": excluded_count, "unresolved": unresolved_count,
                 "conflicting_dispositions": conflicting_count,
                 "unrelated_unresolved_deferred_by_bounded_append":
-                    bounded_append_only && unresolved_count > 0}),
+                    bounded_append_only && unresolved_count > 0,
+                "unrelated_unresolved_deferred_by_bounded_reorder":
+                    bounded_reorder_only && unresolved_count > 0}),
         ),
         check(
             "artwork_approved",
