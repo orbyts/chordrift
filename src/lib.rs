@@ -77,6 +77,8 @@ pub mod model_inference;
 pub mod onboarding;
 /// Read-only current-inventory audit for a captured onboarding session.
 pub mod onboarding_audit;
+/// Host-local, read-only catalog resolution for reviewed migration cohorts.
+pub mod operator_catalog;
 /// Account-scoped playlist roles and drift policy.
 pub mod playlists;
 mod presentation;

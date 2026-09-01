@@ -23,7 +23,7 @@ use super::models::{
     BookmarkContentStatus, CurrentUser, CursorPage, ExternalPlaylistInventory,
     ExternalPlaylistRelationship, Page, PlaylistInventory, PlaylistItem, ReusePlan, SavedAlbum,
     SavedAlbumInventory, SavedAlbumReuse, SavedAlbumsInventory, SavedTrack, SavedTrackReuse,
-    SavedTracksInventory, SpotifyInventory, SpotifyPlaylist, SpotifyTrack,
+    SavedTracksInventory, SeveralTracks, SpotifyInventory, SpotifyPlaylist, SpotifyTrack,
 };
 
 const API_ROOT: &str = "https://api.spotify.com/v1/";
@@ -82,6 +82,36 @@ impl SpotifyClient {
     /// Returns the authenticated account's stable identity.
     pub async fn current_user(&self) -> Result<CurrentUser> {
         self.get_json(api_url("me")?).await
+    }
+
+    /// Resolves a bounded set of catalog identities without changing Spotify.
+    pub(crate) async fn catalog_tracks(
+        &self,
+        track_ids: &[String],
+    ) -> Result<Vec<Option<SpotifyTrack>>> {
+        if track_ids.is_empty() || track_ids.len() > 50 {
+            return Err(ChordriftError::Configuration(
+                "Spotify catalog lookup must contain between 1 and 50 track IDs".to_owned(),
+            ));
+        }
+        if track_ids
+            .iter()
+            .any(|track_id| track_id.trim().is_empty() || track_id.contains(','))
+        {
+            return Err(ChordriftError::Configuration(
+                "Spotify catalog lookup contains an invalid track ID".to_owned(),
+            ));
+        }
+        let mut url = api_url("tracks")?;
+        url.query_pairs_mut()
+            .append_pair("ids", &track_ids.join(","));
+        let response: SeveralTracks = self.get_json(url).await?;
+        if response.tracks.len() != track_ids.len() {
+            return Err(ChordriftError::Configuration(
+                "Spotify catalog lookup returned an unexpected track count".to_owned(),
+            ));
+        }
+        Ok(response.tracks)
     }
 
     pub(crate) async fn current_playlists(&self) -> Result<Vec<SpotifyPlaylist>> {
