@@ -10,6 +10,24 @@ Last updated: 2026-08-31.
 
 ## Hosted Spotify connection checkpoint
 
+The active private deployment now runs exact commit
+`94f35133af725565c87eceaeda8beaf819dd03b5` as image
+`chordrift:94f3513` on Vortex. Both API and worker run as UID/GID 65532 with
+read-only root filesystems and `unless-stopped`; the 43.2 MB runtime contains
+only `chordrift-server`, `chordrift-worker`, and runtime necessities. Before
+deployment, a validated 29.4 MB compressed logical backup was written to the
+Vortex operator backup directory, then additive migration 0051 completed the
+canonical database at 51/51. HTTPS liveness/readiness and security headers
+pass through Nexus/Cloudflare. The same authenticated Chordrift browser
+session survived an API/worker restart and retained the existing account,
+Spotify connection identity, playlists, track views, and 455 active reversible
+exclusions. Lightleak Reverie now compares as 501 provider and 501 Chordrift
+memberships with order-only drift. The current Spotify connection is retained
+but its encrypted credential is not active, so the browser truthfully shows
+Reconnect and disables observation. The next live gate is one user-completed
+Spotify reconnect; do not manufacture or import a token around that OAuth
+boundary.
+
 The V021-06 beta branch keeps Chordrift product login and Spotify provider
 authorization separate. Server-owned Spotify PKCE routes implement Connect,
 Reconnect, Add Account, and Disconnect. Stable Spotify identity selects the
@@ -21,9 +39,8 @@ observations and intent. The web client only launches these routes, renders
 status, and selects a connection. A disposable PostgreSQL 18 proof on Vortex
 passed same-row history retention, encrypted credential rotation, cross-tenant
 rejection, and history-preserving disconnect; its database container, source
-copy, and root-owned build output were removed. Deployment and browser
-acceptance remain gated; no Spotify or production Neon operation occurred while
-implementing this checkpoint.
+copy, and root-owned build output were removed. The implementation is deployed;
+browser lifecycle acceptance remains gated on the explicit reconnect above.
 
 Contract v1.4 adds one Rust-owned, set-based provider/model comparison query.
 It distinguishes provider-only occurrences, Chordrift-only occurrences,
@@ -32,7 +49,7 @@ unpublished Chordrift surfaces. The web Library view and typed remote
 `service library compare` command consume the same DTO. Unit tests cover
 duplicates, unresolved counts, and reorder-only state; HTTP/local transport
 parity is covered, and the disposable PostgreSQL intake fixture exercises the
-real SQL path. Deployment/browser acceptance remains pending.
+real SQL path. Deployment and authenticated-browser acceptance passed.
 
 Every daily-driver failure and its permanent regression belongs in
 `docs/design/DAILY_DRIVER_EDGE_CASE_LEDGER.md`. Treat chaotic cumulative

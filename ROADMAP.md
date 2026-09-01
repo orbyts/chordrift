@@ -325,7 +325,7 @@ and later Chordrift refactor begin.
   are both usable daily drivers over the same Rust contract. This is not yet an
   unrestricted public web launch. Acceptance requires all of the following:
 
-  - [ ] **Production assembly.** Add explicit API and worker entry points that
+  - [x] **Production assembly.** Add explicit API and worker entry points that
     wire the typed application contract, PostgreSQL product sessions,
     encrypted provider-credential vault, durable operation queue, and a real
     Spotify/PostgreSQL maintenance adapter. A deployed route must never invoke
@@ -342,7 +342,7 @@ and later Chordrift refactor begin.
     own stable subject, account ownership, revocable sessions, and future
     identity-linking boundary. Spotify authorization remains a separate,
     revocable provider connection and is never a Chordrift login method.
-  - [ ] **Existing-account adoption.** Bind Suhail's first verified Google
+  - [x] **Existing-account adoption.** Bind Suhail's first verified Google
     issuer/subject to the existing Chordrift account through the trusted
     bootstrap boundary. Do not create an empty replacement account, rewrite
     music ownership IDs, re-import Spotify, or mutate provider state. Compare
@@ -367,19 +367,19 @@ and later Chordrift refactor begin.
     terminal. The web client may omit expert forensic queries, but it must make
     high-level divergence understandable—for example, `12 provider-only, 4
     Chordrift-only` rather than showing unexplained unequal totals.
-  - [ ] **Shared CLI/web investigation.** Expose the same provider connection,
+  - [x] **Shared CLI/web investigation.** Expose the same provider connection,
     state timestamps, playlist summaries, directional membership differences,
     track facts, exclusions, operation state, and safe diagnostics through
     typed queries renderable by both clients. The CLI may offer deeper detail;
     neither client receives shell or SQL access through the service.
-  - [ ] **Reproducible containers.** Use a pinned multi-stage Docker build. The
+  - [x] **Reproducible containers.** Use a pinned multi-stage Docker build. The
     repository may exist in the checked-out build workspace/builder stage, but
     production API and worker images contain only the Rust executable, static
     web assets, certificates/runtime necessities, and provenance labels—not
     Git history, source, compiler caches, or build credentials. Run as a
     non-root user with read-only filesystem, bounded resources, health checks,
     and separately scoped API/worker processes.
-  - [ ] **Vortex compute deployment.** Deploy API and worker containers on the
+  - [x] **Vortex compute deployment.** Deploy API and worker containers on the
     Ubuntu Vortex host. Keep Neon, Spotify, OIDC, session, and vault-key secrets
     outside images and version control. Bind the upstream service only to the
     private LAN/container boundary and prove a restart does not lose accepted
@@ -434,6 +434,19 @@ and later Chordrift refactor begin.
   without invalidating the cutover, while legacy-table return, non-empty
   staging, or evidence loss still fails verification. Active Vortex/Nexus
   deployment and provider-aware provider/model library inspection are proven.
+  On 2026-08-31, exact commit
+  `94f35133af725565c87eceaeda8beaf819dd03b5` was rebuilt as the pinned
+  43.2 MB image `chordrift:94f3513` and deployed as separate non-root,
+  read-only API and worker containers on Vortex. A fresh 29.4 MB compressed
+  logical backup was validated before additive migration 0051 moved the
+  canonical database from 50/51 to 51/51. HTTPS readiness, security headers,
+  existing Google-account adoption, provider/model comparison, ordered
+  playlist inspection, the 455-item exclusion archive, and Chordrift-session
+  survival across a full API/worker restart passed in the real browser. The
+  comparison resolves the reported Lightleak Reverie mismatch as 501 provider
+  and 501 Chordrift memberships with only custom-order drift. The retained
+  Spotify connection currently has no active encrypted credential, so provider
+  observation remains correctly disabled until one explicit Reconnect OAuth.
   Consolidation deliberately did not copy rehearsal fixture identities,
   revoked fixture credentials, or fixture operations. Auth0/Google first-owner
   adoption and encrypted generation-1 import of the existing Spotify refresh
@@ -441,9 +454,9 @@ and later Chordrift refactor begin.
   provider selector visibly reports Spotify connection
   and newest-observation state and is designed for future connections. The
   exact web acceptance surface is recorded in
-  `docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md`. Remaining gates are canonical
-  provider-effect authorization/apply/verification, the complete web maintenance
-  journey, provider connection lifecycle, operational recovery checks, and beta
+  `docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md`. Remaining gates are the
+  Spotify reconnect, canonical provider-effect authorization/apply/verification,
+  the complete web maintenance journey, operational recovery checks, and beta
   publication. Read-only
   provider observation is now a real durable operation:
   the authenticated API accepts the typed command, the separately containerized
@@ -462,8 +475,10 @@ and later Chordrift refactor begin.
   an exact maintenance fork that preserves approved artwork and never classifies
   unrelated tracks. Saved cleanup is withheld until all decisions are resolved
   and is ordered after destination intent. The disposable-PostgreSQL projection
-  proof passes. Unsupported phases fail closed and Authorize remains unavailable;
-  provider writes remain disabled.
+  proof passes. Authorize now accepts only a server-rederived saved-state review,
+  rechecks the provider snapshot, executes only its enumerated saved-track
+  removals, observes again, and verifies before completion. Broader provider
+  publication remains unavailable.
 
   Durable-session checkpoint (2026-08-31): additive migration 0051, a
   tenant/provider-scoped current session store, immutable accepted-revision
