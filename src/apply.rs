@@ -321,9 +321,15 @@ fn playlist_membership_write<'operation>(
         let mut desired_membership = desired.to_vec();
         desired_membership.sort();
         if live_membership != desired_membership {
-            return Err(configuration(
-                "a reorder requires identical current and desired membership",
-            ));
+            let live_only = multiset_difference(&live_membership, &desired_membership);
+            let desired_only = multiset_difference(&desired_membership, &live_membership);
+            return Err(configuration(format!(
+                "a reorder requires identical current and desired membership: live={}, desired={}, live_only={:?}, desired_only={:?}",
+                live_items.len(),
+                desired.len(),
+                live_only.iter().take(10).collect::<Vec<_>>(),
+                desired_only.iter().take(10).collect::<Vec<_>>()
+            )));
         }
         return Ok(PlaylistMembershipWrite::ExactReorder);
     }
@@ -342,6 +348,23 @@ fn playlist_membership_write<'operation>(
         }
     }
     Ok(PlaylistMembershipWrite::EnumeratedAdditions { reused, missing })
+}
+
+fn multiset_difference(left: &[String], right: &[String]) -> Vec<String> {
+    let mut right_counts = std::collections::HashMap::<&str, usize>::new();
+    for value in right {
+        *right_counts.entry(value.as_str()).or_default() += 1;
+    }
+    let mut difference = Vec::new();
+    for value in left {
+        let count = right_counts.entry(value.as_str()).or_default();
+        if *count == 0 {
+            difference.push(value.clone());
+        } else {
+            *count -= 1;
+        }
+    }
+    difference
 }
 
 fn exact_live_membership_reuses_phase(
@@ -1872,7 +1895,7 @@ mod tests {
 
     use super::{
         ApplyPhase, Operation, PlaylistMembershipWrite, exact_live_membership_reuses_phase,
-        playlist_membership_write,
+        multiset_difference, playlist_membership_write,
     };
 
     fn addition(spotify_track_id: &str) -> Operation {
@@ -1957,5 +1980,13 @@ mod tests {
             panic!("reviewed addition must remain enumerated");
         };
         assert_eq!(missing[0].1, "reviewed-history-track");
+    }
+
+    #[test]
+    fn reorder_diagnostics_preserve_duplicate_occurrence_differences() {
+        let left = vec!["a".to_owned(), "a".to_owned(), "b".to_owned()];
+        let right = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+        assert_eq!(multiset_difference(&left, &right), vec!["a"]);
+        assert_eq!(multiset_difference(&right, &left), vec!["c"]);
     }
 }
