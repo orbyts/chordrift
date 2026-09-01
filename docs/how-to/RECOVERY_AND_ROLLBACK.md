@@ -82,3 +82,32 @@ Spotify remains the current listening surface, but it is not a replacement for
 the Neon audit ledger. A database restore never authorizes Chordrift to rewrite
 Spotify. Any provider repair requires a separately generated exact plan and
 explicit approval.
+
+## Hosted private-beta inspection
+
+The Vortex API and worker emit one JSON object per line using controlled fields
+only. API entries contain request ID, method, path, status, and elapsed time;
+worker entries contain the same request ID plus operation ID, phase, attempt,
+retry budget, and a fixed error code. They never serialize headers, cookies,
+request bodies, database URLs, product sessions, OAuth credentials, refresh
+tokens, or vault plaintext. Nexus forwards or creates `X-Request-ID`, and the
+API returns it to the client for correlation.
+
+Use these read-only checks on Vortex:
+
+```console
+$ docker compose --env-file "$XDG_CONFIG_HOME/chordrift-hosted/chordrift.env" \
+    -f deploy/vortex/compose.yml ps
+$ docker compose --env-file "$XDG_CONFIG_HOME/chordrift-hosted/chordrift.env" \
+    -f deploy/vortex/compose.yml logs --since=15m api worker
+$ curl --fail --silent --show-error https://chordrift.suhail.ink/health/live
+$ curl --fail --silent --show-error https://chordrift.suhail.ink/health/ready
+```
+
+Treat repeated `worker_failed`, exhausted attempts, readiness failure, an API
+restart loop, or sustained HTTP 5xx responses as an alert. Stop the worker
+first to prevent new provider work, preserve logs and the exact image digest,
+then redeploy the preceding tagged image for both API and worker together. Do
+not downgrade the database or authorize a compensating Spotify write. The
+Compose restart policy and bounded local log driver preserve availability and
+prevent unbounded host-disk growth.

@@ -12,13 +12,15 @@ authenticated compatibility negotiation, then sends an exact `CommandRequest`
 or `QueryRequest` to the Rust authority. It never receives Neon credentials,
 provider refresh credentials, SQL access, or an endpoint for shell commands.
 
-The opaque `chd_session_…` credential is read from standard input once and
-stored under a named profile in the operating-system credential store. Status
-reports only whether a value exists; removal never prints it. V021-06 will
-select the external product login and service URL distribution experience.
+V021-06 completes the user-facing sign-in: the CLI creates a loopback listener,
+opens the hosted Chordrift consent page, and exchanges a single-use code with
+PKCE for a separate revocable `chd_session_…` credential. Only that opaque
+session is stored under a named profile in the operating-system credential
+store. The token never enters browser history or terminal output. Status
+reports only whether a value exists; removal never prints it.
 
 ```text
-printf '%s' "$SESSION" | chordrift service session save --profile default
+chordrift service session login --url https://chordrift.suhail.ink
 chordrift service compatibility --url https://service.example
 chordrift service command --url https://service.example --file command.json
 chordrift service query --url https://service.example --file query.json
@@ -32,6 +34,9 @@ web, iOS, and Android screens compile user gestures into the same DTOs.
 ## Security and compatibility
 
 - HTTPS is mandatory except `localhost`, `127.0.0.1`, or `::1` development.
+- Browser-mediated login accepts only an exact ephemeral IPv4/IPv6 loopback
+  callback, binds state and PKCE, requires explicit same-origin consent, and
+  consumes the authorization code once.
 - Authentication precedes compatibility, command, and query dispatch.
 - The client negotiates the highest common contract, accepted hosted schema,
   and required service capabilities before every command/query invocation.

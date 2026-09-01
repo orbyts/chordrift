@@ -4,27 +4,25 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.1-alpha.18**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-beta.1**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
-and verified 50/50 database together; see
+and verified 51/51 database together; see
 [Recovery and rollback](how-to/RECOVERY_AND_ROLLBACK.md).
 
-> **Hosted-service status:** V021-05's authenticated remote CLI transport is
-> implemented, and the V021-06 private deployment foundation is running with
-> Chordrift login through Google/Auth0. Spotify Connect/Reconnect/Disconnect is
-> implemented on the beta branch but not yet deployed and browser-accepted.
-> The full browser daily driver, existing-account adoption re-verification, and
-> beta.1 release gate remain open. Continue using the local maintenance workflow for provider-backed
-> daily work; remote failure never causes an implicit local fallback.
+> **Hosted-service status:** beta.1 provides the private authenticated web daily
+> driver, independent Google/Chordrift and Spotify connection lifecycles, and a
+> browser-authorized remote CLI over the same Rust contract. The local workflow
+> remains an explicit developer/forensic adapter; remote failure never causes
+> an implicit local fallback.
 
 ## Documentation map
 
 | Need | Authoritative document | Status |
 | --- | --- | --- |
-| Perform daily library work | This guide and the linked `how-to/` pages | Current v0.2.1 alpha maintenance behavior. |
+| Perform daily library work | This guide and the linked `how-to/` pages | Current v0.2.1 beta maintenance behavior. |
 | Understand IDs, phases, plan origins, and verification | [From intent to verified execution](how-to/INTENT_TO_EXECUTION.md) | Maintenance safety model plus V020-11R capability/origin reconciliation. |
-| Look up a command | [CLI command reference](reference/CLI_COMMANDS.md) | Complete v0.2.1 alpha command surface; operator-only leaves are labeled. |
+| Look up a command | [CLI command reference](reference/CLI_COMMANDS.md) | Complete v0.2.1 beta command surface; operator-only leaves are labeled. |
 | Recover or roll back an upgrade | [Recovery and rollback](how-to/RECOVERY_AND_ROLLBACK.md) | Atomic binary/database recovery and split-brain precautions. |
 | Review the v0.2 product/client architecture | [Playlist product architecture](design/PLAYLIST_PRODUCT_ARCHITECTURE.md) | Portable core complete; v0.2.1 stabilizes the local daily driver before the separate dependency and next refactor. |
 | Review intent interpretation | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Active v0.2 product policy, grounded in the existing explicit CLI loop. |
@@ -191,10 +189,9 @@ exclusions, and direct reclassification moves is:
 $ scripts/chordrift-maintain.sh --account personal
 ```
 
-Alpha.17 keeps this shell as the temporary local CLI adapter while the same
-task-level state and authorization rules are now available through the Rust
-service contract. Product identity/session machinery is implemented, and the
-private V021-06 deployment uses Auth0/Google at
+The shell remains an explicit local developer adapter while the same task-level
+state and authorization rules are available through the Rust service contract.
+The private V021-06 deployment uses Auth0/Google at
 `https://chordrift.suhail.ink`. V021-03 adds the
 internal encrypted credential vault and V021-04 adds restart-safe durable
 operations; V021-05/V021-06 add remote CLI parity and deployment. Migrations
@@ -202,7 +199,7 @@ operations; V021-05/V021-06 add remote CLI parity and deployment. Migrations
 storage; ordinary local maintenance continues to
 require only the already verified schema through migration 0047.
 
-The consolidated personal deployment now shows `50/50`: the local CLI and
+The consolidated personal deployment now shows `51/51`: the local CLI and
 hosted service share one canonical database on the Neon `main` branch. Ordinary
 maintenance still exercises only its migration-47-compatible contract. The
 presence of additive hosted tables does not authorize provider-backed service

@@ -11,12 +11,12 @@ use std::{
     env,
     net::SocketAddr,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
 use axum::{
-    Json, Router,
+    Form, Json, Router,
     extract::{Path as AxumPath, Query as AxumQuery, Request, State},
     http::{
         HeaderMap, HeaderName, HeaderValue, StatusCode,
@@ -81,6 +81,7 @@ const LOGIN_COOKIE: &str = "chordrift_login";
 const SPOTIFY_LOGIN_COOKIE: &str = "chordrift_spotify_login";
 const LOGIN_TTL_MINUTES: i64 = 10;
 const MAX_LOGIN_ATTEMPTS: usize = 128;
+const CLI_LOGIN_TTL_MINUTES: i64 = 5;
 const INDEX_HTML: &str = include_str!("../web/index.html");
 const APP_JS: &str = include_str!("../web/app.js");
 const LIBRARY_EXPLORER_JS: &str = include_str!("../web/library-explorer.js");
@@ -235,6 +236,15 @@ struct SpotifyLoginAttempt {
     expires_at: DateTime<Utc>,
 }
 
+struct CliLoginAttempt {
+    subject: AuthenticatedSubject,
+    redirect_uri: Url,
+    client_state: String,
+    code_challenge: String,
+    approved: bool,
+    expires_at: DateTime<Utc>,
+}
+
 #[derive(Clone)]
 struct HostedState {
     config: Arc<HostedConfig>,
@@ -245,6 +255,7 @@ struct HostedState {
     oidc: Arc<OidcVerifier>,
     login_attempts: Arc<Mutex<HashMap<String, LoginAttempt>>>,
     spotify_login_attempts: Arc<Mutex<HashMap<String, SpotifyLoginAttempt>>>,
+    cli_login_attempts: Arc<Mutex<HashMap<String, CliLoginAttempt>>>,
     provider_connections: Arc<PostgresProviderConnectionAuthority>,
 }
 
@@ -1145,6 +1156,7 @@ pub async fn run_from_env() -> Result<()> {
         oidc,
         login_attempts: Arc::new(Mutex::new(HashMap::new())),
         spotify_login_attempts: Arc::new(Mutex::new(HashMap::new())),
+        cli_login_attempts: Arc::new(Mutex::new(HashMap::new())),
         provider_connections,
     };
 
@@ -1185,6 +1197,9 @@ pub async fn run_from_env() -> Result<()> {
         .route("/auth/callback", get(callback))
         .route("/auth/session", get(session_status))
         .route("/auth/logout", post(logout))
+        .route("/auth/cli/authorize", get(cli_authorize))
+        .route("/auth/cli/approve", post(cli_approve))
+        .route("/auth/cli/exchange", post(cli_exchange))
         .route("/providers/spotify/connect", get(spotify_connect))
         .route("/providers/spotify/callback", get(spotify_callback))
         .route(
@@ -1193,13 +1208,65 @@ pub async fn run_from_env() -> Result<()> {
         )
         .with_state(state)
         .merge(typed)
-        .layer(middleware::from_fn(security_headers));
+        .layer(middleware::from_fn(security_headers))
+        .layer(middleware::from_fn(request_observability));
 
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
     axum::serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
+}
+
+async fn request_observability(request: Request, next: Next) -> Response {
+    let started = Instant::now();
+    let request_id = request
+        .headers()
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 128
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        })
+        .map_or_else(random_url_token, str::to_owned);
+    let method = request.method().as_str().to_owned();
+    let path = request.uri().path().to_owned();
+    let mut response = next.run(request).await;
+    if let Ok(value) = HeaderValue::from_str(&request_id) {
+        response.headers_mut().insert("x-request-id", value);
+    }
+    eprintln!(
+        "{}",
+        request_log_line(
+            &request_id,
+            &method,
+            &path,
+            response.status().as_u16(),
+            started.elapsed().as_millis(),
+        )
+    );
+    response
+}
+
+fn request_log_line(
+    request_id: &str,
+    method: &str,
+    path: &str,
+    status: u16,
+    elapsed_ms: u128,
+) -> String {
+    serde_json::json!({
+        "event": "http_request",
+        "request_id": request_id,
+        "method": method,
+        "path": path,
+        "status": status,
+        "elapsed_ms": elapsed_ms,
+    })
+    .to_string()
 }
 
 async fn security_headers(request: Request, next: Next) -> Response {
@@ -1278,7 +1345,7 @@ fn deployment_compatibility() -> ServiceCompatibility {
             ),
             (
                 CAPABILITY_REMOTE_CLI.to_owned(),
-                CapabilityAvailability::Unavailable,
+                CapabilityAvailability::Available,
             ),
             (
                 CAPABILITY_MAINTENANCE_TASK_SESSION.to_owned(),
@@ -1551,6 +1618,151 @@ async fn logout(State(state): State<HostedState>, request: Request) -> Response 
 }
 
 #[derive(Deserialize)]
+struct CliAuthorizeQuery {
+    redirect_uri: String,
+    state: String,
+    code_challenge: String,
+    code_challenge_method: String,
+}
+
+#[derive(Deserialize)]
+struct CliApproveForm {
+    flow_id: String,
+}
+
+#[derive(Deserialize, Serialize)]
+/// One-time PKCE exchange submitted by the installed CLI after browser consent.
+pub struct CliSessionExchangeRequest {
+    /// Product-session schema understood by the CLI.
+    pub schema_version: u16,
+    /// Single-use authorization code returned only to the loopback listener.
+    pub code: String,
+    /// Exact loopback callback bound by the authorization request.
+    pub redirect_uri: String,
+    /// PKCE verifier retained only by the initiating CLI process.
+    pub code_verifier: String,
+}
+
+async fn cli_authorize(
+    State(state): State<HostedState>,
+    AxumQuery(query): AxumQuery<CliAuthorizeQuery>,
+    headers: HeaderMap,
+) -> Response {
+    let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Html("Sign in to Chordrift in this browser, then run the CLI login again."),
+        )
+            .into_response();
+    };
+    let Ok(redirect_uri) = Url::parse(&query.redirect_uri) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    if !valid_cli_redirect(&redirect_uri)
+        || query.code_challenge_method != "S256"
+        || query.state.is_empty()
+        || query.state.len() > 256
+        || URL_SAFE_NO_PAD
+            .decode(query.code_challenge.as_bytes())
+            .ok()
+            .is_none_or(|bytes| bytes.len() != 32)
+    {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let flow_id = random_url_token();
+    {
+        let mut attempts = state.cli_login_attempts.lock().await;
+        attempts.retain(|_, attempt| attempt.expires_at > Utc::now());
+        if attempts.len() >= MAX_LOGIN_ATTEMPTS {
+            return StatusCode::TOO_MANY_REQUESTS.into_response();
+        }
+        attempts.insert(
+            flow_id.clone(),
+            CliLoginAttempt {
+                subject,
+                redirect_uri,
+                client_state: query.state,
+                code_challenge: query.code_challenge,
+                approved: false,
+                expires_at: Utc::now() + TimeDelta::minutes(CLI_LOGIN_TTL_MINUTES),
+            },
+        );
+    }
+    Html(format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize Chordrift CLI</title></head><body><main><h1>Connect the Chordrift CLI?</h1><p>This creates a separate revocable Chordrift session on this computer. It does not share Spotify or database credentials.</p><form method=\"post\" action=\"/auth/cli/approve\"><input type=\"hidden\" name=\"flow_id\" value=\"{flow_id}\"><button type=\"submit\">Authorize CLI</button></form></main></body></html>"
+    ))
+    .into_response()
+}
+
+async fn cli_approve(
+    State(state): State<HostedState>,
+    headers: HeaderMap,
+    Form(form): Form<CliApproveForm>,
+) -> Response {
+    if !same_origin(&state, &headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let Some(mut attempt) = state.cli_login_attempts.lock().await.remove(&form.flow_id) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    if attempt.expires_at <= Utc::now() || attempt.subject != subject || attempt.approved {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    attempt.approved = true;
+    let code = random_url_token();
+    let mut redirect = attempt.redirect_uri.clone();
+    redirect
+        .query_pairs_mut()
+        .append_pair("code", &code)
+        .append_pair("state", &attempt.client_state);
+    state.cli_login_attempts.lock().await.insert(code, attempt);
+    (
+        StatusCode::SEE_OTHER,
+        [(LOCATION, redirect.as_str().to_owned())],
+    )
+        .into_response()
+}
+
+async fn cli_exchange(
+    State(state): State<HostedState>,
+    Json(request): Json<CliSessionExchangeRequest>,
+) -> Response {
+    if request.schema_version != PRODUCT_SESSION_SCHEMA_VERSION {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let Some(attempt) = state.cli_login_attempts.lock().await.remove(&request.code) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let verifier_challenge =
+        URL_SAFE_NO_PAD.encode(Sha256::digest(request.code_verifier.as_bytes()));
+    if !attempt.approved
+        || attempt.expires_at <= Utc::now()
+        || attempt.redirect_uri.as_str() != request.redirect_uri
+        || verifier_challenge != attempt.code_challenge
+    {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    match state.session_authority.delegate(attempt.subject).await {
+        Ok(grant) => (StatusCode::CREATED, Json(grant)).into_response(),
+        Err(_) => StatusCode::FORBIDDEN.into_response(),
+    }
+}
+
+fn valid_cli_redirect(url: &Url) -> bool {
+    url.scheme() == "http"
+        && matches!(url.host_str(), Some("127.0.0.1" | "::1" | "[::1]"))
+        && url.port().is_some()
+        && url.path() == "/callback"
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+}
+
+#[derive(Deserialize)]
 struct SpotifyConnectQuery {
     provider_connection_id: Option<ResourceId>,
 }
@@ -1817,7 +2029,47 @@ mod tests {
                 .get(CAPABILITY_MAINTENANCE_TASK_SESSION),
             Some(&CapabilityAvailability::Available)
         );
+        assert_eq!(
+            compatibility.features.get(CAPABILITY_REMOTE_CLI),
+            Some(&CapabilityAvailability::Available)
+        );
         assert!(compatibility.provider_capabilities.is_empty());
+    }
+
+    #[test]
+    fn cli_login_accepts_only_exact_loopback_callbacks() {
+        assert!(valid_cli_redirect(
+            &Url::parse("http://127.0.0.1:43117/callback").unwrap()
+        ));
+        assert!(valid_cli_redirect(
+            &Url::parse("http://[::1]:43117/callback").unwrap()
+        ));
+        for rejected in [
+            "https://127.0.0.1:43117/callback",
+            "http://localhost:43117/callback",
+            "http://127.0.0.1/callback",
+            "http://127.0.0.1:43117/other",
+            "http://127.0.0.1:43117/callback?next=https://attacker.example",
+            "http://user@127.0.0.1:43117/callback",
+            "http://attacker.example:43117/callback",
+        ] {
+            assert!(
+                !valid_cli_redirect(&Url::parse(rejected).unwrap()),
+                "{rejected}"
+            );
+        }
+    }
+
+    #[test]
+    fn request_logs_are_built_only_from_controlled_fields() {
+        let line = request_log_line("req_1", "POST", "/v1/commands", 202, 17);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&line).unwrap()["request_id"],
+            "req_1"
+        );
+        assert!(!line.contains("Authorization"));
+        assert!(!line.contains("chd_session_"));
+        assert!(!line.contains("postgresql://"));
     }
 
     #[test]

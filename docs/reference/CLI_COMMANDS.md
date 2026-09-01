@@ -5,13 +5,12 @@ instructions, start with [How to use Chordrift](../HOW_TO_CHORDRIFT.md).
 
 ## Authenticated service client
 
-V021-05 adds the thin remote DTO client. The V021-06 branch adds typed durable
-maintenance commands over the same contract. They are staged until migration
-0051 and the matching API/worker are deployed:
+V021-05 adds the thin remote DTO client. V021-06 adds browser-authorized CLI
+sign-in and typed durable maintenance commands over the same contract:
 
 ```bash
-printf '%s' "$CHORDRIFT_ISSUED_SESSION" |
-  chordrift service session save --profile default
+chordrift service session login --url https://chordrift.suhail.ink \
+  --profile default
 chordrift service session status --profile default
 chordrift service compatibility --url https://service.example --profile default
 chordrift service command --url https://service.example --file command.json
@@ -33,12 +32,18 @@ chordrift service maintenance authorize --url https://service.example \
 chordrift service session remove --profile default
 ```
 
-The session enters through standard input, is stored in the OS credential
-store, and is never printed. Command/query files must be exact public
+`session login` opens Chordrift in the browser, asks for explicit approval, and
+stores a separate revocable CLI session in the OS credential store. The token
+is never placed in a URL or printed. `session save` remains an operator-only
+recovery command that reads an already issued token from standard input.
+Command/query files must be exact public
 `CommandRequest`/`QueryRequest` JSON. HTTPS is mandatory except for loopback
 development. A remote failure never falls back to local Neon/provider access.
 The in-process local transport is an explicit Rust dependency-injection seam,
 not a second set of domain behavior.
+
+Operator-only recovery syntax is `chordrift service session save --profile
+default`; normal users should use browser login.
 
 `maintenance start` and `maintenance refresh` each perform a fresh provider
 read before interpretation. `show` reads the durable wrapper-neutral session.

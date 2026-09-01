@@ -906,8 +906,10 @@ where
     let Some(lease) = queue.claim_next(worker_name, LEASE_DURATION).await? else {
         return Ok(false);
     };
+    worker_log("claimed", worker_name, &lease, None);
     if queue.cancellation_requested(&lease).await? {
         queue.acknowledge_cancellation(&lease).await?;
+        worker_log("cancelled", worker_name, &lease, None);
         return Ok(true);
     }
     queue
@@ -932,19 +934,46 @@ where
                 if queue.cancellation_requested(&lease).await? {
                     drop(work);
                     queue.acknowledge_cancellation(&lease).await?;
+                    worker_log("cancelled", worker_name, &lease, None);
                     return Ok(true);
                 }
                 queue.renew_lease(&lease, LEASE_DURATION).await?;
+                worker_log("lease_renewed", worker_name, &lease, None);
             }
         }
     };
     match outcome {
-        Ok(result_id) => queue.complete(&lease, Some(result_id)).await?,
+        Ok(result_id) => {
+            queue.complete(&lease, Some(result_id)).await?;
+            worker_log("completed", worker_name, &lease, None);
+        }
         Err(error) => {
+            worker_log("failed", worker_name, &lease, Some(error.code));
             queue.fail(&lease, error).await?;
         }
     }
     Ok(true)
+}
+
+fn worker_log(
+    event: &str,
+    worker_name: &str,
+    lease: &DurableOperationLease,
+    error_code: Option<ErrorCode>,
+) {
+    eprintln!(
+        "{}",
+        serde_json::json!({
+            "event": format!("worker_{event}"),
+            "worker": worker_name,
+            "request_id": lease.request.request_id,
+            "operation_id": lease.operation_id,
+            "phase": progress_phase(&lease.request.command),
+            "attempt": lease.attempt,
+            "max_attempts": lease.max_attempts,
+            "error_code": error_code,
+        })
+    );
 }
 
 async fn dispatch<E: HostedProviderExecutor>(

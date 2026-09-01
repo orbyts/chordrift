@@ -161,6 +161,36 @@ impl ProductIdentityStore for MemoryIdentityStore {
         Ok(subject)
     }
 
+    async fn create_delegated_session(
+        &self,
+        subject: AuthenticatedSubject,
+        session: &NewProductSession,
+    ) -> Result<AuthenticatedSubject, ClientError> {
+        if session.account_id != subject.account_id {
+            return Err(ClientError::new(ErrorCode::PermissionDenied, false));
+        }
+        let mut state = self.0.lock().unwrap();
+        let active = state.bindings.values().any(|binding| {
+            binding.subject_id == subject.subject_id
+                && binding.account_id == subject.account_id
+                && binding.subject_active
+                && binding.membership_active
+                && binding.account_active
+        });
+        if !active {
+            return Err(ClientError::new(ErrorCode::PermissionDenied, false));
+        }
+        state.sessions.insert(
+            session.token_sha256,
+            StoredSession {
+                subject,
+                expires_at: session.expires_at,
+                revoked: false,
+            },
+        );
+        Ok(subject)
+    }
+
     async fn authenticate_session(
         &self,
         token_sha256: [u8; 32],
@@ -495,6 +525,39 @@ async fn tenant_matrix_fails_closed_for_wrong_unknown_expired_and_revoked_author
             subject_id: subject_a,
             account_id: account_a,
         }
+    );
+    let delegated = authority
+        .delegate(AuthenticatedSubject {
+            subject_id: subject_a,
+            account_id: account_a,
+        })
+        .await
+        .expect("an active browser subject can authorize a separate CLI session");
+    assert_ne!(delegated.access_token, grant.access_token);
+    assert_eq!(
+        authenticator
+            .authenticate(&delegated.access_token)
+            .await
+            .unwrap(),
+        AuthenticatedSubject {
+            subject_id: subject_a,
+            account_id: account_a,
+        }
+    );
+    authority.revoke(&delegated.access_token).await.unwrap();
+    assert_eq!(
+        authenticator
+            .authenticate(&delegated.access_token)
+            .await
+            .expect_err("the delegated CLI session revokes independently")
+            .code,
+        ErrorCode::AuthenticationRequired
+    );
+    assert!(
+        authenticator
+            .authenticate(&grant.access_token)
+            .await
+            .is_ok()
     );
     let guessed = authenticator
         .authenticate("chd_session_not-a-real-token")

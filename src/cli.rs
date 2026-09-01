@@ -5,7 +5,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use clap::{Parser, Subcommand, ValueEnum};
+use rand::RngCore as _;
+use sha2::{Digest as _, Sha256};
 use sqlx::Row as _;
 use zeroize::Zeroizing;
 
@@ -350,6 +353,15 @@ pub enum ServiceMaintenanceCommand {
 /// OS credential-store operations for one remote Chordrift session.
 #[derive(Clone, Debug, Subcommand)]
 pub enum ServiceSessionCommand {
+    /// Sign in through the hosted browser and store a separate CLI session.
+    Login {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+    },
     /// Read an opaque Chordrift session from standard input and store it securely.
     Save {
         /// Local credential-store profile.
@@ -2675,6 +2687,9 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
             result?;
         }
         ServiceCommand::Session { command } => match command {
+            ServiceSessionCommand::Login { url, profile } => {
+                login_service_session(&url, &profile, output).await?;
+            }
             ServiceSessionCommand::Save { profile } => {
                 let mut token = Zeroizing::new(String::new());
                 io::stdin().take(4097).read_to_string(&mut token)?;
@@ -2870,6 +2885,113 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
             writeln!(output, "{}", serde_json::to_string(&response)?)?;
         }
     }
+    Ok(())
+}
+
+async fn login_service_session(url: &str, profile: &str, output: &mut impl Write) -> Result<()> {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let base = url::Url::parse(url)
+        .map_err(|_| ChordriftError::Configuration("service URL is invalid".to_owned()))?;
+    if base.scheme() != "https" || base.host_str().is_none() {
+        return Err(ChordriftError::Configuration(
+            "service login requires an HTTPS URL".to_owned(),
+        ));
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = listener.local_addr()?.port();
+    let redirect_uri = format!("http://127.0.0.1:{port}/callback");
+    let mut verifier_bytes = [0_u8; 32];
+    rand::rng().fill_bytes(&mut verifier_bytes);
+    let verifier = Zeroizing::new(URL_SAFE_NO_PAD.encode(verifier_bytes));
+    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    let mut state_bytes = [0_u8; 32];
+    rand::rng().fill_bytes(&mut state_bytes);
+    let state = Zeroizing::new(URL_SAFE_NO_PAD.encode(state_bytes));
+    let mut authorize = base.join("/auth/cli/authorize").map_err(|_| {
+        ChordriftError::Configuration("service URL cannot authorize CLI login".to_owned())
+    })?;
+    authorize
+        .query_pairs_mut()
+        .append_pair("redirect_uri", &redirect_uri)
+        .append_pair("state", state.as_str())
+        .append_pair("code_challenge", &challenge)
+        .append_pair("code_challenge_method", "S256");
+    writeln!(
+        output,
+        "Opening Chordrift to authorize profile '{profile}'. Sign in there first if needed."
+    )?;
+    writeln!(output, "Authorize at: {authorize}")?;
+    webbrowser::open(authorize.as_str()).map_err(|_| {
+        ChordriftError::Configuration(format!(
+            "could not open the browser; visit {}",
+            authorize.as_str()
+        ))
+    })?;
+
+    let (mut socket, _) = tokio::time::timeout(Duration::from_secs(300), listener.accept())
+        .await
+        .map_err(|_| {
+            ChordriftError::Configuration("CLI login authorization timed out".to_owned())
+        })??;
+    let mut request_bytes = vec![0_u8; 8192];
+    let length = tokio::time::timeout(Duration::from_secs(5), socket.read(&mut request_bytes))
+        .await
+        .map_err(|_| ChordriftError::Configuration("CLI login callback timed out".to_owned()))??;
+    let request = std::str::from_utf8(&request_bytes[..length])
+        .map_err(|_| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
+    let target = request
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .ok_or_else(|| {
+            ChordriftError::Configuration("CLI login callback was invalid".to_owned())
+        })?;
+    let callback = url::Url::parse(&format!("http://127.0.0.1:{port}{target}"))
+        .map_err(|_| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
+    let values = callback
+        .query_pairs()
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let code = values
+        .get("code")
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ChordriftError::Configuration("CLI login was not authorized".to_owned()))?;
+    if values.get("state").map(|value| value.as_ref()) != Some(state.as_str()) {
+        return Err(ChordriftError::Configuration(
+            "CLI login state did not match".to_owned(),
+        ));
+    }
+    let callback_body = "<!doctype html><title>Chordrift CLI connected</title><p>Chordrift CLI connected. You may close this window.</p>";
+    let callback_response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{callback_body}",
+        callback_body.len()
+    );
+    socket.write_all(callback_response.as_bytes()).await?;
+
+    let exchange = base.join("/auth/cli/exchange").map_err(|_| {
+        ChordriftError::Configuration("service URL cannot exchange CLI login".to_owned())
+    })?;
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?
+        .post(exchange)
+        .json(&crate::hosted::CliSessionExchangeRequest {
+            schema_version: crate::identity::PRODUCT_SESSION_SCHEMA_VERSION,
+            code: code.to_string(),
+            redirect_uri,
+            code_verifier: verifier.to_string(),
+        })
+        .send()
+        .await?;
+    if response.status() != reqwest::StatusCode::CREATED {
+        return Err(ChordriftError::Configuration(
+            "Chordrift rejected the CLI session exchange".to_owned(),
+        ));
+    }
+    let grant: crate::identity::SessionGrant = response.json().await?;
+    let token = Zeroizing::new(grant.access_token);
+    SystemCredentialStore.save(&service_session_id(profile)?, token.as_bytes())?;
+    writeln!(output, "stored: true\nprofile: {profile}")?;
     Ok(())
 }
 
@@ -7398,10 +7520,33 @@ mod tests {
         PlaylistRoleArg, PlaylistSignalClassArg, ProductAuditMode, ProductCollectionCommand,
         ProductCommand, ProductOnboardingCommand, ProductRecipeCommand, ProductSpinCommand,
         ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, ServiceCommand,
-        ServiceLibraryCommand, ServiceMaintenanceCommand, SignalCommand, SpotifyCommand,
-        SyncCommand, TrackCommand, binary_capability_manifest, format_count, format_elapsed,
-        write_status,
+        ServiceLibraryCommand, ServiceMaintenanceCommand, ServiceSessionCommand, SignalCommand,
+        SpotifyCommand, SyncCommand, TrackCommand, binary_capability_manifest, format_count,
+        format_elapsed, write_status,
     };
+
+    #[test]
+    fn parses_browser_authorized_service_session_login() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "session",
+            "login",
+            "--url",
+            "https://chordrift.example",
+            "--profile",
+            "daily",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Session {
+                    command: ServiceSessionCommand::Login { url, profile }
+                }
+            } if url == "https://chordrift.example" && profile == "daily"
+        ));
+    }
     use crate::db::DatabaseStatus;
 
     #[test]

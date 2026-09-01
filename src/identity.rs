@@ -121,6 +121,13 @@ pub trait ProductIdentityStore: Send + Sync {
         session: &NewProductSession,
     ) -> Result<AuthenticatedSubject, ClientError>;
 
+    /// Creates a second session for an already authenticated active subject.
+    async fn create_delegated_session(
+        &self,
+        subject: AuthenticatedSubject,
+        session: &NewProductSession,
+    ) -> Result<AuthenticatedSubject, ClientError>;
+
     /// Resolves a session digest through all current authorization state.
     async fn authenticate_session(
         &self,
@@ -311,28 +318,23 @@ where
             return Err(ClientError::new(ErrorCode::IncompatibleContract, false));
         }
         let identity = self.verifier.verify(identity_credential).await?;
-        let now = self.clock.now();
-        let expires_at = self.policy.expires_at(now)?;
-        let mut secret = [0_u8; TOKEN_BYTES];
-        rand::rng().fill_bytes(&mut secret);
-        let access_token = format!("{TOKEN_PREFIX}{}", URL_SAFE_NO_PAD.encode(secret));
-        let session = NewProductSession {
-            session_id: ResourceId::new(),
-            account_id: request.account_id,
-            token_sha256: token_digest(&access_token),
-            created_at: now,
-            expires_at,
-        };
+        let (access_token, session) = self.new_session(request.account_id)?;
         let subject = self.store.create_session(&identity, &session).await?;
-        Ok(SessionGrant {
-            schema_version: PRODUCT_SESSION_SCHEMA_VERSION,
-            token_type: "Bearer".to_owned(),
-            access_token,
-            session_id: session.session_id,
-            subject_id: subject.subject_id,
-            account_id: subject.account_id,
-            expires_at,
-        })
+        Ok(session_grant(access_token, &session, subject))
+    }
+
+    /// Issues a distinct revocable session after an existing Chordrift session
+    /// has authenticated the same active subject and account.
+    pub async fn delegate(
+        &self,
+        subject: AuthenticatedSubject,
+    ) -> Result<SessionGrant, ClientError> {
+        let (access_token, session) = self.new_session(subject.account_id)?;
+        let delegated = self
+            .store
+            .create_delegated_session(subject, &session)
+            .await?;
+        Ok(session_grant(access_token, &session, delegated))
     }
 
     /// Revokes the supplied current Chordrift bearer token.
@@ -343,6 +345,41 @@ where
         self.store
             .revoke_session(token_digest(token), self.clock.now())
             .await
+    }
+
+    fn new_session(
+        &self,
+        account_id: ResourceId,
+    ) -> Result<(String, NewProductSession), ClientError> {
+        let now = self.clock.now();
+        let expires_at = self.policy.expires_at(now)?;
+        let mut secret = [0_u8; TOKEN_BYTES];
+        rand::rng().fill_bytes(&mut secret);
+        let access_token = format!("{TOKEN_PREFIX}{}", URL_SAFE_NO_PAD.encode(secret));
+        let session = NewProductSession {
+            session_id: ResourceId::new(),
+            account_id,
+            token_sha256: token_digest(&access_token),
+            created_at: now,
+            expires_at,
+        };
+        Ok((access_token, session))
+    }
+}
+
+fn session_grant(
+    access_token: String,
+    session: &NewProductSession,
+    subject: AuthenticatedSubject,
+) -> SessionGrant {
+    SessionGrant {
+        schema_version: PRODUCT_SESSION_SCHEMA_VERSION,
+        token_type: "Bearer".to_owned(),
+        access_token,
+        session_id: session.session_id,
+        subject_id: subject.subject_id,
+        account_id: subject.account_id,
+        expires_at: session.expires_at,
     }
 }
 
@@ -551,6 +588,49 @@ impl ProductIdentityStore for PostgresProductIdentityStore {
         Ok(AuthenticatedSubject {
             subject_id: ResourceId::from_uuid(subject_id),
             account_id: session.account_id,
+        })
+    }
+
+    async fn create_delegated_session(
+        &self,
+        subject: AuthenticatedSubject,
+        session: &NewProductSession,
+    ) -> Result<AuthenticatedSubject, ClientError> {
+        if session.account_id != subject.account_id {
+            return Err(ClientError::new(ErrorCode::PermissionDenied, false));
+        }
+        let inserted: Option<(Uuid, Uuid)> = sqlx::query_as(
+            "INSERT INTO product_sessions
+                (id, product_subject_id, chordrift_account_id, token_sha256,
+                 created_at, expires_at)
+             SELECT $1, subject.id, membership.chordrift_account_id,
+                    $2, $3, $4
+             FROM product_subjects subject
+             JOIN chordrift_account_memberships membership
+               ON membership.product_subject_id = subject.id
+             JOIN chordrift_accounts account
+               ON account.id = membership.chordrift_account_id
+             WHERE subject.id = $5
+               AND membership.chordrift_account_id = $6
+               AND subject.status = 'active'
+               AND membership.status = 'active'
+               AND account.status = 'active'
+             RETURNING product_subject_id, chordrift_account_id",
+        )
+        .bind(session.session_id.as_uuid())
+        .bind(session.token_sha256.as_slice())
+        .bind(session.created_at)
+        .bind(session.expires_at)
+        .bind(subject.subject_id.as_uuid())
+        .bind(subject.account_id.as_uuid())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| ClientError::new(ErrorCode::DependencyUnavailable, true))?;
+        let (subject_id, account_id) =
+            inserted.ok_or_else(|| ClientError::new(ErrorCode::PermissionDenied, false))?;
+        Ok(AuthenticatedSubject {
+            subject_id: ResourceId::from_uuid(subject_id),
+            account_id: ResourceId::from_uuid(account_id),
         })
     }
 

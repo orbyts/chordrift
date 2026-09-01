@@ -18,20 +18,16 @@ make the active library enjoyable again without silently losing history.
 
 ## Release status
 
-**v0.2.1-alpha.18 is the current daily-driver prerelease.** It preserves the
-proven maintenance CLI through one application facade and adds the provider-
-neutral product domain, onboarding and audit boundaries, deterministic recipe/
-Spin previews, explicit plan origins, and additive schema migrations 0046 and
-0047. The personal
-cutover pairs the v0.2.0 binary with the verified 47/47 database candidate;
-mixing a v0.1.4 binary with that database is not a supported operating mode.
-The `v0.1.4` tag remains the exact historical reference and rollback source.
+**v0.2.1-beta.1 is the current private-beta daily driver.** The authenticated
+web workbench and installed remote CLI are thin clients of the same hosted Rust
+contract and durable worker. Google proves Chordrift identity; Spotify remains
+a separate revocable provider connection; Neon and provider credentials stay
+server-side. The local developer/forensic CLI remains available explicitly.
 
-The v0.2.1 alpha line provides official installable checkpoints on the path to
-the hosted-authority v0.2.1 final daily driver. The installed CLI and verified
-47/47 account database may continue handling ordinary maintenance while later
-architecture work is paused; no hosted service or Classification Authority is
-required for the current workflow. Alpha.18 makes interrupted direct moves
+The v0.2.1 beta line hardens this dual-client daily driver before the final
+v0.2.1 release. Beta.1 includes the complete hosted authority, web maintenance
+journey, browser-authorized remote CLI, encrypted provider vault, durable jobs,
+and shared investigation queries. Alpha.18 made interrupted direct moves
 idempotent: paired plan evidence is recorded once, an editable proposal cannot
 turn the full accepted library into intake, and active exclusions win over
 historical assignment revisions. Alpha.17 adds the authenticated remote CLI,
@@ -70,10 +66,10 @@ final.
 Install the locked release with:
 
 ```console
-$ cargo install chordrift --version 0.2.1-alpha.18 --locked --force
+$ cargo install chordrift --version 0.2.1-beta.1 --locked --force
 ```
 
-Read the [v0.2.1-alpha.18 release notes](docs/releases/V0.2.1-alpha.18.md), the
+Read the [v0.2.1-beta.1 release notes](docs/releases/V0.2.1-beta.1.md), the
 [provider-first convergence contract](docs/design/PROVIDER_FIRST_CONVERGENCE.md),
 the [provider credential vault contract](docs/design/PROVIDER_CREDENTIAL_VAULT_V021_03.md),
 the [web workflow capability matrix](docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md),
@@ -156,11 +152,11 @@ makes background operations durable, preserves remote/local CLI parity, and
 finishes with an observable recoverable service release. See the
 [roadmap](ROADMAP.md).
 
-V021-05 adds an authenticated remote CLI over the same DTO contract. It stores
-only an opaque Chordrift session in the OS credential store, negotiates service
-compatibility before work, requires HTTPS outside loopback testing, and keeps
-an explicit in-process development transport. Hosting and product-login
-selection remain V021-06; there is no public service URL yet.
+V021-05 adds an authenticated remote CLI over the same DTO contract. V021-06
+adds browser-mediated PKCE sign-in at `chordrift service session login`, stores
+only a separate revocable Chordrift session in the OS credential store,
+negotiates service compatibility before work, requires HTTPS outside loopback
+testing, and keeps an explicit in-process development transport.
 
 Learned shared classification is a separate product and future Chordrift
 dependency, not a Chordrift database module or v0.2.1 slice. That project owns

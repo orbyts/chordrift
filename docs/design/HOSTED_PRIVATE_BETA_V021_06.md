@@ -97,7 +97,7 @@ classification authority may add scored evidence without moving this policy or
 consent boundary into a client.
 
 The service and local CLI now target the same canonical `chordrift_cutover`
-database on the single Neon `main` branch. It is at migration 50/50. The
+database on the single Neon `main` branch. It is at migration 51/51. The
 temporary pre-cutover and rehearsal branches, plus the stale duplicate
 `chordrift` database, were deleted after external logical backups and client
 health checks passed. Rehearsal fixture identities, revoked fixture
@@ -120,6 +120,16 @@ approximately 195 MB. Its largest durable components are normalized listening
 history (about 81 MB), revisioned playlist membership (about 35 MB), verified
 playlist baselines (about 15 MB), and synchronization receipts (about 9 MB).
 Those are product evidence, not branch duplication.
+
+For the private beta the lossless policy is intentionally conservative:
+normalized listening evidence, accepted intent, exclusions, current anchors,
+exact reviews, write receipts, and named recovery checkpoints remain durable.
+Routine import staging is transaction-local and must be empty after every
+successful pull. Superseded full inventory generations are eligible only after
+their current anchor, named-release dependency, pending review, apply receipt,
+and restore proof have all been preserved; derived caches may be regenerated.
+The read-only compaction plan rehearses this classification without deleting
+production rows. No age-only deletion is enabled for beta.1.
 
 Prefer disposable local PostgreSQL for migration and restore rehearsal. When
 Neon branch semantics are specifically being tested, set an expiry at branch

@@ -4,6 +4,32 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.1] - 2026-09-01
+
+- Ship the authenticated hosted Rust authority and thin web daily driver at
+  `https://chordrift.suhail.ink` over the same typed command/query/event DTOs
+  used by the installed CLI and future mobile clients.
+- Add independent Google/Chordrift login and multi-connection Spotify OAuth
+  lifecycle with encrypted server-side refresh credentials, explicit
+  reconnect/disconnect state, and preservation of the existing Neon library.
+- Route provider observation, cumulative provider-first interpretation,
+  ambiguity decisions, immutable exact review, provider apply, verification,
+  progress, retry, and cancellation through durable PostgreSQL operations and
+  a separately deployed Rust worker.
+- Add browser-mediated PKCE login for the remote CLI, issuing a separate
+  revocable Chordrift session directly into the operating-system credential
+  store without exposing product, provider, database, or OIDC credentials.
+- Add shared library, provider comparison, playlist-track, track-fact,
+  exclusion, and operation queries for web and CLI investigation.
+- Harden direct intake, moves, duplicate catalog editions, manual order,
+  Liked Songs disposition, safe add-before-remove sequencing, interrupted
+  cumulative intent, and stale-session rebasing with permanent fake-provider
+  single/composite regressions.
+- Add pinned non-root API/worker containers, health/readiness checks,
+  controlled-field JSON request/worker logs, bounded host logging, request and
+  operation correlation, backup/restore proof, and a conservative lossless
+  storage lifecycle for the private beta.
+
 ## [0.2.1-alpha.18] - 2026-08-31
 
 - Collapse the removal and addition halves of one provider move into one
