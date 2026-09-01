@@ -747,7 +747,7 @@ esac
 }
 
 #[test]
-fn excluded_track_in_managed_destination_is_not_restored_automatically() {
+fn excluded_track_with_one_later_managed_destination_is_restored_automatically() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let work = temporary_work("excluded-managed-intake");
     let fake = work.join("chordrift-fake");
@@ -764,14 +764,13 @@ case "$*" in
   "sync plan-show --account personal --plan 00000000-0000-0000-0000-000000000081 --details")
     printf '%b\n' 'plan_origin: maintenance' 'snapshot_current: true' \
       'sequence\tphase\toperation\tplaylist\tspotify_playlist_id\tspotify_track_id\tpayload\tsafety' \
-      '0\treconcile\tremove_track\tNew Vibe\tnew\tfixture-excluded\t{}\t{}\tExcluded Song\tFixture Artist\tordinary\t-\t-'
+      '0\treconcile\tremove_track\tNew Vibe\tnew\tfixture-excluded\t{}\t{}\tExcluded Song\tFixture Artist\tdirect_move\tNew intake\tNew Vibe'
     ;;
   "intake audit --account personal")
     printf '%b\n' \
       'state\ttrack\tartists\tsources\tcurrent_destinations\tproposal_destinations\tevents\tplays\texclusion_history\texclusion_reason\tspotify_id' \
       'previously_excluded\tExcluded Song\tFixture Artist\tNew Vibe\tNew Vibe\t\t0\t0\ttrue\tuser exclusion\tfixture-excluded'
     ;;
-  "sync accept-current --account personal") printf '%s\n' 'provider_state: accepted' ;;
   *) printf 'unexpected: %s\n' "$*" >&2; exit 90 ;;
 esac
 "##,
@@ -782,12 +781,21 @@ esac
         .env("FAKE_CHORDRIFT_LOG", &log)
         .output()
         .unwrap();
-    assert!(output.status.success());
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     let commands = fs::read_to_string(&log).unwrap();
     assert!(!commands.contains("proposals assign"));
     assert!(!commands.contains("tracks restore"));
     assert!(!commands.contains("sync apply"));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("Needs a destination"));
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Excluded Song — Fixture Artist · New intake → New Vibe")
+    );
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("Needs a destination"));
     fs::remove_dir_all(work).unwrap();
 }
 

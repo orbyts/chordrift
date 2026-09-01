@@ -1,7 +1,6 @@
 # Provider-first convergence
 
-Status: normative ordinary-maintenance design as of the v0.2.1-alpha.18
-checkpoint.
+Status: normative ordinary-maintenance design for v0.2.1-beta.1.
 
 Spotify is the first provider implementation, not a special source of domain
 behavior. For ordinary maintenance, the newest complete provider observation is
@@ -79,9 +78,33 @@ sequenceDiagram
         User->>Client: Confirm suggested destination, select another, or exclude
         Client->>Core: Resolve exact task revision
         Core->>Neon: Record the decision
+    else Managed removal is visible without a destination
+        Core->>Neon: Record active exclusion and retain prior placement history
+        Note over Core,Neon: The removal-only snapshot is valid current truth; no provider write
+        loop Any later pull; no timing window
+            Client->>Core: Start maintenance pull
+            Core->>Provider: Read complete current snapshot
+            Provider-->>Core: Newest snapshot
+            alt Track remains absent from managed playlists
+                Core->>Neon: Keep active exclusion
+            else Track is now in exactly one managed playlist
+                Core->>Neon: Resolve active exclusion, retain its history
+                alt Destination is the former playlist
+                    Core->>Neon: Record restoration
+                else Destination is another playlist
+                    Core->>Neon: Record reclassification
+                end
+                Core-->>Client: Accepted current provider placement
+                Note over Core,Provider: Record-only convergence; zero provider writes
+            else Track is now in several managed playlists
+                Core-->>Client: Ask which placement(s) are intended
+                User->>Client: Resolve bounded ambiguity
+                Client->>Core: Submit exact revision decision
+                Core->>Neon: Record resolved placement intent
+            end
+        end
     else Other provider-authored change is unambiguous
-        Core->>Neon: Record moves, order, names, and removals
-        Note over Core,Neon: Managed removal creates an active exclusion; no provider write
+        Core->>Neon: Record direct moves, order, names, and additions
     end
 
     Core->>Core: Prove Neon model equals newest complete snapshot exactly
@@ -145,7 +168,11 @@ the web, CLI, iOS, Android, or provider adapter.
    excluded. The exclusion retains identity and history while preventing an
    automatic re-add.
 7. Re-adding an excluded track through the provider is an explicit resurrection
-   gesture. Emptying the exclusion archive is a separate Neon-only operation;
+   gesture, regardless of elapsed time. Exactly one current managed placement
+   automatically resolves the active exclusion while retaining its history. A
+   return to the former playlist is restoration; placement in another playlist
+   is reclassification. Several simultaneous destinations require one explicit
+   decision. Emptying the exclusion archive is a separate Neon-only operation;
    it resolves the visible archive entry, retains audit history plus an internal
    forget tombstone so older placement cannot replay, and is refused while an
    excluded track is still in the observed provider library.
@@ -155,6 +182,25 @@ the web, CLI, iOS, Android, or provider adapter.
 9. Only a separately originated, exactly reviewed publication task may write to
    a provider. Ordinary maintenance is record-only except for a user-authorized
    intake publication that is explicitly represented in that task.
+
+## Track placement lifecycle
+
+This state view is the compact companion to the sequence above. Observation
+time does not expire an earlier event: the newest complete provider placement
+and durable history are interpreted together.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Outside: Not in a managed playlist
+    Outside --> Managed: Add to exactly one managed playlist\nrecord placement
+    Managed --> Managed: Move to exactly one other playlist\nrecord reclassification
+    Managed --> Excluded: Remove; no destination currently visible\nactivate reversible exclusion
+    Excluded --> Managed: Later add to former playlist\nresolve exclusion + record restoration
+    Excluded --> Managed: Later add to another playlist\nresolve exclusion + record reclassification
+    Excluded --> Ambiguous: Later present in several destinations
+    Ambiguous --> Managed: User resolves exact placement intent
+    Excluded --> Outside: Empty exclusion archive explicitly\nretain history + forget tombstone
+```
 
 ## Current commands
 
