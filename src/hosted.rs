@@ -21,7 +21,8 @@ use axum::{
     http::{
         HeaderMap, HeaderName, HeaderValue, StatusCode,
         header::{
-            AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, LOCATION, ORIGIN, SET_COOKIE,
+            AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, LOCATION, ORIGIN, REFERER,
+            SET_COOKIE,
         },
     },
     middleware::{self, Next},
@@ -1918,7 +1919,13 @@ fn same_origin_for(public_origin: &Url, headers: &HeaderMap) -> bool {
         .is_some_and(|origin| {
             origin.trim_end_matches('/') == public_origin.as_str().trim_end_matches('/')
         });
+    let exact_referer = headers
+        .get(REFERER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|referer| Url::parse(referer).ok())
+        .is_some_and(|referer| referer.origin() == public_origin.origin());
     exact_origin
+        || exact_referer
         || headers
             .get("x-chordrift-browser")
             .and_then(|value| value.to_str().ok())
@@ -2086,7 +2093,7 @@ mod tests {
     }
 
     #[test]
-    fn browser_mutations_accept_exact_origin_or_non_simple_wrapper_header() {
+    fn browser_mutations_accept_exact_origin_referer_or_non_simple_wrapper_header() {
         let state = HostedConfig {
             bind: "127.0.0.1:0".parse().unwrap(),
             public_origin: Url::parse("https://chordrift.example/").unwrap(),
@@ -2106,6 +2113,26 @@ mod tests {
             HeaderValue::from_static("https://chordrift.example"),
         );
         assert!(same_origin_for(&state.public_origin, &origin));
+
+        let mut referer = HeaderMap::new();
+        referer.insert(
+            REFERER,
+            HeaderValue::from_static("https://chordrift.example/auth/cli/authorize?flow=opaque"),
+        );
+        assert!(same_origin_for(&state.public_origin, &referer));
+
+        for rejected in [
+            "https://attacker.example/auth/cli/authorize",
+            "https://chordrift.example.attacker.invalid/auth/cli/authorize",
+            "http://chordrift.example/auth/cli/authorize",
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert(REFERER, HeaderValue::from_str(rejected).unwrap());
+            assert!(
+                !same_origin_for(&state.public_origin, &headers),
+                "{rejected}"
+            );
+        }
 
         let mut wrapper = HeaderMap::new();
         wrapper.insert("x-chordrift-browser", HeaderValue::from_static("1"));

@@ -2922,6 +2922,7 @@ async fn login_service_session(url: &str, profile: &str, output: &mut impl Write
         "Opening Chordrift to authorize profile '{profile}'. Sign in there first if needed."
     )?;
     writeln!(output, "Authorize at: {authorize}")?;
+    output.flush()?;
     webbrowser::open(authorize.as_str()).map_err(|_| {
         ChordriftError::Configuration(format!(
             "could not open the browser; visit {}",

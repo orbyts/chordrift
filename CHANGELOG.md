@@ -4,6 +4,17 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.2] - 2026-09-01
+
+- Accept an exact same-origin `Referer` when a browser or privacy boundary
+  legitimately omits `Origin` from the CLI approval form; missing and
+  cross-origin provenance still fail closed.
+- Flush the browser authorization URL before the installed CLI waits on its
+  loopback callback, allowing the user to copy it into another trusted browser
+  when the operating-system default browser blocks the private-beta site.
+- Record the first beta.1 CLI-login failure as a permanent authentication-flow
+  regression without weakening product-session, PKCE, or revocation checks.
+
 ## [0.2.1-beta.1] - 2026-09-01
 
 - Ship the authenticated hosted Rust authority and thin web daily driver at
