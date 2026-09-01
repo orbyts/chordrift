@@ -9,8 +9,8 @@ pub use auth::{AuthReport, AuthStatus, SpotifyOAuthConfig, authenticate, logout,
 pub(crate) use auth::{begin_hosted_authorization, complete_hosted_authorization, hosted_session};
 pub(crate) use auth::{has_required_apply_scopes, local_refresh_credential};
 pub(crate) use client::{RetryPolicy, retry_policy};
-pub(crate) use import::import_hosted;
 pub use import::{ImportReport, import};
+pub(crate) use import::{import_hosted, import_hosted_fresh};
 use models::SpotifyPlaylist;
 
 use crate::{

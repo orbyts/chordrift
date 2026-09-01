@@ -122,11 +122,7 @@ pub async fn apply_reviewed_sync_plan_from_env(
             return apply::show(&database, account_label, Some(apply_run_id)).await;
         }
         if status == "awaiting_pull" {
-            drop(spotify_session);
-            SpotifyObservationExecutor::new(database.clone(), vault)
-                .observe(subject, ResourceId::from_uuid(provider_account_id))
-                .await
-                .map_err(|_| configuration("hosted post-apply observation failed"))?;
+            spotify::import_hosted_fresh(account_label, &database, spotify_session).await?;
             let verified =
                 apply::verify_pending_publications(&database, account_label, false).await?;
             if verified == 0 {
@@ -158,10 +154,24 @@ pub async fn apply_reviewed_sync_plan_from_env(
     )
     .await?;
     if report.status == "awaiting_pull" {
-        SpotifyObservationExecutor::new(database.clone(), vault)
-            .observe(subject, ResourceId::from_uuid(provider_account_id))
+        drop(mutation_session);
+        let observation_lease = vault
+            .lease(subject, &identity)
             .await
-            .map_err(|_| configuration("hosted post-apply observation failed"))?;
+            .map_err(|_| configuration("hosted Spotify credential is unavailable"))?;
+        let (observation_session, rotated) = spotify::hosted_session(
+            observation_lease.refresh_token(),
+            observation_lease.scopes(),
+            &stable_provider_id,
+        )
+        .await?;
+        if let Some(rotated) = rotated.as_ref() {
+            vault
+                .rotate(subject, identity, rotated, Utc::now())
+                .await
+                .map_err(|_| configuration("hosted Spotify credential rotation failed"))?;
+        }
+        spotify::import_hosted_fresh(account_label, &database, observation_session).await?;
         let verified = apply::verify_pending_publications(&database, account_label, false).await?;
         if verified == 0 {
             return Err(configuration(
