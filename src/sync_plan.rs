@@ -135,6 +135,10 @@ pub struct ReviewedAdditionInput {
     pub playlist_name: String,
     /// Exact Spotify track identifier approved by the account owner.
     pub spotify_track_id: String,
+    /// Historical Spotify identifier that established the reviewed listening
+    /// evidence when the current catalog exposes the recording under a new ID.
+    #[serde(default)]
+    pub historical_spotify_track_id: Option<String>,
     /// Human title retained only for auditable plan detail.
     pub title: String,
     /// Human artist label retained only for auditable plan detail.
@@ -300,14 +304,21 @@ pub async fn create_reviewed_addition_plan(
         ));
     }
     let mut spotify_ids = BTreeSet::new();
+    let mut historical_spotify_ids = BTreeSet::new();
     for addition in additions {
+        let historical_spotify_id = addition
+            .historical_spotify_track_id
+            .as_deref()
+            .unwrap_or(&addition.spotify_track_id);
         if addition.playlist_name.trim().is_empty()
             || addition.spotify_track_id.trim().is_empty()
+            || historical_spotify_id.trim().is_empty()
             || addition.final_position < 0
             || !spotify_ids.insert(addition.spotify_track_id.as_str())
+            || !historical_spotify_ids.insert(historical_spotify_id)
         {
             return Err(ChordriftError::Configuration(
-                "reviewed additions require unique Spotify IDs, named destinations, and non-negative positions"
+                "reviewed additions require unique current and historical Spotify IDs, named destinations, and non-negative positions"
                     .to_owned(),
             ));
         }
@@ -347,7 +358,7 @@ pub async fn create_reviewed_addition_plan(
          WHERE identity.provider = 'spotify'
            AND identity.provider_track_id = ANY($1)",
     )
-    .bind(spotify_ids.iter().copied().collect::<Vec<_>>())
+    .bind(historical_spotify_ids.iter().copied().collect::<Vec<_>>())
     .fetch_one(database.pool())
     .await?;
     if usize::try_from(historical_match_count).ok() != Some(additions.len()) {
@@ -384,6 +395,7 @@ pub async fn create_reviewed_addition_plan(
                 "title": addition.title,
                 "artists": addition.artists,
                 "play_count": addition.play_count,
+                "historical_spotify_track_id": addition.historical_spotify_track_id,
                 "reason": "account_owner_reviewed_history_import",
                 "expected_snapshot_id": destination.4
             }),

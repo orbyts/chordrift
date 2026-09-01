@@ -20,6 +20,8 @@ struct CadencePlaylist {
 #[derive(Deserialize)]
 struct CadenceTrack {
     spotify_id: String,
+    #[serde(default)]
+    historical_spotify_id: Option<String>,
     track: String,
     artists: String,
     plays: i64,
@@ -58,6 +60,7 @@ async fn run() -> chordrift::Result<()> {
                 .map(move |track| sync_plan::ReviewedAdditionInput {
                     playlist_name: playlist.playlist.clone(),
                     spotify_track_id: track.spotify_id,
+                    historical_spotify_track_id: track.historical_spotify_id,
                     title: track.track,
                     artists: track.artists,
                     final_position: track.position,
