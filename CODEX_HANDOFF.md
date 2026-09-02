@@ -10,18 +10,18 @@ Last updated: 2026-09-02.
 
 ## Current release and narrow Web UI handoff
 
-`v0.2.1-beta.10` is the current CLI and hosted Web release. It is built from
-exact commit `2355ab19908c29702414041bf2338f7ce42e8625`, uses contract `1.6`
+`v0.2.1-beta.11` is the current CLI and hosted Web release. It is built from
+exact commit `9422f5e7182fade4c2ed9ccc2afbedec2b3f9f70`, uses contract `1.6`
 and schema `51`, and is deployed on Vortex as manifest digest
-`sha256:ad3212df84135d6619a9ac07c4cd8574e37ce6a33165dc27906c517ce0c17fc9`.
-The post-release documentation commit on `main` is `5d2da1d`.
-
-The next candidate is `v0.2.1-beta.11`. It renders the exact Cargo binary
-version into the no-store Web HTML so the hosted page visibly identifies the
-server/container build without a second browser-owned literal. It also updates
-the compact Spark handoff to preserve and verify that footer during Web-only
-container previews. Until beta.11 passes release, publication, deployment and
-installed-CLI checks, beta.10 remains the accepted running release.
+`sha256:8d04959b021d218af1eef1b67fbf01595d1d649dbd04fa89bd76e0d3c4c26088`.
+Both API and worker use that image and matching OCI revision. Public liveness
+reports beta.11, readiness reports database/identity ready with
+exact-review-only provider writes, and the no-store Web page visibly reports
+`Chordrift v0.2.1-beta.11`. The crates.io package is published and the Quasar
+CLI reports the same version. CI run `33664435739` passed every release gate.
+The deployment performed no provider observation or Spotify write. Its exact
+temporary tagged source checkout was deleted after verification; beta.10 is
+retained as the immediate container rollback image.
 
 For a narrow GPT-5.3 Codex Spark Web UI polish task, read
 [`docs/how-to/SPARK_WEB_UI_HANDOFF.md`](docs/how-to/SPARK_WEB_UI_HANDOFF.md)

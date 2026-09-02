@@ -456,6 +456,17 @@ and later Chordrift refactor begin.
     in Rust. The compact Spark handoff requires that identity to remain visible
     and requires every accepted UI preview to rebuild and health-check the
     existing API/worker image assembly from one exact commit.
+
+    Accepted 2026-09-02 from exact tagged commit
+    `9422f5e7182fade4c2ed9ccc2afbedec2b3f9f70`. CI run `33664435739`
+    passed JavaScript harnesses, formatting, strict Clippy, all Rust/doc tests,
+    disposable-PostgreSQL integration and Spotify persistence, and package
+    verification. The crate is published and installed locally as beta.11.
+    Vortex API and worker run image digest
+    `sha256:8d04959b021d218af1eef1b67fbf01595d1d649dbd04fa89bd76e0d3c4c26088`
+    with the matching OCI revision; private and public health pass and the
+    delivered HTML reports beta.11. No provider observation or Spotify write
+    occurred during release acceptance.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,
