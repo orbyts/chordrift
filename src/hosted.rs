@@ -1388,7 +1388,15 @@ async fn index() -> Response {
 }
 
 async fn javascript() -> Response {
-    static_asset(APP_JS, "text/javascript; charset=utf-8")
+    static_asset(render_app_javascript(), "text/javascript; charset=utf-8")
+}
+
+fn render_app_javascript() -> String {
+    let replacement = format!(
+        "{{ major: {}, minor: {} }}",
+        CONTRACT_VERSION.major, CONTRACT_VERSION.minor
+    );
+    APP_JS.replacen("__CHORDRIFT_CONTRACT_VERSION__", &replacement, 1)
 }
 
 async fn library_explorer_javascript() -> Response {
@@ -1403,7 +1411,7 @@ async fn stylesheet() -> Response {
     static_asset(APP_CSS, "text/css; charset=utf-8")
 }
 
-fn static_asset(body: &'static str, content_type: &'static str) -> Response {
+fn static_asset(body: impl IntoResponse, content_type: &'static str) -> Response {
     let mut response = body.into_response();
     response
         .headers_mut()
@@ -2057,6 +2065,16 @@ mod tests {
         assert!(!line.contains("Authorization"));
         assert!(!line.contains("chd_session_"));
         assert!(!line.contains("postgresql://"));
+    }
+
+    #[test]
+    fn browser_contract_version_is_rendered_from_the_rust_authority() {
+        let javascript = render_app_javascript();
+        assert!(!javascript.contains("__CHORDRIFT_CONTRACT_VERSION__"));
+        assert!(javascript.contains(&format!(
+            "const contractVersion = {{ major: {}, minor: {} }};",
+            CONTRACT_VERSION.major, CONTRACT_VERSION.minor
+        )));
     }
 
     #[test]

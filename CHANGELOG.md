@@ -4,6 +4,13 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.10] - 2026-09-02
+
+- Render the browser contract version directly from the Rust authority so a
+  contract-minor rollout cannot leave the web wrapper pinned to an older DTO.
+- Add a regression that fails if the served browser client does not contain the
+  exact authoritative contract version.
+
 ## [0.2.1-beta.9] - 2026-09-02
 
 - Add a resumable remote maintenance wizard that performs the same observe,

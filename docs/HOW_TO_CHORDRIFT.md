@@ -4,13 +4,13 @@ This is the user-facing entry point for Chordrift. Start with the task you want
 to accomplish; use the comprehensive [CLI command reference](reference/CLI_COMMANDS.md)
 only when you need every option or an internal diagnostic command.
 
-These workflows describe **v0.2.1-beta.9**, including the compatible maintenance CLI
+These workflows describe **v0.2.1-beta.10**, including the compatible maintenance CLI
 and the provider-neutral product boundaries. Refer to the `v0.1.4` tag only for
 the exact historical release. The personal deployment must cut over its binary
 and verified 51/51 database together; see
 [Recovery and rollback](how-to/RECOVERY_AND_ROLLBACK.md).
 
-> **Hosted-service status:** beta.9 provides the private authenticated web daily
+> **Hosted-service status:** beta.10 provides the private authenticated web daily
 > driver, independent Google/Chordrift and Spotify connection lifecycles, and a
 > browser-authorized remote CLI over the same Rust contract. The local workflow
 > remains an explicit developer/forensic adapter; remote failure never causes
@@ -19,7 +19,7 @@ and verified 51/51 database together; see
 On a new machine, install the CLI and authorize the two independent boundaries:
 
 ```bash
-cargo install chordrift --version 0.2.1-beta.9
+cargo install chordrift --version 0.2.1-beta.10
 chordrift service session login --url https://chordrift.suhail.ink
 chordrift service provider spotify connect --url https://chordrift.suhail.ink
 ```

@@ -1,7 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const uuid = () => crypto.randomUUID();
-const contractVersion = { major: 1, minor: 5 };
+const contractVersion = __CHORDRIFT_CONTRACT_VERSION__;
 const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null, maintenanceSession: null, destinationPlaylists: [], playlistTracks: [], excludedTracks: [] };
 
 function queryEnvelope(query) { return { contract_version: contractVersion, request_id: uuid(), query }; }
