@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/assets/app.css?v=library-explorer-1">
 </head>
 <body>
-  <header class="masthead">
+<header class="masthead">
     <a class="brand" href="/" aria-label="Chordrift home">Chordrift</a>
     <div class="provider-context" id="provider-context" hidden>
       <span class="connection-dot" id="provider-dot"></span>
@@ -21,7 +21,22 @@
     </div>
     <nav class="account-actions" aria-label="Account">
       <a class="button" id="login" href="/auth/login" hidden>Continue with Google</a>
-      <form id="logout-form" action="/auth/logout" method="post" hidden><button class="quiet" type="submit">Log out</button></form>
+      <div id="account-shell" class="account-shell" hidden>
+        <button id="account-button" class="account-button" type="button" aria-label="Open account menu" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu">
+          <span class="account-avatar" id="account-avatar" role="img" aria-hidden="true">
+            <img id="account-avatar-image" alt="" hidden>
+            <span class="account-avatar-fallback" id="account-avatar-fallback" aria-hidden="true">A</span>
+          </span>
+          <span id="account-display-name" class="account-name">Account</span>
+          <span class="account-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="account-menu" class="account-menu" role="menu" aria-label="Account actions" hidden>
+          <p id="account-menu-copy" class="account-menu-copy"></p>
+          <form id="logout-form" action="/auth/logout" method="post">
+            <button class="quiet" type="submit" role="menuitem">Log out</button>
+          </form>
+        </div>
+      </div>
     </nav>
   </header>
 

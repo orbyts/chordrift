@@ -35,6 +35,59 @@ function node(tag, className, text) {
   return element;
 }
 
+function sessionDisplayName(session) {
+  const value = typeof session?.display_name === 'string' ? session.display_name.trim() : '';
+  return value ? value : 'Account';
+}
+
+function fallbackAvatarText(label) {
+  const clean = String(label || '').trim().replace(/\s+/g, ' ');
+  if (!clean) return 'A';
+  const words = clean.split(' ');
+  const lead = words[0]?.[0] || '';
+  const tail = words[1]?.[0] || '';
+  const initials = `${lead}${tail}`.toLocaleUpperCase();
+  return initials || 'A';
+}
+
+function setAccountMenuOpen(open) {
+  const button = $('#account-button');
+  const menu = $('#account-menu');
+  if (!button || !menu) return;
+  const expanded = Boolean(open);
+  button.setAttribute('aria-expanded', String(expanded));
+  menu.hidden = !expanded;
+}
+
+function renderAccountIdentity(session) {
+  const accountName = sessionDisplayName(session);
+  const displayName = typeof session?.display_name === 'string' ? session.display_name.trim() : '';
+  const avatarUrl = session?.avatar_url;
+  const image = $('#account-avatar-image');
+  const fallback = $('#account-avatar-fallback');
+  const button = $('#account-button');
+  const menuCopy = $('#account-menu-copy');
+  $('#account-shell').hidden = false;
+  $('#account-display-name').textContent = accountName;
+  button.setAttribute('aria-label', `Account menu for ${accountName}`);
+  button.setAttribute('aria-expanded', 'false');
+  $('#account-avatar').setAttribute('aria-label', `Signed in account avatar for ${accountName}`);
+  $('#account-menu').hidden = true;
+  menuCopy.textContent = `Signed in as ${accountName}`;
+  if (avatarUrl && displayName) image.alt = `${displayName} avatar`;
+  else image.alt = 'Account avatar';
+  if (avatarUrl) {
+    image.hidden = false;
+    image.src = avatarUrl;
+    fallback.hidden = true;
+  } else {
+    image.hidden = true;
+    image.removeAttribute('src');
+    fallback.hidden = false;
+    fallback.textContent = fallbackAvatarText(accountName);
+  }
+}
+
 async function loadSession() {
   let response;
   try { response = await fetch('/auth/session', { credentials: 'same-origin' }); } catch (_) { showUnavailable(); return; }
@@ -45,13 +98,15 @@ async function loadSession() {
 
 function showSignedOut() {
   $('#login').hidden = false; $('#logout-form').hidden = true; $('#provider-context').hidden = true;
+  $('#account-shell').hidden = true; setAccountMenuOpen(false);
   $('#signed-out').hidden = false; $('#signed-in').hidden = true;
 }
 function showSignedIn() {
-  $('#login').hidden = true; $('#logout-form').hidden = false; $('#signed-out').hidden = true; $('#signed-in').hidden = false;
+  $('#login').hidden = true; renderAccountIdentity(state.session); $('#account-shell').hidden = false; $('#signed-out').hidden = true; $('#signed-in').hidden = false;
   $('#session-dot').classList.add('online'); $('#session-label').textContent = 'Signed in'; $('#session-detail').textContent = 'Existing Chordrift library';
 }
 function showUnavailable() {
+  $('#login').hidden = false; $('#logout-form').hidden = true; $('#account-shell').hidden = true; setAccountMenuOpen(false); $('#provider-context').hidden = true;
   $('#signed-out').hidden = false; $('#signed-out h1').textContent = 'Chordrift is temporarily unavailable.';
   $('#signed-out p:not(.eyebrow)').textContent = 'Your provider library was not changed.';
 }
@@ -449,9 +504,48 @@ async function sendDeveloperRequest() {
 }
 
 $$('.tab').forEach((button) => button.addEventListener('click', () => {
-  $$('.tab').forEach((tab) => tab.classList.toggle('active', tab === button));
+  $$('.tab').forEach((tab) => {
+    const active = tab === button;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', String(active));
+  });
   $$('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${button.dataset.view}`));
 }));
+const tabs = $$('.tab');
+tabs.forEach((button, index) => {
+  const viewId = `view-${button.dataset.view}`;
+  button.setAttribute('role', 'tab');
+  button.setAttribute('id', `tab-${button.dataset.view}`);
+  button.setAttribute('aria-controls', viewId);
+  button.setAttribute('aria-selected', String(index === 0));
+});
+$$('.view').forEach((view) => {
+  view.setAttribute('role', 'tabpanel');
+  const tabForView = $(`.tab[data-view="${view.id.replace('view-', '')}"]`);
+  if (tabForView) view.setAttribute('aria-labelledby', tabForView.id);
+});
+document.querySelector('.section-tabs')?.setAttribute('role', 'tablist');
+
+const accountButton = $('#account-button');
+if (accountButton) {
+  accountButton.addEventListener('click', () => setAccountMenuOpen($('#account-menu').hidden));
+  accountButton.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setAccountMenuOpen(true);
+      $('#account-menu')?.querySelector('[role="menuitem"]')?.focus();
+    }
+  });
+}
+document.addEventListener('click', (event) => {
+  const shell = $('#account-shell');
+  if (!shell || shell.hidden || $('#account-menu').hidden) return;
+  if (!shell.contains(event.target)) setAccountMenuOpen(false);
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') setAccountMenuOpen(false);
+});
+
 $$('[data-source]').forEach((button) => button.addEventListener('click', () => {
   state.source = button.dataset.source; $$('[data-source]').forEach((item) => item.classList.toggle('active', item === button));
   $('#playlist-title').textContent = 'Choose a playlist'; $('#playlist-count').textContent = ''; showTableError($('#playlist-tracks'), 'Select a playlist to inspect its recorded order.'); loadPlaylists();
