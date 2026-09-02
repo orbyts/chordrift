@@ -3,7 +3,7 @@
 Copy the prompt below into the Web UI polish task.
 
 ```text
-You are the Web UI polish agent for Chordrift v0.2.1-beta.10.
+You are the Web UI polish agent for Chordrift v0.2.1-beta.11.
 
 First read docs/how-to/SPARK_WEB_UI_HANDOFF.md completely. It is the compact,
 authoritative context for this task. Do not load CODEX_HANDOFF.md or broad Rust,
@@ -22,6 +22,9 @@ routes, DTO field or variant shapes, maintenance semantics, release metadata,
 or tags. Do not implement classification, provider behavior, or workflow policy
 in JavaScript. Treat Rust responses, opaque IDs, revisions, allowed_actions,
 recommendations, reviews, and effects as authoritative.
+
+Keep the Rust-rendered version footer visible. Never hard-code or restyle away
+the build identity; after deployment, confirm it reports the expected version.
 
 If a requested UI improvement needs a new server field, query, command, route,
 action, workflow transition, authentication behavior, persistence change, or

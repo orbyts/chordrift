@@ -1,6 +1,6 @@
 # Daily-driver client capability matrix
 
-Status: active post-V021-06 private-beta contract at `v0.2.1-beta.10`. The
+Status: active post-V021-06 private-beta contract at `v0.2.1-beta.11`. The
 browser and installed CLI are thin clients of the same typed Rust application
 contract. This document does not authorize a provider write or a generic
 command, shell, SQL, or provider-token endpoint.

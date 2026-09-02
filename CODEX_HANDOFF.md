@@ -16,6 +16,13 @@ and schema `51`, and is deployed on Vortex as manifest digest
 `sha256:ad3212df84135d6619a9ac07c4cd8574e37ce6a33165dc27906c517ce0c17fc9`.
 The post-release documentation commit on `main` is `5d2da1d`.
 
+The next candidate is `v0.2.1-beta.11`. It renders the exact Cargo binary
+version into the no-store Web HTML so the hosted page visibly identifies the
+server/container build without a second browser-owned literal. It also updates
+the compact Spark handoff to preserve and verify that footer during Web-only
+container previews. Until beta.11 passes release, publication, deployment and
+installed-CLI checks, beta.10 remains the accepted running release.
+
 For a narrow GPT-5.3 Codex Spark Web UI polish task, read
 [`docs/how-to/SPARK_WEB_UI_HANDOFF.md`](docs/how-to/SPARK_WEB_UI_HANDOFF.md)
 and use

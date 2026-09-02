@@ -447,6 +447,15 @@ and later Chordrift refactor begin.
     negotiation reports contract 1.6/schema 51, and the authenticated web wrapper
     shows the same Spotify connection with maintenance enabled. The release
     smoke performed no provider observation or Spotify write.
+
+    Follow-up private-beta patch `v0.2.1-beta.11` makes the exact Rust/Cargo
+    binary version visible in the hosted Web footer. The value is rendered by
+    `chordrift-server` into the no-store HTML response, not maintained as a
+    browser literal. This lets Web-only polish work confirm that Vortex is
+    serving the intended container while keeping contract and workflow meaning
+    in Rust. The compact Spark handoff requires that identity to remain visible
+    and requires every accepted UI preview to rebuild and health-check the
+    existing API/worker image assembly from one exact commit.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,

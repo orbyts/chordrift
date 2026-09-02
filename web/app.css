@@ -18,6 +18,7 @@ button.primary, .button.primary, .button { background: #eee5d7; color: #171411; 
 .account-actions { justify-self: end; display: flex; gap: 10px; }
 .account-actions form { margin: 0; }
 main { width: min(1380px, calc(100% - 40px)); margin: auto; }
+.build-identity { width: min(1380px, calc(100% - 40px)); margin: 0 auto; padding: 18px 0 28px; border-top: 1px solid #2b2824; color: #6f6861; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .02em; }
 .welcome { max-width: 900px; padding: 12vh 0; }
 h1, h2, h3, p { margin-top: 0; }
 h1 { margin-bottom: 24px; font: 400 clamp(3rem, 7vw, 6.5rem)/.9 Georgia, serif; letter-spacing: -.065em; }
@@ -101,4 +102,4 @@ dialog::backdrop { background: #000b; backdrop-filter: blur(5px); }
 .warning { border-left: 2px solid #cf8e5c; padding: 8px 12px; color: #d7a780; }
 [hidden] { display: none !important; }
 @media (max-width: 900px) { .masthead { grid-template-columns: 1fr auto; } .provider-context { grid-column: 1 / -1; grid-row: 2; padding-bottom: 14px; } .hero-grid, .library-grid, .workbench { grid-template-columns: 1fr; } .hero-grid { padding: 50px 0; min-height: auto; } .playlist-list { max-height: 320px; } }
-@media (max-width: 620px) { .masthead, main { width: min(100% - 24px, 1380px); } .section-heading, .track-list-heading { align-items: start; flex-direction: column; } .view-controls { align-items: start; flex-wrap: wrap; justify-content: flex-start; } .metrics { grid-template-columns: 1fr 1fr; } .record-meta, .album, .listening-cell { display: none; } }
+@media (max-width: 620px) { .masthead, main, .build-identity { width: min(100% - 24px, 1380px); } .section-heading, .track-list-heading { align-items: start; flex-direction: column; } .view-controls { align-items: start; flex-wrap: wrap; justify-content: flex-start; } .metrics { grid-template-columns: 1fr 1fr; } .record-meta, .album, .listening-cell { display: none; } }

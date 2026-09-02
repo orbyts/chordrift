@@ -4,6 +4,17 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.11] - 2026-09-02
+
+- Show the exact Rust server binary version in the hosted Web UI so a user can
+  confirm which container build is serving the browser independently of asset
+  appearance or cache state.
+- Render that value from Cargo build metadata inside the Rust authority and add
+  a regression that rejects an unresolved or drifting browser version label.
+- Add a compact GPT-5.3 Codex Spark Web-only handoff and prompt with strict Rust,
+  DTO and provider boundaries plus the established Vortex container preview
+  loop for every accepted UI update.
+
 ## [0.2.1-beta.10] - 2026-09-02
 
 - Render the browser contract version directly from the Rust authority so a

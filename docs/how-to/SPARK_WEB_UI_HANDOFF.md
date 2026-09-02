@@ -8,7 +8,7 @@ context on the browser experience.
 ## Assignment
 
 Polish the existing Chordrift Web UI without changing product behavior. The
-current release is `v0.2.1-beta.10`, contract `1.6`, schema `51`. Web and remote
+current release is `v0.2.1-beta.11`, contract `1.6`, schema `51`. Web and remote
 CLI are thin clients of the same Rust-owned application contract.
 
 This is a presentation task. Do not modify Rust, migrations, Docker/Compose
@@ -121,6 +121,9 @@ Do not add, remove, rename or reshape any variant or field in a UI-polish task.
 
 - Signed out shows a login action. Signed in shows logout and does not also
   show login.
+- The footer keeps the Rust-rendered `Chordrift v…` build identity visible.
+  Never replace it with a JavaScript or HTML version literal. Use it to confirm
+  the hosted preview is serving the expected container binary.
 - Provider identity and connection state remain visible on every music view.
 - Clearly distinguish the newest recorded provider observation from Chordrift's
   current model; neither is silently called live provider state.

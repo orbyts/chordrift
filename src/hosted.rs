@@ -1380,11 +1380,15 @@ async fn browser_cookie_to_bearer(
 }
 
 async fn index() -> Response {
-    let mut response = Html(INDEX_HTML).into_response();
+    let mut response = Html(render_index_html()).into_response();
     response
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
+}
+
+fn render_index_html() -> String {
+    INDEX_HTML.replacen("__CHORDRIFT_BINARY_VERSION__", env!("CARGO_PKG_VERSION"), 1)
 }
 
 async fn javascript() -> Response {
@@ -2075,6 +2079,13 @@ mod tests {
             "const contractVersion = {{ major: {}, minor: {} }};",
             CONTRACT_VERSION.major, CONTRACT_VERSION.minor
         )));
+    }
+
+    #[test]
+    fn browser_binary_version_is_rendered_from_the_rust_build() {
+        let html = render_index_html();
+        assert!(!html.contains("__CHORDRIFT_BINARY_VERSION__"));
+        assert!(html.contains(&format!("Chordrift v{}", env!("CARGO_PKG_VERSION"))));
     }
 
     #[test]
