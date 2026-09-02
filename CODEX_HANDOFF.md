@@ -6,7 +6,40 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-08-31.
+Last updated: 2026-09-01.
+
+## v0.2.1-beta.8 standard CLI authentication release
+
+`v0.2.1-beta.8` is released on GitHub and crates.io from exact commit
+`dd188719e8e288537bafb81079fb70b5f60bb12b`. Main CI run `33592170007`
+passed formatting, browser harnesses, strict Clippy, all Rust targets, doc
+tests, the disposable PostgreSQL integration proof, Spotify persistence
+round-trip, and package verification. The published crate was installed on
+Quasar and reports `chordrift 0.2.1-beta.8`.
+
+Vortex runs API and worker image `chordrift:v0.2.1-beta.8`, manifest digest
+`sha256:8f721a44f643f96a408b7aaec3e9f1be15e5dc15d5511c145aff3a6a7ce1b326`,
+with the matching OCI revision label. Both processes run as UID/GID 65532;
+container health and public liveness/readiness pass. The temporary tagged
+source checkout and disposable PostgreSQL probe image were removed after
+verification.
+
+Auth0 now has a separate first-party Native application named `Chordrift CLI`.
+Its only enabled grant is Device Code; the existing Google connection is
+enabled, and no CLI client secret, callback URL, password grant, or Auth0
+refresh token is used. The public `/auth/cli/config` response contains only the
+issuer, public client ID, and `openid profile email` scope. A live isolated
+profile completed Auth0 device confirmation, minted a Chordrift product
+session, negotiated contract 1.5/schema 51, and saw the existing authorized
+Spotify connection. Unknown paths, including the removed custom CLI approval
+paths, are masked as HTTP 401 by the deployment's authentication middleware.
+
+During deployment, the durable Neon 1Password item was found to contain a
+stale role password and nonexistent database name. The existing fast local
+cache was validated read-only against the canonical `chordrift_cutover`
+database at 51 successful migrations, then the 1Password source of truth was
+repaired and the Vortex environment regenerated. Never restore the obsolete
+`chordrift` database name. No database migration or Spotify write occurred.
 
 ## Hosted Spotify connection checkpoint
 
