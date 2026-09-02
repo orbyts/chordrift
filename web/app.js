@@ -4,6 +4,14 @@ const uuid = () => crypto.randomUUID();
 const contractVersion = { major: 1, minor: 5 };
 const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null, maintenanceSession: null, destinationPlaylists: [], playlistTracks: [], excludedTracks: [] };
 
+const CONTRACT_FEATURES = ['service.authenticated-transport.v1', 'service.product-identity.v1', 'service.provider-credential-vault.v1', 'service.durable-operations.v1', 'service.remote-cli.v1', 'maintenance.task-session.v1'];
+const SCHEMA_MIN = 48;
+const SCHEMA_MAX = 51;
+
+function safeText(value) {
+  return `${value || ''}`.replace(/\s+/g, ' ').trim();
+}
+
 function queryEnvelope(query) { return { contract_version: contractVersion, request_id: uuid(), query }; }
 
 async function contractRequest(path, body) {
@@ -28,6 +36,11 @@ function formatTime(value) {
   return date.toLocaleString();
 }
 
+function pluralize(value, singular, plural = `${singular}s`) {
+  if (value === 1) return `1 ${singular}`;
+  return `${value} ${plural}`;
+}
+
 function node(tag, className, text) {
   const element = document.createElement(tag);
   if (className) element.className = className;
@@ -37,7 +50,7 @@ function node(tag, className, text) {
 
 async function loadSession() {
   let response;
-  try { response = await fetch('/auth/session', { credentials: 'same-origin' }); } catch (_) { showUnavailable(); return; }
+  try { response = await fetch('/auth/session', { credentials: 'same-origin' }); } catch (_) { showUnavailable('Could not reach Chordrift session service.'); return; }
   if (!response.ok) { showSignedOut(); return; }
   state.session = await response.json(); showSignedIn();
   await Promise.all([loadCompatibility(), loadProviderConnections()]);
@@ -46,29 +59,42 @@ async function loadSession() {
 function showSignedOut() {
   $('#login').hidden = false; $('#logout-form').hidden = true; $('#provider-context').hidden = true;
   $('#signed-out').hidden = false; $('#signed-in').hidden = true;
+  $('#session-label').textContent = 'Sign in required';
+  $('#session-detail').textContent = 'Sign in to view provider maintenance and revision details.';
+  $('.status-strip').setAttribute('aria-busy', 'false');
 }
+
 function showSignedIn() {
   $('#login').hidden = true; $('#logout-form').hidden = false; $('#signed-out').hidden = true; $('#signed-in').hidden = false;
   $('#session-dot').classList.add('online'); $('#session-label').textContent = 'Signed in'; $('#session-detail').textContent = 'Existing Chordrift library';
+  $('#provider-context').hidden = false;
 }
-function showUnavailable() {
+
+function showUnavailable(message = 'Your provider library was not changed.') {
   $('#signed-out').hidden = false; $('#signed-out h1').textContent = 'Chordrift is temporarily unavailable.';
-  $('#signed-out p:not(.eyebrow)').textContent = 'Your provider library was not changed.';
+  $('#signed-out p:not(.eyebrow)').textContent = safeText(message);
+  $('#session-dot').classList.remove('online'); $('#session-label').textContent = 'Unavailable'; $('#session-detail').textContent = safeText(message);
+  $('.status-strip').setAttribute('aria-busy', 'false');
 }
 
 async function loadCompatibility() {
-  state.compatibility = await contractRequest('/v1/compatibility', {
-    contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 51 },
-    requested_features: ['service.authenticated-transport.v1', 'service.product-identity.v1', 'service.provider-credential-vault.v1', 'service.durable-operations.v1', 'service.remote-cli.v1', 'maintenance.task-session.v1']
-  });
-  const observationAvailable = state.compatibility.features['service.durable-operations.v1'] === 'available';
-  const maintenanceAvailable = state.compatibility.features['maintenance.task-session.v1'] === 'available';
-  $('#start-maintenance').disabled = !observationAvailable || !state.provider?.credential_ready;
-  $('#maintenance-availability').textContent = maintenanceAvailable
-    ? 'Observation and ordinary maintenance are ready. Provider effects still require an exact review.'
-    : observationAvailable
-      ? 'Read-only provider observation is ready. Maintenance interpretation is the next production boundary.'
-      : 'Hosted provider work is being connected. Library inspection is available now.';
+  try {
+    state.compatibility = await contractRequest('/v1/compatibility', {
+      contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: SCHEMA_MIN, maximum: SCHEMA_MAX },
+      requested_features: CONTRACT_FEATURES
+    });
+    const observationAvailable = state.compatibility.features['service.durable-operations.v1'] === 'available';
+    const maintenanceAvailable = state.compatibility.features['maintenance.task-session.v1'] === 'available';
+    $('#start-maintenance').disabled = !observationAvailable || !state.provider?.credential_ready;
+    $('#maintenance-availability').textContent = maintenanceAvailable
+      ? 'Observation and maintenance are ready. Provider effects still require an exact review.'
+      : observationAvailable
+        ? 'Read-only provider observation is ready. Maintenance interpretation is the next production boundary.'
+        : 'Hosted provider work is being connected. Library inspection is available now.';
+  } catch (error) {
+    $('#start-maintenance').disabled = true;
+    $('#maintenance-availability').textContent = `Compatibility check failed: ${safeText(error.message)}`;
+  }
 }
 
 async function loadProviderConnections() {
@@ -80,8 +106,13 @@ async function loadProviderConnections() {
     const option = node('option', '', `${provider} · ${connection.display_name || 'Account'}`);
     option.value = connection.provider_connection_id; select.append(option);
   }
-  state.provider = state.connections[0] || null; $('#provider-context').hidden = false; renderProviderState();
-  if (state.provider) await Promise.all([loadPlaylists(), loadComparison(), loadExclusions(), loadActivity()]);
+  state.provider = state.connections[0] || null; renderProviderState();
+  if (state.provider) {
+    $('#maintenance-session').hidden = true;
+    await Promise.all([loadPlaylists(), loadComparison(), loadExclusions(), loadActivity()]);
+  } else {
+    $('#session-dot').classList.remove('online');
+  }
 }
 
 function renderProviderState() {
@@ -115,7 +146,8 @@ function commandEnvelope(command) {
 
 async function startMaintenance() {
   if (!state.provider || state.activeOperation) return;
-  const panel = $('#maintenance-session'); panel.hidden = false;
+  const panel = $('#maintenance-session');
+  panel.hidden = false;
   panel.replaceChildren(node('strong', '', 'Maintenance queued'), node('p', 'availability', 'Waiting for the hosted worker. Provider state will be read; Spotify will not be changed.'));
   $('#start-maintenance').disabled = true;
   try {
@@ -134,8 +166,7 @@ async function startMaintenance() {
 async function disconnectSpotify(event) {
   event.preventDefault();
   const form = event.currentTarget;
-  const button = form.querySelector('button');
-  button.disabled = true;
+  const button = form.querySelector('button'); button.disabled = true;
   try {
     const response = await fetch(form.action, {
       method: 'POST', credentials: 'same-origin', redirect: 'follow',
@@ -161,19 +192,21 @@ async function followOperation(operationId) {
     const response = await contractRequest('/v1/queries', queryEnvelope({ type: 'operation', parameters: { operation_id: operationId } }));
     const operation = response.view.value; const current = operation.state;
     const progress = current.details?.progress;
-    const credentialExpired = ['failed', 'recoverable'].includes(current.state)
-      && current.details?.error?.code === 'authentication_required';
+    const credentialExpired = ['failed', 'recoverable'].includes(current.state) && current.details?.error?.code === 'authentication_required';
     const failed = current.state === 'failed';
+    const recoverable = current.state === 'recoverable';
     const errorCode = current.details?.error?.code?.replaceAll('_', ' ');
     panel.replaceChildren(
       node('strong', '', current.state.replaceAll('_', ' ')),
       node('p', credentialExpired || failed ? 'warning' : 'availability', credentialExpired
         ? 'Spotify access was removed or expired. Reconnect Spotify; your Chordrift library is unchanged.'
-        : failed
-          ? `Chordrift stopped${errorCode ? ` · ${errorCode}` : ''}. Provider state will be checked again before any retry.`
-          : progress ? `${progress.phase.replaceAll('_', ' ')} · ${progress.completed}${progress.total == null ? '' : ` / ${progress.total}`}` : 'Checking the latest provider state.')
+        : recoverable
+          ? `Maintenance can be resumed after review${errorCode ? ` · ${errorCode}` : ''}.`
+          : failed
+            ? `Chordrift stopped${errorCode ? ` · ${errorCode}` : ''}. Provider state will be checked again before any retry.`
+            : progress ? `${progress.phase.replaceAll('_', ' ')} · ${progress.completed}${progress.total == null ? '' : ` / ${progress.total}`}` : 'Checking the latest provider state.')
     );
-    if (['completed', 'failed', 'cancelled'].includes(current.state)) {
+    if (['completed', 'failed', 'cancelled', 'recoverable'].includes(current.state)) {
       await Promise.all([loadProviderConnections(), loadActivity()]);
       return operation;
     }
@@ -197,11 +230,13 @@ function renderMaintenanceSession() {
   const view = state.maintenanceSession; const panel = $('#maintenance-session');
   if (!view) return;
   panel.hidden = false; panel.replaceChildren();
-  panel.append(node('strong', '', view.state.replaceAll('_', ' ')), node('p', 'availability', `Revision ${view.revision} · ${view.observed_changes.length} observed change${view.observed_changes.length === 1 ? '' : 's'} · ${view.provider_effects.length} exact provider change${view.provider_effects.length === 1 ? '' : 's'}`));
+  const summary = `Revision ${view.revision} · ${pluralize(view.observed_changes.length, 'observed change', 'observed changes')} · ${pluralize(view.provider_effects.length, 'exact provider change', 'exact provider changes')}`;
+  panel.append(node('strong', '', view.state.replaceAll('_', ' ')), node('p', 'availability', summary));
   const list = node('div', 'card-list');
   for (const change of view.observed_changes) {
     const card = node('div', 'record-card');
-    const label = node('div'); label.append(node('strong', '', change.summary), node('span', '', change.resolution ? `Recorded · ${change.kind.replaceAll('_', ' ')}` : `Decision needed · ${change.kind.replaceAll('_', ' ')}`));
+    const label = node('div');
+    label.append(node('strong', '', change.summary), node('span', '', change.resolution ? `Recorded · ${change.kind.replaceAll('_', ' ')}` : `Decision needed · ${change.kind.replaceAll('_', ' ')}`));
     if (!change.resolution && change.recommendation_reason) label.append(node('span', 'recommendation', `Suggested from ${change.recommendation_reason.toLowerCase()}. Review or change it before recording.`));
     card.append(label);
     if (!change.resolution) card.append(decisionControl(change));
@@ -212,7 +247,7 @@ function renderMaintenanceSession() {
   if (view.provider_effects.length) {
     panel.append(node('h3', '', 'Exact provider changes'));
     if (view.provider_effects.some((effect) => effect.kind === 'add_track') && view.observed_changes.some((change) => change.kind === 'saved_state' && change.resolution?.type === 'consume_intake')) {
-      panel.append(node('p', 'availability', 'Safe placement: Chordrift will add and verify the destination first. Removing the track from Liked Songs will be offered as a separate exact review afterward.'));
+      panel.append(node('p', 'warning', 'Placement is staged safely: destination first, then removal from Liked Songs may be reviewed separately.'));
     }
     const effects = node('div', 'card-list');
     for (const effect of view.provider_effects) {
@@ -264,7 +299,7 @@ async function runMaintenanceCommand(command) {
   try {
     const operation = await followOperation(receipt.operation_id);
     if (operation.state.state === 'completed') await loadMaintenanceSession(state.maintenanceSession.session_id);
-  } finally { state.activeOperation = null; renderProviderState(); }
+  } finally { state.activeOperation = null; renderProviderState(); panel.replaceChildren(); }
 }
 
 async function refreshMaintenance() {
@@ -286,7 +321,7 @@ async function resolveObservedChanges(event) {
     }
     await runMaintenanceCommand({ type: 'resolve_maintenance', parameters: { session_id: view.session_id, expected_revision: view.revision, decisions } });
   } catch (error) {
-    $('#maintenance-session').append(node('p', 'warning', `Decisions were not recorded: ${error.message}`));
+    $('#maintenance-session').append(node('p', 'warning', `Decisions were not recorded: ${safeText(error.message)}`));
     if (button?.isConnected) button.disabled = false;
   }
 }
@@ -337,6 +372,9 @@ async function loadPlaylistTracks(playlist, button) {
 function renderPlaylistTracks() {
   const table = $('#playlist-tracks'); table.replaceChildren();
   const tracks = ChordriftLibraryExplorer.sortPlaylistTracks(state.playlistTracks, $('#playlist-sort').value);
+  if (!tracks.length) {
+    const row = node('tr'); const cell = node('td', 'empty', 'This playlist is empty.'); cell.colSpan = 5; row.append(cell); table.append(row); return;
+  }
   for (const track of tracks) {
     const row = node('tr', 'track-row'); row.tabIndex = 0; row.append(node('td', 'position', track.position));
     const identity = node('td', 'track-identity'); identity.append(node('strong', '', track.title), node('span', '', track.artists));
@@ -348,7 +386,7 @@ function renderPlaylistTracks() {
 }
 
 function showTableError(table, message) {
-  table.replaceChildren(); const row = node('tr'); const cell = node('td', 'empty', message); cell.colSpan = 5; row.append(cell); table.append(row);
+  table.replaceChildren(); const row = node('tr'); const cell = node('td', 'empty', safeText(message)); cell.colSpan = 5; row.append(cell); table.append(row);
 }
 
 async function loadTrack(providerTrackId) {
@@ -367,7 +405,8 @@ async function loadTrack(providerTrackId) {
       const card = node('div', 'compact-card'); card.append(node('strong', '', placement.name), node('span', '', `Position ${placement.position} · ${placement.source.replaceAll('_', ' ')}`)); placements.append(card);
     }
     if (!track.placements.length) placements.append(node('p', 'empty', 'Not currently placed.'));
-    detail.append(placements); if (track.exclusion_reason) detail.append(node('p', 'warning', `Excluded: ${track.exclusion_reason}`));
+    detail.append(placements);
+    if (track.exclusion_reason) detail.append(node('p', 'warning', `Excluded: ${track.exclusion_reason}`));
   } catch (error) { detail.replaceChildren(node('p', 'warning', error.message)); }
 }
 
@@ -413,7 +452,7 @@ async function loadComparison() {
       card.append(identity, counts); list.append(card);
     }
     panel.append(list);
-  } catch (error) { panel.replaceChildren(node('p', 'warning', `Comparison unavailable: ${error.message}`)); }
+  } catch (error) { panel.replaceChildren(node('p', 'warning', `Comparison unavailable: ${safeText(error.message)}`)); }
 }
 
 async function loadActivity() {
@@ -429,7 +468,7 @@ async function loadActivity() {
 }
 
 function requestFor(name) {
-  if (name === 'compatibility') return { path: '/v1/compatibility', body: { contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 51 }, requested_features: ['service.authenticated-transport.v1', 'service.product-identity.v1', 'service.provider-credential-vault.v1', 'service.durable-operations.v1', 'service.remote-cli.v1', 'maintenance.task-session.v1'] } };
+  if (name === 'compatibility') return { path: '/v1/compatibility', body: { contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: SCHEMA_MIN, maximum: SCHEMA_MAX }, requested_features: CONTRACT_FEATURES } };
   if (name === 'provider_connections') return { path: '/v1/queries', body: queryEnvelope({ type: 'provider_connections' }) };
   if (name === 'library_comparison') return { path: '/v1/queries', body: queryEnvelope({ type: 'library_comparison', parameters: { provider_connection_id: state.provider?.provider_connection_id || 'UUID' } }) };
   if (name === 'operation_history') return { path: '/v1/queries', body: queryEnvelope({ type: 'operation_history', parameters: { account_id: state.session?.account_id || 'ACCOUNT_ID' } }) };
@@ -437,9 +476,11 @@ function requestFor(name) {
     ? { contract_version: contractVersion, request_id: uuid(), idempotency_key: uuid(), command: { type: 'observe_provider', parameters: { provider_connection_id: state.provider?.provider_connection_id || 'UUID' } } }
     : queryEnvelope({ type: 'diagnostics', parameters: { operation_id: null } }) };
 }
+
 function selectPreset() {
   const request = requestFor($('#preset').value); $('#request').value = JSON.stringify(request.body, null, 2); $('#request').dataset.path = request.path; $('#request-kind').textContent = `POST ${request.path}`;
 }
+
 async function sendDeveloperRequest() {
   let body; try { body = JSON.parse($('#request').value); } catch (error) { $('#response').textContent = `Invalid JSON: ${error.message}`; return; }
   $('#send').disabled = true; $('#http-status').textContent = 'Sending…';
@@ -448,18 +489,33 @@ async function sendDeveloperRequest() {
   finally { $('#send').disabled = false; }
 }
 
-$$('.tab').forEach((button) => button.addEventListener('click', () => {
-  $$('.tab').forEach((tab) => tab.classList.toggle('active', tab === button));
-  $$('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${button.dataset.view}`));
-}));
+function openView(button) {
+  const target = `view-${button.dataset.view}`;
+  const panel = $('#' + target);
+  $$('.tab').forEach((tab) => {
+    const isActive = tab === button;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-selected', String(isActive));
+  });
+  $$('.view').forEach((view) => view.classList.toggle('active', view.id === target));
+  if (panel) panel.focus();
+}
+
+$$('.tab').forEach((button) => button.addEventListener('click', () => openView(button)));
 $$('[data-source]').forEach((button) => button.addEventListener('click', () => {
-  state.source = button.dataset.source; $$('[data-source]').forEach((item) => item.classList.toggle('active', item === button));
-  $('#playlist-title').textContent = 'Choose a playlist'; $('#playlist-count').textContent = ''; showTableError($('#playlist-tracks'), 'Select a playlist to inspect its recorded order.'); loadPlaylists();
+  state.source = button.dataset.source;
+  $$('[data-source]').forEach((item) => item.classList.toggle('active', item === button));
+  $('#playlist-title').textContent = 'Choose a playlist'; $('#playlist-count').textContent = '';
+  showTableError($('#playlist-tracks'), 'Select a playlist to inspect its recorded order.'); loadPlaylists();
 }));
+
 $('#provider-select').addEventListener('change', async (event) => {
-  state.provider = state.connections.find((connection) => connection.provider_connection_id === event.target.value); renderProviderState(); await Promise.all([loadPlaylists(), loadComparison(), loadExclusions()]);
+  state.provider = state.connections.find((connection) => connection.provider_connection_id === event.target.value); renderProviderState();
+  await Promise.all([loadPlaylists(), loadComparison(), loadExclusions(), loadActivity()]);
 });
-$('#preset').addEventListener('change', selectPreset); $('#send').addEventListener('click', sendDeveloperRequest);
+
+$('#preset').addEventListener('change', selectPreset);
+$('#send').addEventListener('click', sendDeveloperRequest);
 $('#playlist-sort').addEventListener('change', renderPlaylistTracks);
 $('#exclusion-sort').addEventListener('change', renderExclusions);
 $('#exclusion-group').addEventListener('change', renderExclusions);

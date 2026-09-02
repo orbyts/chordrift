@@ -3,11 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Chordrift web interface for music library maintenance, review, and reversible actions.">
   <meta name="color-scheme" content="dark">
   <title>Chordrift</title>
   <link rel="stylesheet" href="/assets/app.css?v=library-explorer-1">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="masthead">
     <a class="brand" href="/" aria-label="Chordrift home">Chordrift</a>
     <div class="provider-context" id="provider-context" hidden>
@@ -25,7 +27,7 @@
     </nav>
   </header>
 
-  <main>
+  <main id="main-content">
     <section class="welcome" id="signed-out" hidden>
       <p class="eyebrow">Your library, remembered</p>
       <h1>Keep listening.<br>Chordrift keeps up.</h1>
@@ -34,19 +36,19 @@
     </section>
 
     <div id="signed-in" hidden>
-      <section class="status-strip" aria-live="polite">
+      <section class="status-strip" aria-live="polite" aria-busy="true">
         <div><span class="connection-dot" id="session-dot"></span><strong id="session-label">Checking session…</strong></div>
         <span id="session-detail"></span>
       </section>
-      <nav class="section-tabs" aria-label="Chordrift sections">
-        <button class="tab active" data-view="maintain" type="button">Maintain</button>
-        <button class="tab" data-view="library" type="button">Library</button>
-        <button class="tab" data-view="exclusions" type="button">Excluded</button>
-        <button class="tab" data-view="activity" type="button">Activity</button>
-        <button class="tab" data-view="developer" type="button">Developer</button>
+      <nav class="section-tabs" aria-label="Chordrift sections" role="tablist">
+        <button class="tab active" data-view="maintain" role="tab" aria-selected="true" aria-controls="view-maintain" id="tab-maintain" type="button">Maintain</button>
+        <button class="tab" data-view="library" role="tab" aria-selected="false" aria-controls="view-library" id="tab-library" type="button">Library</button>
+        <button class="tab" data-view="exclusions" role="tab" aria-selected="false" aria-controls="view-exclusions" id="tab-exclusions" type="button">Excluded</button>
+        <button class="tab" data-view="activity" role="tab" aria-selected="false" aria-controls="view-activity" id="tab-activity" type="button">Activity</button>
+        <button class="tab" data-view="developer" role="tab" aria-selected="false" aria-controls="view-developer" id="tab-developer" type="button">Developer</button>
       </nav>
 
-      <section class="view active" id="view-maintain">
+      <section class="view active" id="view-maintain" role="tabpanel" tabindex="-1" aria-labelledby="tab-maintain">
         <div class="hero-grid">
           <div>
             <p class="eyebrow">Ordinary maintenance</p>
@@ -61,10 +63,10 @@
             <p class="availability" id="maintenance-availability">Checking hosted maintenance capability…</p>
           </div>
         </div>
-        <div id="maintenance-session" class="maintenance-session" hidden></div>
+        <div id="maintenance-session" class="maintenance-session" hidden role="status" aria-live="polite"></div>
       </section>
 
-      <section class="view" id="view-library">
+      <section class="view" id="view-library" role="tabpanel" tabindex="-1" aria-labelledby="tab-library">
         <div class="section-heading">
           <div><p class="eyebrow">Library explorer</p><h1>Playlists</h1></div>
           <div class="segmented" role="group" aria-label="Library state">
@@ -77,25 +79,25 @@
         <div class="library-grid">
           <aside class="playlist-list" id="playlist-list" aria-label="Playlists"></aside>
           <section class="track-list">
-            <div class="track-list-heading"><div><p class="eyebrow">Selected playlist</p><h2 id="playlist-title">Choose a playlist</h2></div><div class="view-controls"><span id="playlist-count"></span><label>Sort <select id="playlist-sort"><option value="custom_order">Custom order</option><option value="most_played">Most played</option><option value="recently_heard">Recently heard</option><option value="album">Album</option><option value="title">Title</option></select></label></div></div>
+            <div class="track-list-heading"><div><p class="eyebrow">Selected playlist</p><h2 id="playlist-title">Choose a playlist</h2></div><div class="view-controls"><span id="playlist-count"></span><label for="playlist-sort">Sort</label><select id="playlist-sort"><option value="custom_order">Custom order</option><option value="most_played">Most played</option><option value="recently_heard">Recently heard</option><option value="album">Album</option><option value="title">Title</option></select></div></div>
             <div class="table-wrap"><table><thead><tr><th>#</th><th>Track</th><th>Album</th><th>Plays</th><th>Last heard</th></tr></thead><tbody id="playlist-tracks"><tr><td colspan="5" class="empty">Select a playlist to inspect its recorded order.</td></tr></tbody></table></div>
           </section>
         </div>
       </section>
 
-      <section class="view" id="view-exclusions">
+      <section class="view" id="view-exclusions" role="tabpanel" tabindex="-1" aria-labelledby="tab-exclusions">
         <div class="section-heading"><div><p class="eyebrow">Reversible archive</p><h1>Excluded tracks</h1></div><span class="count-pill" id="exclusion-count">—</span></div>
         <p class="context-note">An exclusion prevents old intent from silently restoring a removal. Restoring or emptying this archive is always explicit.</p>
-        <div class="view-controls exclusion-controls"><label>Sort <select id="exclusion-sort"><option value="recently_excluded">Recently excluded</option><option value="most_played">Most played</option><option value="recently_heard">Recently heard</option><option value="album">Album</option><option value="previous_playlist">Previous playlist</option><option value="title">Title</option></select></label><label>Group <select id="exclusion-group"><option value="none">None</option><option value="last_heard">Last heard</option><option value="album">Album</option><option value="previous_playlist">Previous playlist</option></select></label></div>
+        <div class="view-controls exclusion-controls"><label for="exclusion-sort">Sort</label><select id="exclusion-sort"><option value="recently_excluded">Recently excluded</option><option value="most_played">Most played</option><option value="recently_heard">Recently heard</option><option value="album">Album</option><option value="previous_playlist">Previous playlist</option><option value="title">Title</option></select><label for="exclusion-group">Group</label><select id="exclusion-group"><option value="none">None</option><option value="last_heard">Last heard</option><option value="album">Album</option><option value="previous_playlist">Previous playlist</option></select></div>
         <div class="card-list" id="exclusion-list"></div>
       </section>
 
-      <section class="view" id="view-activity">
+      <section class="view" id="view-activity" role="tabpanel" tabindex="-1" aria-labelledby="tab-activity">
         <div class="section-heading"><div><p class="eyebrow">Durable operations</p><h1>Activity</h1></div></div>
         <div class="card-list" id="operation-list"><p class="empty">No hosted operations loaded.</p></div>
       </section>
 
-      <section class="view" id="view-developer">
+      <section class="view" id="view-developer" role="tabpanel" tabindex="-1" aria-labelledby="tab-developer">
         <div class="section-heading"><div><p class="eyebrow">Temporary developer access</p><h1>Typed contract lab</h1></div></div>
         <p class="context-note">This submits typed Chordrift DTOs. It cannot run shell commands, SQL, arbitrary URLs, or access credentials.</p>
         <div class="workbench">
