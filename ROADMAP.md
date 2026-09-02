@@ -380,6 +380,12 @@ and later Chordrift refactor begin.
     track facts, exclusions, operation state, and safe diagnostics through
     typed queries renderable by both clients. The CLI may offer deeper detail;
     neither client receives shell or SQL access through the service.
+  - [x] **Interactive remote-CLI parity.** Provide one resumable hosted
+    maintenance wizard that follows durable operations, renders the same
+    recommendations and exact reviews as the browser, records typed decisions,
+    and defaults every provider authorization to no. Keep low-level JSON
+    commands and safe diagnostics as optional CLI-only automation tools; they
+    must not duplicate domain or provider logic.
   - [x] **Reproducible containers.** Use a pinned multi-stage Docker build. The
     repository may exist in the checked-out build workspace/builder stage, but
     production API and worker images contain only the Rust executable, static

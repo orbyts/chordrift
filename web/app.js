@@ -105,7 +105,6 @@ function renderProviderState() {
   $('#spotify-connect').textContent = 'Reconnect Spotify';
   $('#spotify-connect').href = `/providers/spotify/connect?provider_connection_id=${encodeURIComponent(state.provider.provider_connection_id)}`;
   $('#spotify-disconnect').hidden = !connected;
-  $('#spotify-disconnect').action = `/providers/spotify/${encodeURIComponent(state.provider.provider_connection_id)}/disconnect`;
   $('#start-maintenance').disabled = !connected || state.compatibility?.features['service.durable-operations.v1'] !== 'available' || Boolean(state.activeOperation);
 }
 
@@ -137,11 +136,12 @@ async function disconnectSpotify(event) {
   const button = form.querySelector('button');
   button.disabled = true;
   try {
-    const response = await fetch(form.action, {
-      method: 'POST', credentials: 'same-origin', redirect: 'follow',
-      headers: { 'x-chordrift-browser': '1' }
-    });
-    if (!response.ok) throw new Error(`Disconnect failed (${response.status})`);
+    const receipt = await contractRequest('/v1/commands', commandEnvelope({
+      type: 'disconnect_provider',
+      parameters: { provider_connection_id: state.provider.provider_connection_id }
+    }));
+    state.activeOperation = receipt;
+    await followOperation(receipt.operation_id);
     state.activeOperation = null;
     state.maintenanceSession = null;
     $('#maintenance-session').hidden = true;
@@ -173,7 +173,7 @@ async function followOperation(operationId) {
           ? `Chordrift stopped${errorCode ? ` · ${errorCode}` : ''}. Provider state will be checked again before any retry.`
           : progress ? `${progress.phase.replaceAll('_', ' ')} · ${progress.completed}${progress.total == null ? '' : ` / ${progress.total}`}` : 'Checking the latest provider state.')
     );
-    if (['completed', 'failed', 'cancelled'].includes(current.state)) {
+    if (['completed', 'failed', 'cancelled', 'recoverable'].includes(current.state)) {
       await Promise.all([loadProviderConnections(), loadActivity()]);
       return operation;
     }

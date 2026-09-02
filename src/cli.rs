@@ -1,6 +1,6 @@
 use std::{
     future::Future,
-    io::{self, Read, Write},
+    io::{self, BufReader, Read, Write},
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -19,12 +19,15 @@ use crate::{
         CAPABILITY_DURABLE_OPERATIONS, CAPABILITY_MAINTENANCE_TASK_SESSION,
         CAPABILITY_PRODUCT_IDENTITY, CAPABILITY_REMOTE_CLI, CONTRACT_VERSION, ClientCompatibility,
         Command as ContractCommand, CommandRequest, ContractVersionRange, IdempotencyKey,
-        MaintenanceDecision, MaintenanceReviewId, MaintenanceSessionId, ProviderConnectionView,
-        ProviderConnectionsView, Query, QueryRequest, QueryResponse, RequestId, ResourceId,
-        SchemaVersionRange,
+        LibraryStateSource, MaintenanceDecision, MaintenanceReviewId, MaintenanceSessionId,
+        ProviderConnectionView, ProviderConnectionsView, Query, QueryRequest, QueryResponse,
+        RequestId, ResourceId, SchemaVersionRange,
     },
     credentials::{CredentialStore, SecretId, SystemCredentialStore},
     db, db_cleanup, db_reports, db_v2_migration, embeddings, enrichment, history, intake,
+    maintenance_client::{
+        MaintenanceWizardRequest, follow_durable_operation, run_maintenance_wizard,
+    },
     model_inference, onboarding, onboarding_audit, playlists, presentation, product_rehearsal,
     proposals,
     provider_vault::{
@@ -295,11 +298,83 @@ pub enum ServiceSpotifyCommand {
         #[arg(long)]
         no_open: bool,
     },
+    /// Revoke Spotify authorization while retaining Chordrift history and intent.
+    Disconnect {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local Chordrift credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Account-owned provider connection to disconnect.
+        #[arg(long)]
+        provider_connection_id: uuid::Uuid,
+    },
 }
 
 /// Thin remote client queries for provider and Chordrift library state.
 #[derive(Clone, Debug, Subcommand)]
 pub enum ServiceLibraryCommand {
+    /// List playlists from one explicit provider or Chordrift state plane.
+    Playlists {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Provider connection shown by the hosted provider selector.
+        #[arg(long)]
+        provider_connection_id: uuid::Uuid,
+        /// State plane to inspect.
+        #[arg(long, value_enum, default_value = "provider")]
+        source: ServiceLibrarySourceArg,
+    },
+    /// List ordered tracks in one playlist and explicit state plane.
+    Tracks {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Provider connection shown by the hosted provider selector.
+        #[arg(long)]
+        provider_connection_id: uuid::Uuid,
+        /// Playlist ID returned by `service library playlists`.
+        #[arg(long)]
+        playlist_id: String,
+        /// State plane to inspect.
+        #[arg(long, value_enum, default_value = "provider")]
+        source: ServiceLibrarySourceArg,
+    },
+    /// Show one track's placement, lifecycle, and listening evidence.
+    Track {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Provider connection shown by the hosted provider selector.
+        #[arg(long)]
+        provider_connection_id: uuid::Uuid,
+        /// Stable provider track identity.
+        #[arg(long)]
+        provider_track_id: String,
+    },
+    /// List the active reversible exclusion archive.
+    Excluded {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Provider connection shown by the hosted provider selector.
+        #[arg(long)]
+        provider_connection_id: uuid::Uuid,
+    },
     /// Explain provider/model playlist count, membership, and order differences.
     Compare {
         /// HTTPS service base URL.
@@ -314,9 +389,42 @@ pub enum ServiceLibraryCommand {
     },
 }
 
+/// Remote library state plane selected by a thin client.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum ServiceLibrarySourceArg {
+    /// Newest complete provider observation.
+    Provider,
+    /// Current Chordrift model.
+    Chordrift,
+}
+
+impl From<ServiceLibrarySourceArg> for LibraryStateSource {
+    fn from(value: ServiceLibrarySourceArg) -> Self {
+        match value {
+            ServiceLibrarySourceArg::Provider => Self::ProviderObservation,
+            ServiceLibrarySourceArg::Chordrift => Self::ChordriftModel,
+        }
+    }
+}
+
 /// Thin remote client operations for durable ordinary maintenance.
 #[derive(Clone, Debug, Subcommand)]
 pub enum ServiceMaintenanceCommand {
+    /// Run the complete interactive daily-driver workflow over the hosted contract.
+    Wizard {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Provider connection shown by `service provider list`.
+        #[arg(long)]
+        provider_connection_id: uuid::Uuid,
+        /// Resume this durable session instead of starting a new observation.
+        #[arg(long)]
+        session_id: Option<uuid::Uuid>,
+    },
     /// Observe the provider and start a cumulative record-only interpretation.
     Start {
         /// HTTPS service base URL.
@@ -2009,7 +2117,10 @@ fn streams_output_while_running(cli: &Cli) -> bool {
             } | ServiceCommand::Provider {
                 command: ServiceProviderCommand::Spotify {
                     command: ServiceSpotifyCommand::Connect { .. }
+                        | ServiceSpotifyCommand::Disconnect { .. }
                 }
+            } | ServiceCommand::Maintenance {
+                command: ServiceMaintenanceCommand::Wizard { .. }
             }
         }
     )
@@ -2811,9 +2922,55 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
                     )
                     .await?;
                 }
+                ServiceSpotifyCommand::Disconnect {
+                    url,
+                    profile,
+                    provider_connection_id,
+                } => {
+                    let client = negotiated_service_client(&url, &profile).await?;
+                    writeln!(output, "Disconnecting Spotify authorization…")?;
+                    let receipt = client
+                        .command(CommandRequest {
+                            contract_version: CONTRACT_VERSION,
+                            request_id: RequestId::new(),
+                            idempotency_key: IdempotencyKey::new(),
+                            command: ContractCommand::DisconnectProvider {
+                                provider_connection_id: ResourceId::from_uuid(
+                                    provider_connection_id,
+                                ),
+                            },
+                        })
+                        .await
+                        .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                    follow_durable_operation(&client, receipt, output).await?;
+                    writeln!(
+                        output,
+                        "Spotify disconnected. Chordrift history and intent were retained."
+                    )?;
+                }
             },
         },
         ServiceCommand::Maintenance { command } => match command {
+            ServiceMaintenanceCommand::Wizard {
+                url,
+                profile,
+                provider_connection_id,
+                session_id,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let stdin = io::stdin();
+                let mut input = BufReader::new(stdin.lock());
+                run_maintenance_wizard(
+                    &client,
+                    MaintenanceWizardRequest {
+                        provider_connection_id: ResourceId::from_uuid(provider_connection_id),
+                        resume_session_id: session_id.map(MaintenanceSessionId::from_uuid),
+                    },
+                    &mut input,
+                    output,
+                )
+                .await?;
+            }
             ServiceMaintenanceCommand::Start {
                 url,
                 profile,
@@ -2926,6 +3083,86 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
             }
         },
         ServiceCommand::Library { command } => match command {
+            ServiceLibraryCommand::Playlists {
+                url,
+                profile,
+                provider_connection_id,
+                source,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let response = client
+                    .query(QueryRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        query: Query::LibraryPlaylists {
+                            provider_connection_id: ResourceId::from_uuid(provider_connection_id),
+                            source: source.into(),
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&response)?)?;
+            }
+            ServiceLibraryCommand::Tracks {
+                url,
+                profile,
+                provider_connection_id,
+                playlist_id,
+                source,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let response = client
+                    .query(QueryRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        query: Query::LibraryPlaylistTracks {
+                            provider_connection_id: ResourceId::from_uuid(provider_connection_id),
+                            playlist_id,
+                            source: source.into(),
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&response)?)?;
+            }
+            ServiceLibraryCommand::Track {
+                url,
+                profile,
+                provider_connection_id,
+                provider_track_id,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let response = client
+                    .query(QueryRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        query: Query::LibraryTrack {
+                            provider_connection_id: ResourceId::from_uuid(provider_connection_id),
+                            provider_track_id,
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&response)?)?;
+            }
+            ServiceLibraryCommand::Excluded {
+                url,
+                profile,
+                provider_connection_id,
+            } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let response = client
+                    .query(QueryRequest {
+                        contract_version: CONTRACT_VERSION,
+                        request_id: RequestId::new(),
+                        query: Query::ExcludedTracks {
+                            provider_connection_id: ResourceId::from_uuid(provider_connection_id),
+                        },
+                    })
+                    .await
+                    .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+                writeln!(output, "{}", serde_json::to_string(&response)?)?;
+            }
             ServiceLibraryCommand::Compare {
                 url,
                 profile,
@@ -7959,10 +8196,11 @@ mod tests {
         PlaylistRoleArg, PlaylistSignalClassArg, ProductAuditMode, ProductCollectionCommand,
         ProductCommand, ProductOnboardingCommand, ProductRecipeCommand, ProductSpinCommand,
         ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, ServiceCommand,
-        ServiceLibraryCommand, ServiceMaintenanceCommand, ServiceProviderCommand,
-        ServiceSessionCommand, ServiceSpotifyCommand, SignalCommand, SpotifyCommand, SyncCommand,
-        TrackCommand, authorize_service_session, binary_capability_manifest, format_count,
-        format_elapsed, trusted_authorization_url, trusted_issuer_endpoint, write_status,
+        ServiceLibraryCommand, ServiceLibrarySourceArg, ServiceMaintenanceCommand,
+        ServiceProviderCommand, ServiceSessionCommand, ServiceSpotifyCommand, SignalCommand,
+        SpotifyCommand, SyncCommand, TrackCommand, authorize_service_session,
+        binary_capability_manifest, format_count, format_elapsed, trusted_authorization_url,
+        trusted_issuer_endpoint, write_status,
     };
 
     #[tokio::test]
@@ -8184,6 +8422,99 @@ mod tests {
                     }
                 }
             } if url == "https://chordrift.example" && profile == "daily"
+        ));
+    }
+
+    #[test]
+    fn parses_streaming_hosted_spotify_disconnect() {
+        let provider_connection_id = uuid::Uuid::new_v4();
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "provider",
+            "spotify",
+            "disconnect",
+            "--url",
+            "https://chordrift.example",
+            "--provider-connection-id",
+            &provider_connection_id.to_string(),
+        ])
+        .expect("valid command");
+        assert!(super::streams_output_while_running(&cli));
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Provider {
+                    command: ServiceProviderCommand::Spotify {
+                        command: ServiceSpotifyCommand::Disconnect {
+                            provider_connection_id: id,
+                            ..
+                        }
+                    }
+                }
+            } if id == provider_connection_id
+        ));
+    }
+
+    #[test]
+    fn parses_remote_library_state_plane_queries() {
+        let provider_connection_id = uuid::Uuid::new_v4();
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "library",
+            "playlists",
+            "--url",
+            "https://chordrift.example",
+            "--provider-connection-id",
+            &provider_connection_id.to_string(),
+            "--source",
+            "chordrift",
+        ])
+        .expect("valid command");
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Library {
+                    command: ServiceLibraryCommand::Playlists {
+                        provider_connection_id: id,
+                        source: ServiceLibrarySourceArg::Chordrift,
+                        ..
+                    }
+                }
+            } if id == provider_connection_id
+        ));
+    }
+
+    #[test]
+    fn parses_streaming_remote_maintenance_wizard() {
+        let provider_connection_id = uuid::Uuid::new_v4();
+        let session_id = uuid::Uuid::new_v4();
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "maintenance",
+            "wizard",
+            "--url",
+            "https://chordrift.example",
+            "--provider-connection-id",
+            &provider_connection_id.to_string(),
+            "--session-id",
+            &session_id.to_string(),
+        ])
+        .expect("valid command");
+        assert!(super::streams_output_while_running(&cli));
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Maintenance {
+                    command: ServiceMaintenanceCommand::Wizard {
+                        provider_connection_id: provider,
+                        session_id: Some(session),
+                        ..
+                    }
+                }
+            } if provider == provider_connection_id && session == session_id
         ));
     }
 

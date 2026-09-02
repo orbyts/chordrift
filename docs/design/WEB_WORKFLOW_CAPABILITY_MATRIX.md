@@ -1,7 +1,7 @@
-# Web workflow capability matrix
+# Daily-driver client capability matrix
 
-Status: active V021-06 acceptance contract. The browser is a thin client of
-the typed Rust application contract. This document does not authorize a
+Status: active V021-06 acceptance contract. The browser and installed CLI are
+thin clients of the same typed Rust application contract. This document does not authorize a
 provider write or a generic command, shell, SQL, or provider-token endpoint.
 
 ## Provider context is always visible
@@ -27,6 +27,29 @@ has completed. `Chordrift model` means durable collection intent and may differ
 from the provider observation while maintenance is pending.
 
 ## Private-beta workflow matrix
+
+Unless a row explicitly says otherwise, both web and CLI must render and drive
+the workflow. The web client uses controls; the CLI uses the interactive
+`service maintenance wizard`. Both submit the same DTOs and observe the same
+revision, authorization, and verification gates. Raw CLI JSON commands are
+diagnostic/automation primitives, not an alternate maintenance implementation.
+
+### Wrapper parity
+
+| Capability | Web | Remote CLI | Shared authority |
+| --- | --- | --- | --- |
+| Chordrift identity | Login/logout controls | `service session login/remove` | Auth0 identity exchange and account-scoped Chordrift sessions |
+| Provider identity | Connect, reconnect, disconnect, select | Connect, reconnect, disconnect, list; explicit connection ID selects context | Account-owned provider connections and encrypted credential vault |
+| Ordinary maintenance | Guided controls | `service maintenance wizard` | Durable operation and maintenance-session DTOs |
+| Resume/recovery | Reload active session and operation | `wizard --session-id`; operation/session IDs printed immediately | PostgreSQL session revisions, operation events, idempotency and cancellation |
+| Library investigation | Library, comparison, track and Excluded views | Typed query commands; selected expert JSON diagnostics | Provider-scoped immutable query views |
+| Exact provider writes | Default-no confirmation of displayed effects | Default-no prompt for the identical displayed effects | Server-rederived review ID, revision check, apply/observe/verify worker |
+| Operator automation | Not exposed | Raw command/query files, safe diagnostics, release checks | Same authenticated contract; never shell, SQL, credentials, or provider URLs |
+
+Friendly CLI library renderers may continue to improve independently, but all
+launch queries and provider-lifecycle operations have explicit remote CLI
+commands. The underlying typed operations are shared; no music behavior waits
+on a wrapper.
 
 | Product surface | Rust authority | Browser responsibility | Provider effect | V021-06 state |
 | --- | --- | --- | --- | --- |

@@ -186,6 +186,15 @@ pub async fn apply_reviewed_sync_plan_from_env(
 /// Provider-side work accepted by the durable hosted command boundary.
 #[async_trait]
 pub trait HostedProviderExecutor: Send + Sync {
+    /// Revokes provider authorization while retaining all account data.
+    async fn disconnect_provider(
+        &self,
+        _subject: AuthenticatedSubject,
+        _provider_connection_id: ResourceId,
+    ) -> std::result::Result<ResourceId, ClientError> {
+        Err(ClientError::new(ErrorCode::CapabilityUnavailable, false))
+    }
+
     /// Reads and persists one complete provider observation.
     async fn observe(
         &self,
@@ -530,6 +539,48 @@ fn trusted_provider_effects(
 
 #[async_trait]
 impl HostedProviderExecutor for SpotifyObservationExecutor {
+    async fn disconnect_provider(
+        &self,
+        subject: AuthenticatedSubject,
+        provider_connection_id: ResourceId,
+    ) -> std::result::Result<ResourceId, ClientError> {
+        let provider = sqlx::query_scalar::<_, String>(
+            "SELECT provider FROM provider_accounts
+              WHERE id = $1 AND chordrift_account_id = $2",
+        )
+        .bind(provider_connection_id.as_uuid())
+        .bind(subject.account_id.as_uuid())
+        .fetch_optional(self.database.pool())
+        .await
+        .map_err(|_| unavailable())?
+        .ok_or_else(|| ClientError::new(ErrorCode::PermissionDenied, false))?;
+        if provider != "spotify" {
+            return Err(ClientError::new(ErrorCode::CapabilityUnavailable, false));
+        }
+        let active = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(
+                 SELECT 1 FROM provider_credential_vault
+                  WHERE provider_account_id = $1
+                    AND credential_kind = 'oauth_refresh' AND revoked_at IS NULL
+             )",
+        )
+        .bind(provider_connection_id.as_uuid())
+        .fetch_one(self.database.pool())
+        .await
+        .map_err(|_| unavailable())?;
+        if active {
+            let identity = ProviderCredentialIdentity::new(
+                subject.account_id,
+                provider_connection_id,
+                provider,
+            )?;
+            self.vault
+                .revoke(subject, &identity, "provider disconnected", Utc::now())
+                .await?;
+        }
+        Ok(provider_connection_id)
+    }
+
     async fn observe(
         &self,
         subject: AuthenticatedSubject,
@@ -981,6 +1032,13 @@ async fn dispatch<E: HostedProviderExecutor>(
     lease: &DurableOperationLease,
 ) -> std::result::Result<ResourceId, ClientError> {
     match &lease.request.command {
+        Command::DisconnectProvider {
+            provider_connection_id,
+        } => {
+            executor
+                .disconnect_provider(lease.subject, *provider_connection_id)
+                .await
+        }
         Command::ObserveProvider {
             provider_connection_id,
         } => {
@@ -1050,6 +1108,7 @@ async fn dispatch<E: HostedProviderExecutor>(
 
 fn progress_phase(command: &Command) -> &'static str {
     match command {
+        Command::DisconnectProvider { .. } => "disconnect_provider",
         Command::ObserveProvider { .. } => "observe_provider",
         Command::StartMaintenance { .. } => "start_maintenance",
         Command::RefreshMaintenance { .. } => "refresh_maintenance",
@@ -1152,6 +1211,14 @@ mod tests {
 
     #[async_trait]
     impl HostedProviderExecutor for FakeExecutor {
+        async fn disconnect_provider(
+            &self,
+            _subject: AuthenticatedSubject,
+            provider_connection_id: ResourceId,
+        ) -> std::result::Result<ResourceId, ClientError> {
+            Ok(provider_connection_id)
+        }
+
         async fn observe(
             &self,
             _subject: AuthenticatedSubject,
@@ -1246,6 +1313,26 @@ mod tests {
                 .expect_err("worker rejects unsupported command")
                 .code,
             ErrorCode::InvalidRequest
+        );
+    }
+
+    #[tokio::test]
+    async fn worker_dispatches_typed_provider_disconnect() {
+        let provider_connection_id = ResourceId::new();
+        let result = dispatch(
+            &FakeExecutor,
+            &lease(Command::DisconnectProvider {
+                provider_connection_id,
+            }),
+        )
+        .await
+        .expect("typed disconnect is accepted");
+        assert_eq!(result, provider_connection_id);
+        assert_eq!(
+            progress_phase(&Command::DisconnectProvider {
+                provider_connection_id,
+            }),
+            "disconnect_provider"
         );
     }
 

@@ -66,6 +66,8 @@ pub mod intake;
 pub mod library_comparison;
 /// Wrapper-neutral ordinary-maintenance workflow shared by every client.
 pub mod maintenance;
+/// Interactive thin-client orchestration over the wrapper-neutral maintenance contract.
+pub mod maintenance_client;
 /// PostgreSQL provider-first interpretation for durable maintenance tasks.
 pub mod maintenance_interpretation;
 pub mod maintenance_projection;
