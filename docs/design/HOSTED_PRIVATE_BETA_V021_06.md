@@ -51,8 +51,12 @@ SQL, provider URL, database credential, or provider credential.
 The OIDC authorization-code exchange and Chordrift session stay server-side.
 The browser receives an `HttpOnly`, `Secure`, `SameSite=Lax` Chordrift cookie.
 Cookie-authenticated DTO calls additionally require the exact public Origin and
-an application-specific request header. CLI clients continue using an
-`Authorization: Bearer` product session and never rely on browser cookies.
+an application-specific request header. CLI authentication uses a separate
+public Auth0 Native application and the OAuth 2.0 Device Authorization Flow.
+Auth0 hosts verification and consent; Chordrift exchanges the resulting
+verified issuer credential for the same `Authorization: Bearer` product
+session contract. CLI clients never rely on browser cookies, expose a client
+secret, or run a browser callback listener.
 
 ## Container boundary
 
@@ -150,7 +154,11 @@ The complete product/browser acceptance surface is tracked in
    hosted transports. The former legacy project, temporary rehearsal branches,
    and stale duplicate database are deleted.
 4. Configure Auth0 as a Regular Web Application with Google login and callback
-   `https://chordrift.suhail.ink/auth/callback`.
+   `https://chordrift.suhail.ink/auth/callback`. Configure a second Native
+   Application with Token Endpoint Authentication Method `None`, OIDC
+   conformance enabled, Google connection enabled, and the Device Code grant
+   type. Store its public client ID as `device_client_id` on the existing
+   1Password Auth0 item; no Native application client secret exists.
 5. Start the Vortex API with provider writes limited to server-rederived,
    enumerated effects behind an immutable exact review. Readiness must report
    `exact_review_only`; no general publication or client-supplied write exists.

@@ -12,12 +12,14 @@ authenticated compatibility negotiation, then sends an exact `CommandRequest`
 or `QueryRequest` to the Rust authority. It never receives Neon credentials,
 provider refresh credentials, SQL access, or an endpoint for shell commands.
 
-V021-06 completes the user-facing sign-in: the CLI creates a loopback listener,
-opens the hosted Chordrift consent page, and exchanges a single-use code with
-PKCE for a separate revocable `chd_session_…` credential. Only that opaque
+V021-06 completes the user-facing sign-in with Auth0's standard OAuth 2.0
+Device Authorization Flow. A separate public Native application gives the CLI
+an Auth0-hosted verification URI and short user code. The CLI polls Auth0 at
+the prescribed interval, then exchanges the verified identity credential once
+for a separate revocable `chd_session_…` credential. Only that opaque product
 session is stored under a named profile in the operating-system credential
-store. The token never enters browser history or terminal output. Status
-reports only whether a value exists; removal never prints it.
+store. Neither identity nor product tokens enter browser history or terminal
+output. Status reports only whether a value exists; removal never prints it.
 
 ```text
 chordrift service session login --url https://chordrift.suhail.ink
@@ -33,10 +35,13 @@ web, iOS, and Android screens compile user gestures into the same DTOs.
 
 ## Security and compatibility
 
-- HTTPS is mandatory except `localhost`, `127.0.0.1`, or `::1` development.
-- Browser-mediated login accepts only an exact ephemeral IPv4/IPv6 loopback
-  callback, binds state and PKCE, requires explicit same-origin consent, and
-  consumes the authorization code once.
+- HTTPS is mandatory outside the in-process fake-provider acceptance harness.
+- Auth0 owns device-code expiry, polling cadence, authentication, and consent.
+  Chordrift accepts identity credentials only from its configured issuer,
+  derives the account server-side, and returns a distinct revocable session.
+- OIDC discovery, device authorization, verification, and token endpoints must
+  all use the configured issuer's exact HTTPS origin. The Native client has no
+  secret, and Chordrift never accepts a client-supplied identity-provider URL.
 - Authentication precedes compatibility, command, and query dispatch.
 - The client negotiates the highest common contract, accepted hosted schema,
   and required service capabilities before every command/query invocation.
@@ -55,8 +60,9 @@ fallback when the network fails. A failed remote call never opens Neon or loads
 provider credentials locally.
 
 Real loopback HTTP tests run the shipped client against Axum and compare it with
-the explicit local client. They prove negotiation, authenticated typed command,
-typed query, HTTPS policy, and response-shape parity.
+the explicit local client. A separate fake Auth0/service acceptance proves
+device discovery, pending polling, identity-token exchange, and issuance of a
+distinct Chordrift session without a browser-to-localhost callback.
 
 ## Release identity
 

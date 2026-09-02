@@ -153,10 +153,12 @@ finishes with an observable recoverable service release. See the
 [roadmap](ROADMAP.md).
 
 V021-05 adds an authenticated remote CLI over the same DTO contract. V021-06
-adds browser-mediated PKCE sign-in at `chordrift service session login`, stores
-only a separate revocable Chordrift session in the OS credential store,
-negotiates service compatibility before work, requires HTTPS outside loopback
-testing, and keeps an explicit in-process development transport.
+uses Auth0's standard OAuth 2.0 Device Authorization Flow at `chordrift service
+session login`, then stores only a separate revocable Chordrift session in the
+OS credential store. It negotiates service compatibility before work, requires
+HTTPS outside the fake-provider harness, and keeps an explicit in-process
+development transport. No custom Chordrift consent page or localhost browser
+callback participates in CLI identity.
 
 Learned shared classification is a separate product and future Chordrift
 dependency, not a Chordrift database module or v0.2.1 slice. That project owns
