@@ -22,8 +22,9 @@ use crate::{
         CAPABILITY_DURABLE_OPERATIONS, CAPABILITY_MAINTENANCE_TASK_SESSION,
         CAPABILITY_PRODUCT_IDENTITY, CAPABILITY_REMOTE_CLI, CONTRACT_VERSION, ClientCompatibility,
         Command as ContractCommand, CommandRequest, ContractVersionRange, IdempotencyKey,
-        MaintenanceDecision, MaintenanceReviewId, MaintenanceSessionId, Query, QueryRequest,
-        RequestId, ResourceId, SchemaVersionRange,
+        MaintenanceDecision, MaintenanceReviewId, MaintenanceSessionId, ProviderConnectionView,
+        ProviderConnectionsView, Query, QueryRequest, QueryResponse, RequestId, ResourceId,
+        SchemaVersionRange,
     },
     credentials::{CredentialStore, SecretId, SystemCredentialStore},
     db, db_cleanup, db_reports, db_v2_migration, embeddings, enrichment, history, intake,
@@ -203,6 +204,12 @@ pub enum ServiceCommand {
         #[command(subcommand)]
         command: ServiceSessionCommand,
     },
+    /// Connect and inspect hosted provider accounts without storing provider secrets locally.
+    Provider {
+        /// Hosted provider operation.
+        #[command(subcommand)]
+        command: ServiceProviderCommand,
+    },
     /// Start, inspect, refresh, or resolve one durable ordinary-maintenance session.
     Maintenance {
         /// Maintenance-session operation.
@@ -247,6 +254,49 @@ pub enum ServiceCommand {
         /// Typed query envelope JSON file.
         #[arg(long)]
         file: PathBuf,
+    },
+}
+
+/// Thin remote client operations for hosted provider authorization.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ServiceProviderCommand {
+    /// List provider connections owned by the authenticated Chordrift account.
+    List {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local Chordrift credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+    },
+    /// Authorize a Spotify account in the hosted encrypted credential vault.
+    Spotify {
+        /// Spotify authorization operation.
+        #[command(subcommand)]
+        command: ServiceSpotifyCommand,
+    },
+}
+
+/// Hosted Spotify authorization operations.
+#[derive(Clone, Debug, Subcommand)]
+pub enum ServiceSpotifyCommand {
+    /// Open Spotify authorization and wait for the hosted connection to become ready.
+    Connect {
+        /// HTTPS service base URL.
+        #[arg(long)]
+        url: String,
+        /// Local Chordrift credential-store profile.
+        #[arg(long, default_value = "default")]
+        profile: String,
+        /// Existing disconnected connection to reconnect.
+        #[arg(long)]
+        provider_connection_id: Option<uuid::Uuid>,
+        /// Authorize an additional Spotify account even when one is already ready.
+        #[arg(long)]
+        add_account: bool,
+        /// Print the authorization URL without opening the default browser.
+        #[arg(long)]
+        no_open: bool,
     },
 }
 
@@ -1959,6 +2009,10 @@ fn streams_output_while_running(cli: &Cli) -> bool {
         Command::Service {
             command: ServiceCommand::Session {
                 command: ServiceSessionCommand::Login { .. }
+            } | ServiceCommand::Provider {
+                command: ServiceProviderCommand::Spotify {
+                    command: ServiceSpotifyCommand::Connect { .. }
+                }
             }
         }
     )
@@ -2736,6 +2790,32 @@ async fn run_service_command(command: ServiceCommand, output: &mut impl Write) -
                 writeln!(output, "removed: {removed}\nprofile: {profile}")?;
             }
         },
+        ServiceCommand::Provider { command } => match command {
+            ServiceProviderCommand::List { url, profile } => {
+                let client = negotiated_service_client(&url, &profile).await?;
+                let response = query_service_provider_connections(&client).await?;
+                writeln!(output, "{}", serde_json::to_string(&response)?)?;
+            }
+            ServiceProviderCommand::Spotify { command } => match command {
+                ServiceSpotifyCommand::Connect {
+                    url,
+                    profile,
+                    provider_connection_id,
+                    add_account,
+                    no_open,
+                } => {
+                    connect_service_spotify(
+                        &url,
+                        &profile,
+                        provider_connection_id,
+                        add_account,
+                        no_open,
+                        output,
+                    )
+                    .await?;
+                }
+            },
+        },
         ServiceCommand::Maintenance { command } => match command {
             ServiceMaintenanceCommand::Start {
                 url,
@@ -3058,6 +3138,173 @@ async fn login_service_session(
     SystemCredentialStore.save(&service_session_id(profile)?, token.as_bytes())?;
     writeln!(output, "stored: true\nprofile: {profile}")?;
     Ok(())
+}
+
+async fn query_service_provider_connections(
+    client: &RemoteHttpClient,
+) -> Result<ProviderConnectionsView> {
+    let response = client
+        .query(QueryRequest {
+            contract_version: CONTRACT_VERSION,
+            request_id: RequestId::new(),
+            query: Query::ProviderConnections,
+        })
+        .await
+        .map_err(|error| ChordriftError::Configuration(error.to_string()))?;
+    let QueryResponse::ProviderConnections(view) = response else {
+        return Err(ChordriftError::Configuration(
+            "Chordrift returned an unexpected provider response".to_owned(),
+        ));
+    };
+    Ok(view.value)
+}
+
+fn hosted_spotify_connect_url(
+    base: &url::Url,
+    provider_connection_id: Option<uuid::Uuid>,
+) -> Result<url::Url> {
+    let mut connect = base.join("/providers/spotify/connect").map_err(|_| {
+        ChordriftError::Configuration("service URL cannot authorize Spotify".to_owned())
+    })?;
+    connect.query_pairs_mut().append_pair("completion", "cli");
+    if let Some(provider_connection_id) = provider_connection_id {
+        connect.query_pairs_mut().append_pair(
+            "provider_connection_id",
+            &provider_connection_id.to_string(),
+        );
+    }
+    Ok(connect)
+}
+
+fn newly_ready_spotify_connection<'a>(
+    before: &ProviderConnectionsView,
+    current: &'a ProviderConnectionsView,
+    target: Option<ResourceId>,
+) -> Option<&'a ProviderConnectionView> {
+    match target {
+        Some(target) => current.connections.iter().find(|connection| {
+            connection.provider_connection_id == target
+                && connection.provider == "spotify"
+                && connection.credential_ready
+        }),
+        None => current.connections.iter().find(|connection| {
+            connection.provider == "spotify"
+                && connection.credential_ready
+                && before
+                    .connections
+                    .iter()
+                    .find(|before| {
+                        before.provider_connection_id == connection.provider_connection_id
+                    })
+                    .is_none_or(|before| !before.credential_ready)
+        }),
+    }
+}
+
+async fn connect_service_spotify(
+    url: &str,
+    profile: &str,
+    provider_connection_id: Option<uuid::Uuid>,
+    add_account: bool,
+    no_open: bool,
+    output: &mut impl Write,
+) -> Result<()> {
+    let base = url::Url::parse(url)
+        .map_err(|_| ChordriftError::Configuration("service URL is invalid".to_owned()))?;
+    if base.scheme() != "https" || base.host_str().is_none() {
+        return Err(ChordriftError::Configuration(
+            "hosted provider login requires an HTTPS URL".to_owned(),
+        ));
+    }
+    let client = negotiated_service_client(url, profile).await?;
+    let before = query_service_provider_connections(&client).await?;
+    let target = provider_connection_id.map(ResourceId::from_uuid);
+    if let Some(target) = target
+        && before
+            .connections
+            .iter()
+            .find(|connection| connection.provider_connection_id == target)
+            .is_none_or(|connection| connection.provider != "spotify")
+    {
+        return Err(ChordriftError::Configuration(
+            "the requested Spotify connection is not owned by this Chordrift account".to_owned(),
+        ));
+    }
+    let already_ready = match target {
+        Some(target) => before.connections.iter().find(|connection| {
+            connection.provider_connection_id == target
+                && connection.provider == "spotify"
+                && connection.credential_ready
+        }),
+        None if !add_account => before
+            .connections
+            .iter()
+            .find(|connection| connection.provider == "spotify" && connection.credential_ready),
+        None => None,
+    };
+    if let Some(connected) = already_ready {
+        writeln!(output, "connected: true")?;
+        writeln!(output, "provider: spotify")?;
+        writeln!(
+            output,
+            "provider_connection_id: {}",
+            connected.provider_connection_id
+        )?;
+        writeln!(
+            output,
+            "display_name: {}",
+            connected.display_name.as_deref().unwrap_or("-")
+        )?;
+        writeln!(output, "authorization_required: false")?;
+        return Ok(());
+    }
+
+    let connect = hosted_spotify_connect_url(&base, provider_connection_id)?;
+    if no_open {
+        writeln!(
+            output,
+            "Authorize Spotify for Chordrift in a trusted browser. Sign in to Chordrift there first if needed."
+        )?;
+    } else {
+        writeln!(output, "Opening Spotify authorization through Chordrift.")?;
+    }
+    writeln!(output, "Authorize at: {connect}")?;
+    output.flush()?;
+    if !no_open {
+        webbrowser::open(connect.as_str()).map_err(|_| {
+            ChordriftError::Configuration(format!(
+                "could not open the browser; visit {}",
+                connect.as_str()
+            ))
+        })?;
+    }
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
+    loop {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let current = query_service_provider_connections(&client).await?;
+        let connected = newly_ready_spotify_connection(&before, &current, target);
+        if let Some(connected) = connected {
+            writeln!(output, "connected: true")?;
+            writeln!(output, "provider: spotify")?;
+            writeln!(
+                output,
+                "provider_connection_id: {}",
+                connected.provider_connection_id
+            )?;
+            writeln!(
+                output,
+                "display_name: {}",
+                connected.display_name.as_deref().unwrap_or("-")
+            )?;
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(ChordriftError::Configuration(
+                "Spotify authorization timed out".to_owned(),
+            ));
+        }
+    }
 }
 
 async fn run_reevaluate_command(
@@ -7585,9 +7832,9 @@ mod tests {
         PlaylistRoleArg, PlaylistSignalClassArg, ProductAuditMode, ProductCollectionCommand,
         ProductCommand, ProductOnboardingCommand, ProductRecipeCommand, ProductSpinCommand,
         ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, ServiceCommand,
-        ServiceLibraryCommand, ServiceMaintenanceCommand, ServiceSessionCommand, SignalCommand,
-        SpotifyCommand, SyncCommand, TrackCommand, binary_capability_manifest, format_count,
-        format_elapsed, write_status,
+        ServiceLibraryCommand, ServiceMaintenanceCommand, ServiceProviderCommand,
+        ServiceSessionCommand, ServiceSpotifyCommand, SignalCommand, SpotifyCommand, SyncCommand,
+        TrackCommand, binary_capability_manifest, format_count, format_elapsed, write_status,
     };
 
     #[test]
@@ -7638,6 +7885,121 @@ mod tests {
                 }
             }
         ));
+    }
+
+    #[test]
+    fn parses_hosted_spotify_login_without_local_provider_credentials() {
+        let cli = Cli::try_parse_from([
+            "chordrift",
+            "service",
+            "provider",
+            "spotify",
+            "connect",
+            "--url",
+            "https://chordrift.example",
+            "--profile",
+            "daily",
+            "--no-open",
+        ])
+        .expect("valid command");
+        assert!(super::streams_output_while_running(&cli));
+        assert!(matches!(
+            cli.command,
+            Command::Service {
+                command: ServiceCommand::Provider {
+                    command: ServiceProviderCommand::Spotify {
+                        command: ServiceSpotifyCommand::Connect {
+                            url,
+                            profile,
+                            provider_connection_id: None,
+                            add_account: false,
+                            no_open: true,
+                        }
+                    }
+                }
+            } if url == "https://chordrift.example" && profile == "daily"
+        ));
+    }
+
+    #[test]
+    fn hosted_spotify_login_detects_only_new_account_scoped_readiness() {
+        use crate::contract::{ProviderConnectionView, ProviderConnectionsView, ResourceId};
+
+        fn connection(id: u128, provider: &str, ready: bool) -> ProviderConnectionView {
+            ProviderConnectionView {
+                provider_connection_id: ResourceId::from_uuid(uuid::Uuid::from_u128(id)),
+                provider: provider.to_owned(),
+                display_name: Some(format!("account-{id}")),
+                observed_at: None,
+                credential_ready: ready,
+            }
+        }
+
+        let before = ProviderConnectionsView {
+            connections: vec![
+                connection(1, "spotify", true),
+                connection(2, "spotify", false),
+            ],
+        };
+        let unchanged = before.clone();
+        assert!(super::newly_ready_spotify_connection(&before, &unchanged, None).is_none());
+
+        let reconnected = ProviderConnectionsView {
+            connections: vec![
+                connection(1, "spotify", true),
+                connection(2, "spotify", true),
+            ],
+        };
+        assert_eq!(
+            super::newly_ready_spotify_connection(&before, &reconnected, None)
+                .map(|connection| connection.provider_connection_id),
+            Some(ResourceId::from_uuid(uuid::Uuid::from_u128(2)))
+        );
+        assert_eq!(
+            super::newly_ready_spotify_connection(
+                &before,
+                &reconnected,
+                Some(ResourceId::from_uuid(uuid::Uuid::from_u128(2))),
+            )
+            .map(|connection| connection.provider_connection_id),
+            Some(ResourceId::from_uuid(uuid::Uuid::from_u128(2)))
+        );
+
+        let added = ProviderConnectionsView {
+            connections: vec![
+                connection(1, "spotify", true),
+                connection(2, "spotify", false),
+                connection(3, "spotify", true),
+            ],
+        };
+        assert_eq!(
+            super::newly_ready_spotify_connection(&before, &added, None)
+                .map(|connection| connection.provider_connection_id),
+            Some(ResourceId::from_uuid(uuid::Uuid::from_u128(3)))
+        );
+    }
+
+    #[test]
+    fn hosted_spotify_login_url_is_server_derived() {
+        let base = url::Url::parse("https://chordrift.example/base").unwrap();
+        let connection_id = uuid::Uuid::from_u128(4);
+        let url = super::hosted_spotify_connect_url(&base, Some(connection_id)).unwrap();
+        assert_eq!(url.origin(), base.origin());
+        assert_eq!(url.path(), "/providers/spotify/connect");
+        let connection_id_text = connection_id.to_string();
+        let parameters = url
+            .query_pairs()
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(
+            parameters.get("completion").map(|value| value.as_ref()),
+            Some("cli")
+        );
+        assert_eq!(
+            parameters
+                .get("provider_connection_id")
+                .map(|value| value.as_ref()),
+            Some(connection_id_text.as_str())
+        );
     }
     use crate::db::DatabaseStatus;
 

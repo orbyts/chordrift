@@ -16,6 +16,21 @@ and verified 51/51 database together; see
 > remains an explicit developer/forensic adapter; remote failure never causes
 > an implicit local fallback.
 
+On a new machine, install the CLI and authorize the two independent boundaries:
+
+```bash
+cargo install chordrift --version 0.2.1-beta.7
+chordrift service session login --url https://chordrift.suhail.ink
+chordrift service provider spotify connect --url https://chordrift.suhail.ink
+```
+
+The first command uses Auth0/Google to create a revocable machine session for
+the existing Chordrift account. It does not expose Neon credentials: the hosted
+Rust authority scopes every query to that account's library rows. The second
+command authorizes Spotify separately and leaves its refresh credential
+encrypted on the hosted service. A later convenience command may compose both
+steps, but their grants and revocation lifecycles remain independent.
+
 ## Documentation map
 
 | Need | Authoritative document | Status |
