@@ -6,7 +6,23 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-09-01.
+Last updated: 2026-09-02.
+
+## Current release and narrow Web UI handoff
+
+`v0.2.1-beta.10` is the current CLI and hosted Web release. It is built from
+exact commit `2355ab19908c29702414041bf2338f7ce42e8625`, uses contract `1.6`
+and schema `51`, and is deployed on Vortex as manifest digest
+`sha256:ad3212df84135d6619a9ac07c4cd8574e37ce6a33165dc27906c517ce0c17fc9`.
+The post-release documentation commit on `main` is `5d2da1d`.
+
+For a narrow GPT-5.3 Codex Spark Web UI polish task, read
+[`docs/how-to/SPARK_WEB_UI_HANDOFF.md`](docs/how-to/SPARK_WEB_UI_HANDOFF.md)
+and use
+[`docs/how-to/SPARK_WEB_UI_PROMPT.md`](docs/how-to/SPARK_WEB_UI_PROMPT.md).
+Do not load this full historical handoff for that task unless a Rust or release
+issue is escalated. The long sections below preserve operational history and
+are not the onboarding context for a presentation-only change.
 
 ## v0.2.1-beta.8 standard CLI authentication release
 

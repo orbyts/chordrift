@@ -1,14 +1,14 @@
 # Web service contract and transport conformance
 
-Status: A021-12 and V021-01 through V021-04 are implemented. The asynchronous Rust
-authority is available through typed HTTP routes using persisted, revocable
-Chordrift product sessions and is tested over a real loopback TCP server.
-Provider refresh credentials remain behind an encrypted internal vault; there
-is no raw-token route. Typed command acceptance, operation state, ordered
-events, cancellation, retry, and recovery now have restart-safe PostgreSQL
-persistence. Remote CLI parity, hosting, and deployment remain later V021
-slices. This document does not expose a production endpoint or authorize
-deployment.
+Status: V021-01 through V021-06 are implemented for the private
+`v0.2.1-beta.10` release. The asynchronous Rust authority is available through
+typed HTTP routes using persisted, revocable Chordrift product sessions, the
+hosted Web UI and the authenticated remote CLI. Provider refresh credentials
+remain behind an encrypted internal vault; there is no raw-token route. Typed
+command acceptance, operation state, ordered events, cancellation, retry, and
+recovery have restart-safe PostgreSQL persistence. Release and deployment
+remain explicit operator actions; this contract does not itself authorize a
+provider write or a deployment.
 
 ## The boundary
 
@@ -72,7 +72,7 @@ contract. It supports task-level operations equivalent to:
 - cancel long work; and
 - read progress, recovery state, receipt, and final convergence.
 
-The concrete 1.4 application contract exposes typed start, refresh, resolve,
+The concrete 1.6 application contract exposes typed start, refresh, resolve,
 authorize, session-query, and provider/model comparison DTOs. The set-based
 comparison reports provider-only, Chordrift-only, unresolved-identity, and
 custom-order differences to web and remote CLI; clients never infer a reason
@@ -140,7 +140,8 @@ rejection, capability failure, and secret-free errors. The matrix is:
 3. fake provider plus the existing disposable PostgreSQL integration suite —
    implemented, including restart-safe durable operation persistence, exact
    replay, concurrent worker claim, recovery, retry, and cancellation; and
-4. deployed read-only/synthetic smoke tests — required by V021-06.
+4. deployed read-only/synthetic smoke tests — implemented as a V021-06 release
+   gate.
 
 The HTTP harness is the early web simulation. It tests JSON round trips,
 authentication, tenant isolation, idempotent retries, duplicate submission,

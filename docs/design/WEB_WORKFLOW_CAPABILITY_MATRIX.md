@@ -1,8 +1,9 @@
 # Daily-driver client capability matrix
 
-Status: active V021-06 acceptance contract. The browser and installed CLI are
-thin clients of the same typed Rust application contract. This document does not authorize a
-provider write or a generic command, shell, SQL, or provider-token endpoint.
+Status: active post-V021-06 private-beta contract at `v0.2.1-beta.10`. The
+browser and installed CLI are thin clients of the same typed Rust application
+contract. This document does not authorize a provider write or a generic
+command, shell, SQL, or provider-token endpoint.
 
 ## Provider context is always visible
 
@@ -64,15 +65,15 @@ on a wrapper.
 | Provider/model comparison | Return directional membership, unresolved-identity and custom-order differences with both state timestamps | Explain provider-only and model-only counts instead of only unequal totals | None | Deployed and browser-proven; Lightleak Reverie explains 501/501 as order-only drift |
 | Track detail | Join identity, placements, saved state, exclusions and personal listening statistics | Render facts without inferring classification | None | Deployed |
 | Exclusion archive | Query active reversible exclusions and prior placement | Search/filter, inspect and begin an explicit restore or forget flow | None until separately confirmed | Read-only deployed; actions pending |
-| Observe changes | Lease provider credential, verify stable identity, pull one complete snapshot, refresh derived state and persist durable progress | Start/reconnect, display progress and allow cancellation | Provider reads only | Implemented; deployment/read-only acceptance proof pending |
-| Ordinary maintenance | Interpret cumulative provider gestures, project resolved record-only intent, return only genuine ambiguity and exact effects | Start, follow, refresh, and render one shared session; never assemble internal plans | None until exact authorization | Canonical projection implemented; disposable proof and deployment pending |
-| Saved/Liked intake | Detect new, rediscovered and already-placed tracks; remember keep/consume decisions; clear only after destination intent | Ask only when policy is unresolved; render the exact cleanup review | Optional exact saved-state change | Rust review/apply/observe/verify implemented; deployment gated |
-| Direct playlist intake | Treat a provider-side add as placement evidence and canonical intake | Explain the accepted placement or request genuine ambiguity | Usually none | Typed interpretation and canonical projection implemented |
-| Reclassification | Interpret a paired managed remove/add as one move and training signal | Show the inferred move; request a destination only if ambiguous | Usually none | Paired-row collapse and typed interpretation implemented |
-| Reorder | Accept exact provider custom order when membership is equal | Show it as recorded intent, not a provider mutation | None | Typed interpretation and canonical projection implemented |
-| Removal/exclusion | Record a managed removal as a reversible exclusion | Explain archive semantics and offer later restore/forget | None for the observed removal | Typed interpretation and canonical projection implemented |
-| Exact provider review | Bind human labels and effects to one immutable review/revision; rederive trusted effects before execution | Render exact effects and submit only revision plus review identity | Enumerated, reviewed effect only | Saved-state vertical slice implemented; deployment gated |
-| Operations/activity | Persist lifecycle, progress, events, retry, cancellation and receipts | Reconnect, page events, cancel/retry only when allowed | Depends on operation | Separate API/worker deployment and restart persistence proven; live provider-operation proof awaits Spotify reconnect |
+| Observe changes | Lease provider credential, verify stable identity, pull one complete snapshot, refresh derived state and persist durable progress | Start/reconnect, display progress and allow cancellation | Provider reads only | Deployed and release-smoked |
+| Ordinary maintenance | Interpret cumulative provider gestures, project resolved record-only intent, return only genuine ambiguity and exact effects | Start, follow, refresh, and render one shared session; never assemble internal plans | None until exact authorization | Deployed through Web and remote CLI |
+| Saved/Liked intake | Detect new, rediscovered and already-placed tracks; remember keep/consume decisions; clear only after destination intent | Ask only when policy is unresolved; render the exact cleanup review | Optional exact saved-state change | Deployed with separate placement and cleanup reviews |
+| Direct playlist intake | Treat a provider-side add as placement evidence and canonical intake | Explain the accepted placement or request genuine ambiguity | Usually none | Deployed with regression coverage |
+| Reclassification | Interpret a paired managed remove/add as one move and training signal | Show the inferred move; request a destination only if ambiguous | Usually none | Deployed with delayed-observation reconciliation coverage |
+| Reorder | Accept exact provider custom order when membership is equal | Show it as recorded intent, not a provider mutation | None | Deployed |
+| Removal/exclusion | Record a managed removal as a reversible exclusion | Explain archive semantics and offer later restore/forget | None for the observed removal | Record path deployed; restore/forget browser actions pending |
+| Exact provider review | Bind human labels and effects to one immutable review/revision; rederive trusted effects before execution | Render exact effects and submit only revision plus review identity | Enumerated, reviewed effect only | Deployed and exact-write release-smoked |
+| Operations/activity | Persist lifecycle, progress, events, retry, cancellation and receipts | Reconnect, page events, cancel/retry only when allowed | Depends on operation | API/worker deployment and restart persistence proven |
 | Recovery candidates | Rank history-known tracks absent from playlists/saved state while preserving exclusions | Filter, inspect and choose explicit restoration | Only after a later exact review | Post-deployment audit |
 | Spin | Build deterministic preview and separately authorize publication | Dedicated workflow, never ordinary maintenance | Separately reviewed publication | Later web surface |
 | Playlist creation, artwork and retirement | Dedicated typed workflows and safety gates | Dedicated review surfaces | Separately reviewed mutation | Later web surfaces |
