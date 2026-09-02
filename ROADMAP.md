@@ -420,7 +420,7 @@ and later Chordrift refactor begin.
     logout/revocation works, backup restore works, and no Spotify mutation was
     made. Enable provider writes only through a later explicit user-approved
     gate after manual beta testing.
-  - [ ] **Release proof.** Pass CI, container smoke and fake-provider browser
+  - [x] **Release proof.** Pass CI, container smoke and fake-provider browser
     tests, disposable-PostgreSQL identity/tenant tests, migration/restore
     rehearsal, and private deployment checks. Tag and publish the exact commit
     to crates.io; install that published version as the local CLI; build the
@@ -428,7 +428,25 @@ and later Chordrift refactor begin.
     and record the installed CLI version, deployed image digest, source commit,
     and live health result. Finally, run one DTO-conformance smoke through both
     the installed remote CLI and browser against that deployed authority before
-    accepting `v0.2.1-beta.1`.
+    accepting the current private beta.
+
+    Accepted 2026-09-02 as `v0.2.1-beta.10`. Beta.9 supplied the complete
+    remote maintenance wizard and client parity but was rejected by the final
+    authenticated browser smoke because its JavaScript wrapper still submitted
+    contract 1.5 to the 1.6 authority. Beta.10 removes that independent literal
+    and renders the browser version from Rust's authoritative contract constant.
+    CI run `33654295413` passed formatting, JavaScript wrapper harnesses, strict
+    Clippy, all Rust/doc tests, disposable-PostgreSQL identity, vault, operation,
+    maintenance-session and provider tests, and crate packaging. Tagged source
+    commit `2355ab19908c29702414041bf2338f7ce42e8625` was published to crates.io
+    and installed locally as `chordrift 0.2.1-beta.10`. Vortex API and worker
+    run image digest
+    `sha256:ad3212df84135d6619a9ac07c4cd8574e37ce6a33165dc27906c517ce0c17fc9`
+    built from that same commit. Public liveness reports beta.10, readiness
+    reports database/identity ready with exact-review-only writes, installed CLI
+    negotiation reports contract 1.6/schema 51, and the authenticated web wrapper
+    shows the same Spotify connection with maintenance enabled. The release
+    smoke performed no provider observation or Spotify write.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,
