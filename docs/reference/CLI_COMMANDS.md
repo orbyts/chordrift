@@ -41,13 +41,15 @@ chordrift service maintenance authorize --url https://service.example \
 chordrift service session remove --profile default
 ```
 
-`session login` opens Chordrift in the browser, asks for explicit approval, and
-stores a separate revocable CLI session in the OS credential store. The token
-is never placed in a URL or printed. Add `--no-open` to stream the one-time
-authorization URL without launching the operating-system default browser; the
-same authenticated approval and PKCE exchange remain mandatory. New clients
-learn that consent completed through a bounded hosted status poll, so the
-browser does not need to navigate from HTTPS to localhost. `session save`
+`session login` uses Auth0's OAuth 2.0 Device Authorization Flow for the public
+Chordrift Native application. The CLI discovers Auth0 through the service,
+opens Auth0's stable verification page in the operating-system default browser,
+displays the short user code, and follows Auth0's bounded polling interval. It
+then exchanges the verified Auth0 identity credential exactly once for a
+separate revocable Chordrift session in the OS credential store. No client
+secret, localhost callback, custom Chordrift consent form, Auth0 credential, or
+Chordrift token enters a URL or terminal output. Add `--no-open` to print the
+Auth0 verification URL and code without launching a browser. `session save`
 remains an operator-only recovery command that reads an already issued token
 from standard input.
 Command/query files must be exact public

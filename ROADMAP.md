@@ -432,9 +432,10 @@ and later Chordrift refactor begin.
     has regressions for direct managed intake, ambiguous placement, combined
     direct-add-plus-Like intent, and duplicate move halves.
 
-  Current implementation checkpoint (2026-08-31): the Rust server entry point,
-  Auth0/Google authorization-code + PKCE boundary, verified-email adoption
-  gate, HttpOnly Chordrift sessions, same-origin browser bridge, typed
+  Current implementation checkpoint (2026-09-01): the Rust server entry point,
+  Auth0/Google authorization-code + PKCE Web boundary, standard Auth0 Device
+  Authorization Flow for the installed CLI, verified-email adoption gate,
+  HttpOnly Chordrift sessions, same-origin browser bridge, typed
   JavaScript workbench, pinned non-root runtime image, Vortex Compose file, and
   Nexus proxy policy exist on the V021-06 development branch. A clean image
   built and passed an isolated Vortex liveness/readiness smoke test; the

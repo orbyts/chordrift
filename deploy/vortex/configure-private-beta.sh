@@ -26,6 +26,7 @@ done
 AUTH0_DOMAIN=$(op read "op://API/$AUTH0_ITEM/domain")
 AUTH0_CLIENT_ID=$(op read "op://API/$AUTH0_ITEM/username")
 AUTH0_CLIENT_SECRET=$(op read "op://API/$AUTH0_ITEM/credential")
+AUTH0_DEVICE_CLIENT_ID=$(op read "op://API/$AUTH0_ITEM/device_client_id")
 BOOTSTRAP_EMAIL=$(op read "op://API/$AUTH0_ITEM/bootstrap_email")
 DATABASE_HOST=$(op read "op://API/$NEON_ITEM/server")
 DATABASE_PORT=$(op read "op://API/$NEON_ITEM/port")
@@ -59,6 +60,7 @@ trap 'rm -f -- "$TEMP_FILE"' EXIT HUP INT TERM
     printf 'CHORDRIFT_OIDC_USERINFO_URL=https://%s/userinfo\n' "$AUTH0_DOMAIN"
     printf 'CHORDRIFT_OIDC_CLIENT_ID=%s\n' "$AUTH0_CLIENT_ID"
     printf 'CHORDRIFT_OIDC_CLIENT_SECRET=%s\n' "$AUTH0_CLIENT_SECRET"
+    printf 'CHORDRIFT_OIDC_DEVICE_CLIENT_ID=%s\n' "$AUTH0_DEVICE_CLIENT_ID"
     printf 'CHORDRIFT_SPOTIFY_CLIENT_ID=%s\n' "$SPOTIFY_CLIENT_ID"
     printf 'CHORDRIFT_PROVIDER_VAULT_ACTIVE_KEY_ID=%s\n' "$PROVIDER_VAULT_KEY_ID"
     printf 'CHORDRIFT_PROVIDER_VAULT_KEY_B64=%s\n' "$PROVIDER_VAULT_KEY_B64"

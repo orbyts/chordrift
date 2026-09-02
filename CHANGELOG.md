@@ -4,6 +4,21 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.8] - 2026-09-01
+
+- Replace the custom Chordrift CLI consent page, loopback callback, PKCE
+  continuation, and hosted status poll with Auth0's standard OAuth 2.0 Device
+  Authorization Flow for a separate public Native application.
+- Open Auth0's stable verification URI in the operating-system default browser,
+  display its short user code, and honor Auth0's expiry, pending, denial, and
+  slow-down responses without requiring a particular browser.
+- Validate OIDC discovery and every authorization endpoint against the exact
+  configured HTTPS issuer before exchanging the short-lived Auth0 identity
+  credential for the existing account-scoped, revocable Chordrift session.
+- Add a permanent fake Auth0/service acceptance flow covering discovery,
+  pending polling, identity exchange, and issuance of a distinct product
+  session without OS credential writes or browser-to-localhost navigation.
+
 ## [0.2.1-beta.7] - 2026-09-01
 
 - Add a thin hosted Spotify authorization command for an installed CLI so a

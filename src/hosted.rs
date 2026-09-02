@@ -16,7 +16,7 @@ use std::{
 
 use async_trait::async_trait;
 use axum::{
-    Form, Json, Router,
+    Json, Router,
     extract::{Path as AxumPath, Query as AxumQuery, Request, State},
     http::{
         HeaderMap, HeaderName, HeaderValue, StatusCode,
@@ -82,7 +82,6 @@ const LOGIN_COOKIE: &str = "chordrift_login";
 const SPOTIFY_LOGIN_COOKIE: &str = "chordrift_spotify_login";
 const LOGIN_TTL_MINUTES: i64 = 10;
 const MAX_LOGIN_ATTEMPTS: usize = 128;
-const CLI_LOGIN_TTL_MINUTES: i64 = 5;
 const INDEX_HTML: &str = include_str!("../web/index.html");
 const APP_JS: &str = include_str!("../web/app.js");
 const LIBRARY_EXPLORER_JS: &str = include_str!("../web/library-explorer.js");
@@ -102,6 +101,7 @@ struct HostedConfig {
     oidc_userinfo_url: Url,
     oidc_client_id: String,
     oidc_client_secret: Zeroizing<String>,
+    oidc_device_client_id: String,
     spotify_client_id: String,
 }
 
@@ -132,6 +132,7 @@ impl HostedConfig {
         let oidc_userinfo_url = https_url("CHORDRIFT_OIDC_USERINFO_URL")?;
         let oidc_client_id = required("CHORDRIFT_OIDC_CLIENT_ID")?;
         let oidc_client_secret = Zeroizing::new(required("CHORDRIFT_OIDC_CLIENT_SECRET")?);
+        let oidc_device_client_id = required("CHORDRIFT_OIDC_DEVICE_CLIENT_ID")?;
         let spotify_client_id = required("CHORDRIFT_SPOTIFY_CLIENT_ID")?;
         Ok(Self {
             bind,
@@ -144,6 +145,7 @@ impl HostedConfig {
             oidc_userinfo_url,
             oidc_client_id,
             oidc_client_secret,
+            oidc_device_client_id,
             spotify_client_id,
         })
     }
@@ -239,22 +241,6 @@ struct SpotifyLoginAttempt {
     expires_at: DateTime<Utc>,
 }
 
-struct CliLoginAttempt {
-    subject: AuthenticatedSubject,
-    redirect_uri: Url,
-    client_state: String,
-    code_challenge: String,
-    consent_token_sha256: [u8; 32],
-    poll_completion: bool,
-    approved: bool,
-    expires_at: DateTime<Utc>,
-}
-
-struct CliLoginCode {
-    code: String,
-    expires_at: DateTime<Utc>,
-}
-
 #[derive(Clone)]
 struct HostedState {
     config: Arc<HostedConfig>,
@@ -265,8 +251,6 @@ struct HostedState {
     oidc: Arc<OidcVerifier>,
     login_attempts: Arc<Mutex<HashMap<String, LoginAttempt>>>,
     spotify_login_attempts: Arc<Mutex<HashMap<String, SpotifyLoginAttempt>>>,
-    cli_login_attempts: Arc<Mutex<HashMap<String, CliLoginAttempt>>>,
-    cli_login_codes: Arc<Mutex<HashMap<String, CliLoginCode>>>,
     provider_connections: Arc<PostgresProviderConnectionAuthority>,
 }
 
@@ -1167,8 +1151,6 @@ pub async fn run_from_env() -> Result<()> {
         oidc,
         login_attempts: Arc::new(Mutex::new(HashMap::new())),
         spotify_login_attempts: Arc::new(Mutex::new(HashMap::new())),
-        cli_login_attempts: Arc::new(Mutex::new(HashMap::new())),
-        cli_login_codes: Arc::new(Mutex::new(HashMap::new())),
         provider_connections,
     };
 
@@ -1209,9 +1191,7 @@ pub async fn run_from_env() -> Result<()> {
         .route("/auth/callback", get(callback))
         .route("/auth/session", get(session_status))
         .route("/auth/logout", post(logout))
-        .route("/auth/cli/authorize", get(cli_authorize))
-        .route("/auth/cli/approve", post(cli_approve))
-        .route("/auth/cli/status", get(cli_status))
+        .route("/auth/cli/config", get(cli_device_config))
         .route("/auth/cli/exchange", post(cli_exchange))
         .route("/providers/spotify/connect", get(spotify_connect))
         .route("/providers/spotify/callback", get(spotify_callback))
@@ -1645,132 +1625,39 @@ async fn logout(State(state): State<HostedState>, request: Request) -> Response 
     )
 }
 
-#[derive(Deserialize)]
-struct CliAuthorizeQuery {
-    redirect_uri: String,
-    state: String,
-    code_challenge: String,
-    code_challenge_method: String,
-    completion: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct CliApproveForm {
-    flow_id: String,
-    consent_token: String,
+#[derive(Deserialize, Serialize)]
+/// Public Auth0 Device Authorization configuration consumed by installed CLIs.
+pub struct CliDeviceConfigResponse {
+    /// Configuration schema understood by the CLI.
+    pub schema_version: u16,
+    /// OIDC issuer whose discovery document owns the device endpoints.
+    pub issuer: String,
+    /// Public Auth0 Native Application client identifier. This is not a secret.
+    pub client_id: String,
+    /// Fixed least-privilege identity scopes requested by the CLI.
+    pub scope: String,
 }
 
 #[derive(Deserialize, Serialize)]
-/// One-time PKCE exchange submitted by the installed CLI after browser consent.
+#[serde(deny_unknown_fields)]
+/// Auth0 identity credential exchange submitted after Device Authorization.
 pub struct CliSessionExchangeRequest {
     /// Product-session schema understood by the CLI.
     pub schema_version: u16,
-    /// Single-use authorization code returned only to the loopback listener.
-    pub code: String,
-    /// Exact loopback callback bound by the authorization request.
-    pub redirect_uri: String,
-    /// PKCE verifier retained only by the initiating CLI process.
-    pub code_verifier: String,
 }
 
-#[derive(Deserialize)]
-struct CliStatusQuery {
-    state: String,
-}
-
-#[derive(Deserialize, Serialize)]
-/// Poll result for browser-mediated installed CLI authorization.
-pub struct CliSessionStatusResponse {
-    /// Stable state name: `pending` or `approved`.
-    pub status: String,
-    /// Single-use PKCE exchange code, present only after explicit approval.
-    pub code: Option<String>,
-}
-
-async fn cli_authorize(
-    State(state): State<HostedState>,
-    AxumQuery(query): AxumQuery<CliAuthorizeQuery>,
-    headers: HeaderMap,
-) -> Response {
-    let Ok(redirect_uri) = Url::parse(&query.redirect_uri) else {
-        return StatusCode::BAD_REQUEST.into_response();
-    };
-    if !valid_cli_redirect(&redirect_uri)
-        || query.code_challenge_method != "S256"
-        || query
-            .completion
-            .as_deref()
-            .is_some_and(|completion| completion != "poll")
-        || (query.completion.as_deref() == Some("poll") && !valid_cli_poll_state(&query.state))
-        || query.state.is_empty()
-        || query.state.len() > 256
-        || URL_SAFE_NO_PAD
-            .decode(query.code_challenge.as_bytes())
-            .ok()
-            .is_none_or(|bytes| bytes.len() != 32)
-    {
-        return StatusCode::BAD_REQUEST.into_response();
-    }
-    let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
-        let return_to = cli_authorize_return_to(&query);
-        let mut login_url = state
-            .config
-            .public_origin
-            .join("/auth/login")
-            .expect("public origin must accept a relative login path");
-        login_url
-            .query_pairs_mut()
-            .append_pair("return_to", &return_to);
-        return (StatusCode::SEE_OTHER, [(LOCATION, login_url.to_string())]).into_response();
-    };
-    let flow_id = random_url_token();
-    let consent_token = random_url_token();
-    let consent_token_sha256 = Sha256::digest(consent_token.as_bytes()).into();
-    {
-        let mut attempts = state.cli_login_attempts.lock().await;
-        attempts.retain(|_, attempt| attempt.expires_at > Utc::now());
-        if attempts.len() >= MAX_LOGIN_ATTEMPTS {
-            return StatusCode::TOO_MANY_REQUESTS.into_response();
-        }
-        attempts.insert(
-            flow_id.clone(),
-            CliLoginAttempt {
-                subject,
-                redirect_uri,
-                client_state: query.state,
-                code_challenge: query.code_challenge,
-                consent_token_sha256,
-                poll_completion: query.completion.as_deref() == Some("poll"),
-                approved: false,
-                expires_at: Utc::now() + TimeDelta::minutes(CLI_LOGIN_TTL_MINUTES),
-            },
-        );
-    }
-    Html(format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize Chordrift CLI</title></head><body><main><h1>Connect the Chordrift CLI?</h1><p>This creates a separate revocable Chordrift session on this computer. It does not share Spotify or database credentials.</p><form method=\"post\" action=\"/auth/cli/approve\"><input type=\"hidden\" name=\"flow_id\" value=\"{flow_id}\"><input type=\"hidden\" name=\"consent_token\" value=\"{consent_token}\"><button type=\"submit\">Authorize CLI</button></form></main></body></html>"
-    ))
-    .into_response()
-}
-
-fn cli_authorize_return_to(query: &CliAuthorizeQuery) -> String {
-    let mut return_to = Url::parse("https://chordrift.invalid/auth/cli/authorize")
-        .expect("fixed CLI authorization URL must parse");
-    return_to
-        .query_pairs_mut()
-        .append_pair("redirect_uri", &query.redirect_uri)
-        .append_pair("state", &query.state)
-        .append_pair("code_challenge", &query.code_challenge)
-        .append_pair("code_challenge_method", &query.code_challenge_method);
-    if let Some(completion) = &query.completion {
-        return_to
-            .query_pairs_mut()
-            .append_pair("completion", completion);
-    }
-    format!(
-        "{}?{}",
-        return_to.path(),
-        return_to.query().unwrap_or_default()
-    )
+async fn cli_device_config(State(state): State<HostedState>) -> Response {
+    let mut response = Json(CliDeviceConfigResponse {
+        schema_version: 1,
+        issuer: state.config.oidc_issuer.to_string(),
+        client_id: state.config.oidc_device_client_id.clone(),
+        scope: "openid profile email".to_owned(),
+    })
+    .into_response();
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
 }
 
 fn valid_login_return_to(value: &str) -> Option<String> {
@@ -1779,165 +1666,63 @@ fn valid_login_return_to(value: &str) -> Option<String> {
     }
     let base = Url::parse("https://chordrift.invalid/").expect("fixed return base must parse");
     let target = base.join(value).ok()?;
-    let valid_cli = target.path() == "/auth/cli/authorize" && target.query().is_some();
     let valid_spotify = target.path() == "/providers/spotify/connect"
         && target.query_pairs().all(|(key, value)| match key.as_ref() {
             "provider_connection_id" => uuid::Uuid::parse_str(&value).is_ok(),
             "completion" => value == "cli",
             _ => false,
         });
-    (target.origin() == base.origin()
-        && (valid_cli || valid_spotify)
-        && target.fragment().is_none())
-    .then(|| value.to_owned())
-}
-
-async fn cli_approve(
-    State(state): State<HostedState>,
-    headers: HeaderMap,
-    Form(form): Form<CliApproveForm>,
-) -> Response {
-    let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
-        return StatusCode::UNAUTHORIZED.into_response();
-    };
-    let mut attempts = state.cli_login_attempts.lock().await;
-    let Some(attempt) = attempts.get(&form.flow_id) else {
-        return StatusCode::BAD_REQUEST.into_response();
-    };
-    if !valid_cli_consent(attempt, subject, &form.consent_token, Utc::now()) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
-    let mut attempt = attempts
-        .remove(&form.flow_id)
-        .expect("validated CLI login attempt remains present");
-    drop(attempts);
-    attempt.approved = true;
-    let poll_completion = attempt.poll_completion;
-    let code = random_url_token();
-    let client_state = attempt.client_state.clone();
-    let expires_at = attempt.expires_at;
-    let mut redirect = attempt.redirect_uri.clone();
-    redirect
-        .query_pairs_mut()
-        .append_pair("code", &code)
-        .append_pair("state", &client_state);
-    state
-        .cli_login_attempts
-        .lock()
-        .await
-        .insert(code.clone(), attempt);
-    if poll_completion {
-        state.cli_login_codes.lock().await.insert(
-            client_state,
-            CliLoginCode {
-                code: code.clone(),
-                expires_at,
-            },
-        );
-    }
-    if poll_completion {
-        return Html("<!doctype html><html><head><meta charset=\"utf-8\"><title>Chordrift CLI authorized</title></head><body><main><h1>Chordrift CLI authorized</h1><p>Return to your terminal. You may close this window.</p></main></body></html>").into_response();
-    }
-    (
-        StatusCode::SEE_OTHER,
-        [(LOCATION, redirect.as_str().to_owned())],
-    )
-        .into_response()
-}
-
-async fn cli_status(
-    State(state): State<HostedState>,
-    AxumQuery(query): AxumQuery<CliStatusQuery>,
-) -> Response {
-    if !valid_cli_poll_state(&query.state) {
-        return StatusCode::BAD_REQUEST.into_response();
-    }
-    let mut codes = state.cli_login_codes.lock().await;
-    codes.retain(|_, code| code.expires_at > Utc::now());
-    let mut response = match codes.get(&query.state) {
-        Some(code) => (
-            StatusCode::OK,
-            Json(CliSessionStatusResponse {
-                status: "approved".to_owned(),
-                code: Some(code.code.clone()),
-            }),
-        )
-            .into_response(),
-        None => (
-            StatusCode::ACCEPTED,
-            Json(CliSessionStatusResponse {
-                status: "pending".to_owned(),
-                code: None,
-            }),
-        )
-            .into_response(),
-    };
-    response
-        .headers_mut()
-        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    response
-}
-
-fn valid_cli_poll_state(state: &str) -> bool {
-    state.len() <= 256
-        && URL_SAFE_NO_PAD
-            .decode(state.as_bytes())
-            .ok()
-            .is_some_and(|bytes| bytes.len() == 32)
-}
-
-fn valid_cli_consent(
-    attempt: &CliLoginAttempt,
-    subject: AuthenticatedSubject,
-    consent_token: &str,
-    now: DateTime<Utc>,
-) -> bool {
-    let consent_token_sha256: [u8; 32] = Sha256::digest(consent_token.as_bytes()).into();
-    attempt.expires_at > now
-        && attempt.subject == subject
-        && !attempt.approved
-        && consent_token_sha256 == attempt.consent_token_sha256
+    (target.origin() == base.origin() && valid_spotify && target.fragment().is_none())
+        .then(|| value.to_owned())
 }
 
 async fn cli_exchange(
     State(state): State<HostedState>,
+    headers: HeaderMap,
     Json(request): Json<CliSessionExchangeRequest>,
 ) -> Response {
     if request.schema_version != PRODUCT_SESSION_SCHEMA_VERSION {
         return StatusCode::BAD_REQUEST.into_response();
     }
-    let Some(attempt) = state.cli_login_attempts.lock().await.remove(&request.code) else {
+    let Some(credential) = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|value| !value.is_empty())
+    else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    let verifier_challenge =
-        URL_SAFE_NO_PAD.encode(Sha256::digest(request.code_verifier.as_bytes()));
-    if !attempt.approved
-        || attempt.expires_at <= Utc::now()
-        || attempt.redirect_uri.as_str() != request.redirect_uri
-        || verifier_challenge != attempt.code_challenge
-    {
-        return StatusCode::UNAUTHORIZED.into_response();
+    let profile = match state.oidc.verify_profile(credential).await {
+        Ok(profile) => profile,
+        Err(_) => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+    if let Some(expected_email) = &state.config.bootstrap_email {
+        if !profile.email_verified || profile.email.as_deref() != Some(expected_email.as_str()) {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+        if state
+            .identity_store
+            .provision_account_owner(&profile.identity, state.config.account_id)
+            .await
+            .is_err()
+        {
+            return StatusCode::FORBIDDEN.into_response();
+        }
     }
-    state
-        .cli_login_codes
-        .lock()
+    match state
+        .session_authority
+        .exchange(
+            credential,
+            SessionExchangeRequest {
+                schema_version: PRODUCT_SESSION_SCHEMA_VERSION,
+                account_id: state.config.account_id,
+            },
+        )
         .await
-        .remove(&attempt.client_state);
-    match state.session_authority.delegate(attempt.subject).await {
+    {
         Ok(grant) => (StatusCode::CREATED, Json(grant)).into_response(),
         Err(_) => StatusCode::FORBIDDEN.into_response(),
     }
-}
-
-fn valid_cli_redirect(url: &Url) -> bool {
-    url.scheme() == "http"
-        && matches!(url.host_str(), Some("127.0.0.1" | "::1" | "[::1]"))
-        && url.port().is_some()
-        && url.path() == "/callback"
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.query().is_none()
-        && url.fragment().is_none()
 }
 
 #[derive(Deserialize)]
@@ -2288,30 +2073,6 @@ mod tests {
     }
 
     #[test]
-    fn cli_login_accepts_only_exact_loopback_callbacks() {
-        assert!(valid_cli_redirect(
-            &Url::parse("http://127.0.0.1:43117/callback").unwrap()
-        ));
-        assert!(valid_cli_redirect(
-            &Url::parse("http://[::1]:43117/callback").unwrap()
-        ));
-        for rejected in [
-            "https://127.0.0.1:43117/callback",
-            "http://localhost:43117/callback",
-            "http://127.0.0.1/callback",
-            "http://127.0.0.1:43117/other",
-            "http://127.0.0.1:43117/callback?next=https://attacker.example",
-            "http://user@127.0.0.1:43117/callback",
-            "http://attacker.example:43117/callback",
-        ] {
-            assert!(
-                !valid_cli_redirect(&Url::parse(rejected).unwrap()),
-                "{rejected}"
-            );
-        }
-    }
-
-    #[test]
     fn request_logs_are_built_only_from_controlled_fields() {
         let line = request_log_line("req_1", "POST", "/v1/commands", 202, 17);
         assert_eq!(
@@ -2347,6 +2108,7 @@ mod tests {
             oidc_userinfo_url: Url::parse("https://identity.example/userinfo").unwrap(),
             oidc_client_id: "client".to_owned(),
             oidc_client_secret: Zeroizing::new("secret".to_owned()),
+            oidc_device_client_id: "native-client".to_owned(),
             spotify_client_id: "spotify-client".to_owned(),
             bootstrap_email: None,
             account_id: ResourceId::new(),
@@ -2361,14 +2123,16 @@ mod tests {
         let mut referer = HeaderMap::new();
         referer.insert(
             REFERER,
-            HeaderValue::from_static("https://chordrift.example/auth/cli/authorize?flow=opaque"),
+            HeaderValue::from_static(
+                "https://chordrift.example/providers/spotify/connect?completion=cli",
+            ),
         );
         assert!(same_origin_for(&state.public_origin, &referer));
 
         for rejected in [
-            "https://attacker.example/auth/cli/authorize",
-            "https://chordrift.example.attacker.invalid/auth/cli/authorize",
-            "http://chordrift.example/auth/cli/authorize",
+            "https://attacker.example/providers/spotify/connect",
+            "https://chordrift.example.attacker.invalid/providers/spotify/connect",
+            "http://chordrift.example/providers/spotify/connect",
         ] {
             let mut headers = HeaderMap::new();
             headers.insert(REFERER, HeaderValue::from_str(rejected).unwrap());
@@ -2385,75 +2149,29 @@ mod tests {
     }
 
     #[test]
-    fn cli_consent_token_supports_headerless_browsers_without_accepting_forgery() {
-        let subject = AuthenticatedSubject {
-            subject_id: ResourceId::new(),
-            account_id: ResourceId::new(),
+    fn cli_device_configuration_contains_no_secret_or_callback() {
+        let config = CliDeviceConfigResponse {
+            schema_version: 1,
+            issuer: "https://identity.example/".to_owned(),
+            client_id: "native-public-client".to_owned(),
+            scope: "openid profile email".to_owned(),
         };
-        let now = Utc::now();
-        let consent_token = "one-time-consent";
-        let mut attempt = CliLoginAttempt {
-            subject,
-            redirect_uri: Url::parse("http://127.0.0.1:43117/callback").unwrap(),
-            client_state: "client-state".to_owned(),
-            code_challenge: URL_SAFE_NO_PAD.encode([7_u8; 32]),
-            consent_token_sha256: Sha256::digest(consent_token.as_bytes()).into(),
-            poll_completion: false,
-            approved: false,
-            expires_at: now + TimeDelta::minutes(5),
-        };
-
-        assert!(valid_cli_consent(&attempt, subject, consent_token, now));
-        assert!(!valid_cli_consent(&attempt, subject, "forged", now));
-        assert!(!valid_cli_consent(
-            &attempt,
-            AuthenticatedSubject {
-                subject_id: ResourceId::new(),
-                account_id: subject.account_id,
-            },
-            consent_token,
-            now,
-        ));
-        assert!(!valid_cli_consent(
-            &attempt,
-            subject,
-            consent_token,
-            attempt.expires_at,
-        ));
-        attempt.approved = true;
-        assert!(!valid_cli_consent(&attempt, subject, consent_token, now));
+        let encoded = serde_json::to_string(&config).unwrap();
+        assert!(encoded.contains("native-public-client"));
+        assert!(!encoded.contains("client_secret"));
+        assert!(!encoded.contains("localhost"));
+        assert!(!encoded.contains("127.0.0.1"));
     }
 
     #[test]
-    fn cli_authorization_survives_a_product_login_round_trip() {
-        let query = CliAuthorizeQuery {
-            redirect_uri: "http://127.0.0.1:43117/callback".to_owned(),
-            state: URL_SAFE_NO_PAD.encode([8_u8; 32]),
-            code_challenge: URL_SAFE_NO_PAD.encode([9_u8; 32]),
-            code_challenge_method: "S256".to_owned(),
-            completion: Some("poll".to_owned()),
-        };
-
-        let return_to = cli_authorize_return_to(&query);
-        assert_eq!(valid_login_return_to(&return_to), Some(return_to.clone()));
-
-        let parsed = Url::parse(&format!("https://chordrift.example{return_to}"))
-            .expect("generated continuation must be a URL");
-        let parameters = parsed.query_pairs().collect::<HashMap<_, _>>();
-        assert_eq!(parameters.get("redirect_uri").unwrap(), &query.redirect_uri);
-        assert_eq!(parameters.get("state").unwrap(), &query.state);
-        assert_eq!(
-            parameters.get("code_challenge").unwrap(),
-            &query.code_challenge
+    fn cli_identity_exchange_never_accepts_a_client_selected_account() {
+        assert!(
+            serde_json::from_value::<CliSessionExchangeRequest>(serde_json::json!({
+                "schema_version": PRODUCT_SESSION_SCHEMA_VERSION,
+                "account_id": ResourceId::new()
+            }))
+            .is_err()
         );
-        assert_eq!(
-            parameters.get("code_challenge_method").unwrap(),
-            &query.code_challenge_method
-        );
-        assert_eq!(parameters.get("completion").unwrap(), "poll");
-        assert!(valid_cli_poll_state(&query.state));
-        assert!(!valid_cli_poll_state("short"));
-        assert!(!valid_cli_poll_state(&URL_SAFE_NO_PAD.encode([1_u8; 31])));
     }
 
     #[test]

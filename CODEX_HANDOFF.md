@@ -123,6 +123,14 @@ retained local CLI loopback callback. No authorization code, provider
 credential, Neon intent change, or Spotify library mutation resulted from the
 rejected attempt.
 
+The remote Chordrift CLI no longer uses a custom Chordrift approval form or a
+browser-to-localhost callback. Beta.8 moves product login to Auth0's standard
+OAuth 2.0 Device Authorization Flow with a separate public Native application.
+The CLI opens Auth0's verification URI, follows Auth0's polling cadence, and
+exchanges the verified issuer credential once for the existing account-scoped,
+revocable Chordrift product session. Spotify authorization remains a separate
+server-owned provider grant.
+
 The subsequent first disconnect/revocation rehearsal found two beta blockers.
 The web form POST was rejected with HTTP 403 because the route's exact-Origin
 guard did not recognize the thin wrapper request after proxying. Separately,

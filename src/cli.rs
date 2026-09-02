@@ -5,10 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use clap::{Parser, Subcommand, ValueEnum};
-use rand::RngCore as _;
-use sha2::{Digest as _, Sha256};
 use sqlx::Row as _;
 use zeroize::Zeroizing;
 
@@ -2992,139 +2989,190 @@ async fn login_service_session(
     no_open: bool,
     output: &mut impl Write,
 ) -> Result<()> {
-    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let grant = authorize_service_session(url, profile, no_open, output, false).await?;
+    let token = Zeroizing::new(grant.access_token);
+    SystemCredentialStore.save(&service_session_id(profile)?, token.as_bytes())?;
+    writeln!(output, "stored: true\nprofile: {profile}")?;
+    Ok(())
+}
 
+async fn authorize_service_session(
+    url: &str,
+    profile: &str,
+    no_open: bool,
+    output: &mut impl Write,
+    allow_insecure_loopback: bool,
+) -> Result<crate::identity::SessionGrant> {
     let base = url::Url::parse(url)
         .map_err(|_| ChordriftError::Configuration("service URL is invalid".to_owned()))?;
-    if base.scheme() != "https" || base.host_str().is_none() {
+    if !trusted_transport_url(&base, allow_insecure_loopback) {
         return Err(ChordriftError::Configuration(
             "service login requires an HTTPS URL".to_owned(),
         ));
     }
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-    let port = listener.local_addr()?.port();
-    let redirect_uri = format!("http://127.0.0.1:{port}/callback");
-    let mut verifier_bytes = [0_u8; 32];
-    rand::rng().fill_bytes(&mut verifier_bytes);
-    let verifier = Zeroizing::new(URL_SAFE_NO_PAD.encode(verifier_bytes));
-    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
-    let mut state_bytes = [0_u8; 32];
-    rand::rng().fill_bytes(&mut state_bytes);
-    let state = Zeroizing::new(URL_SAFE_NO_PAD.encode(state_bytes));
-    let mut authorize = base.join("/auth/cli/authorize").map_err(|_| {
-        ChordriftError::Configuration("service URL cannot authorize CLI login".to_owned())
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?;
+    let config_url = base.join("/auth/cli/config").map_err(|_| {
+        ChordriftError::Configuration("service URL cannot describe CLI login".to_owned())
     })?;
-    authorize
-        .query_pairs_mut()
-        .append_pair("redirect_uri", &redirect_uri)
-        .append_pair("state", state.as_str())
-        .append_pair("code_challenge", &challenge)
-        .append_pair("code_challenge_method", "S256")
-        .append_pair("completion", "poll");
+    let config_response = client.get(config_url).send().await?;
+    if !config_response.status().is_success() {
+        return Err(ChordriftError::Configuration(
+            "Chordrift could not provide Auth0 device authorization settings".to_owned(),
+        ));
+    }
+    let config: crate::hosted::CliDeviceConfigResponse = config_response.json().await?;
+    if config.schema_version != 1 || config.client_id.trim().is_empty() {
+        return Err(ChordriftError::Configuration(
+            "Chordrift returned incompatible device authorization settings".to_owned(),
+        ));
+    }
+    let issuer = trusted_authorization_url(&config.issuer, "OIDC issuer", allow_insecure_loopback)?;
+    let discovery_url = issuer
+        .join(".well-known/openid-configuration")
+        .map_err(|_| ChordriftError::Configuration("OIDC issuer is invalid".to_owned()))?;
+    let discovery_response = client.get(discovery_url).send().await?;
+    if !discovery_response.status().is_success() {
+        return Err(ChordriftError::Configuration(
+            "Auth0 OIDC discovery was unavailable".to_owned(),
+        ));
+    }
+    let discovery: OidcDiscoveryDocument = discovery_response.json().await?;
+    if discovery.issuer.trim_end_matches('/') != issuer.as_str().trim_end_matches('/') {
+        return Err(ChordriftError::Configuration(
+            "Auth0 OIDC discovery returned a different issuer".to_owned(),
+        ));
+    }
+    let device_endpoint = trusted_issuer_endpoint(
+        &issuer,
+        &discovery.device_authorization_endpoint,
+        "device authorization endpoint",
+        allow_insecure_loopback,
+    )?;
+    let token_endpoint = trusted_issuer_endpoint(
+        &issuer,
+        &discovery.token_endpoint,
+        "token endpoint",
+        allow_insecure_loopback,
+    )?;
+    let device_response = client
+        .post(device_endpoint)
+        .form(&[
+            ("client_id", config.client_id.as_str()),
+            ("scope", config.scope.as_str()),
+        ])
+        .send()
+        .await?;
+    if !device_response.status().is_success() {
+        return Err(ChordriftError::Configuration(
+            "Auth0 rejected the CLI device authorization request".to_owned(),
+        ));
+    }
+    let device: DeviceAuthorizationResponse = device_response.json().await?;
+    if device.device_code.trim().is_empty()
+        || device.user_code.trim().is_empty()
+        || device.expires_in == 0
+    {
+        return Err(ChordriftError::Configuration(
+            "Auth0 returned an invalid device authorization response".to_owned(),
+        ));
+    }
+    let verification_uri = trusted_issuer_endpoint(
+        &issuer,
+        device
+            .verification_uri_complete
+            .as_deref()
+            .unwrap_or(&device.verification_uri),
+        "device verification URL",
+        allow_insecure_loopback,
+    )?;
     if no_open {
         writeln!(
             output,
-            "Authorize profile '{profile}' in a trusted browser. Sign in there first if needed."
+            "Authorize profile '{profile}' through Auth0 in a trusted browser."
         )?;
     } else {
         writeln!(
             output,
-            "Opening Chordrift to authorize profile '{profile}'. Sign in there first if needed."
+            "Opening Auth0 to authorize Chordrift profile '{profile}'."
         )?;
     }
-    writeln!(output, "Authorize at: {authorize}")?;
+    writeln!(output, "Verification code: {}", device.user_code)?;
+    writeln!(output, "Authorize at: {verification_uri}")?;
     output.flush()?;
     if !no_open {
-        webbrowser::open(authorize.as_str()).map_err(|_| {
+        webbrowser::open(verification_uri.as_str()).map_err(|_| {
             ChordriftError::Configuration(format!(
                 "could not open the browser; visit {}",
-                authorize.as_str()
+                verification_uri.as_str()
             ))
         })?;
     }
-
-    let mut status_url = base.join("/auth/cli/status").map_err(|_| {
-        ChordriftError::Configuration("service URL cannot report CLI login status".to_owned())
-    })?;
-    status_url
-        .query_pairs_mut()
-        .append_pair("state", state.as_str());
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .build()?;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
-    let mut callback_socket = None;
-    let code = loop {
-        tokio::select! {
-            accepted = listener.accept() => {
-                let (mut socket, _) = accepted?;
-                let mut request_bytes = vec![0_u8; 8192];
-                let length = tokio::time::timeout(Duration::from_secs(5), socket.read(&mut request_bytes))
-                    .await
-                    .map_err(|_| ChordriftError::Configuration("CLI login callback timed out".to_owned()))??;
-                let request = std::str::from_utf8(&request_bytes[..length])
-                    .map_err(|_| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
-                let target = request
-                    .lines()
-                    .next()
-                    .and_then(|line| line.split_whitespace().nth(1))
-                    .ok_or_else(|| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
-                let callback = url::Url::parse(&format!("http://127.0.0.1:{port}{target}"))
-                    .map_err(|_| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
-                let values = callback
-                    .query_pairs()
-                    .collect::<std::collections::BTreeMap<_, _>>();
-                let callback_code = values
-                    .get("code")
-                    .filter(|value| !value.is_empty())
-                    .ok_or_else(|| ChordriftError::Configuration("CLI login was not authorized".to_owned()))?;
-                if values.get("state").map(|value| value.as_ref()) != Some(state.as_str()) {
-                    return Err(ChordriftError::Configuration("CLI login state did not match".to_owned()));
-                }
-                callback_socket = Some(socket);
-                break callback_code.to_string();
+    let mut interval = Duration::from_secs(device.interval.unwrap_or(5).clamp(1, 60));
+    let deadline =
+        tokio::time::Instant::now() + Duration::from_secs(device.expires_in.min(30 * 60));
+    let identity_token = loop {
+        tokio::time::sleep(interval).await;
+        if tokio::time::Instant::now() >= deadline {
+            return Err(ChordriftError::Configuration(
+                "Auth0 device authorization expired".to_owned(),
+            ));
+        }
+        let response = client
+            .post(token_endpoint.clone())
+            .form(&[
+                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+                ("device_code", device.device_code.as_str()),
+                ("client_id", config.client_id.as_str()),
+            ])
+            .send()
+            .await?;
+        if response.status().is_success() {
+            let token: DeviceTokenResponse = response.json().await?;
+            if token.access_token.trim().is_empty() {
+                return Err(ChordriftError::Configuration(
+                    "Auth0 returned an empty identity credential".to_owned(),
+                ));
             }
-            _ = tokio::time::sleep(Duration::from_secs(1)) => {
-                let response = client.get(status_url.clone()).send().await?;
-                if response.status() == reqwest::StatusCode::OK {
-                    let status: crate::hosted::CliSessionStatusResponse = response.json().await?;
-                    if status.status == "approved"
-                        && let Some(code) = status.code.filter(|code| !code.is_empty())
-                    {
-                        break code;
-                    }
-                } else if response.status() != reqwest::StatusCode::ACCEPTED
-                    && response.status() != reqwest::StatusCode::NOT_FOUND
-                {
-                    return Err(ChordriftError::Configuration(
-                        "Chordrift rejected the CLI login status request".to_owned(),
-                    ));
-                }
+            break Zeroizing::new(token.access_token);
+        }
+        let error = response
+            .json::<DeviceTokenError>()
+            .await
+            .map(|value| value.error)
+            .unwrap_or_default();
+        match error.as_str() {
+            "authorization_pending" => {}
+            "slow_down" => {
+                interval = (interval + Duration::from_secs(5)).min(Duration::from_secs(60));
             }
-            _ = tokio::time::sleep_until(deadline) => {
-                return Err(ChordriftError::Configuration("CLI login authorization timed out".to_owned()));
+            "access_denied" => {
+                return Err(ChordriftError::Configuration(
+                    "Auth0 device authorization was denied".to_owned(),
+                ));
+            }
+            "expired_token" => {
+                return Err(ChordriftError::Configuration(
+                    "Auth0 device authorization expired".to_owned(),
+                ));
+            }
+            _ => {
+                return Err(ChordriftError::Configuration(
+                    "Auth0 device authorization failed".to_owned(),
+                ));
             }
         }
     };
-    if let Some(mut socket) = callback_socket {
-        let callback_body = "<!doctype html><title>Chordrift CLI connected</title><p>Chordrift CLI connected. You may close this window.</p>";
-        let callback_response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{callback_body}",
-            callback_body.len()
-        );
-        socket.write_all(callback_response.as_bytes()).await?;
-    }
 
     let exchange = base.join("/auth/cli/exchange").map_err(|_| {
         ChordriftError::Configuration("service URL cannot exchange CLI login".to_owned())
     })?;
     let response = client
         .post(exchange)
+        .bearer_auth(identity_token.as_str())
         .json(&crate::hosted::CliSessionExchangeRequest {
             schema_version: crate::identity::PRODUCT_SESSION_SCHEMA_VERSION,
-            code,
-            redirect_uri,
-            code_verifier: verifier.to_string(),
         })
         .send()
         .await?;
@@ -3133,11 +3181,76 @@ async fn login_service_session(
             "Chordrift rejected the CLI session exchange".to_owned(),
         ));
     }
-    let grant: crate::identity::SessionGrant = response.json().await?;
-    let token = Zeroizing::new(grant.access_token);
-    SystemCredentialStore.save(&service_session_id(profile)?, token.as_bytes())?;
-    writeln!(output, "stored: true\nprofile: {profile}")?;
-    Ok(())
+    Ok(response.json().await?)
+}
+
+#[derive(serde::Deserialize)]
+struct OidcDiscoveryDocument {
+    issuer: String,
+    device_authorization_endpoint: String,
+    token_endpoint: String,
+}
+
+#[derive(serde::Deserialize)]
+struct DeviceAuthorizationResponse {
+    device_code: String,
+    user_code: String,
+    verification_uri: String,
+    verification_uri_complete: Option<String>,
+    expires_in: u64,
+    interval: Option<u64>,
+}
+
+#[derive(serde::Deserialize)]
+struct DeviceTokenResponse {
+    access_token: String,
+}
+
+#[derive(serde::Deserialize)]
+struct DeviceTokenError {
+    error: String,
+}
+
+fn trusted_authorization_url(
+    value: &str,
+    label: &str,
+    allow_insecure_loopback: bool,
+) -> Result<url::Url> {
+    let parsed = url::Url::parse(value)
+        .map_err(|_| ChordriftError::Configuration(format!("{label} is invalid")))?;
+    if !trusted_transport_url(&parsed, allow_insecure_loopback)
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err(ChordriftError::Configuration(format!(
+            "{label} must be an HTTPS URL"
+        )));
+    }
+    Ok(parsed)
+}
+
+fn trusted_issuer_endpoint(
+    issuer: &url::Url,
+    value: &str,
+    label: &str,
+    allow_insecure_loopback: bool,
+) -> Result<url::Url> {
+    let endpoint = trusted_authorization_url(value, label, allow_insecure_loopback)?;
+    if endpoint.origin() != issuer.origin() {
+        return Err(ChordriftError::Configuration(format!(
+            "{label} must use the configured OIDC issuer"
+        )));
+    }
+    Ok(endpoint)
+}
+
+fn trusted_transport_url(url: &url::Url, allow_insecure_loopback: bool) -> bool {
+    url.host_str().is_some()
+        && (url.scheme() == "https"
+            || (allow_insecure_loopback
+                && url.scheme() == "http"
+                && matches!(url.host_str(), Some("127.0.0.1" | "::1" | "[::1]"))))
 }
 
 async fn query_service_provider_connections(
@@ -7820,8 +7933,22 @@ fn write_apply_report(output: &mut impl Write, report: &apply::ApplyReport) -> R
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        time::Duration,
+    };
 
+    use axum::{
+        Json, Router,
+        extract::Request,
+        http::StatusCode,
+        response::IntoResponse,
+        routing::{get, post},
+    };
+    use chrono::{TimeDelta, Utc};
     use clap::Parser;
 
     use super::{
@@ -7834,11 +7961,150 @@ mod tests {
         ReevaluateCommand, RouteCommand, SavedAlbumPolicyArg, ServiceCommand,
         ServiceLibraryCommand, ServiceMaintenanceCommand, ServiceProviderCommand,
         ServiceSessionCommand, ServiceSpotifyCommand, SignalCommand, SpotifyCommand, SyncCommand,
-        TrackCommand, binary_capability_manifest, format_count, format_elapsed, write_status,
+        TrackCommand, authorize_service_session, binary_capability_manifest, format_count,
+        format_elapsed, trusted_authorization_url, trusted_issuer_endpoint, write_status,
     };
 
+    #[tokio::test]
+    async fn auth0_device_flow_mints_a_distinct_chordrift_session_without_loopback_callback() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}/", listener.local_addr().unwrap());
+        let service_origin = origin.clone();
+        let discovery_origin = origin.clone();
+        let device_origin = origin.clone();
+        let token_polls = Arc::new(AtomicUsize::new(0));
+        let token_polls_for_route = Arc::clone(&token_polls);
+        let account_id = crate::contract::ResourceId::new();
+        let session_id = crate::contract::ResourceId::new();
+        let subject_id = crate::contract::ResourceId::new();
+        let router = Router::new()
+            .route(
+                "/auth/cli/config",
+                get(move || {
+                    let issuer = service_origin.clone();
+                    async move {
+                        Json(serde_json::json!({
+                            "schema_version": 1,
+                            "issuer": issuer,
+                            "client_id": "native-public-client",
+                            "scope": "openid profile email"
+                        }))
+                    }
+                }),
+            )
+            .route(
+                "/.well-known/openid-configuration",
+                get(move || {
+                    let issuer = discovery_origin.clone();
+                    async move {
+                        Json(serde_json::json!({
+                            "issuer": issuer,
+                            "device_authorization_endpoint": format!("{issuer}oauth/device/code"),
+                            "token_endpoint": format!("{issuer}oauth/token")
+                        }))
+                    }
+                }),
+            )
+            .route(
+                "/oauth/device/code",
+                post(move || {
+                    let origin = device_origin.clone();
+                    async move {
+                        Json(serde_json::json!({
+                            "device_code": "opaque-device-code",
+                            "user_code": "ABCD-EFGH",
+                            "verification_uri": format!("{origin}activate"),
+                            "verification_uri_complete": format!("{origin}activate?user_code=ABCD-EFGH"),
+                            "expires_in": 60,
+                            "interval": 1
+                        }))
+                    }
+                }),
+            )
+            .route(
+                "/oauth/token",
+                post(move || {
+                    let polls = Arc::clone(&token_polls_for_route);
+                    async move {
+                        if polls.fetch_add(1, Ordering::SeqCst) == 0 {
+                            (
+                                StatusCode::FORBIDDEN,
+                                Json(serde_json::json!({"error": "authorization_pending"})),
+                            )
+                                .into_response()
+                        } else {
+                            Json(serde_json::json!({"access_token": "auth0-identity-token"}))
+                                .into_response()
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/auth/cli/exchange",
+                post(move |request: Request| async move {
+                    assert_eq!(
+                        request
+                            .headers()
+                            .get("authorization")
+                            .and_then(|value| value.to_str().ok()),
+                        Some("Bearer auth0-identity-token")
+                    );
+                    (
+                        StatusCode::CREATED,
+                        Json(serde_json::json!({
+                            "schema_version": crate::identity::PRODUCT_SESSION_SCHEMA_VERSION,
+                            "token_type": "Bearer",
+                            "access_token": "chd_session_machine_specific",
+                            "session_id": session_id,
+                            "subject_id": subject_id,
+                            "account_id": account_id,
+                            "expires_at": Utc::now() + TimeDelta::days(30)
+                        })),
+                    )
+                }),
+            );
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let mut output = Vec::new();
+        let grant = authorize_service_session(&origin, "new-mac", true, &mut output, true)
+            .await
+            .unwrap();
+        server.abort();
+
+        assert_eq!(grant.access_token, "chd_session_machine_specific");
+        assert_eq!(token_polls.load(Ordering::SeqCst), 2);
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("through Auth0"));
+        assert!(output.contains("Verification code: ABCD-EFGH"));
+        assert!(!output.contains("127.0.0.1:/callback"));
+    }
+
     #[test]
-    fn parses_browser_authorized_service_session_login() {
+    fn device_flow_rejects_cross_issuer_and_insecure_authorization_endpoints() {
+        let issuer =
+            trusted_authorization_url("https://identity.example/", "issuer", false).unwrap();
+        assert!(
+            trusted_issuer_endpoint(
+                &issuer,
+                "https://identity.example/oauth/token",
+                "token",
+                false,
+            )
+            .is_ok()
+        );
+        assert!(
+            trusted_issuer_endpoint(
+                &issuer,
+                "https://attacker.example/oauth/token",
+                "token",
+                false,
+            )
+            .is_err()
+        );
+        assert!(trusted_authorization_url("http://identity.example/", "issuer", false).is_err());
+    }
+
+    #[test]
+    fn parses_auth0_device_authorized_service_session_login() {
         let cli = Cli::try_parse_from([
             "chordrift",
             "service",
@@ -7865,7 +8131,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_non_opening_browser_authorized_service_session_login() {
+    fn parses_non_opening_auth0_device_authorized_service_session_login() {
         let cli = Cli::try_parse_from([
             "chordrift",
             "service",
