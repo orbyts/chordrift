@@ -503,7 +503,7 @@ dependencies = [
 
 [[package]]
 name = "chordrift"
-version = "0.2.1-beta.5"
+version = "0.2.1-beta.6"
 dependencies = [
  "async-trait",
  "axum",

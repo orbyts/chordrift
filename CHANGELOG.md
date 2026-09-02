@@ -4,6 +4,19 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.6] - 2026-09-01
+
+- Complete installed CLI authorization through a bounded PKCE status poll so
+  browser privacy policy no longer has to navigate from HTTPS to localhost.
+- Preserve loopback callback handling for older clients while new clients ask
+  for polling completion and receive a clear browser success page.
+- Keep the polled authorization code useless without the initiating CLI's
+  verifier, expire both approval and status together, and consume the result
+  only during the existing one-time session exchange.
+- Replace replayed approval downloads with a terminal confirmation page after
+  the first valid consent; the observed Safari `approve` download was an empty
+  response and contained no credentials.
+
 ## [0.2.1-beta.5] - 2026-09-01
 
 - Preserve an installed CLI's exact loopback PKCE authorization request while

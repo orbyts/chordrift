@@ -2939,7 +2939,8 @@ async fn login_service_session(
         .append_pair("redirect_uri", &redirect_uri)
         .append_pair("state", state.as_str())
         .append_pair("code_challenge", &challenge)
-        .append_pair("code_challenge_method", "S256");
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("completion", "poll");
     if no_open {
         writeln!(
             output,
@@ -2962,55 +2963,86 @@ async fn login_service_session(
         })?;
     }
 
-    let (mut socket, _) = tokio::time::timeout(Duration::from_secs(300), listener.accept())
-        .await
-        .map_err(|_| {
-            ChordriftError::Configuration("CLI login authorization timed out".to_owned())
-        })??;
-    let mut request_bytes = vec![0_u8; 8192];
-    let length = tokio::time::timeout(Duration::from_secs(5), socket.read(&mut request_bytes))
-        .await
-        .map_err(|_| ChordriftError::Configuration("CLI login callback timed out".to_owned()))??;
-    let request = std::str::from_utf8(&request_bytes[..length])
-        .map_err(|_| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
-    let target = request
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .ok_or_else(|| {
-            ChordriftError::Configuration("CLI login callback was invalid".to_owned())
-        })?;
-    let callback = url::Url::parse(&format!("http://127.0.0.1:{port}{target}"))
-        .map_err(|_| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
-    let values = callback
-        .query_pairs()
-        .collect::<std::collections::BTreeMap<_, _>>();
-    let code = values
-        .get("code")
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| ChordriftError::Configuration("CLI login was not authorized".to_owned()))?;
-    if values.get("state").map(|value| value.as_ref()) != Some(state.as_str()) {
-        return Err(ChordriftError::Configuration(
-            "CLI login state did not match".to_owned(),
-        ));
+    let mut status_url = base.join("/auth/cli/status").map_err(|_| {
+        ChordriftError::Configuration("service URL cannot report CLI login status".to_owned())
+    })?;
+    status_url
+        .query_pairs_mut()
+        .append_pair("state", state.as_str());
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
+    let mut callback_socket = None;
+    let code = loop {
+        tokio::select! {
+            accepted = listener.accept() => {
+                let (mut socket, _) = accepted?;
+                let mut request_bytes = vec![0_u8; 8192];
+                let length = tokio::time::timeout(Duration::from_secs(5), socket.read(&mut request_bytes))
+                    .await
+                    .map_err(|_| ChordriftError::Configuration("CLI login callback timed out".to_owned()))??;
+                let request = std::str::from_utf8(&request_bytes[..length])
+                    .map_err(|_| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
+                let target = request
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .ok_or_else(|| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
+                let callback = url::Url::parse(&format!("http://127.0.0.1:{port}{target}"))
+                    .map_err(|_| ChordriftError::Configuration("CLI login callback was invalid".to_owned()))?;
+                let values = callback
+                    .query_pairs()
+                    .collect::<std::collections::BTreeMap<_, _>>();
+                let callback_code = values
+                    .get("code")
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| ChordriftError::Configuration("CLI login was not authorized".to_owned()))?;
+                if values.get("state").map(|value| value.as_ref()) != Some(state.as_str()) {
+                    return Err(ChordriftError::Configuration("CLI login state did not match".to_owned()));
+                }
+                callback_socket = Some(socket);
+                break callback_code.to_string();
+            }
+            _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                let response = client.get(status_url.clone()).send().await?;
+                if response.status() == reqwest::StatusCode::OK {
+                    let status: crate::hosted::CliSessionStatusResponse = response.json().await?;
+                    if status.status == "approved"
+                        && let Some(code) = status.code.filter(|code| !code.is_empty())
+                    {
+                        break code;
+                    }
+                } else if response.status() != reqwest::StatusCode::ACCEPTED
+                    && response.status() != reqwest::StatusCode::NOT_FOUND
+                {
+                    return Err(ChordriftError::Configuration(
+                        "Chordrift rejected the CLI login status request".to_owned(),
+                    ));
+                }
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                return Err(ChordriftError::Configuration("CLI login authorization timed out".to_owned()));
+            }
+        }
+    };
+    if let Some(mut socket) = callback_socket {
+        let callback_body = "<!doctype html><title>Chordrift CLI connected</title><p>Chordrift CLI connected. You may close this window.</p>";
+        let callback_response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{callback_body}",
+            callback_body.len()
+        );
+        socket.write_all(callback_response.as_bytes()).await?;
     }
-    let callback_body = "<!doctype html><title>Chordrift CLI connected</title><p>Chordrift CLI connected. You may close this window.</p>";
-    let callback_response = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{callback_body}",
-        callback_body.len()
-    );
-    socket.write_all(callback_response.as_bytes()).await?;
 
     let exchange = base.join("/auth/cli/exchange").map_err(|_| {
         ChordriftError::Configuration("service URL cannot exchange CLI login".to_owned())
     })?;
-    let response = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .build()?
+    let response = client
         .post(exchange)
         .json(&crate::hosted::CliSessionExchangeRequest {
             schema_version: crate::identity::PRODUCT_SESSION_SCHEMA_VERSION,
-            code: code.to_string(),
+            code,
             redirect_uri,
             code_verifier: verifier.to_string(),
         })

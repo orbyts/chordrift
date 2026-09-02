@@ -244,7 +244,13 @@ struct CliLoginAttempt {
     client_state: String,
     code_challenge: String,
     consent_token_sha256: [u8; 32],
+    poll_completion: bool,
     approved: bool,
+    expires_at: DateTime<Utc>,
+}
+
+struct CliLoginCode {
+    code: String,
     expires_at: DateTime<Utc>,
 }
 
@@ -259,6 +265,7 @@ struct HostedState {
     login_attempts: Arc<Mutex<HashMap<String, LoginAttempt>>>,
     spotify_login_attempts: Arc<Mutex<HashMap<String, SpotifyLoginAttempt>>>,
     cli_login_attempts: Arc<Mutex<HashMap<String, CliLoginAttempt>>>,
+    cli_login_codes: Arc<Mutex<HashMap<String, CliLoginCode>>>,
     provider_connections: Arc<PostgresProviderConnectionAuthority>,
 }
 
@@ -1160,6 +1167,7 @@ pub async fn run_from_env() -> Result<()> {
         login_attempts: Arc::new(Mutex::new(HashMap::new())),
         spotify_login_attempts: Arc::new(Mutex::new(HashMap::new())),
         cli_login_attempts: Arc::new(Mutex::new(HashMap::new())),
+        cli_login_codes: Arc::new(Mutex::new(HashMap::new())),
         provider_connections,
     };
 
@@ -1202,6 +1210,7 @@ pub async fn run_from_env() -> Result<()> {
         .route("/auth/logout", post(logout))
         .route("/auth/cli/authorize", get(cli_authorize))
         .route("/auth/cli/approve", post(cli_approve))
+        .route("/auth/cli/status", get(cli_status))
         .route("/auth/cli/exchange", post(cli_exchange))
         .route("/providers/spotify/connect", get(spotify_connect))
         .route("/providers/spotify/callback", get(spotify_callback))
@@ -1641,6 +1650,7 @@ struct CliAuthorizeQuery {
     state: String,
     code_challenge: String,
     code_challenge_method: String,
+    completion: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1662,6 +1672,20 @@ pub struct CliSessionExchangeRequest {
     pub code_verifier: String,
 }
 
+#[derive(Deserialize)]
+struct CliStatusQuery {
+    state: String,
+}
+
+#[derive(Deserialize, Serialize)]
+/// Poll result for browser-mediated installed CLI authorization.
+pub struct CliSessionStatusResponse {
+    /// Stable state name: `pending` or `approved`.
+    pub status: String,
+    /// Single-use PKCE exchange code, present only after explicit approval.
+    pub code: Option<String>,
+}
+
 async fn cli_authorize(
     State(state): State<HostedState>,
     AxumQuery(query): AxumQuery<CliAuthorizeQuery>,
@@ -1672,6 +1696,11 @@ async fn cli_authorize(
     };
     if !valid_cli_redirect(&redirect_uri)
         || query.code_challenge_method != "S256"
+        || query
+            .completion
+            .as_deref()
+            .is_some_and(|completion| completion != "poll")
+        || (query.completion.as_deref() == Some("poll") && !valid_cli_poll_state(&query.state))
         || query.state.is_empty()
         || query.state.len() > 256
         || URL_SAFE_NO_PAD
@@ -1710,6 +1739,7 @@ async fn cli_authorize(
                 client_state: query.state,
                 code_challenge: query.code_challenge,
                 consent_token_sha256,
+                poll_completion: query.completion.as_deref() == Some("poll"),
                 approved: false,
                 expires_at: Utc::now() + TimeDelta::minutes(CLI_LOGIN_TTL_MINUTES),
             },
@@ -1730,6 +1760,11 @@ fn cli_authorize_return_to(query: &CliAuthorizeQuery) -> String {
         .append_pair("state", &query.state)
         .append_pair("code_challenge", &query.code_challenge)
         .append_pair("code_challenge_method", &query.code_challenge_method);
+    if let Some(completion) = &query.completion {
+        return_to
+            .query_pairs_mut()
+            .append_pair("completion", completion);
+    }
     format!(
         "{}?{}",
         return_to.path(),
@@ -1770,18 +1805,78 @@ async fn cli_approve(
         .expect("validated CLI login attempt remains present");
     drop(attempts);
     attempt.approved = true;
+    let poll_completion = attempt.poll_completion;
     let code = random_url_token();
+    let client_state = attempt.client_state.clone();
+    let expires_at = attempt.expires_at;
     let mut redirect = attempt.redirect_uri.clone();
     redirect
         .query_pairs_mut()
         .append_pair("code", &code)
-        .append_pair("state", &attempt.client_state);
-    state.cli_login_attempts.lock().await.insert(code, attempt);
+        .append_pair("state", &client_state);
+    state
+        .cli_login_attempts
+        .lock()
+        .await
+        .insert(code.clone(), attempt);
+    if poll_completion {
+        state.cli_login_codes.lock().await.insert(
+            client_state,
+            CliLoginCode {
+                code: code.clone(),
+                expires_at,
+            },
+        );
+    }
+    if poll_completion {
+        return Html("<!doctype html><html><head><meta charset=\"utf-8\"><title>Chordrift CLI authorized</title></head><body><main><h1>Chordrift CLI authorized</h1><p>Return to your terminal. You may close this window.</p></main></body></html>").into_response();
+    }
     (
         StatusCode::SEE_OTHER,
         [(LOCATION, redirect.as_str().to_owned())],
     )
         .into_response()
+}
+
+async fn cli_status(
+    State(state): State<HostedState>,
+    AxumQuery(query): AxumQuery<CliStatusQuery>,
+) -> Response {
+    if !valid_cli_poll_state(&query.state) {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let mut codes = state.cli_login_codes.lock().await;
+    codes.retain(|_, code| code.expires_at > Utc::now());
+    let mut response = match codes.get(&query.state) {
+        Some(code) => (
+            StatusCode::OK,
+            Json(CliSessionStatusResponse {
+                status: "approved".to_owned(),
+                code: Some(code.code.clone()),
+            }),
+        )
+            .into_response(),
+        None => (
+            StatusCode::ACCEPTED,
+            Json(CliSessionStatusResponse {
+                status: "pending".to_owned(),
+                code: None,
+            }),
+        )
+            .into_response(),
+    };
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+fn valid_cli_poll_state(state: &str) -> bool {
+    state.len() <= 256
+        && URL_SAFE_NO_PAD
+            .decode(state.as_bytes())
+            .ok()
+            .is_some_and(|bytes| bytes.len() == 32)
 }
 
 fn valid_cli_consent(
@@ -1816,6 +1911,11 @@ async fn cli_exchange(
     {
         return StatusCode::UNAUTHORIZED.into_response();
     }
+    state
+        .cli_login_codes
+        .lock()
+        .await
+        .remove(&attempt.client_state);
     match state.session_authority.delegate(attempt.subject).await {
         Ok(grant) => (StatusCode::CREATED, Json(grant)).into_response(),
         Err(_) => StatusCode::FORBIDDEN.into_response(),
@@ -2224,6 +2324,7 @@ mod tests {
             client_state: "client-state".to_owned(),
             code_challenge: URL_SAFE_NO_PAD.encode([7_u8; 32]),
             consent_token_sha256: Sha256::digest(consent_token.as_bytes()).into(),
+            poll_completion: false,
             approved: false,
             expires_at: now + TimeDelta::minutes(5),
         };
@@ -2253,9 +2354,10 @@ mod tests {
     fn cli_authorization_survives_a_product_login_round_trip() {
         let query = CliAuthorizeQuery {
             redirect_uri: "http://127.0.0.1:43117/callback".to_owned(),
-            state: "opaque-client-state".to_owned(),
+            state: URL_SAFE_NO_PAD.encode([8_u8; 32]),
             code_challenge: URL_SAFE_NO_PAD.encode([9_u8; 32]),
             code_challenge_method: "S256".to_owned(),
+            completion: Some("poll".to_owned()),
         };
 
         let return_to = cli_authorize_return_to(&query);
@@ -2274,6 +2376,10 @@ mod tests {
             parameters.get("code_challenge_method").unwrap(),
             &query.code_challenge_method
         );
+        assert_eq!(parameters.get("completion").unwrap(), "poll");
+        assert!(valid_cli_poll_state(&query.state));
+        assert!(!valid_cli_poll_state("short"));
+        assert!(!valid_cli_poll_state(&URL_SAFE_NO_PAD.encode([1_u8; 31])));
     }
 
     #[test]
