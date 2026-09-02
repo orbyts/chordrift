@@ -27,13 +27,13 @@
             <img id="account-avatar-image" alt="" hidden>
             <span class="account-avatar-fallback" id="account-avatar-fallback" aria-hidden="true">A</span>
           </span>
-          <span id="account-display-name" class="account-name">Account</span>
           <span class="account-chevron" aria-hidden="true">▾</span>
         </button>
         <div id="account-menu" class="account-menu" role="menu" aria-label="Account actions" hidden>
           <p id="account-menu-copy" class="account-menu-copy"></p>
+          <button id="account-settings" class="account-menu-item" type="button" role="menuitem" disabled>Account settings</button>
           <form id="logout-form" action="/auth/logout" method="post">
-            <button class="quiet" type="submit" role="menuitem">Log out</button>
+            <button class="account-menu-item" type="submit" role="menuitem">Log out</button>
           </form>
         </div>
       </div>

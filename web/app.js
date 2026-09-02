@@ -68,13 +68,12 @@ function renderAccountIdentity(session) {
   const button = $('#account-button');
   const menuCopy = $('#account-menu-copy');
   $('#account-shell').hidden = false;
-  $('#account-display-name').textContent = accountName;
   button.setAttribute('aria-label', `Account menu for ${accountName}`);
   button.setAttribute('aria-expanded', 'false');
   $('#account-avatar').setAttribute('aria-label', `Signed in account avatar for ${accountName}`);
   $('#account-menu').hidden = true;
   menuCopy.textContent = `Signed in as ${accountName}`;
-  if (avatarUrl && displayName) image.alt = `${displayName} avatar`;
+  if (avatarUrl) image.alt = `${accountName} avatar`;
   else image.alt = 'Account avatar';
   if (avatarUrl) {
     image.hidden = false;
@@ -532,8 +531,8 @@ if (accountButton) {
   accountButton.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setAccountMenuOpen(true);
-      $('#account-menu')?.querySelector('[role="menuitem"]')?.focus();
+      const menuItem = [...($('#account-menu')?.querySelectorAll('[role="menuitem"]') ?? [])].find((item) => !item.disabled);
+      if (menuItem) menuItem.focus();
     }
   });
 }
