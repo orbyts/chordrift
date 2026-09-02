@@ -14,6 +14,13 @@ chordrift service session login --url https://chordrift.suhail.ink \
 chordrift service session login --url https://chordrift.suhail.ink \
   --profile default --no-open
 chordrift service session status --profile default
+chordrift service provider list --url https://service.example --profile default
+chordrift service provider spotify connect --url https://service.example \
+  --profile default
+chordrift service provider spotify connect --url https://service.example \
+  --profile default --no-open
+chordrift service provider spotify connect --url https://service.example \
+  --profile default --add-account
 chordrift service compatibility --url https://service.example --profile default
 chordrift service command --url https://service.example --file command.json
 chordrift service query --url https://service.example --file query.json
@@ -38,13 +45,30 @@ chordrift service session remove --profile default
 stores a separate revocable CLI session in the OS credential store. The token
 is never placed in a URL or printed. Add `--no-open` to stream the one-time
 authorization URL without launching the operating-system default browser; the
-same authenticated approval and PKCE callback remain mandatory. `session save` remains an operator-only
-recovery command that reads an already issued token from standard input.
+same authenticated approval and PKCE exchange remain mandatory. New clients
+learn that consent completed through a bounded hosted status poll, so the
+browser does not need to navigate from HTTPS to localhost. `session save`
+remains an operator-only recovery command that reads an already issued token
+from standard input.
 Command/query files must be exact public
 `CommandRequest`/`QueryRequest` JSON. HTTPS is mandatory except for loopback
 development. A remote failure never falls back to local Neon/provider access.
 The in-process local transport is an explicit Rust dependency-injection seam,
 not a second set of domain behavior.
+
+`service provider spotify connect` is the hosted provider login. It requires a
+stored Chordrift product session, opens server-derived Spotify consent in the
+browser, and waits until the account-scoped provider DTO reports an encrypted
+credential ready. The refresh credential remains on the service and is never
+stored by the remote CLI. This is independent from Auth0/Google product login;
+removing a local CLI session does not disconnect Spotify, and reconnecting
+Spotify does not replace the Chordrift identity. The older top-level `spotify
+auth` command is a local-development transport and must not be used as the
+hosted-login path.
+When a Spotify connection is already ready, `connect` reports it without
+repeating consent because the provider grant belongs to the Chordrift account,
+not the current computer. Use `--add-account` to authorize another Spotify
+identity, or pass `--provider-connection-id` to reconnect a known disabled one.
 
 Operator-only recovery syntax is `chordrift service session save --profile
 default`; normal users should use browser login.

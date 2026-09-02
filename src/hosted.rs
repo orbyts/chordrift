@@ -235,6 +235,7 @@ struct SpotifyLoginAttempt {
     code_verifier: Zeroizing<String>,
     subject: AuthenticatedSubject,
     expected_provider_connection_id: Option<ResourceId>,
+    cli_completion: bool,
     expires_at: DateTime<Utc>,
 }
 
@@ -1778,9 +1779,15 @@ fn valid_login_return_to(value: &str) -> Option<String> {
     }
     let base = Url::parse("https://chordrift.invalid/").expect("fixed return base must parse");
     let target = base.join(value).ok()?;
+    let valid_cli = target.path() == "/auth/cli/authorize" && target.query().is_some();
+    let valid_spotify = target.path() == "/providers/spotify/connect"
+        && target.query_pairs().all(|(key, value)| match key.as_ref() {
+            "provider_connection_id" => uuid::Uuid::parse_str(&value).is_ok(),
+            "completion" => value == "cli",
+            _ => false,
+        });
     (target.origin() == base.origin()
-        && target.path() == "/auth/cli/authorize"
-        && target.query().is_some()
+        && (valid_cli || valid_spotify)
         && target.fragment().is_none())
     .then(|| value.to_owned())
 }
@@ -1936,6 +1943,7 @@ fn valid_cli_redirect(url: &Url) -> bool {
 #[derive(Deserialize)]
 struct SpotifyConnectQuery {
     provider_connection_id: Option<ResourceId>,
+    completion: Option<String>,
 }
 
 async fn spotify_connect(
@@ -1943,8 +1951,24 @@ async fn spotify_connect(
     AxumQuery(query): AxumQuery<SpotifyConnectQuery>,
     headers: HeaderMap,
 ) -> Response {
+    if query
+        .completion
+        .as_deref()
+        .is_some_and(|completion| completion != "cli")
+    {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
     let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
-        return StatusCode::UNAUTHORIZED.into_response();
+        let return_to = spotify_connect_return_to(&query);
+        let mut login_url = state
+            .config
+            .public_origin
+            .join("/auth/login")
+            .expect("public origin must accept a relative login path");
+        login_url
+            .query_pairs_mut()
+            .append_pair("return_to", &return_to);
+        return (StatusCode::SEE_OTHER, [(LOCATION, login_url.to_string())]).into_response();
     };
     if let Some(connection_id) = query.provider_connection_id
         && !state
@@ -1974,6 +1998,7 @@ async fn spotify_connect(
                 code_verifier: authorization.code_verifier,
                 subject,
                 expected_provider_connection_id: query.provider_connection_id,
+                cli_completion: query.completion.as_deref() == Some("cli"),
                 expires_at: Utc::now() + TimeDelta::minutes(LOGIN_TTL_MINUTES),
             },
         );
@@ -2045,7 +2070,11 @@ async fn spotify_callback(
     {
         return spotify_redirect(&state, "failed");
     }
-    spotify_redirect(&state, "connected")
+    if attempt.cli_completion {
+        spotify_cli_completion("connected")
+    } else {
+        spotify_redirect(&state, "connected")
+    }
 }
 
 async fn spotify_disconnect(
@@ -2110,6 +2139,51 @@ fn spotify_redirect(state: &HostedState, outcome: &str) -> Response {
             "{SPOTIFY_LOGIN_COOKIE}=; Path=/providers/spotify; HttpOnly; Secure; SameSite=Lax; Max-Age=0"
         ),
     )
+}
+
+fn spotify_connect_return_to(query: &SpotifyConnectQuery) -> String {
+    let mut return_to = Url::parse("https://chordrift.invalid/providers/spotify/connect")
+        .expect("fixed Spotify connection URL must parse");
+    if let Some(provider_connection_id) = query.provider_connection_id {
+        return_to.query_pairs_mut().append_pair(
+            "provider_connection_id",
+            &provider_connection_id.to_string(),
+        );
+    }
+    if let Some(completion) = &query.completion {
+        return_to
+            .query_pairs_mut()
+            .append_pair("completion", completion);
+    }
+    match return_to.query() {
+        Some(query) => format!("{}?{query}", return_to.path()),
+        None => return_to.path().to_owned(),
+    }
+}
+
+fn spotify_cli_completion(outcome: &str) -> Response {
+    let (title, message) = if outcome == "connected" {
+        (
+            "Spotify connected",
+            "Spotify is connected to Chordrift. You may close this page and return to the terminal.",
+        )
+    } else {
+        (
+            "Spotify was not connected",
+            "Return to the terminal and start Spotify authorization again.",
+        )
+    };
+    let mut response = Html(format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{title}</title></head><body><main><h1>{title}</h1><p>{message}</p></main></body></html>"
+    ))
+    .into_response();
+    response.headers_mut().append(
+        SET_COOKIE,
+        HeaderValue::from_static(
+            "chordrift_spotify_login=; Path=/providers/spotify; HttpOnly; Secure; SameSite=Lax; Max-Age=0",
+        ),
+    );
+    response
 }
 
 fn cookie(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
@@ -2384,6 +2458,11 @@ mod tests {
 
     #[test]
     fn product_login_continuation_cannot_become_an_open_redirect() {
+        let spotify_return = "/providers/spotify/connect?completion=cli&provider_connection_id=02020202-0202-0202-0202-020202020202";
+        assert_eq!(
+            valid_login_return_to(spotify_return),
+            Some(spotify_return.to_owned())
+        );
         for rejected in [
             "https://attacker.example/auth/cli/authorize?flow=x",
             "//attacker.example/auth/cli/authorize?flow=x",
@@ -2391,6 +2470,9 @@ mod tests {
             "/auth/cli/authorize",
             "/auth/cli/authorize?flow=x#fragment",
             "/auth/cli/authorize?flow=x\r\nLocation:https://attacker.example",
+            "/providers/spotify/callback?completion=cli",
+            "/providers/spotify/connect?completion=web",
+            "/providers/spotify/connect?provider_connection_id=not-a-uuid",
         ] {
             assert_eq!(valid_login_return_to(rejected), None, "{rejected}");
         }

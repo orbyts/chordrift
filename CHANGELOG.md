@@ -4,6 +4,19 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.7] - 2026-09-01
+
+- Add a thin hosted Spotify authorization command for an installed CLI so a
+  new machine keeps Chordrift/Auth0 login separate from provider consent.
+- Keep Spotify refresh credentials encrypted on the hosted authority; the CLI
+  opens only a server-derived authorization route and polls the account-scoped
+  provider DTO until the connection is ready.
+- Carry a cleared browser session through Auth0 and back to the exact internal
+  Spotify connection route, then show a terminal browser confirmation for CLI
+  initiated consent without accepting a client-supplied callback URL.
+- Add a provider-list command so the remote CLI can inspect the same scoped
+  connection identities and credential readiness shown by the web client.
+
 ## [0.2.1-beta.6] - 2026-09-01
 
 - Complete installed CLI authorization through a bounded PKCE status poll so
