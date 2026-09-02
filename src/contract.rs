@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Current backward-compatible application-contract feature generation.
-pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 5);
+pub const CONTRACT_VERSION: ContractVersion = ContractVersion::new(1, 6);
 
 macro_rules! uuid_id {
     ($name:ident, $description:literal) => {
@@ -361,6 +361,11 @@ pub fn negotiate(
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", content = "parameters", rename_all = "snake_case")]
 pub enum Command {
+    /// Revoke one provider credential while retaining its history and intent.
+    DisconnectProvider {
+        /// Account-owned provider connection to disconnect.
+        provider_connection_id: ResourceId,
+    },
     /// Connect a provider account to a Chordrift account.
     ConnectProvider {
         /// Chordrift account receiving the connection.

@@ -69,8 +69,8 @@ fn installed_binary_advertises_unified_maintenance() {
         "available"
     );
     assert_eq!(manifest["contract_versions"]["minimum"]["major"], 1);
-    assert_eq!(manifest["contract_versions"]["minimum"]["minor"], 5);
-    assert_eq!(manifest["contract_versions"]["maximum"]["minor"], 5);
+    assert_eq!(manifest["contract_versions"]["minimum"]["minor"], 6);
+    assert_eq!(manifest["contract_versions"]["maximum"]["minor"], 6);
     assert_eq!(
         manifest["capabilities"]["service.authenticated-transport.v1"],
         "available"

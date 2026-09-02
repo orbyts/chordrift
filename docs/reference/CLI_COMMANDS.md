@@ -21,11 +21,29 @@ chordrift service provider spotify connect --url https://service.example \
   --profile default --no-open
 chordrift service provider spotify connect --url https://service.example \
   --profile default --add-account
+chordrift service provider spotify disconnect --url https://service.example \
+  --profile default --provider-connection-id PROVIDER_CONNECTION_UUID
 chordrift service compatibility --url https://service.example --profile default
 chordrift service command --url https://service.example --file command.json
 chordrift service query --url https://service.example --file query.json
 chordrift service library compare --url https://service.example \
   --provider-connection-id PROVIDER_CONNECTION_UUID
+chordrift service library playlists --url https://service.example \
+  --provider-connection-id PROVIDER_CONNECTION_UUID --source provider
+chordrift service library playlists --url https://service.example \
+  --provider-connection-id PROVIDER_CONNECTION_UUID --source chordrift
+chordrift service library tracks --url https://service.example \
+  --provider-connection-id PROVIDER_CONNECTION_UUID --source provider \
+  --playlist-id PLAYLIST_ID
+chordrift service library track --url https://service.example \
+  --provider-connection-id PROVIDER_CONNECTION_UUID \
+  --provider-track-id PROVIDER_TRACK_ID
+chordrift service library excluded --url https://service.example \
+  --provider-connection-id PROVIDER_CONNECTION_UUID
+chordrift service maintenance wizard --url https://service.example \
+  --provider-connection-id PROVIDER_CONNECTION_UUID
+chordrift service maintenance wizard --url https://service.example \
+  --provider-connection-id PROVIDER_CONNECTION_UUID --session-id SESSION_UUID
 chordrift service maintenance start --url https://service.example \
   --provider-connection-id PROVIDER_CONNECTION_UUID
 chordrift service maintenance show --url https://service.example \
@@ -71,17 +89,44 @@ When a Spotify connection is already ready, `connect` reports it without
 repeating consent because the provider grant belongs to the Chordrift account,
 not the current computer. Use `--add-account` to authorize another Spotify
 identity, or pass `--provider-connection-id` to reconnect a known disabled one.
+`spotify disconnect` submits the same typed durable revocation command as the
+web control. It revokes only the encrypted provider credential and retains the
+connection's Chordrift history, intent, exclusions, and observations.
 
 Operator-only recovery syntax is `chordrift service session save --profile
 default`; normal users should use browser login.
 
-`maintenance start` and `maintenance refresh` each perform a fresh provider
+`maintenance wizard` is the normal remote-CLI daily driver. It follows the
+same durable operation and maintenance-session DTOs as the web client: observe,
+wait, show server recommendations, collect genuinely ambiguous decisions,
+show exact provider effects, require an explicit default-no authorization, and
+wait through verification. It prints the durable session ID immediately; pass
+that ID back with `--session-id` to resume after closing the terminal or moving
+to another authenticated machine. The wizard owns presentation and client
+choreography only. All interpretation, effects, revision checks, provider
+writes, and verification remain in the Rust authority and worker.
+
+`maintenance start` and `maintenance refresh` are lower-level automation and
+diagnostic primitives. Each performs a fresh provider
 read before interpretation. `show` reads the durable wrapper-neutral session.
 `resolve` accepts a JSON array of typed `MaintenanceDecision` values and records
 only the displayed revision. `authorize` accepts only the immutable review and
 revision returned by `show`; the Rust worker applies, observes, and verifies
 that bounded provider effect. It never accepts a shell command, plan ID, SQL,
 or provider URL.
+
+### Client parity boundary
+
+Web and remote CLI must both complete every daily-driver workflow through the
+same typed contract: Chordrift login/logout, provider connection lifecycle and
+selection, library and exclusion inspection, provider/model comparison, and
+ordinary maintenance through exact verification. Presentation may differ, but
+neither client owns music policy or assembles provider effects.
+
+The CLI may additionally expose JSON command/query primitives, compatibility
+inspection, safe diagnostics, migration/release checks, and operator
+automation. Those extra commands do not create a second product behavior and
+are not required in the web interface.
 
 ### Private-beta provider credential adoption
 
@@ -101,7 +146,7 @@ receipt fields, and does not contact Spotify. It is not a replacement for the
 future user-facing Connect/Reconnect/Disconnect provider flow and must not be
 offered as a normal web or remote-CLI operation.
 
-Command status: this page documents the **v0.2.1-alpha.18** daily-driver CLI. It retains the
+Command status: this page documents the **v0.2.1-beta.9** daily-driver CLI. It retains the
 maintenance surface from v0.1.4 through the Rust application facade and adds
 the capability, intake, and provider-free product commands described below.
 V020-01 added the Rust application-contract module,

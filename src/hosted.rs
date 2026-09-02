@@ -15,14 +15,15 @@ use std::{
 };
 
 use async_trait::async_trait;
+#[cfg(test)]
+use axum::http::header::REFERER;
 use axum::{
     Json, Router,
-    extract::{Path as AxumPath, Query as AxumQuery, Request, State},
+    extract::{Query as AxumQuery, Request, State},
     http::{
         HeaderMap, HeaderName, HeaderValue, StatusCode,
         header::{
-            AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, LOCATION, ORIGIN, REFERER,
-            SET_COOKIE,
+            AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, LOCATION, ORIGIN, SET_COOKIE,
         },
     },
     middleware::{self, Next},
@@ -320,6 +321,9 @@ impl ContractApplication for DeploymentApplication {
         }
         let provider_connection_id = match &request.command {
             Command::ObserveProvider {
+                provider_connection_id,
+            }
+            | Command::DisconnectProvider {
                 provider_connection_id,
             }
             | Command::StartMaintenance {
@@ -1195,10 +1199,6 @@ pub async fn run_from_env() -> Result<()> {
         .route("/auth/cli/exchange", post(cli_exchange))
         .route("/providers/spotify/connect", get(spotify_connect))
         .route("/providers/spotify/callback", get(spotify_callback))
-        .route(
-            "/providers/spotify/{provider_connection_id}/disconnect",
-            post(spotify_disconnect),
-        )
         .with_state(state)
         .merge(typed)
         .layer(middleware::from_fn(security_headers))
@@ -1862,28 +1862,6 @@ async fn spotify_callback(
     }
 }
 
-async fn spotify_disconnect(
-    State(state): State<HostedState>,
-    AxumPath(provider_connection_id): AxumPath<ResourceId>,
-    headers: HeaderMap,
-) -> Response {
-    if !same_origin(&state, &headers) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
-    let Some(subject) = authenticated_browser_subject(&state, &headers).await else {
-        return StatusCode::UNAUTHORIZED.into_response();
-    };
-    if state
-        .provider_connections
-        .disconnect_spotify(subject, provider_connection_id)
-        .await
-        .is_err()
-    {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    }
-    spotify_redirect(&state, "disconnected")
-}
-
 async fn authenticated_browser_subject(
     state: &HostedState,
     headers: &HeaderMap,
@@ -1892,10 +1870,7 @@ async fn authenticated_browser_subject(
     state.session_authenticator.authenticate(&token).await.ok()
 }
 
-fn same_origin(state: &HostedState, headers: &HeaderMap) -> bool {
-    same_origin_for(&state.config.public_origin, headers)
-}
-
+#[cfg(test)]
 fn same_origin_for(public_origin: &Url, headers: &HeaderMap) -> bool {
     let exact_origin = headers
         .get(ORIGIN)

@@ -4,6 +4,19 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.9] - 2026-09-02
+
+- Add a resumable remote maintenance wizard that performs the same observe,
+  decision, exact-review, authorization, and verification choreography as the
+  web daily driver over the shared Rust DTO contract.
+- Preserve raw maintenance commands for CLI diagnostics and automation while
+  keeping all interpretation and provider effects in the hosted authority.
+- Add scripted thin-client regressions proving recommendation acceptance,
+  composite resolve-plus-authorize flow, and default-no provider safety.
+- Add typed remote CLI commands for both library state planes, playlist tracks,
+  track evidence, Excluded tracks, and durable provider disconnect; route the
+  web Disconnect control through that same contract command and worker.
+
 ## [0.2.1-beta.8] - 2026-09-01
 
 - Replace the custom Chordrift CLI consent page, loopback callback, PKCE
