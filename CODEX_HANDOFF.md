@@ -10,18 +10,37 @@ Last updated: 2026-09-02.
 
 ## Current release and narrow Web UI handoff
 
-`v0.2.1-beta.11` is the current CLI and hosted Web release. It is built from
-exact commit `9422f5e7182fade4c2ed9ccc2afbedec2b3f9f70`, uses contract `1.6`
-and schema `51`, and is deployed on Vortex as manifest digest
-`sha256:8d04959b021d218af1eef1b67fbf01595d1d649dbd04fa89bd76e0d3c4c26088`.
+`v0.2.1-beta.12` is the current CLI and hosted Web release. It is built from
+exact commit `2aaf1be6674fa419640fdf5851b6fcb71ee7507d`, uses contract `1.6`
+and schema `52`, and is deployed on Vortex as manifest digest
+`sha256:3fa00b989d91866aa2f92305f2cfd8c9d3a959ee57b968f639f587911bdec6f1`.
 Both API and worker use that image and matching OCI revision. Public liveness
-reports beta.11, readiness reports database/identity ready with
+reports beta.12, readiness reports database/identity ready with
 exact-review-only provider writes, and the no-store Web page visibly reports
-`Chordrift v0.2.1-beta.11`. The crates.io package is published and the Quasar
-CLI reports the same version. CI run `33664435739` passed every release gate.
+`Chordrift v0.2.1-beta.12`. The crates.io package is published and the Quasar
+CLI reports the same version. CI run `33669302673` passed every release gate,
+including the full disposable-PostgreSQL suite at migration 0052.
 The deployment performed no provider observation or Spotify write. Its exact
-temporary tagged source checkout was deleted after verification; beta.10 is
+temporary tagged source checkout was deleted after verification; beta.11 is
 retained as the immediate container rollback image.
+
+Beta.12 adds optional Auth0 presentation metadata to the authenticated
+`/auth/session` response: `display_name` and `avatar_url`. Migration 0052 stores
+those values beside the stable external identity; neither field participates in
+authorization, and email/credentials remain server-only. Avatar URLs accept
+only bounded HTTPS Google profile-image hosts, backed by the correspondingly
+narrow CSP source. Existing sessions return null until one fresh Chordrift Web
+or CLI login refreshes UserInfo. The Web avatar/menu itself remains a Spark
+presentation task on current main. Do not continue or cherry-pick the stale
+beta.1 `codex/v021-06-private-beta` JavaScript wrapper.
+
+Before migration, an owner-only logical backup was written to
+`/home/suhail/.local/state/chordrift/backups/chordrift-pre-beta12-20260902T184831Z.dump`
+(31 MB; SHA-256
+`ee05b8bafd7b87a7471559bf23de8659496b5a582d0429ce0c6fa4d84f588915`).
+It restored cleanly into disposable PostgreSQL 18 with 51/51 source migrations;
+the disposable restore container was deleted. The live additive migration then
+reported 52/52, and the temporary release checkout was deleted after deploy.
 
 For a narrow GPT-5.3 Codex Spark Web UI polish task, read
 [`docs/how-to/SPARK_WEB_UI_HANDOFF.md`](docs/how-to/SPARK_WEB_UI_HANDOFF.md)

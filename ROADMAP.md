@@ -477,6 +477,20 @@ and later Chordrift refactor begin.
     Google profile images are the only new remote CSP image source. The Web-only
     Spark task may render these fields and an accessible fallback, but may not
     change identity, session, DTO, or provider behavior.
+
+    Accepted 2026-09-02 from exact tagged commit
+    `2aaf1be6674fa419640fdf5851b6fcb71ee7507d`. CI run `33669302673`
+    passed formatting, browser harnesses, strict Clippy, all Rust/doc tests,
+    every disposable-PostgreSQL integration (including the migration-0052
+    identity profile round-trip), Spotify persistence, and package verification.
+    The crate is published and installed locally as beta.12. Vortex API and
+    worker run manifest digest
+    `sha256:3fa00b989d91866aa2f92305f2cfd8c9d3a959ee57b968f639f587911bdec6f1`
+    with the matching OCI revision. A 31 MB logical backup restored cleanly at
+    51/51 before live migration reached 52/52; disposable database and source
+    checkouts were deleted. Public liveness/readiness, the narrow avatar CSP,
+    and the delivered beta.12 footer pass. No provider observation or Spotify
+    write occurred.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,
