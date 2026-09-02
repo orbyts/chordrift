@@ -1,7 +1,7 @@
 # Chordrift database object catalog
 
 This is the plain-language index to the schema definition through staged
-migration 0051. The [domain map](../design/chordrift-database-domain-map.svg) shows how
+migration 0052. The [domain map](../design/chordrift-database-domain-map.svg) shows how
 the groups relate; this page explains every public table and view.
 
 ## How to read the schema
@@ -83,7 +83,7 @@ the wrong product conclusion.
 | --- | --- | --- |
 | `chordrift_accounts` | Identity/current | Provider-neutral Chordrift tenant/account identity. |
 | `product_subjects` | Hosted | Stable Chordrift user subjects and active/suspended/closed status. |
-| `product_external_identities` | Hosted | Verified Auth0/Google issuer-and-subject bindings; no OAuth token. |
+| `product_external_identities` | Hosted | Verified Auth0/Google issuer-and-subject bindings plus optional last-verified display name/profile-image URL; no OAuth token and presentation fields never authorize access. |
 | `chordrift_account_memberships` | Hosted | Subject-to-account ownership/membership and revocation state. |
 | `product_sessions` | Hosted | Expiring/revocable Chordrift sessions using token digests only. |
 | `provider_accounts` | Identity/current | Stable Spotify/provider account connection identity and account label. |

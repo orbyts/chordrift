@@ -61,9 +61,9 @@ use crate::{
     },
     http_transport::{AuthenticatedHttpTransport, BearerAuthenticator},
     identity::{
-        ExternalIdentityVerifier, PRODUCT_SESSION_SCHEMA_VERSION, PostgresProductIdentityStore,
-        ProductSessionAuthenticator, ProductSessionAuthority, SessionExchangeRequest,
-        VerifiedExternalIdentity,
+        ExternalIdentityProfile, ExternalIdentityVerifier, PRODUCT_SESSION_SCHEMA_VERSION,
+        PostgresProductIdentityStore, ProductSessionAuthenticator, ProductSessionAuthority,
+        SessionExchangeRequest, VerifiedExternalIdentity,
     },
     maintenance::{MaintenanceDecisionProjection, MaintenanceProjection},
     maintenance_interpretation::surface as maintenance_surface,
@@ -177,6 +177,7 @@ struct VerifiedProfile {
     identity: VerifiedExternalIdentity,
     email: Option<String>,
     email_verified: bool,
+    presentation: ExternalIdentityProfile,
 }
 
 #[derive(Deserialize)]
@@ -184,6 +185,9 @@ struct UserInfoResponse {
     sub: String,
     email: Option<String>,
     email_verified: Option<bool>,
+    name: Option<String>,
+    nickname: Option<String>,
+    picture: Option<String>,
 }
 
 impl OidcVerifier {
@@ -212,8 +216,36 @@ impl OidcVerifier {
             identity,
             email: profile.email.map(|email| email.to_ascii_lowercase()),
             email_verified: profile.email_verified.unwrap_or(false),
+            presentation: ExternalIdentityProfile {
+                display_name: profile
+                    .name
+                    .as_deref()
+                    .and_then(sanitized_display_name)
+                    .or_else(|| profile.nickname.as_deref().and_then(sanitized_display_name)),
+                avatar_url: profile.picture.as_deref().and_then(sanitized_avatar_url),
+            },
         })
     }
+}
+
+fn sanitized_display_name(value: &str) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty() && value.chars().count() <= 200 && !value.chars().any(char::is_control))
+        .then(|| value.to_owned())
+}
+
+fn sanitized_avatar_url(value: &str) -> Option<String> {
+    let url = Url::parse(value.trim()).ok()?;
+    let host = url.host_str()?.to_ascii_lowercase();
+    let google_profile_host =
+        host == "googleusercontent.com" || host.ends_with(".googleusercontent.com");
+    (url.scheme() == "https"
+        && google_profile_host
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.fragment().is_none()
+        && url.as_str().len() <= 2048)
+        .then(|| url.to_string())
 }
 
 #[async_trait]
@@ -1289,7 +1321,7 @@ fn add_security_headers(response: &mut Response) {
     headers.insert(
         HeaderName::from_static("content-security-policy"),
         HeaderValue::from_static(
-            "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'",
+            "default-src 'self'; img-src 'self' https://*.googleusercontent.com; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'",
         ),
     );
 }
@@ -1318,7 +1350,7 @@ pub async fn healthcheck_from_env() -> Result<()> {
 fn deployment_compatibility() -> ServiceCompatibility {
     ServiceCompatibility {
         contract_versions: ContractVersionRange::exact(CONTRACT_VERSION),
-        schema_version: 51,
+        schema_version: 52,
         features: BTreeMap::from([
             (
                 CAPABILITY_AUTHENTICATED_SERVICE_TRANSPORT.to_owned(),
@@ -1580,6 +1612,14 @@ async fn callback(
             return StatusCode::FORBIDDEN.into_response();
         }
     }
+    if state
+        .identity_store
+        .update_external_profile(&profile.identity, &profile.presentation)
+        .await
+        .is_err()
+    {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
     let grant = match state
         .session_authority
         .exchange(
@@ -1614,15 +1654,24 @@ async fn session_status(State(state): State<HostedState>, request: Request) -> R
         return StatusCode::UNAUTHORIZED.into_response();
     };
     match state.session_authenticator.authenticate(&token).await {
-        Ok(subject) => (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "signed_in": true,
-                "subject_id": subject.subject_id,
-                "account_id": subject.account_id,
-            })),
-        )
-            .into_response(),
+        Ok(subject) => match state
+            .identity_store
+            .subject_profile(subject.subject_id)
+            .await
+        {
+            Ok(profile) => (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "signed_in": true,
+                    "subject_id": subject.subject_id,
+                    "account_id": subject.account_id,
+                    "display_name": profile.display_name,
+                    "avatar_url": profile.avatar_url,
+                })),
+            )
+                .into_response(),
+            Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        },
         Err(_) => StatusCode::UNAUTHORIZED.into_response(),
     }
 }
@@ -1721,7 +1770,15 @@ async fn cli_exchange(
             return StatusCode::FORBIDDEN.into_response();
         }
     }
-    match state
+    if state
+        .identity_store
+        .update_external_profile(&profile.identity, &profile.presentation)
+        .await
+        .is_err()
+    {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    let grant = match state
         .session_authority
         .exchange(
             credential,
@@ -1732,9 +1789,10 @@ async fn cli_exchange(
         )
         .await
     {
-        Ok(grant) => (StatusCode::CREATED, Json(grant)).into_response(),
-        Err(_) => StatusCode::FORBIDDEN.into_response(),
-    }
+        Ok(grant) => grant,
+        Err(_) => return StatusCode::FORBIDDEN.into_response(),
+    };
+    (StatusCode::CREATED, Json(grant)).into_response()
 }
 
 #[derive(Deserialize)]
@@ -2028,6 +2086,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn oidc_presentation_fields_are_bounded_and_profile_images_are_allowlisted() {
+        assert_eq!(
+            sanitized_display_name("  Suhail  ").as_deref(),
+            Some("Suhail")
+        );
+        assert!(sanitized_display_name("Suhail\nAdmin").is_none());
+        assert!(sanitized_display_name(&"x".repeat(201)).is_none());
+
+        assert_eq!(
+            sanitized_avatar_url("https://lh3.googleusercontent.com/a/example").as_deref(),
+            Some("https://lh3.googleusercontent.com/a/example")
+        );
+        for rejected in [
+            "http://lh3.googleusercontent.com/a/example",
+            "https://googleusercontent.com.attacker.invalid/a/example",
+            "https://user@lh3.googleusercontent.com/a/example",
+            "https://lh3.googleusercontent.com/a/example#fragment",
+            "https://images.example/avatar.png",
+        ] {
+            assert_eq!(sanitized_avatar_url(rejected), None, "{rejected}");
+        }
+    }
+
+    #[test]
     fn deployment_manifest_exposes_durable_record_only_maintenance() {
         let compatibility = deployment_compatibility();
         assert_eq!(
@@ -2210,7 +2292,7 @@ mod tests {
                 .get("content-security-policy")
                 .and_then(|value| value.to_str().ok()),
             Some(
-                "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'"
+                "default-src 'self'; img-src 'self' https://*.googleusercontent.com; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'"
             )
         );
         assert_eq!(

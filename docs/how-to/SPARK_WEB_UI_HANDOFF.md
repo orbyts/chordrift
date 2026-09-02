@@ -8,7 +8,7 @@ context on the browser experience.
 ## Assignment
 
 Polish the existing Chordrift Web UI without changing product behavior. The
-current release is `v0.2.1-beta.11`, contract `1.6`, schema `51`. Web and remote
+current release is `v0.2.1-beta.12`, contract `1.6`, schema `52`. Web and remote
 CLI are thin clients of the same Rust-owned application contract.
 
 This is a presentation task. Do not modify Rust, migrations, Docker/Compose
@@ -117,6 +117,21 @@ The browser currently uses these command variants: `start_maintenance`,
 
 Do not add, remove, rename or reshape any variant or field in a UI-polish task.
 
+The authenticated, same-origin `/auth/session` response now includes these
+additional optional presentation fields:
+
+- `display_name: string | null`
+- `avatar_url: string | null`
+
+Spark may consume those exact fields to render the requested top-right account
+avatar/menu. Use a semantic image with the display name in its alternative text
+when `avatar_url` is present; otherwise render an accessible initials/default
+fallback. Keep logout available inside the account affordance, preserve full
+keyboard navigation and visible focus, and do not use email as a fallback. Do
+not infer, fetch, persist, transform, proxy, or rewrite identity data in the
+browser. Existing sessions may return null until the user completes one fresh
+Chordrift login.
+
 ## UX and safety invariants
 
 - Signed out shows a login action. Signed in shows logout and does not also
@@ -210,3 +225,12 @@ At handoff, list changed files, visual/interaction changes, tests run, known UI
 limitations, any Rust escalation notes, and the hosted preview identity and
 health. Do not tag, publish crates, install binaries, or change deployment
 architecture during this Web-only task.
+
+## Branch freshness
+
+Start the Web task from the current `main` containing beta.12. Do not continue
+the earlier `codex/v021-06-private-beta` beta.1 checkout and do not cherry-pick
+its `web/app.js`: that stale wrapper hard-codes contract 1.5 and predates later
+disconnect, maintenance and build-identity fixes. Presentation ideas from that
+work may be reapplied selectively on current main only after preserving the
+current request construction and workflow behavior.

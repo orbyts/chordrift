@@ -44,6 +44,16 @@ pub struct VerifiedExternalIdentity {
     pub subject: String,
 }
 
+/// Optional presentation metadata verified by the configured identity provider.
+/// These fields never participate in authentication or authorization decisions.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ExternalIdentityProfile {
+    /// Human-readable account label suitable for a signed-in UI.
+    pub display_name: Option<String>,
+    /// Sanitized HTTPS profile-image URL suitable for a signed-in UI.
+    pub avatar_url: Option<String>,
+}
+
 impl VerifiedExternalIdentity {
     /// Creates a bounded, nonempty issuer/subject identity.
     pub fn new(issuer: impl Into<String>, subject: impl Into<String>) -> Result<Self, ClientError> {
@@ -434,13 +444,19 @@ impl PostgresProductIdentityStore {
         Self { pool }
     }
 
-    /// Verifies migration 0048 before a hosted service starts accepting traffic.
+    /// Verifies the hosted identity schema before accepting traffic.
     pub async fn verify_schema(&self) -> Result<(), ClientError> {
         let ready: bool = sqlx::query_scalar(
             "SELECT to_regclass('product_subjects') IS NOT NULL
                 AND to_regclass('product_external_identities') IS NOT NULL
                 AND to_regclass('chordrift_account_memberships') IS NOT NULL
-                AND to_regclass('product_sessions') IS NOT NULL",
+                AND to_regclass('product_sessions') IS NOT NULL
+                AND EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'product_external_identities'
+                      AND column_name = 'profile_verified_at'
+                )",
         )
         .fetch_one(&self.pool)
         .await
@@ -540,6 +556,61 @@ impl PostgresProductIdentityStore {
         Ok(AuthenticatedSubject {
             subject_id: ResourceId::from_uuid(subject_id),
             account_id,
+        })
+    }
+
+    /// Refreshes non-authoritative presentation metadata for one active
+    /// external identity after UserInfo verification succeeds.
+    pub async fn update_external_profile(
+        &self,
+        identity: &VerifiedExternalIdentity,
+        profile: &ExternalIdentityProfile,
+    ) -> Result<(), ClientError> {
+        let updated: Option<Uuid> = sqlx::query_scalar(
+            "UPDATE product_external_identities
+             SET display_name = $3,
+                 avatar_url = $4,
+                 profile_verified_at = now(),
+                 updated_at = now()
+             WHERE issuer = $1
+               AND external_subject = $2
+               AND status = 'active'
+             RETURNING product_subject_id",
+        )
+        .bind(&identity.issuer)
+        .bind(&identity.subject)
+        .bind(&profile.display_name)
+        .bind(&profile.avatar_url)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| ClientError::new(ErrorCode::DependencyUnavailable, true))?;
+        updated
+            .map(|_| ())
+            .ok_or_else(|| ClientError::new(ErrorCode::PermissionDenied, false))
+    }
+
+    /// Returns presentation metadata for an authenticated subject. Only an
+    /// active identity can contribute profile fields.
+    pub async fn subject_profile(
+        &self,
+        subject_id: ResourceId,
+    ) -> Result<ExternalIdentityProfile, ClientError> {
+        let profile: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT display_name, avatar_url
+             FROM product_external_identities
+             WHERE product_subject_id = $1
+               AND status = 'active'
+             ORDER BY profile_verified_at DESC NULLS LAST, updated_at DESC
+             LIMIT 1",
+        )
+        .bind(subject_id.as_uuid())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| ClientError::new(ErrorCode::DependencyUnavailable, true))?;
+        let (display_name, avatar_url) = profile.unwrap_or((None, None));
+        Ok(ExternalIdentityProfile {
+            display_name,
+            avatar_url,
         })
     }
 }

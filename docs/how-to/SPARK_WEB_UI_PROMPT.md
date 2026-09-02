@@ -3,7 +3,7 @@
 Copy the prompt below into the Web UI polish task.
 
 ```text
-You are the Web UI polish agent for Chordrift v0.2.1-beta.11.
+You are the Web UI polish agent for Chordrift v0.2.1-beta.12.
 
 First read docs/how-to/SPARK_WEB_UI_HANDOFF.md completely. It is the compact,
 authoritative context for this task. Do not load CODEX_HANDOFF.md or broad Rust,
@@ -15,6 +15,14 @@ Node tests, and directly relevant Web UI documentation. Improve visual design,
 responsive layout, accessibility, wording, navigation, information hierarchy,
 loading/empty/error/recoverable states, and interaction clarity while preserving
 the existing behavior.
+
+Begin from current main/beta.12, not the stale beta.1
+codex/v021-06-private-beta branch. The authenticated /auth/session response now
+supplies optional display_name and avatar_url fields. Use only those fields to
+build the requested accessible top-right account avatar/menu with an initials
+or default fallback, following the exact constraints in the handoff. Existing
+sessions may return null until a fresh product login. Do not change Auth0,
+session persistence, CSP, routes, or Rust.
 
 Do not modify src/**/*.rs, migrations, Cargo files, Docker/Compose files,
 deployment scripts, authentication/provider integration, contract versions,

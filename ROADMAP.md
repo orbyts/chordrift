@@ -467,6 +467,16 @@ and later Chordrift refactor begin.
     with the matching OCI revision; private and public health pass and the
     delivered HTML reports beta.11. No provider observation or Spotify write
     occurred during release acceptance.
+
+    Follow-up private-beta patch `v0.2.1-beta.12` supplies the missing
+    server-owned account-presentation boundary needed by a top-right Web avatar.
+    Auth0 UserInfo presentation fields are sanitized and stored separately from
+    stable authorization claims by additive migration 0052. Authenticated
+    `/auth/session` responses retain their existing fields and add optional
+    `display_name` and `avatar_url`; email and credentials stay server-side.
+    Google profile images are the only new remote CSP image source. The Web-only
+    Spark task may render these fields and an accessible fallback, but may not
+    change identity, session, DTO, or provider behavior.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,

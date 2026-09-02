@@ -25,8 +25,8 @@ use chordrift::{
         DurableOperationQueue, OperationRetryPolicy, PostgresDurableOperationStore,
     },
     identity::{
-        NewProductSession, PostgresProductIdentityStore, ProductIdentityStore,
-        VerifiedExternalIdentity,
+        ExternalIdentityProfile, NewProductSession, PostgresProductIdentityStore,
+        ProductIdentityStore, VerifiedExternalIdentity,
     },
     intake::{self, IntakeState},
     library_comparison,
@@ -2692,6 +2692,18 @@ async fn persists_product_ownership_sessions_and_immediate_revocation() -> chord
         .unwrap();
     assert_eq!(replayed_provisioning, provisioned);
     let subject_id = provisioned.subject_id.as_uuid();
+    let profile = ExternalIdentityProfile {
+        display_name: Some("Identity Fixture Person".to_owned()),
+        avatar_url: Some("https://lh3.googleusercontent.com/a/fixture".to_owned()),
+    };
+    store
+        .update_external_profile(&identity, &profile)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.subject_profile(provisioned.subject_id).await.unwrap(),
+        profile
+    );
     let takeover = store
         .provision_account_owner(
             &VerifiedExternalIdentity::new("https://identity.test", "intruder").unwrap(),

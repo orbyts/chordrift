@@ -58,7 +58,7 @@ function showUnavailable() {
 
 async function loadCompatibility() {
   state.compatibility = await contractRequest('/v1/compatibility', {
-    contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 51 },
+    contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 52 },
     requested_features: ['service.authenticated-transport.v1', 'service.product-identity.v1', 'service.provider-credential-vault.v1', 'service.durable-operations.v1', 'service.remote-cli.v1', 'maintenance.task-session.v1']
   });
   const observationAvailable = state.compatibility.features['service.durable-operations.v1'] === 'available';
@@ -429,7 +429,7 @@ async function loadActivity() {
 }
 
 function requestFor(name) {
-  if (name === 'compatibility') return { path: '/v1/compatibility', body: { contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 51 }, requested_features: ['service.authenticated-transport.v1', 'service.product-identity.v1', 'service.provider-credential-vault.v1', 'service.durable-operations.v1', 'service.remote-cli.v1', 'maintenance.task-session.v1'] } };
+  if (name === 'compatibility') return { path: '/v1/compatibility', body: { contract_versions: { minimum: contractVersion, maximum: contractVersion }, schema_versions: { minimum: 48, maximum: 52 }, requested_features: ['service.authenticated-transport.v1', 'service.product-identity.v1', 'service.provider-credential-vault.v1', 'service.durable-operations.v1', 'service.remote-cli.v1', 'maintenance.task-session.v1'] } };
   if (name === 'provider_connections') return { path: '/v1/queries', body: queryEnvelope({ type: 'provider_connections' }) };
   if (name === 'library_comparison') return { path: '/v1/queries', body: queryEnvelope({ type: 'library_comparison', parameters: { provider_connection_id: state.provider?.provider_connection_id || 'UUID' } }) };
   if (name === 'operation_history') return { path: '/v1/queries', body: queryEnvelope({ type: 'operation_history', parameters: { account_id: state.session?.account_id || 'ACCOUNT_ID' } }) };

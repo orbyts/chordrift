@@ -4,6 +4,21 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.12] - 2026-09-02
+
+- Capture bounded Auth0 `name`/`nickname` and Google-hosted `picture` fields
+  during an already-authorized Chordrift login, while keeping email and all
+  identity credentials server-only.
+- Persist that non-authoritative presentation metadata beside the stable
+  external identity and expose optional `display_name` and `avatar_url` fields
+  from the authenticated `/auth/session` response without changing its existing
+  fields or any maintenance/provider DTO.
+- Restrict browser profile images to sanitized HTTPS Google profile hosts and
+  extend the Content Security Policy only for that exact image domain.
+- Advance the hosted schema to additive migration 0052 and give the Web-only
+  polish handoff explicit permission to render the new fields with an accessible
+  initials fallback and account menu.
+
 ## [0.2.1-beta.11] - 2026-09-02
 
 - Show the exact Rust server binary version in the hosted Web UI so a user can

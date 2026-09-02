@@ -2767,7 +2767,7 @@ fn load_service_client(url: &str, profile: &str) -> Result<RemoteHttpClient> {
 fn service_compatibility_offer() -> ClientCompatibility {
     ClientCompatibility {
         contract_versions: ContractVersionRange::exact(CONTRACT_VERSION),
-        schema_versions: SchemaVersionRange::new(0, 51).expect("CLI schema range is valid"),
+        schema_versions: SchemaVersionRange::new(0, 52).expect("CLI schema range is valid"),
         requested_features: vec![
             CAPABILITY_MAINTENANCE_TASK_SESSION.to_owned(),
             CAPABILITY_PRODUCT_IDENTITY.to_owned(),
