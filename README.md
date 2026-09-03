@@ -18,7 +18,7 @@ make the active library enjoyable again without silently losing history.
 
 ## Release status
 
-**v0.2.1-beta.12 is the current private-beta daily driver.** The authenticated
+**v0.2.1-beta.13 is the current private-beta daily driver.** The authenticated
 web workbench and installed remote CLI are thin clients of the same hosted Rust
 contract and durable worker. Google proves Chordrift identity; Spotify remains
 a separate revocable provider connection; Neon and provider credentials stay
@@ -67,10 +67,10 @@ final.
 Install the locked release with:
 
 ```console
-$ cargo install chordrift --version 0.2.1-beta.12 --locked --force
+$ cargo install chordrift --version 0.2.1-beta.13 --locked --force
 ```
 
-Read the [v0.2.1-beta.12 release notes](docs/releases/V0.2.1-beta.12.md), the
+Read the [v0.2.1-beta.13 release notes](docs/releases/V0.2.1-beta.13.md), the
 [provider-first convergence contract](docs/design/PROVIDER_FIRST_CONVERGENCE.md),
 the [provider credential vault contract](docs/design/PROVIDER_CREDENTIAL_VAULT_V021_03.md),
 the [web workflow capability matrix](docs/design/WEB_WORKFLOW_CAPABILITY_MATRIX.md),

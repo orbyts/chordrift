@@ -4,6 +4,17 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.13] - 2026-09-02
+
+- Add an accessible account avatar menu backed only by the optional sanitized
+  Auth0 presentation fields supplied by the Rust session boundary.
+- Add a local, device-scoped System/Light/Dark appearance preference and finish
+  light-theme coverage across the existing Web surfaces without changing any
+  command, query, provider, or maintenance behavior.
+- Consolidate Web UI development on the canonical `$CRATES/chordrift` checkout
+  and add compact repository-level guidance for model handoffs and the required
+  same-commit API/worker preview loop.
+
 ## [0.2.1-beta.12] - 2026-09-02
 
 - Capture bounded Auth0 `name`/`nickname` and Google-hosted `picture` fields

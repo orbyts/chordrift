@@ -3,7 +3,11 @@
 Copy the prompt below into the Web UI polish task.
 
 ```text
-You are the Web UI polish agent for Chordrift v0.2.1-beta.12.
+You are the Web UI polish agent for Chordrift v0.2.1-beta.13.
+
+Work only in `$CRATES/chordrift`, the canonical Dropbox checkout. Resolve and
+print that path before editing. Do not use a Chordrift checkout under Documents,
+ChatGPT, Music, or `/private/tmp`.
 
 First read docs/how-to/SPARK_WEB_UI_HANDOFF.md completely. It is the compact,
 authoritative context for this task. Do not load CODEX_HANDOFF.md or broad Rust,
@@ -16,7 +20,7 @@ responsive layout, accessibility, wording, navigation, information hierarchy,
 loading/empty/error/recoverable states, and interaction clarity while preserving
 the existing behavior.
 
-Begin from current main/beta.12, not the stale beta.1
+Begin from current main/beta.13, not the stale beta.1
 codex/v021-06-private-beta branch. The authenticated /auth/session response now
 supplies optional display_name and avatar_url fields. Use only those fields to
 build the requested accessible top-right account avatar/menu with an initials

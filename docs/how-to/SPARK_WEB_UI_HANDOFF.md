@@ -8,8 +8,13 @@ context on the browser experience.
 ## Assignment
 
 Polish the existing Chordrift Web UI without changing product behavior. The
-current release is `v0.2.1-beta.12`, contract `1.6`, schema `52`. Web and remote
+current release is `v0.2.1-beta.13`, contract `1.6`, schema `52`. Web and remote
 CLI are thin clients of the same Rust-owned application contract.
+
+The sole canonical local checkout is `$CRATES/chordrift` (currently
+`/Users/suhail/Library/CloudStorage/Dropbox/matrix/crates/chordrift`). Confirm
+that path before editing. Do not work in a duplicate checkout under Documents,
+ChatGPT, Music, or `/private/tmp`.
 
 This is a presentation task. Do not modify Rust, migrations, Docker/Compose
 architecture, authentication, provider integration, persistence, workflow
@@ -228,7 +233,7 @@ architecture during this Web-only task.
 
 ## Branch freshness
 
-Start the Web task from the current `main` containing beta.12. Do not continue
+Start the Web task from the current `main` containing beta.13. Do not continue
 the earlier `codex/v021-06-private-beta` beta.1 checkout and do not cherry-pick
 its `web/app.js`: that stale wrapper hard-codes contract 1.5 and predates later
 disconnect, maintenance and build-identity fixes. Presentation ideas from that
