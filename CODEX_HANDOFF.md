@@ -10,19 +10,28 @@ Last updated: 2026-09-02.
 
 ## Current release and narrow Web UI handoff
 
-`v0.2.1-beta.12` is the current CLI and hosted Web release. It is built from
-exact commit `2aaf1be6674fa419640fdf5851b6fcb71ee7507d`, uses contract `1.6`
+`v0.2.1-beta.13` is the current CLI and hosted Web release. It is built from
+exact commit `1cd3193cf1e6a60d89844b5337e721827c84ae3f`, uses contract `1.6`
 and schema `52`, and is deployed on Vortex as manifest digest
-`sha256:3fa00b989d91866aa2f92305f2cfd8c9d3a959ee57b968f639f587911bdec6f1`.
+`sha256:b0ccabfdd0767c29fb7eda2c0b4a84064e4f27e44708913b01649e3451001943`.
 Both API and worker use that image and matching OCI revision. Public liveness
-reports beta.12, readiness reports database/identity ready with
+reports beta.13, readiness reports database/identity ready with
 exact-review-only provider writes, and the no-store Web page visibly reports
-`Chordrift v0.2.1-beta.12`. The crates.io package is published and the Quasar
+`Chordrift v0.2.1-beta.13`. The crates.io package is published and the Quasar
 CLI reports the same version. CI run `33669302673` passed every release gate,
-including the full disposable-PostgreSQL suite at migration 0052.
+including the full disposable-PostgreSQL suite at migration 0052; beta.13 CI
+run `33705666628` then passed the same complete gate for the consolidated Web
+release.
 The deployment performed no provider observation or Spotify write. Its exact
 temporary tagged source checkout was deleted after verification; beta.11 is
 retained as the immediate container rollback image.
+
+Beta.13 adds the accessible account avatar/menu, device-local System/Light/Dark
+theme selection, and complete light-theme presentation on top of beta.12's
+optional Auth0 presentation metadata. It changes no DTO, provider behavior,
+maintenance semantics, or schema. The sole canonical development checkout is
+`$CRATES/chordrift`; duplicate Documents/Music checkouts are not valid task
+roots.
 
 Beta.12 adds optional Auth0 presentation metadata to the authenticated
 `/auth/session` response: `display_name` and `avatar_url`. Migration 0052 stores

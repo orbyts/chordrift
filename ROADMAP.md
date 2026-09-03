@@ -491,6 +491,20 @@ and later Chordrift refactor begin.
     checkouts were deleted. Public liveness/readiness, the narrow avatar CSP,
     and the delivered beta.12 footer pass. No provider observation or Spotify
     write occurred.
+
+    Follow-up private-beta patch `v0.2.1-beta.13` promotes the accepted Web UI
+    presentation work: accessible Auth0-backed account avatar/menu, a
+    device-local System/Light/Dark preference, and complete light-theme surface
+    coverage. It changes no shared DTO, provider behavior, maintenance policy,
+    or database schema. Exact tagged commit
+    `1cd3193cf1e6a60d89844b5337e721827c84ae3f` passed CI run `33705666628`, was
+    published to crates.io and installed locally, and runs on both Vortex API
+    and worker as manifest digest
+    `sha256:b0ccabfdd0767c29fb7eda2c0b4a84064e4f27e44708913b01649e3451001943`.
+    Public liveness reports beta.13 and readiness passes. The repository-level
+    agent guide and compact Spark handoff now designate `$CRATES/chordrift` as
+    the sole canonical local checkout so future Web-only model handoffs begin
+    from the same GitHub `main` and use the same exact-image preview loop.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,
