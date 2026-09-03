@@ -31,7 +31,7 @@
         </button>
         <div id="account-menu" class="account-menu" role="menu" aria-label="Account actions" hidden>
           <p id="account-menu-copy" class="account-menu-copy"></p>
-          <button id="account-settings" class="account-menu-item" type="button" role="menuitem" disabled>Account settings</button>
+          <button id="account-settings" class="account-menu-item" type="button" role="menuitem">Account settings</button>
           <form id="logout-form" action="/auth/logout" method="post">
             <button class="account-menu-item" type="submit" role="menuitem">Log out</button>
           </form>
@@ -59,6 +59,7 @@
         <button class="tab" data-view="exclusions" type="button">Excluded</button>
         <button class="tab" data-view="activity" type="button">Activity</button>
         <button class="tab" data-view="developer" type="button">Developer</button>
+        <button class="tab" data-view="settings" type="button">Settings</button>
       </nav>
 
       <section class="view active" id="view-maintain">
@@ -120,6 +121,20 @@
             <div class="actions"><button id="send" type="button">Send request</button><span id="request-kind"></span></div>
           </div>
           <div class="pane"><div class="pane-heading"><h2>Response</h2><span id="http-status">Idle</span></div><pre id="response" tabindex="0">Choose a request.</pre></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="section-heading"><div><p class="eyebrow">Account preferences</p><h1>Settings</h1></div></div>
+        <div class="settings-card">
+          <p class="eyebrow">Theme</p>
+          <p class="settings-helper">Choose how Chordrift should render on this device.</p>
+          <fieldset class="theme-choice" role="radiogroup" aria-label="Theme mode">
+            <legend class="sr-only">Theme mode</legend>
+            <label><input type="radio" name="theme-mode" value="system" checked>System</label>
+            <label><input type="radio" name="theme-mode" value="light">Light</label>
+            <label><input type="radio" name="theme-mode" value="dark">Dark</label>
+          </fieldset>
         </div>
       </section>
     </div>

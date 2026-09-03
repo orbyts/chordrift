@@ -2,7 +2,11 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const uuid = () => crypto.randomUUID();
 const contractVersion = __CHORDRIFT_CONTRACT_VERSION__;
-const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null, maintenanceSession: null, destinationPlaylists: [], playlistTracks: [], excludedTracks: [] };
+const state = { session: null, compatibility: null, connections: [], provider: null, source: 'provider_observation', activeOperation: null, maintenanceSession: null, destinationPlaylists: [], playlistTracks: [], excludedTracks: [], themeMode: 'system' };
+const themeInputs = [...document.querySelectorAll('input[name="theme-mode"]')];
+const THEME_STORAGE_KEY = 'chordrift-theme-mode';
+const THEME_OPTIONS = new Set(['system', 'light', 'dark']);
+let systemThemeQuery = null;
 
 function queryEnvelope(query) { return { contract_version: contractVersion, request_id: uuid(), query }; }
 
@@ -26,6 +30,43 @@ function formatTime(value) {
   if (delta >= 0 && delta < 3_600_000) return `${Math.floor(delta / 60_000)} min ago`;
   if (delta >= 0 && delta < 86_400_000) return `${Math.floor(delta / 3_600_000)} hr ago`;
   return date.toLocaleString();
+}
+
+function resolveThemeMode(value) {
+  const requested = THEME_OPTIONS.has(value) ? value : 'system';
+  if (requested === 'system') {
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return requested;
+}
+
+function setThemeMode(mode) {
+  const resolved = resolveThemeMode(mode);
+  const root = document.documentElement;
+  root.dataset.theme = resolved;
+  localStorage.setItem(THEME_STORAGE_KEY, mode);
+  state.themeMode = mode;
+  themeInputs.forEach((input) => {
+    const isActive = input.value === mode;
+    input.checked = isActive;
+  });
+}
+
+function initializeThemeMode() {
+  const stored = localStorage.getItem(THEME_STORAGE_KEY);
+  const mode = THEME_OPTIONS.has(stored) ? stored : 'system';
+  setThemeMode(mode);
+  if (window.matchMedia) {
+    systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSystemThemeChange = () => {
+      if (state.themeMode === 'system') setThemeMode('system');
+    };
+    if (typeof systemThemeQuery.addEventListener === 'function') {
+      systemThemeQuery.addEventListener('change', onSystemThemeChange);
+    } else if (typeof systemThemeQuery.addListener === 'function') {
+      systemThemeQuery.addListener(onSystemThemeChange);
+    }
+  }
 }
 
 function node(tag, className, text) {
@@ -536,6 +577,21 @@ if (accountButton) {
     }
   });
 }
+const accountSettingsButton = $('#account-settings');
+if (accountSettingsButton) {
+  accountSettingsButton.addEventListener('click', () => {
+    const settingsTab = $('.tab[data-view="settings"]');
+    if (settingsTab) {
+      settingsTab.click();
+    }
+    setAccountMenuOpen(false);
+  });
+}
+themeInputs.forEach((input) => {
+  input.addEventListener('change', () => {
+    if (input.checked) setThemeMode(input.value);
+  });
+});
 document.addEventListener('click', (event) => {
   const shell = $('#account-shell');
   if (!shell || shell.hidden || $('#account-menu').hidden) return;
@@ -561,3 +617,4 @@ $('#spotify-disconnect').addEventListener('submit', disconnectSpotify);
 $('.dialog-close').addEventListener('click', () => $('#track-dialog').close());
 $('#track-dialog').addEventListener('click', (event) => { if (event.target === $('#track-dialog')) $('#track-dialog').close(); });
 selectPreset(); loadSession();
+initializeThemeMode();

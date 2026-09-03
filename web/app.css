@@ -55,6 +55,106 @@ button.primary, .button.primary, .button { background: #eee5d7; color: #171411; 
 .account-menu-item { width: 100%; border-color: #4f463c; justify-content: flex-start; border-radius: 10px; text-align: left; margin-top: 6px; color: #e4ddd6; }
 .account-menu-item:first-of-type { margin-top: 0; }
 .account-menu-item[disabled] { opacity: .6; color: #8c847d; }
+.settings-card { border: 1px solid #433c34; background: #171410; border-radius: 16px; padding: 16px; max-width: 620px; }
+.settings-helper { color: #8d847c; margin-top: 2px; }
+.theme-choice { border: 0; padding: 0; margin: 10px 0 0; display: flex; gap: 10px; }
+.theme-choice label { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #4f463c; border-radius: 999px; padding: 8px 12px; color: #e5ded5; }
+.theme-choice input { margin: 0; width: 14px; height: 14px; }
+.theme-choice label:has(input:checked) { color: #eee5d7; border-color: #a78a63; }
+.theme-choice label:focus-within { outline: 2px solid #d1aa72; outline-offset: 2px; }
+[data-theme='dark'] body {
+  background: radial-gradient(circle at 12% -8%, #382b1e 0, #11100f 34rem);
+}
+[data-theme='light'] body {
+  background: radial-gradient(circle at 12% -8%, #fff5df 0, #e6dfd2 34rem);
+}
+[data-theme='light'] .masthead,
+[data-theme='light'] main,
+[data-theme='light'] .action-card,
+[data-theme='light'] .pane,
+[data-theme='light'] .track-list,
+[data-theme='light'] .playlist-list,
+[data-theme='light'] .maintenance-session,
+[data-theme='light'] .record-card,
+[data-theme='light'] .compact-card,
+[data-theme='light'] .comparison-summary,
+[data-theme='light'] .workbench,
+[data-theme='light'] .settings-card,
+[data-theme='light'] .table-wrap,
+[data-theme='light'] .comparison-heading,
+[data-theme='light'] .status-strip,
+[data-theme='light'] dialog {
+  background: #f6f2ea;
+  border-color: #d5cfc4;
+  color: #26211d;
+}
+[data-theme='light'] .account-menu,
+[data-theme='light'] .build-identity,
+[data-theme='light'] .account-actions,
+[data-theme='light'] .section-tabs,
+[data-theme='light'] .track-list-heading,
+[data-theme='light'] .pane-heading,
+[data-theme='light'] .track-row,
+[data-theme='light'] .track-row:hover,
+[data-theme='light'] .dialog-close,
+[data-theme='light'] .status-line,
+[data-theme='light'] .empty,
+[data-theme='light'] .context-note,
+[data-theme='light'] .account-menu-copy,
+[data-theme='light'] .metric,
+[data-theme='light'] .comparison-heading,
+[data-theme='light'] .warning {
+  color: #4d433a;
+}
+[data-theme='light'] .button,
+[data-theme='light'] .tab,
+[data-theme='light'] .account-menu-item,
+[data-theme='light'] .dialog-close,
+[data-theme='light'] button,
+[data-theme='light'] .provider-action,
+[data-theme='light'] .theme-choice label,
+[data-theme='light'] select,
+[data-theme='light'] textarea,
+[data-theme='light'] pre,
+[data-theme='light'] input {
+  color: #2f2922;
+  background: #faf8f2;
+  border-color: #cbbfae;
+}
+[data-theme='light'] .button.primary,
+[data-theme='light'] .button.primary:hover,
+[data-theme='light'] button.primary,
+[data-theme='light'] .action-card button,
+[data-theme='light'] .theme-choice label:has(input:checked) {
+  color: #1d1a16;
+  background: #171411;
+  border-color: #171411;
+}
+[data-theme='light'] .brand,
+[data-theme='light'] .eyebrow,
+[data-theme='light'] h1,
+[data-theme='light'] h2 {
+  color: #1b1612;
+}
+[data-theme='light'] #provider-state,
+[data-theme='light'] .eyebrow,
+[data-theme='light'] .settings-helper,
+[data-theme='light'] .status-strip strong,
+[data-theme='light'] .status-line,
+[data-theme='light'] .count-pill,
+[data-theme='light'] .record-meta span,
+[data-theme='light'] .availability,
+[data-theme='light'] .action-card p,
+[data-theme='light'] .context-note,
+[data-theme='light'] .metric span {
+  color: #6d6258;
+}
+[data-theme='light'] .connection-dot,
+[data-theme='light'] .status-line::before,
+[data-theme='light'] .status-line.online::before,
+[data-theme='light'] .connection-dot.online {
+  background: #7f6a53;
+}
 main { width: min(1380px, calc(100% - 40px)); margin: auto; }
 .build-identity { width: min(1380px, calc(100% - 40px)); margin: 0 auto; padding: 18px 0 28px; border-top: 1px solid #2b2824; color: #6f6861; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .02em; }
 .welcome { max-width: 900px; padding: 12vh 0; }
