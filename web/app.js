@@ -40,10 +40,39 @@ function resolveThemeMode(value) {
   return requested;
 }
 
+const PALETTE_HUES = Object.freeze({
+  backgroundHue: '--background-hue',
+  accentHue: '--accent-hue',
+});
+
+function applyVisualPalette(target, palette = {}) {
+  if (!target?.style || !palette || typeof palette !== 'object') return;
+  // Derived tokens are recomputed at every CSS scope. Applying a palette to the
+  // document tints the app; applying one to a card or dialog keeps it local.
+  Object.entries(PALETTE_HUES).forEach(([key, property]) => {
+    if (!(key in palette)) return;
+    if (palette[key] == null) {
+      target.style.removeProperty(property);
+      return;
+    }
+    const hue = Number(palette[key]);
+    if (Number.isFinite(hue)) target.style.setProperty(property, String(((hue % 360) + 360) % 360));
+  });
+}
+
+function resetVisualPalette(target) {
+  applyVisualPalette(target, { backgroundHue: null, accentHue: null });
+}
+
+window.ChordriftPalette = Object.freeze({ apply: applyVisualPalette, reset: resetVisualPalette });
+
 function setThemeMode(mode) {
   const resolved = resolveThemeMode(mode);
   const root = document.documentElement;
   root.dataset.theme = resolved;
+  if (root instanceof HTMLElement && typeof root.style?.setProperty === 'function') {
+    root.style.colorScheme = resolved === 'light' ? 'light' : 'dark';
+  }
   localStorage.setItem(THEME_STORAGE_KEY, mode);
   state.themeMode = mode;
   themeInputs.forEach((input) => {
