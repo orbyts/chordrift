@@ -1044,8 +1044,9 @@ Status: complete.
 
 ## Deferred provider track — Apple Music
 
-Apple Music is not on the critical path to the canonical library. Its provider
-foundation is isolated on the `codex/apple-music` branch until paid Apple
+Apple Music is not on the critical path to the canonical library. Its obsolete
+pre-v0.2 provider prototype is preserved only by the read-only
+`archive/apple-music-pre-v020` tag until paid Apple
 Developer Program access is independently worthwhile and the integration can
 be tested with real credentials. When resumed, add MusicKit authorization,
 ISRC-first catalog matching with scored metadata fallbacks, unresolved-match
