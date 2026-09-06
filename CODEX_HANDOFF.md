@@ -6,25 +6,32 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-09-02.
+Last updated: 2026-09-06.
 
 ## Current release and narrow Web UI handoff
 
-`v0.2.1-beta.13` is the current CLI and hosted Web release. It is built from
-exact commit `1cd3193cf1e6a60d89844b5337e721827c84ae3f`, uses contract `1.6`
+`v0.2.1-beta.14` is the current CLI and hosted Web release. It is built from
+exact commit `8224c764dceac42cb502a44090dcaf86482b19ec`, uses contract `1.6`
 and schema `52`, and is deployed on Vortex as manifest digest
-`sha256:b0ccabfdd0767c29fb7eda2c0b4a84064e4f27e44708913b01649e3451001943`.
+`sha256:cfe1909b215d144ad65e5c374a2d13036e0de10b176022bd09688d731eba2d0f`.
 Both API and worker use that image and matching OCI revision. Public liveness
-reports beta.13, readiness reports database/identity ready with
+reports beta.14, readiness reports database/identity ready with
 exact-review-only provider writes, and the no-store Web page visibly reports
-`Chordrift v0.2.1-beta.13`. The crates.io package is published and the Quasar
-CLI reports the same version. CI run `33669302673` passed every release gate,
-including the full disposable-PostgreSQL suite at migration 0052; beta.13 CI
-run `33705666628` then passed the same complete gate for the consolidated Web
-release.
-The deployment performed no provider observation or Spotify write. Its exact
-temporary tagged source checkout was deleted after verification; beta.11 is
-retained as the immediate container rollback image.
+`Chordrift v0.2.1-beta.14`. The crates.io package is published and the Quasar
+CLI reports the same version. Main CI run `34039752057` passed every release
+gate, including strict Clippy, all Rust and Web harnesses, the complete
+disposable-PostgreSQL suite at migration 0052, Spotify persistence, and package
+verification. The deployment performed no provider observation or Spotify
+write.
+
+Beta.14 fixes optional named intake surfaces. A provider playlist configured
+with `signal_class = intake` now reaches the shared maintenance DTO even when
+the observed tracks are known from history or genuinely new. Source provenance
+is preserved independently from the destination decision, including composite
+named-intake plus Liked Songs observations. Both remote CLI and Web therefore
+see identical placement decisions from the Rust authority. The live pre-release
+audit found the two current Inbox tracks and confirmed both require a manual
+destination; it did not mutate Spotify.
 
 Beta.13 adds the accessible account avatar/menu, device-local System/Light/Dark
 theme selection, and complete light-theme presentation on top of beta.12's

@@ -505,6 +505,19 @@ and later Chordrift refactor begin.
     agent guide and compact Spark handoff now designate `$CRATES/chordrift` as
     the sole canonical local checkout so future Web-only model handoffs begin
     from the same GitHub `main` and use the same exact-image preview loop.
+
+    Follow-up private-beta patch `v0.2.1-beta.14` fixes provider playlists
+    configured as named intake surfaces. Their tracks now reach the shared Rust
+    maintenance projection even when classified as known-from-history or
+    genuinely new, while the intake source remains durable discovery provenance
+    rather than being confused with the destination. Composite observations
+    retain both named-source and Liked Songs decisions. Exact tagged commit
+    `8224c764dceac42cb502a44090dcaf86482b19ec` passed main CI run
+    `34039752057`, is published and installed locally, and runs on both Vortex
+    API and worker as manifest digest
+    `sha256:cfe1909b215d144ad65e5c374a2d13036e0de10b176022bd09688d731eba2d0f`.
+    Public liveness reports beta.14 and readiness passes. No provider
+    observation or Spotify write occurred during deployment.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,
