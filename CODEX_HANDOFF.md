@@ -30,8 +30,10 @@ the observed tracks are known from history or genuinely new. Source provenance
 is preserved independently from the destination decision, including composite
 named-intake plus Liked Songs observations. Both remote CLI and Web therefore
 see identical placement decisions from the Rust authority. The live pre-release
-audit found the two current Inbox tracks and confirmed both require a manual
-destination; it did not mutate Spotify.
+acceptance session `24a6ca56-2207-4432-805d-422df9338561` found the two current
+Inbox tracks, preserved `Inbox` as each previous surface, and returned
+`needs_decision` with two manual destination choices. It did not mutate
+Spotify.
 
 Beta.13 adds the accessible account avatar/menu, device-local System/Light/Dark
 theme selection, and complete light-theme presentation on top of beta.12's

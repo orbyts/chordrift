@@ -517,7 +517,9 @@ and later Chordrift refactor begin.
     API and worker as manifest digest
     `sha256:cfe1909b215d144ad65e5c374a2d13036e0de10b176022bd09688d731eba2d0f`.
     Public liveness reports beta.14 and readiness passes. No provider
-    observation or Spotify write occurred during deployment.
+    observation or Spotify write occurred during deployment. A subsequent
+    read-only live acceptance session returned the two current Inbox tracks as
+    destination decisions with `Inbox` preserved as their discovery source.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,
