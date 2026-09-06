@@ -8,7 +8,7 @@ context on the browser experience.
 ## Assignment
 
 Polish the existing Chordrift Web UI without changing product behavior. The
-current release is `v0.2.1-beta.14`, contract `1.6`, schema `52`. Web and remote
+current release is `v0.2.1-beta.15`, contract `1.6`, schema `52`. Web and remote
 CLI are thin clients of the same Rust-owned application contract.
 
 The sole canonical local checkout is `$CRATES/chordrift` (currently
@@ -233,7 +233,7 @@ architecture during this Web-only task.
 
 ## Branch freshness
 
-Start the Web task from the current `main` containing beta.14. Do not continue
+Start the Web task from the current `main` containing beta.15. Do not continue
 the earlier `codex/v021-06-private-beta` beta.1 checkout and do not cherry-pick
 its `web/app.js`: that stale wrapper hard-codes contract 1.5 and predates later
 disconnect, maintenance and build-identity fixes. Presentation ideas from that

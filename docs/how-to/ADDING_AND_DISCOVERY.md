@@ -94,6 +94,15 @@ $ chordrift spotify library-policy --account personal \
 The safe product default is `preserve`; changing policy or recording a decision
 does not immediately write to Spotify.
 
+For a named intake configured with `after_verified_assignment`, Chordrift uses
+the same two-stage safety rule as Liked Songs: it first adds the track to the
+reviewed canonical destination and waits until a fresh provider observation
+contains that membership. Only then does it offer a separate exact review to
+remove the track from the named intake playlist. Several removals from one
+playlist are sent as one snapshot-consistent batch. A temporarily stale Spotify
+read keeps the intake copy and retries verification; it never repeats the add
+or clears the source early.
+
 The later hosted/native product should perform steps 2–7 in the background and
 surface only an understandable proposal when confidence or intent is ambiguous.
 

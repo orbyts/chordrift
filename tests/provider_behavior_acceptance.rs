@@ -41,6 +41,7 @@ enum Gesture {
     },
 }
 
+#[derive(Clone)]
 struct FakeProviderAccount {
     next_snapshot: u128,
     delayed: Option<Vec<Gesture>>,
@@ -113,6 +114,29 @@ impl FakeProviderAccount {
                 }
                 if self.liked.remove(&track) {
                     self.writes.push(format!("unlike:{track}"));
+                    return Ok(true);
+                }
+            }
+            MaintenanceProviderEffectKind::RemoveTrack => {
+                let source = &effect
+                    .surface
+                    .as_ref()
+                    .expect("playlist removal names its source")
+                    .name;
+                if !self
+                    .playlists
+                    .iter()
+                    .any(|(name, tracks)| name != source && tracks.contains(&track))
+                {
+                    return Err("refused to clear named intake before verified placement");
+                }
+                let Some(membership) = self.playlists.get_mut(source) else {
+                    return Ok(false);
+                };
+                if let Some(position) = membership.iter().position(|candidate| *candidate == track)
+                {
+                    membership.remove(position);
+                    self.writes.push(format!("remove:{track}:{source}"));
                     return Ok(true);
                 }
             }
@@ -333,6 +357,54 @@ fn liked_placement_projection(
         provider_effects: decision.provider_effects,
         review_id: decision.review_id,
     }
+}
+
+fn named_placement_changes(
+    provider: &FakeProviderAccount,
+    track_id: u128,
+    source: &str,
+    destination: &str,
+    change_number: u128,
+) -> Vec<MaintenanceChangeView> {
+    let source_surface = surface(source);
+    let destination_surface = surface(destination);
+    let placed = provider
+        .playlists
+        .get(destination)
+        .is_some_and(|tracks| tracks.contains(&track_id));
+    let mut changes = vec![MaintenanceChangeView {
+        change_id: MaintenanceChangeId::from_uuid(Uuid::from_u128(change_number)),
+        kind: MaintenanceChangeKind::DirectIntake,
+        track: Some(track(track_id)),
+        previous_surface: Some(source_surface.clone()),
+        current_surface: placed.then_some(destination_surface.clone()),
+        summary: format!("Place Fixture Track {track_id} in {destination}"),
+        resolution: Some(MaintenanceResolution::Place {
+            destination: destination_surface,
+        }),
+        recommended_resolution: None,
+        recommendation_reason: None,
+    }];
+    if provider
+        .playlists
+        .get(source)
+        .is_some_and(|tracks| tracks.contains(&track_id))
+    {
+        changes.push(MaintenanceChangeView {
+            change_id: MaintenanceChangeId::from_uuid(Uuid::from_u128(change_number + 1)),
+            kind: MaintenanceChangeKind::SavedState,
+            track: Some(track(track_id)),
+            previous_surface: None,
+            current_surface: Some(source_surface.clone()),
+            summary: format!("Remove Fixture Track {track_id} from {source} after placement"),
+            resolution: Some(MaintenanceResolution::ConsumeIntake {
+                source: source_surface,
+            }),
+            recommended_resolution: None,
+            recommendation_reason: None,
+        });
+    }
+    changes
 }
 
 #[test]
@@ -688,6 +760,96 @@ fn composite_placement_retry_preserves_each_track_and_never_duplicates() {
             "add:8:Cinema Monsoon".to_owned(),
             "unlike:7".to_owned(),
             "unlike:8".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn named_inbox_waits_for_observed_placement_then_clears_composite_intake() {
+    let mut provider = FakeProviderAccount::new();
+    provider.playlists.insert("Inbox".to_owned(), vec![21, 22]);
+    let stale_provider_observation = provider.clone();
+    let mut database = FakeDatabase::default();
+    database.record_placement(21, "Neon Affection");
+    database.record_placement(22, "Lightleak Reverie");
+
+    let mut changes = named_placement_changes(&provider, 21, "Inbox", "Neon Affection", 10_001);
+    changes.extend(named_placement_changes(
+        &provider,
+        22,
+        "Inbox",
+        "Lightleak Reverie",
+        10_011,
+    ));
+    let placement = maintenance_provider_effects(id(401), &changes);
+    assert_eq!(placement.provider_effects.len(), 2);
+    assert!(
+        placement
+            .provider_effects
+            .iter()
+            .all(|effect| { effect.kind == MaintenanceProviderEffectKind::AddTrack })
+    );
+    database
+        .apply_stage(&mut provider, &placement.provider_effects)
+        .expect("both exact destination writes succeed");
+
+    // Spotify may briefly return the pre-write snapshot. Chordrift must keep
+    // verifying the already-applied additions and must not consume Inbox or
+    // reissue a duplicate write while that observation is stale.
+    let mut stale_changes = named_placement_changes(
+        &stale_provider_observation,
+        21,
+        "Inbox",
+        "Neon Affection",
+        10_021,
+    );
+    stale_changes.extend(named_placement_changes(
+        &stale_provider_observation,
+        22,
+        "Inbox",
+        "Lightleak Reverie",
+        10_031,
+    ));
+    let stale_review = maintenance_provider_effects(id(402), &stale_changes);
+    assert!(
+        stale_review
+            .provider_effects
+            .iter()
+            .all(|effect| effect.kind == MaintenanceProviderEffectKind::AddTrack)
+    );
+    assert_eq!(provider.playlists["Inbox"], vec![21, 22]);
+
+    let mut fresh_changes =
+        named_placement_changes(&provider, 21, "Inbox", "Neon Affection", 10_041);
+    fresh_changes.extend(named_placement_changes(
+        &provider,
+        22,
+        "Inbox",
+        "Lightleak Reverie",
+        10_051,
+    ));
+    let cleanup = maintenance_provider_effects(id(403), &fresh_changes);
+    assert_eq!(cleanup.provider_effects.len(), 2);
+    assert!(
+        cleanup
+            .provider_effects
+            .iter()
+            .all(|effect| { effect.kind == MaintenanceProviderEffectKind::RemoveTrack })
+    );
+    database
+        .apply_stage(&mut provider, &cleanup.provider_effects)
+        .expect("verified composite placement permits named intake cleanup");
+
+    assert!(provider.playlists["Inbox"].is_empty());
+    assert_eq!(provider.playlists["Neon Affection"], vec![21]);
+    assert_eq!(provider.playlists["Lightleak Reverie"], vec![22]);
+    assert_eq!(
+        provider.writes,
+        vec![
+            "add:21:Neon Affection".to_owned(),
+            "add:22:Lightleak Reverie".to_owned(),
+            "remove:21:Inbox".to_owned(),
+            "remove:22:Inbox".to_owned(),
         ]
     );
 }

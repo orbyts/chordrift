@@ -416,8 +416,8 @@ fn canonical_action(change: &MaintenanceChangeView) -> Option<CanonicalAction> {
             }),
             _ => None,
         },
-        MaintenanceResolution::ConsumeIntake { .. }
-            if change.kind == MaintenanceChangeKind::SavedState =>
+        MaintenanceResolution::ConsumeIntake { source }
+            if change.kind == MaintenanceChangeKind::SavedState && source.name == "Liked Songs" =>
         {
             Some(CanonicalAction::SavedDisposition {
                 track_id: track_id?,
@@ -430,9 +430,9 @@ fn canonical_action(change: &MaintenanceChangeView) -> Option<CanonicalAction> {
 
 /// Adds the exact next provider review implied by resolved intake choices.
 ///
-/// A new canonical placement is always published and verified before a saved
-/// intake source may be consumed. Consequently one review contains additions
-/// or saved-state removals, never both.
+/// A new canonical placement is always published and verified before an intake
+/// source may be consumed. Consequently one review contains additions or
+/// intake removals, never both.
 pub fn attach_maintenance_provider_effects(
     mut projection: MaintenanceProjection,
 ) -> MaintenanceProjection {
@@ -498,15 +498,20 @@ pub fn maintenance_provider_effects(
                     return None;
                 }
                 let track = change.track.clone()?;
+                let liked = source.name == "Liked Songs";
                 Some(MaintenanceProviderEffectView {
                     effect_id: ResourceId::from_uuid(stable_uuid(
-                        "saved-effect",
-                        &format!("{}:{}", snapshot_id, track.track_id),
+                        "intake-cleanup-effect",
+                        &format!("{}:{}:{}", snapshot_id, track.track_id, source.surface_id),
                     )),
-                    kind: MaintenanceProviderEffectKind::UpdateSavedState,
+                    kind: if liked {
+                        MaintenanceProviderEffectKind::UpdateSavedState
+                    } else {
+                        MaintenanceProviderEffectKind::RemoveTrack
+                    },
                     track: Some(track.clone()),
                     surface: Some(source.clone()),
-                    summary: format!("Remove {} from Liked Songs", track.title),
+                    summary: format!("Remove {} from {}", track.title, source.name),
                 })
             })
             .collect()
@@ -636,6 +641,31 @@ mod tests {
             reviewed.provider_effects[0].kind,
             MaintenanceProviderEffectKind::UpdateSavedState
         );
+        assert!(reviewed.review_id.is_some());
+    }
+
+    #[test]
+    fn named_intake_cleanup_is_an_exact_playlist_removal_not_saved_state() {
+        let source = MaintenanceSurfaceView {
+            surface_id: ResourceId::new(),
+            name: "Inbox".to_owned(),
+        };
+        let mut consume = change(
+            MaintenanceChangeKind::SavedState,
+            MaintenanceResolution::ConsumeIntake {
+                source: source.clone(),
+            },
+        );
+        consume.current_surface = Some(source.clone());
+
+        assert!(canonical_action(&consume).is_none());
+        let reviewed = maintenance_provider_effects(ResourceId::new(), &[consume]);
+        assert_eq!(reviewed.provider_effects.len(), 1);
+        assert_eq!(
+            reviewed.provider_effects[0].kind,
+            MaintenanceProviderEffectKind::RemoveTrack
+        );
+        assert_eq!(reviewed.provider_effects[0].surface, Some(source));
         assert!(reviewed.review_id.is_some());
     }
 

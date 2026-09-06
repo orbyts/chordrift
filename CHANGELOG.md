@@ -4,6 +4,17 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.15] - 2026-09-06
+
+- Turn a configured named-intake clear policy into a separately reviewed
+  playlist-removal effect only after the canonical destination is observed.
+- Batch several removals from the same intake playlist against one evolving
+  Spotify snapshot so one successful removal cannot stale the next.
+- Wait through bounded provider eventual consistency during verification
+  without replaying an already accepted addition or consuming intake early.
+- Extend the credential-free fake-provider matrix with the two-track Inbox
+  placement, delayed observation, and composite cleanup sequence.
+
 ## [0.2.1-beta.14] - 2026-09-06
 
 - Carry every configured provider-native intake surface into the shared Rust

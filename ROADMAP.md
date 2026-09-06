@@ -520,6 +520,16 @@ and later Chordrift refactor begin.
     observation or Spotify write occurred during deployment. A subsequent
     read-only live acceptance session returned the two current Inbox tracks as
     destination decisions with `Inbox` preserved as their discovery source.
+
+    Follow-up private-beta patch `v0.2.1-beta.15` completes the named-intake
+    lifecycle exposed by beta.14. A configured clear-after-assignment source is
+    consumed only in a separate exact review after its canonical destination is
+    provider-visible. Multiple removals from one intake playlist are
+    snapshot-consistent, and hosted verification now waits across a bounded
+    Spotify eventual-consistency window without repeating additions. The fake
+    provider matrix permanently covers the reported two-track Inbox sequence,
+    including one stale post-write observation and final destination-preserving
+    cleanup. Contract 1.6 and schema 52 remain unchanged.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,

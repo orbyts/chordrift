@@ -200,6 +200,28 @@ fn append_intake_items(
                 recommendation_reason: item.recommendation_reason.clone(),
             });
         }
+        for source in &item.clear_after_assignment_sources {
+            let source_surface = surface(source);
+            changes.push(MaintenanceChangeView {
+                change_id: change_id(
+                    snapshot_id,
+                    &format!("intake-clear:{}:{source}", item.spotify_id),
+                ),
+                kind: MaintenanceChangeKind::SavedState,
+                track: Some(track.clone()),
+                previous_surface: None,
+                current_surface: Some(source_surface.clone()),
+                summary: format!(
+                    "Remove {} from {} after verified placement",
+                    track.title, source
+                ),
+                resolution: Some(MaintenanceResolution::ConsumeIntake {
+                    source: source_surface,
+                }),
+                recommended_resolution: None,
+                recommendation_reason: None,
+            });
+        }
         if !item
             .intake_sources
             .iter()
@@ -490,6 +512,7 @@ mod tests {
                 .filter(|value| **value == "Liked Songs" || !destinations.contains(value))
                 .map(|value| (*value).to_owned())
                 .collect(),
+            clear_after_assignment_sources: Vec::new(),
             state,
             current_destinations: destinations
                 .iter()
@@ -736,6 +759,42 @@ mod tests {
             Some("Inbox")
         );
         assert!(changes[0].resolution.is_none());
+    }
+
+    #[test]
+    fn named_inbox_clear_policy_projects_a_separate_verified_cleanup() {
+        let mut item = intake_item(
+            "track-clear-inbox",
+            IntakeState::AssignedApproved,
+            &["Inbox"],
+            &[],
+        );
+        item.proposal_destinations = vec!["Neon Affection".to_owned()];
+        item.clear_after_assignment_sources = vec!["Inbox".to_owned()];
+        let mut changes = Vec::new();
+
+        append_intake_items(
+            ResourceId::new(),
+            &[&item],
+            &fixture_tracks(&["track-clear-inbox"]),
+            &mut changes,
+        )
+        .expect("named intake cleanup projects");
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].kind, MaintenanceChangeKind::SavedState);
+        assert_eq!(
+            changes[0]
+                .current_surface
+                .as_ref()
+                .map(|surface| surface.name.as_str()),
+            Some("Inbox")
+        );
+        assert!(matches!(
+            changes[0].resolution,
+            Some(MaintenanceResolution::ConsumeIntake { ref source })
+                if source.name == "Inbox"
+        ));
     }
 
     #[test]

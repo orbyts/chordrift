@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080" role="img" aria-labelledby="title desc">
   <title id="title">Chordrift intent-to-execution lifecycle</title>
-  <desc id="desc">A two-lane flow showing Spotify observation, Neon proposal and batch approvals, immutable planning, readiness assessment, one-phase apply, and post-write verification.</desc>
+  <desc id="desc">A two-lane flow showing Spotify observation, Neon proposal and batch approvals, immutable planning, readiness assessment, one-phase apply, bounded post-write verification, and a separately reviewed intake cleanup.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#405468"/>
@@ -117,8 +117,8 @@
     <rect x="750" y="710" width="250" height="145" rx="16" fill="#ffffff" stroke="#77b48e" stroke-width="2"/>
     <text x="772" y="745" class="node-title">Pull + verify</text>
     <text x="772" y="774" class="node-id">new snapshot_id</text>
-    <text x="772" y="802" class="node-copy">Compare Spotify result</text>
-    <text x="772" y="825" class="node-copy">with apply receipt</text>
+    <text x="772" y="802" class="node-copy">Retry bounded read-only pulls</text>
+    <text x="772" y="825" class="node-copy">until receipt is observable</text>
   </g>
 
   <path d="M 1060 782 L 1000 782" class="edge-read"/>
@@ -128,8 +128,8 @@
     <rect x="435" y="710" width="255" height="145" rx="16" fill="#ffffff" stroke="#77b48e" stroke-width="2"/>
     <text x="457" y="745" class="node-title">Convergence decision</text>
     <text x="457" y="774" class="node-copy">Create the next plan</text>
-    <text x="457" y="802" class="node-copy">0 operations = complete</text>
-    <text x="457" y="825" class="node-copy">More phases = review again</text>
+    <text x="457" y="802" class="node-copy">Verified placement → cleanup review</text>
+    <text x="457" y="825" class="node-copy">0 operations = complete</text>
   </g>
 
   <path d="M 750 782 L 690 782" class="edge"/>
