@@ -183,6 +183,37 @@ the web, CLI, iOS, Android, or provider adapter.
    a provider. Ordinary maintenance is record-only except for a user-authorized
    intake publication that is explicitly represented in that task.
 
+## Provider/intent convergence state matrix
+
+The core evaluates facts, not a presumed sequence of UI actions. `S` means the
+track is currently present in a temporary provider intake source, `D` is the
+set of current managed provider destinations, and `I` is the latest accepted
+Chordrift intent. A verified receipt proves only the exact effect it names; it
+does not make an older provider snapshot current. Every thin client renders the
+same resulting DTO.
+
+| Provider state | Chordrift intent / receipt | Correct resolution |
+| --- | --- | --- |
+| `S=absent`, `D=empty` | No prior placement | Outside the library; observe and do nothing. |
+| `S=present`, `D=empty` | No placement decision | Preserve intake and ask for a destination or exclusion. |
+| `S=present`, `D=empty` | Accepted destination, no verified add | Offer one exact destination addition; never clear the source in this review. |
+| `S=present`, `D=empty` | Add receipt exists but observation may lag | Re-read with bounded backoff. Do not replay the add or clear the source while its result is unobserved. |
+| `S=present`, `D={accepted}` | Placement accepted, source policy is preserve | Both memberships are intended; record convergence and do nothing. |
+| `S=present`, `D={accepted}` | Placement accepted, source policy is clear after assignment | Offer a separate, source-only cleanup review. This is the normal post-placement Inbox state. |
+| `S=absent`, `D={accepted}` | Placement accepted | Destination-only state is converged; do nothing. |
+| `S=absent`, `D=empty` | Prior accepted managed placement | Treat the provider removal as current intent, activate a reversible exclusion, and perform no provider write. |
+| `S=absent`, `D={one}` | Active exclusion | Resolve the exclusion. Former destination means restoration; another destination means reclassification. Both are record-only. |
+| Any `S`, `D={multiple}` | No explicit multi-home intent | Preserve every provider membership and ask a bounded canonical-placement question. Never clean intake while destination meaning is ambiguous. |
+| `S=absent`, `D={one}` | Verified source-cleanup receipt | Cleanup is complete only if the intended destination remains present. Persist the receipt and converge. |
+| `S=absent`, `D=empty` | Cleanup receipt but intended destination is absent | Stop as a genuine safety conflict. Do not invent a placement or silently declare success. |
+| Any | Snapshot changed after review but before authorization | Reject the stale review, observe again, and issue a new exact review from current facts. |
+| Any | Transient provider/API failure | Retain durable intent and operation state; retry reads safely. Never broaden or repeat a provider write without an idempotency check. |
+
+Provider-native moves can arrive as two observations. A removal-only snapshot
+uses the exclusion row above; a later one-destination snapshot uses the
+restoration/reclassification row. There is no time threshold that converts the
+first observation into permission to undo the user's later action.
+
 ## Track placement lifecycle
 
 This state view is the compact companion to the sequence above. Observation

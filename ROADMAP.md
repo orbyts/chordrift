@@ -536,6 +536,16 @@ and later Chordrift refactor begin.
     `sha256:c2cc8afae90d41f6d9e0573a7fc87c4692a4d194d60e8a3b2421f0faf16a7564`.
     Public liveness and the Web footer report beta.15, readiness passes, and
     release/deployment performed no provider observation or Spotify write.
+
+    Follow-up private-beta patch `v0.2.1-beta.16` repairs the real PostgreSQL
+    planner-to-contract bridge discovered after both Inbox destinations became
+    provider-visible. Deferred `cleanup/remove_track` operations with consumed
+    intake semantics are accepted as expected plan input, omitted from ordinary
+    provider-delta annotation, and represented exactly once by the intake
+    projection as a source-only cleanup review. A normative convergence matrix
+    now enumerates provider source/destination state, accepted intent, receipt,
+    observation-lag, split-move, and ambiguity outcomes. Contract 1.6 and schema
+    52 remain unchanged.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,

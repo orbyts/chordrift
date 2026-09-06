@@ -64,20 +64,15 @@ impl<'a> PostgresMaintenanceInterpreter<'a> {
         if !current_snapshot {
             return Err(ClientError::new(ErrorCode::StateConflict, true));
         }
-        if operations.iter().any(|operation| {
-            !matches!(
-                (operation.phase.as_str(), operation.operation_type.as_str()),
-                ("reconcile", _)
-                    | ("publish", "add_track")
-                    | ("publish", "reorder_playlist")
-                    | ("cleanup", "remove_saved_track")
-            )
-        }) {
+        if operations
+            .iter()
+            .any(|operation| !supported_operation(operation))
+        {
             return Err(ClientError::new(ErrorCode::StateConflict, false));
         }
         let interpreted_operations: Vec<_> = operations
             .iter()
-            .filter(|operation| operation.operation_type != "remove_saved_track")
+            .filter(|operation| interpret_plan_operation(operation))
             .cloned()
             .collect();
         let annotations = sync_plan::maintenance_annotations(
@@ -99,6 +94,23 @@ impl<'a> PostgresMaintenanceInterpreter<'a> {
         .await?;
         Ok(projection)
     }
+}
+
+fn supported_operation(operation: &PlannedOperation) -> bool {
+    matches!(
+        (operation.phase.as_str(), operation.operation_type.as_str()),
+        ("reconcile", _)
+            | ("publish", "add_track")
+            | ("publish", "reorder_playlist")
+            | ("cleanup", "remove_saved_track" | "remove_track")
+    )
+}
+
+fn interpret_plan_operation(operation: &PlannedOperation) -> bool {
+    !matches!(
+        (operation.phase.as_str(), operation.operation_type.as_str()),
+        ("cleanup", "remove_saved_track" | "remove_track")
+    )
 }
 
 async fn append_intake(
@@ -588,6 +600,40 @@ mod tests {
             change.resolution,
             Some(MaintenanceResolution::Place { ref destination })
                 if destination.name == "Neon Affection"
+        ));
+    }
+
+    #[test]
+    fn consumed_named_intake_cleanup_reaches_the_intake_projection() {
+        let mut cleanup = operation(0, "remove_track", Some("track-inbox"));
+        cleanup.phase = "cleanup".to_owned();
+        cleanup.playlist_name = "Inbox".to_owned();
+        cleanup.payload = json!({"reason": "consumed_intake"});
+
+        assert!(supported_operation(&cleanup));
+        assert!(!interpret_plan_operation(&cleanup));
+
+        let mut item = intake_item(
+            "track-inbox",
+            IntakeState::AlreadyCovered,
+            &["Inbox", "Neon Affection"],
+            &["Neon Affection"],
+        );
+        item.clear_after_assignment_sources = vec!["Inbox".to_owned()];
+        let mut changes = Vec::new();
+        append_intake_items(
+            ResourceId::new(),
+            &[&item],
+            &fixture_tracks(&["track-inbox"]),
+            &mut changes,
+        )
+        .expect("already-placed named intake projects as cleanup");
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].kind, MaintenanceChangeKind::SavedState);
+        assert!(matches!(
+            changes[0].resolution,
+            Some(MaintenanceResolution::ConsumeIntake { ref source }) if source.name == "Inbox"
         ));
     }
 

@@ -4,6 +4,16 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.16] - 2026-09-06
+
+- Accept planner-owned `cleanup/remove_track` operations for provider-native
+  intake sources in the hosted PostgreSQL maintenance bridge. The adapter lets
+  the intake projection create one typed cleanup review instead of rejecting
+  an already-placed track that still remains in Inbox as `state_conflict`.
+- Add a normative provider/intent convergence matrix covering provider source
+  membership, managed destinations, accepted intent, receipts, observation
+  lag, split moves, and genuine ambiguity.
+
 ## [0.2.1-beta.15] - 2026-09-06
 
 - Turn a configured named-intake clear policy into a separately reviewed
