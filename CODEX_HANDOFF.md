@@ -10,30 +10,31 @@ Last updated: 2026-09-06.
 
 ## Current release and narrow Web UI handoff
 
-`v0.2.1-beta.14` is the current CLI and hosted Web release. It is built from
-exact commit `8224c764dceac42cb502a44090dcaf86482b19ec`, uses contract `1.6`
+`v0.2.1-beta.15` is the current CLI and hosted Web release. It is built from
+exact commit `d40ef4583d9f9c86a84681a609dabd3fe2250512`, uses contract `1.6`
 and schema `52`, and is deployed on Vortex as manifest digest
-`sha256:cfe1909b215d144ad65e5c374a2d13036e0de10b176022bd09688d731eba2d0f`.
+`sha256:c2cc8afae90d41f6d9e0573a7fc87c4692a4d194d60e8a3b2421f0faf16a7564`.
 Both API and worker use that image and matching OCI revision. Public liveness
-reports beta.14, readiness reports database/identity ready with
+reports beta.15, readiness reports database/identity ready with
 exact-review-only provider writes, and the no-store Web page visibly reports
-`Chordrift v0.2.1-beta.14`. The crates.io package is published and the Quasar
-CLI reports the same version. Main CI run `34039752057` passed every release
+`Chordrift v0.2.1-beta.15`. The crates.io package is published and the Quasar
+CLI reports the same version. Main CI run `34043979418` passed every release
 gate, including strict Clippy, all Rust and Web harnesses, the complete
 disposable-PostgreSQL suite at migration 0052, Spotify persistence, and package
 verification. The deployment performed no provider observation or Spotify
 write.
 
-Beta.14 fixes optional named intake surfaces. A provider playlist configured
-with `signal_class = intake` now reaches the shared maintenance DTO even when
-the observed tracks are known from history or genuinely new. Source provenance
-is preserved independently from the destination decision, including composite
-named-intake plus Liked Songs observations. Both remote CLI and Web therefore
-see identical placement decisions from the Rust authority. The live pre-release
-acceptance session `24a6ca56-2207-4432-805d-422df9338561` found the two current
-Inbox tracks, preserved `Inbox` as each previous surface, and returned
-`needs_decision` with two manual destination choices. It did not mutate
-Spotify.
+Beta.15 completes the optional named-intake lifecycle introduced by beta.14.
+After a destination addition is authorized, a configured
+`after_verified_assignment` source such as Inbox is cleared only in a separate
+exact review and only after the destination is visible in a fresh provider
+observation. The worker tolerates bounded Spotify observation delay without
+replaying an accepted addition, and snapshot-consistently batches multiple
+removals from one intake playlist. A credential-free fake-provider regression
+reproduces the reported two-track Inbox sequence, including a stale post-write
+observation, and proves that both destinations remain while Inbox ends empty.
+Web and remote CLI receive the same Rust contract DTO. No live provider write
+was made while releasing or deploying this fix.
 
 Beta.13 adds the accessible account avatar/menu, device-local System/Light/Dark
 theme selection, and complete light-theme presentation on top of beta.12's

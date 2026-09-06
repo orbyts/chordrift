@@ -529,7 +529,13 @@ and later Chordrift refactor begin.
     Spotify eventual-consistency window without repeating additions. The fake
     provider matrix permanently covers the reported two-track Inbox sequence,
     including one stale post-write observation and final destination-preserving
-    cleanup. Contract 1.6 and schema 52 remain unchanged.
+    cleanup. Contract 1.6 and schema 52 remain unchanged. Exact tagged commit
+    `d40ef4583d9f9c86a84681a609dabd3fe2250512` passed main CI run
+    `34043979418`, is published and installed locally, and runs on both Vortex
+    API and worker as manifest digest
+    `sha256:c2cc8afae90d41f6d9e0573a7fc87c4692a4d194d60e8a3b2421f0faf16a7564`.
+    Public liveness and the Web footer report beta.15, readiness passes, and
+    release/deployment performed no provider observation or Spotify write.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,
