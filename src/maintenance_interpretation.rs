@@ -114,8 +114,7 @@ async fn append_intake(
         .items
         .iter()
         .filter(|item| {
-            item.state == IntakeState::DirectManagedAddition
-                || item.sources.iter().any(|source| source == "Liked Songs")
+            item.state == IntakeState::DirectManagedAddition || !item.intake_sources.is_empty()
         })
         .collect::<Vec<_>>();
     let spotify_ids = relevant
@@ -179,13 +178,10 @@ fn append_intake_items(
                 recommendation_reason: None,
             });
         }
-        if !item.sources.iter().any(|source| source == "Liked Songs") {
-            continue;
-        }
         let represented = !item.current_destinations.is_empty()
             || !item.proposal_destinations.is_empty()
             || already_placed.contains(&track.track_id);
-        if !represented {
+        if !represented && !item.intake_sources.is_empty() {
             let recommended_resolution =
                 item.recommended_destination
                     .as_deref()
@@ -193,16 +189,23 @@ fn append_intake_items(
                         destination: surface(name),
                     });
             changes.push(MaintenanceChangeView {
-                change_id: change_id(snapshot_id, &format!("liked-place:{}", item.spotify_id)),
+                change_id: change_id(snapshot_id, &format!("intake-place:{}", item.spotify_id)),
                 kind: MaintenanceChangeKind::DirectIntake,
                 track: Some(track.clone()),
-                previous_surface: Some(liked_surface.clone()),
+                previous_surface: Some(intake_origin(&item.intake_sources)),
                 current_surface: None,
-                summary: format!("Choose a destination for {}", track.title),
+                summary: intake_placement_summary(&track.title, &item.intake_sources),
                 resolution: None,
                 recommended_resolution,
                 recommendation_reason: item.recommendation_reason.clone(),
             });
+        }
+        if !item
+            .intake_sources
+            .iter()
+            .any(|source| source == "Liked Songs")
+        {
+            continue;
         }
         let (resolution, summary) = match item.saved_track_disposition.as_deref() {
             Some("preserve") => continue,
@@ -233,6 +236,29 @@ fn append_intake_items(
         });
     }
     Ok(())
+}
+
+fn intake_origin(sources: &[String]) -> MaintenanceSurfaceView {
+    let named = sources
+        .iter()
+        .filter(|source| source.as_str() != "Liked Songs")
+        .collect::<Vec<_>>();
+    match named.as_slice() {
+        [source] => surface(source),
+        _ => sources
+            .first()
+            .map_or_else(|| surface("New intake"), |source| surface(source)),
+    }
+}
+
+fn intake_placement_summary(title: &str, sources: &[String]) -> String {
+    match sources {
+        [_] | [] => format!("Choose a destination for {title}"),
+        _ => format!(
+            "Choose a destination for {title}, discovered via {}",
+            sources.join(" and ")
+        ),
+    }
 }
 
 fn projection_from_plan(
@@ -459,6 +485,11 @@ mod tests {
             title: format!("Song {spotify_id}"),
             artists: "Fixture Artist".to_owned(),
             sources: sources.iter().map(|value| (*value).to_owned()).collect(),
+            intake_sources: sources
+                .iter()
+                .filter(|value| **value == "Liked Songs" || !destinations.contains(value))
+                .map(|value| (*value).to_owned())
+                .collect(),
             state,
             current_destinations: destinations
                 .iter()
@@ -680,6 +711,63 @@ mod tests {
         assert_eq!(changes[0].kind, MaintenanceChangeKind::DirectIntake);
         assert_eq!(changes[1].kind, MaintenanceChangeKind::SavedState);
         assert!(changes[1].resolution.is_none());
+    }
+
+    #[test]
+    fn named_inbox_addition_is_visible_and_keeps_its_provenance() {
+        let item = intake_item("track-inbox", IntakeState::GenuinelyNew, &["Inbox"], &[]);
+        let mut changes = Vec::new();
+
+        append_intake_items(
+            ResourceId::new(),
+            &[&item],
+            &fixture_tracks(&["track-inbox"]),
+            &mut changes,
+        )
+        .expect("named intake projects");
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].kind, MaintenanceChangeKind::DirectIntake);
+        assert_eq!(
+            changes[0]
+                .previous_surface
+                .as_ref()
+                .map(|surface| surface.name.as_str()),
+            Some("Inbox")
+        );
+        assert!(changes[0].resolution.is_none());
+    }
+
+    #[test]
+    fn composite_named_and_liked_intake_keeps_both_decisions() {
+        let item = intake_item(
+            "track-composite-intake",
+            IntakeState::GenuinelyNew,
+            &["From Friends", "Liked Songs"],
+            &[],
+        );
+        let mut changes = Vec::new();
+
+        append_intake_items(
+            ResourceId::new(),
+            &[&item],
+            &fixture_tracks(&["track-composite-intake"]),
+            &mut changes,
+        )
+        .expect("composite intake projects");
+
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes[0].kind, MaintenanceChangeKind::DirectIntake);
+        assert_eq!(changes[1].kind, MaintenanceChangeKind::SavedState);
+        assert_eq!(
+            changes[0]
+                .previous_surface
+                .as_ref()
+                .map(|surface| surface.name.as_str()),
+            Some("From Friends")
+        );
+        assert!(changes[0].summary.contains("From Friends and Liked Songs"));
+        assert!(changes.iter().all(|change| change.resolution.is_none()));
     }
 
     #[test]

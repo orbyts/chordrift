@@ -4,6 +4,15 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.14] - 2026-09-06
+
+- Carry every configured provider-native intake surface into the shared Rust
+  maintenance projection instead of special-casing Liked Songs.
+- Preserve the exact discovery source, including Inbox, From Friends, Liked
+  from Radio, and From Prompts, while keeping destination selection separate.
+- Add single and composite intake regressions so the remote CLI and Web UI
+  receive identical decision cards from the same maintenance DTO.
+
 ## [0.2.1-beta.13] - 2026-09-02
 
 - Add an accessible account avatar menu backed only by the optional sanitized

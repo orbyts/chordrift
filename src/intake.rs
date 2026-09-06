@@ -36,6 +36,8 @@ pub struct IntakeItem {
     pub artists: String,
     /// Current provider intake surfaces containing the track.
     pub sources: Vec<String>,
+    /// Exact temporary intake surfaces, excluding canonical destinations.
+    pub intake_sources: Vec<String>,
     /// Exact high-level review state.
     pub state: IntakeState,
     /// Current provider-visible canonical Chordrift destinations.
@@ -149,11 +151,13 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
 
     let rows = sqlx::query(
         "WITH intake_memberships AS (
-             SELECT saved.provider_track_id, 'Liked Songs'::text AS source
+             SELECT saved.provider_track_id, 'Liked Songs'::text AS source,
+                    true AS is_intake
              FROM provider_observed_saved_tracks saved
              WHERE saved.snapshot_id = $2
              UNION ALL
-             SELECT membership.provider_track_id, current.name AS source
+             SELECT membership.provider_track_id, current.name AS source,
+                    true AS is_intake
              FROM current_spotify_playlists current
              JOIN provider_observed_playlist_tracks membership
                ON membership.snapshot_id = current.snapshot_id
@@ -162,7 +166,8 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
                AND current.snapshot_id = $2
                AND current.signal_class = 'intake'
              UNION ALL
-             SELECT membership.provider_track_id, current.name AS source
+             SELECT membership.provider_track_id, current.name AS source,
+                    false AS is_intake
              FROM current_spotify_playlists current
              JOIN provider_observed_playlist_tracks membership
                ON membership.snapshot_id = current.snapshot_id
@@ -172,7 +177,9 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
                AND current.signal_class = 'canonical'
          ), candidates AS (
              SELECT provider_track_id,
-                    array_agg(DISTINCT source ORDER BY source) AS sources
+                    array_agg(DISTINCT source ORDER BY source) AS sources,
+                    array_agg(DISTINCT source ORDER BY source)
+                        FILTER (WHERE is_intake) AS intake_sources
              FROM intake_memberships
              GROUP BY provider_track_id
          )
@@ -181,6 +188,7 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
                 track.title,
                 COALESCE(artists.names, '') AS artists,
                 candidates.sources,
+                COALESCE(candidates.intake_sources, ARRAY[]::text[]) AS intake_sources,
                 COALESCE(current_destinations.names, ARRAY[]::text[]) AS current_destinations,
                 COALESCE(proposal_destinations.names, ARRAY[]::text[]) AS proposal_destinations,
                 COALESCE(active_recommendation.name, historical_recommendation.name)
@@ -340,6 +348,7 @@ pub async fn audit(database: &Database, account_label: &str) -> Result<IntakeAud
             title: row.try_get("title")?,
             artists: row.try_get("artists")?,
             sources: row.try_get("sources")?,
+            intake_sources: row.try_get("intake_sources")?,
             state,
             current_destinations,
             saved_track_disposition: row.try_get("saved_track_disposition")?,
