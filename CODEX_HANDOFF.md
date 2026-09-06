@@ -10,31 +10,32 @@ Last updated: 2026-09-06.
 
 ## Current release and narrow Web UI handoff
 
-`v0.2.1-beta.15` is the current CLI and hosted Web release. It is built from
-exact commit `d40ef4583d9f9c86a84681a609dabd3fe2250512`, uses contract `1.6`
+`v0.2.1-beta.16` is the current CLI and hosted Web release. It is built from
+exact commit `a53f797480225cbd74b21a4482da9ccb852714da`, uses contract `1.6`
 and schema `52`, and is deployed on Vortex as manifest digest
-`sha256:c2cc8afae90d41f6d9e0573a7fc87c4692a4d194d60e8a3b2421f0faf16a7564`.
+`sha256:24a9e0960bbeeb8a215b1f376cb0554cbfecbf514e883bf57000865e6ee75d2c`.
 Both API and worker use that image and matching OCI revision. Public liveness
-reports beta.15, readiness reports database/identity ready with
+reports beta.16, readiness reports database/identity ready with
 exact-review-only provider writes, and the no-store Web page visibly reports
-`Chordrift v0.2.1-beta.15`. The crates.io package is published and the Quasar
-CLI reports the same version. Main CI run `34043979418` passed every release
+`Chordrift v0.2.1-beta.16`. The crates.io package is published and the Quasar
+CLI reports the same version. Main CI run `34045869520` passed every release
 gate, including strict Clippy, all Rust and Web harnesses, the complete
 disposable-PostgreSQL suite at migration 0052, Spotify persistence, and package
-verification. The deployment performed no provider observation or Spotify
-write.
+verification.
 
-Beta.15 completes the optional named-intake lifecycle introduced by beta.14.
-After a destination addition is authorized, a configured
-`after_verified_assignment` source such as Inbox is cleared only in a separate
-exact review and only after the destination is visible in a fresh provider
-observation. The worker tolerates bounded Spotify observation delay without
-replaying an accepted addition, and snapshot-consistently batches multiple
-removals from one intake playlist. A credential-free fake-provider regression
-reproduces the reported two-track Inbox sequence, including a stale post-write
-observation, and proves that both destinations remain while Inbox ends empty.
-Web and remote CLI receive the same Rust contract DTO. No live provider write
-was made while releasing or deploying this fix.
+Beta.16 repairs the real PostgreSQL planner-to-contract bridge used after a
+named-intake destination is already provider-visible. Planner-owned
+`cleanup/remove_track` rows now reach the intake projection instead of failing
+as `state_conflict`; they are represented exactly once as typed source cleanup.
+The normative provider/intent convergence matrix records the correct result for
+source/destination membership, accepted intent, exact receipts, observation
+lag, split moves, stale reviews, and ambiguity. A live read-only beta.16
+operation against the existing account reached `ready_for_authorization` with
+exactly two provider effects: remove `Then He Kissed Me` and `Unchained Melody`
+from Inbox. Their existing Neon Affection destinations were not touched. The
+operation remains unexecuted for explicit user authorization; release and
+deployment performed no Spotify write. Web and remote CLI receive this same
+Rust contract DTO.
 
 Beta.13 adds the accessible account avatar/menu, device-local System/Light/Dark
 theme selection, and complete light-theme presentation on top of beta.12's

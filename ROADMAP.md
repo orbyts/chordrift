@@ -545,7 +545,16 @@ and later Chordrift refactor begin.
     projection as a source-only cleanup review. A normative convergence matrix
     now enumerates provider source/destination state, accepted intent, receipt,
     observation-lag, split-move, and ambiguity outcomes. Contract 1.6 and schema
-    52 remain unchanged.
+    52 remain unchanged. Exact tagged commit
+    `a53f797480225cbd74b21a4482da9ccb852714da` passed main CI run
+    `34045869520`, is published and installed locally, and runs on both Vortex
+    API and worker as manifest digest
+    `sha256:24a9e0960bbeeb8a215b1f376cb0554cbfecbf514e883bf57000865e6ee75d2c`.
+    Public liveness and the Web footer report beta.16 and readiness passes. A
+    live read-only acceptance operation reached `ready_for_authorization` with
+    exactly the two expected Inbox `remove_track` effects while preserving the
+    already-observed Neon Affection placements; it was not authorized, so no
+    Spotify write occurred.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,
