@@ -6,9 +6,21 @@ requiring the previous conversation. Update it whenever a task changes those
 facts. Never add credentials, tokens, database URLs, private keys, or personal
 archive contents.
 
-Last updated: 2026-09-06.
+Last updated: 2026-09-24.
 
 ## Current release and narrow Web UI handoff
+
+Operational incident on 2026-09-24: the live Neon project rejected database
+work because the account or project exceeded quota. Public liveness and Auth0
+redirection remained healthy, while readiness correctly showed the database
+and identity schema unavailable. The deployed beta.16 callback misleadingly
+collapsed the downstream identity-store failure into HTTP 403, and the worker
+accumulated a restart storm. Main now contains unreleased hardening that maps
+dependency failures to structured HTTP 503 and keeps the worker alive with
+bounded exponential backoff across connection, schema-readiness, and queue
+failures. Do not claim or deploy a new beta until Neon access is restored and
+the full exact-image release gates can run. No Spotify write is part of this
+recovery.
 
 `v0.2.1-beta.16` is the current CLI and hosted Web release. It is built from
 exact commit `a53f797480225cbd74b21a4482da9ccb852714da`, uses contract `1.6`

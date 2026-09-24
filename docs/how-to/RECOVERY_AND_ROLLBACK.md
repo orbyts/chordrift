@@ -111,3 +111,31 @@ then redeploy the preceding tagged image for both API and worker together. Do
 not downgrade the database or authorize a compensating Spotify write. The
 Compose restart policy and bounded local log driver preserve availability and
 prevent unbounded host-disk growth.
+
+### PostgreSQL quota or dependency outage
+
+If liveness succeeds but readiness reports `database: false`, do not rotate
+Auth0, Spotify, or database credentials until the database provider's own
+secret-safe diagnostic has been checked. A quota refusal can occur after the
+network and TLS connection succeeds, so DNS and port probes alone are not
+sufficient. Use the exact deployed database configuration through a
+secret-safe health query; never print the URL or pass it on the command line.
+
+During the outage, authentication-backed routes return HTTP 503 rather than
+claiming that the signed-in user lacks permission. The worker remains alive
+and retries database connection, schema-readiness, and durable-queue access
+with bounded exponential backoff. No retry authorizes a provider write; queued
+work remains durable. Restore database service, then require all of the
+following before resuming ordinary maintenance:
+
+1. public liveness and readiness both succeed;
+2. API and worker run the same image revision without restart growth;
+3. the migration count is unchanged and staging is empty; and
+4. the next maintenance action begins with a fresh provider observation.
+
+Do not move Chordrift into another product's database merely to borrow unused
+free-tier quota. That weakens isolation and makes later retention and restore
+work harder. If the managed limit is intentionally retained, compact only
+after a table/index-size audit and a verified backup; never delete durable
+listening evidence, accepted intent, current provider anchors, or exact write
+receipts to make the dashboard green.

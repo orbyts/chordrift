@@ -59,7 +59,7 @@ use crate::{
     durable_operations::{
         DurableOperationQueue, OperationRetryPolicy, PostgresDurableOperationStore,
     },
-    http_transport::{AuthenticatedHttpTransport, BearerAuthenticator},
+    http_transport::{AuthenticatedHttpTransport, BearerAuthenticator, error_response},
     identity::{
         ExternalIdentityProfile, ExternalIdentityVerifier, PRODUCT_SESSION_SCHEMA_VERSION,
         PostgresProductIdentityStore, ProductSessionAuthenticator, ProductSessionAuthority,
@@ -1603,13 +1603,12 @@ async fn callback(
         if !profile.email_verified || profile.email.as_deref() != Some(expected_email.as_str()) {
             return StatusCode::FORBIDDEN.into_response();
         }
-        if state
+        if let Err(error) = state
             .identity_store
             .provision_account_owner(&profile.identity, state.config.account_id)
             .await
-            .is_err()
         {
-            return StatusCode::FORBIDDEN.into_response();
+            return identity_error_response(error);
         }
     }
     if state
@@ -1632,7 +1631,7 @@ async fn callback(
         .await
     {
         Ok(grant) => grant,
-        Err(_) => return StatusCode::FORBIDDEN.into_response(),
+        Err(error) => return identity_error_response(error),
     };
     let destination = attempt
         .return_to
@@ -1672,7 +1671,7 @@ async fn session_status(State(state): State<HostedState>, request: Request) -> R
                 .into_response(),
             Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
         },
-        Err(_) => StatusCode::UNAUTHORIZED.into_response(),
+        Err(error) => error_response(error),
     }
 }
 
@@ -1761,13 +1760,12 @@ async fn cli_exchange(
         if !profile.email_verified || profile.email.as_deref() != Some(expected_email.as_str()) {
             return StatusCode::FORBIDDEN.into_response();
         }
-        if state
+        if let Err(error) = state
             .identity_store
             .provision_account_owner(&profile.identity, state.config.account_id)
             .await
-            .is_err()
         {
-            return StatusCode::FORBIDDEN.into_response();
+            return identity_error_response(error);
         }
     }
     if state
@@ -1790,7 +1788,7 @@ async fn cli_exchange(
         .await
     {
         Ok(grant) => grant,
-        Err(_) => return StatusCode::FORBIDDEN.into_response(),
+        Err(error) => return identity_error_response(error),
     };
     (StatusCode::CREATED, Json(grant)).into_response()
 }
@@ -2047,6 +2045,10 @@ fn auth_failure() -> Response {
         .into_response()
 }
 
+fn identity_error_response(error: crate::contract::ClientError) -> Response {
+    error_response(error)
+}
+
 fn random_url_token() -> String {
     let mut bytes = [0_u8; 32];
     rand::rng().fill_bytes(&mut bytes);
@@ -2084,6 +2086,21 @@ async fn shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn identity_dependency_outages_are_not_reported_as_access_denied() {
+        let unavailable = identity_error_response(crate::contract::ClientError::new(
+            ErrorCode::DependencyUnavailable,
+            true,
+        ));
+        assert_eq!(unavailable.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let forbidden = identity_error_response(crate::contract::ClientError::new(
+            ErrorCode::PermissionDenied,
+            false,
+        ));
+        assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
+    }
 
     #[test]
     fn oidc_presentation_fields_are_bounded_and_profile_images_are_allowlisted() {

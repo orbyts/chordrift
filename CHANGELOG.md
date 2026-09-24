@@ -4,6 +4,13 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+- Report identity-store outages as structured HTTP 503 responses instead of
+  misleading browser access-denied responses while preserving genuine 401/403
+  authentication and authorization failures.
+- Keep the hosted worker alive across PostgreSQL connection, startup-query,
+  and durable-queue outages with bounded secret-free exponential backoff,
+  preventing a database quota event from becoming a container restart storm.
+
 ## [0.2.1-beta.16] - 2026-09-06
 
 - Accept planner-owned `cleanup/remove_track` operations for provider-native

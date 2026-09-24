@@ -1534,6 +1534,14 @@ tail when a prefix diff proves that the remaining ordered membership is
 unchanged, reducing Spotify requests without weakening complete-inventory
 proofs.
 
+Post-beta.16 operational follow-up: replace the hosted worker's subsecond idle
+database polling with a wake-oriented durable-queue design plus a bounded
+fallback probe. Until that work is complete, treat always-warm managed-database
+compute as a measurable deployment cost, not an assumed free side effect.
+Database quota and availability failures must remain HTTP 503 dependency
+events, keep the worker alive under bounded backoff, and never masquerade as
+account access denial or authorize a provider write.
+
 Status: complete. The approved South Asian reconciliation, canonical artwork,
 Re-evaluate replacement queue, legacy retirement, consumed Inbox cleanup, and
 opt-in Liked Songs cleanup have been published and provider-verified. The final

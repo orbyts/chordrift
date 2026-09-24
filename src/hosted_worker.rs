@@ -10,7 +10,7 @@ use std::{collections::BTreeMap, env, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::Row as _;
-use storexa::Database;
+use storexa::{Database, DatabaseConfig, StorexaError};
 
 use crate::{
     ChordriftError, Result, apply, apply_readiness, config,
@@ -39,8 +39,38 @@ use crate::{
 };
 
 const DEFAULT_POLL_MILLISECONDS: u64 = 750;
+const DEPENDENCY_RETRY_MIN_SECONDS: u64 = 1;
+const DEPENDENCY_RETRY_MAX_SECONDS: u64 = 60;
 const LEASE_DURATION: Duration = Duration::from_secs(120);
 const VERIFICATION_DELAYS_SECONDS: &[u64] = &[1, 2, 4, 8, 15];
+
+#[derive(Debug)]
+struct DependencyBackoff {
+    next_seconds: u64,
+}
+
+impl Default for DependencyBackoff {
+    fn default() -> Self {
+        Self {
+            next_seconds: DEPENDENCY_RETRY_MIN_SECONDS,
+        }
+    }
+}
+
+impl DependencyBackoff {
+    fn next_delay(&mut self) -> Duration {
+        let delay = self.next_seconds;
+        self.next_seconds = self
+            .next_seconds
+            .saturating_mul(2)
+            .min(DEPENDENCY_RETRY_MAX_SECONDS);
+        Duration::from_secs(delay)
+    }
+
+    fn reset(&mut self) {
+        self.next_seconds = DEPENDENCY_RETRY_MIN_SECONDS;
+    }
+}
 
 /// Uses the encrypted hosted provider credential to readiness-check and apply
 /// one already-persisted append-only publish plan. This operator boundary is
@@ -1047,8 +1077,13 @@ impl HostedProviderExecutor for SpotifyObservationExecutor {
 /// Runs the separate provider worker until process shutdown.
 pub async fn run_from_env() -> Result<()> {
     let worker_name = required("CHORDRIFT_WORKER_NAME")?;
-    let database = db::connect(config::database_config_from_env()?).await?;
-    db::require_schema_through(&database, 51).await?;
+    let database_config = config::database_config_from_env()?;
+    let mut shutdown = Box::pin(shutdown_signal());
+    let Some(database) =
+        initialize_database_with_backoff(database_config, &worker_name, &mut shutdown).await?
+    else {
+        return Ok(());
+    };
     let pool = database.pool().clone();
     let credential_store = PostgresProviderCredentialStore::new(pool.clone());
     credential_store
@@ -1071,18 +1106,90 @@ pub async fn run_from_env() -> Result<()> {
         database,
         ProviderCredentialVault::new(credential_store, keyring),
     );
-    let mut shutdown = Box::pin(shutdown_signal());
+    let mut dependency_backoff = DependencyBackoff::default();
     loop {
         tokio::select! {
             _ = &mut shutdown => return Ok(()),
             outcome = run_once(&queue, &executor, &worker_name) => {
-                if outcome.map_err(|_| configuration("durable worker queue is unavailable"))? {
-                    continue;
+                match outcome {
+                    Ok(true) => {
+                        dependency_backoff.reset();
+                        continue;
+                    }
+                    Ok(false) => {
+                        dependency_backoff.reset();
+                        tokio::time::sleep(Duration::from_millis(DEFAULT_POLL_MILLISECONDS)).await;
+                    }
+                    Err(error) if error.code == ErrorCode::DependencyUnavailable => {
+                        let delay = dependency_backoff.next_delay();
+                        worker_dependency_log(&worker_name, "queue", delay);
+                        tokio::select! {
+                            _ = &mut shutdown => return Ok(()),
+                            _ = tokio::time::sleep(delay) => {}
+                        }
+                    }
+                    Err(_) => return Err(configuration("durable worker queue failed")),
                 }
-                tokio::time::sleep(Duration::from_millis(DEFAULT_POLL_MILLISECONDS)).await;
             }
         }
     }
+}
+
+async fn initialize_database_with_backoff(
+    config: DatabaseConfig,
+    worker_name: &str,
+    shutdown: &mut std::pin::Pin<Box<impl std::future::Future<Output = ()>>>,
+) -> Result<Option<Database>> {
+    let mut backoff = DependencyBackoff::default();
+    loop {
+        let outcome = tokio::select! {
+            _ = &mut *shutdown => return Ok(None),
+            outcome = async {
+                let database = db::connect(config.clone()).await?;
+                db::require_schema_through(&database, 51).await?;
+                Ok(database)
+            } => outcome,
+        };
+        match outcome {
+            Ok(database) => return Ok(Some(database)),
+            Err(error) if retryable_database_dependency(&error) => {
+                let delay = backoff.next_delay();
+                worker_dependency_log(worker_name, "database_connect", delay);
+                tokio::select! {
+                    _ = &mut *shutdown => return Ok(None),
+                    _ = tokio::time::sleep(delay) => {}
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn retryable_database_dependency(error: &ChordriftError) -> bool {
+    matches!(
+        error,
+        ChordriftError::Query(_)
+            | ChordriftError::Storexa(
+                StorexaError::Connection(_)
+                    | StorexaError::HealthCheck(_)
+                    | StorexaError::TransactionBegin(_)
+                    | StorexaError::TransactionCommit(_)
+                    | StorexaError::TransactionRollback(_)
+                    | StorexaError::Query(_)
+            )
+    )
+}
+
+fn worker_dependency_log(worker_name: &str, stage: &str, delay: Duration) {
+    eprintln!(
+        "{}",
+        serde_json::json!({
+            "event": "worker_dependency_unavailable",
+            "worker": worker_name,
+            "stage": stage,
+            "retry_after_seconds": delay.as_secs(),
+        })
+    );
 }
 
 /// Claims and executes at most one durable command. Returns whether work was claimed.
@@ -1347,6 +1454,31 @@ mod tests {
         },
         maintenance_projection::maintenance_provider_effects,
     };
+
+    #[test]
+    fn dependency_backoff_is_exponential_bounded_and_resettable() {
+        let mut backoff = DependencyBackoff::default();
+        let delays = (0..8)
+            .map(|_| backoff.next_delay().as_secs())
+            .collect::<Vec<_>>();
+        assert_eq!(delays, vec![1, 2, 4, 8, 16, 32, 60, 60]);
+
+        backoff.reset();
+        assert_eq!(backoff.next_delay(), Duration::from_secs(1));
+    }
+
+    #[test]
+    fn database_dependency_failures_enter_startup_backoff() {
+        let connection =
+            ChordriftError::Storexa(StorexaError::Connection(sqlx::Error::PoolTimedOut));
+        assert!(retryable_database_dependency(&connection));
+        assert!(retryable_database_dependency(&ChordriftError::Query(
+            sqlx::Error::PoolTimedOut
+        )));
+        assert!(!retryable_database_dependency(
+            &ChordriftError::Configuration("invalid deployment".to_owned())
+        ));
+    }
 
     struct FakeExecutor;
 
