@@ -1668,6 +1668,7 @@ version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
 dependencies = [
+ "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -2874,9 +2875,9 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "storexa"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49ea8dc574edb8070bab49632d96ac94a5a3fda4241f918258394b133824d0f9"
+checksum = "3f70cd0929780ff6f2ad4922952e0c7a5d2d02646377c3adfc51f829b4a157ac"
 dependencies = [
  "dotenvy",
  "sqlx",
