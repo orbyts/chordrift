@@ -4,6 +4,8 @@ All notable changes to Chordrift are documented here.
 
 ## [Unreleased]
 
+## [0.2.1-beta.17] - 2026-09-24
+
 - Report identity-store outages as structured HTTP 503 responses instead of
   misleading browser access-denied responses while preserving genuine 401/403
   authentication and authorization failures.
