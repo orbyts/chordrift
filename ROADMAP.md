@@ -783,6 +783,28 @@ and CLI presentation may differ, but both must serialize the same typed DTOs
 and observe identical Rust-owned authorization, state-transition, retry,
 verification, and error semantics.
 
+#### Deferred — capability-aware listening summary
+
+This is useful daily-driver enrichment, but is not a blocker for final
+`v0.2.1`. Add a shared Web/CLI summary whose default head ranks the tracks
+observed most often in the latest successful provider-refresh batch and whose
+**Show more** action pages through that same immutable batch. Display skip,
+completion, duration, and context only when the selected connection's adapter
+reports and supplies those evidence capabilities. Every section must expose its
+source, coverage window, freshness, completeness, and unavailable/degraded
+signals.
+
+Before implementation, add exact evidence-batch membership for inserted
+observations and a provider-neutral Rust query/DTO. Spotify Recently Played may
+enrich recent observation count, time, identity, and context, but must not
+invent duration, skip, or completion. Spotify Extended Streaming History is a
+separate archive-backed capability with a separately labeled coverage date.
+Future Apple Music enrichment must map only Apple-authorized evidence into the
+same normalized concepts and report unsupported capabilities honestly; neither
+the core nor clients may depend on Spotify or Apple field names. The detailed
+boundary and fake-provider acceptance matrix are in
+`docs/design/PROVIDER_CAPABILITY_LISTENING_SUMMARIES.md`.
+
 The final `v0.2.1` release requires Suhail's explicit stability approval plus:
 
 - the web interface and installed remote CLI both complete ordinary daily

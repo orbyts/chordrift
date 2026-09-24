@@ -90,6 +90,7 @@ Ambiguous intent is staged for inspection rather than silently guessed. See the
 | Bring Neon up to date | [Synchronize and prove convergence](how-to/SYNC_AND_CONVERGENCE.md) | Run a pull after provider changes. |
 | Understand how the product interprets provider intent | [Platform interaction model](design/PLATFORM_INTENT_MODEL.md) | Keep using Spotify; Chordrift interprets bounded changes. |
 | Understand account isolation and provider-neutrality work | [Account isolation and provider boundaries](design/ACCOUNT_AND_PROVIDER_BOUNDARIES.md) | Current personal facts are account-scoped; a full adapter audit precedes another live provider. |
+| Understand the planned recent-play and skip summary | [Capability-aware listening summaries](design/PROVIDER_CAPABILITY_LISTENING_SUMMARIES.md) | Each adapter contributes only evidence its authorized API or import actually supplies; unavailable signals remain explicit. |
 
 ## The short everyday loop
 

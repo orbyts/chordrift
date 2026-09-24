@@ -31,6 +31,16 @@ alive under bounded exponential backoff across connection, schema-readiness,
 and durable-queue failures instead of entering a container restart storm. No
 database migration or Spotify write occurred during release or deployment.
 
+A capability-aware listening summary is documented as a non-critical follow-up,
+not implemented beta.17 behavior. Its shared Rust query must rank observations
+from one exact immutable evidence batch, expose a small head plus pagination,
+and report provenance, coverage, freshness, and availability independently for
+recent playback, duration, skips, and completion. Spotify Recently Played must
+not fabricate fields it does not return; archive-backed evidence uses its own
+coverage date. Any future Apple Music adapter maps only its authorized evidence
+into the same provider-neutral concepts. See
+[`docs/design/PROVIDER_CAPABILITY_LISTENING_SUMMARIES.md`](docs/design/PROVIDER_CAPABILITY_LISTENING_SUMMARIES.md).
+
 Beta.16 repairs the real PostgreSQL planner-to-contract bridge used after a
 named-intake destination is already provider-visible. Planner-owned
 `cleanup/remove_track` rows now reach the intake projection instead of failing
