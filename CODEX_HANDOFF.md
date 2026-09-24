@@ -10,30 +10,26 @@ Last updated: 2026-09-24.
 
 ## Current release and narrow Web UI handoff
 
-Operational incident on 2026-09-24: the live Neon project rejected database
-work because the account or project exceeded quota. Public liveness and Auth0
-redirection remained healthy, while readiness correctly showed the database
-and identity schema unavailable. The deployed beta.16 callback misleadingly
-collapsed the downstream identity-store failure into HTTP 403, and the worker
-accumulated a restart storm. Main now contains unreleased hardening that maps
-dependency failures to structured HTTP 503 and keeps the worker alive with
-bounded exponential backoff across connection, schema-readiness, and queue
-failures. Do not claim or deploy a new beta until Neon access is restored and
-the full exact-image release gates can run. No Spotify write is part of this
-recovery.
+`v0.2.1-beta.17` is the current CLI and hosted Web release. It is built from
+exact tagged commit `d1bcd136b6d783c359cc54ddf00182fdbe7336cc`, uses contract
+`1.6` and schema `52`, and is deployed on Vortex as manifest digest
+`sha256:ead492bf842a38361045ac5efaf319d02b8cddf1d354915ef00eb1257d0feaaf`.
+Both API and worker use that image and matching OCI revision with zero
+restarts. Public liveness reports beta.17, readiness reports database/identity
+ready with exact-review-only provider writes, and an authenticated remote-CLI
+compatibility handshake returned contract 1.6/schema 52. The crates.io package
+is published and the Quasar CLI reports the same version. Main CI run
+`36026386780` passed every release gate, including strict Clippy, all Rust and
+Web harnesses, the complete disposable-PostgreSQL suite at migration 0052,
+Spotify persistence, and package verification.
 
-`v0.2.1-beta.16` is the current CLI and hosted Web release. It is built from
-exact commit `a53f797480225cbd74b21a4482da9ccb852714da`, uses contract `1.6`
-and schema `52`, and is deployed on Vortex as manifest digest
-`sha256:24a9e0960bbeeb8a215b1f376cb0554cbfecbf514e883bf57000865e6ee75d2c`.
-Both API and worker use that image and matching OCI revision. Public liveness
-reports beta.16, readiness reports database/identity ready with
-exact-review-only provider writes, and the no-store Web page visibly reports
-`Chordrift v0.2.1-beta.16`. The crates.io package is published and the Quasar
-CLI reports the same version. Main CI run `34045869520` passed every release
-gate, including strict Clippy, all Rust and Web harnesses, the complete
-disposable-PostgreSQL suite at migration 0052, Spotify persistence, and package
-verification.
+Beta.17 follows the 2026-09-24 Neon quota incident. The upgraded project
+restored database access before deployment. Dependency-backed identity routes
+now preserve HTTP 503 instead of collapsing database failure into misleading
+HTTP 403, while genuine signed-out access remains HTTP 401. The worker stays
+alive under bounded exponential backoff across connection, schema-readiness,
+and durable-queue failures instead of entering a container restart storm. No
+database migration or Spotify write occurred during release or deployment.
 
 Beta.16 repairs the real PostgreSQL planner-to-contract bridge used after a
 named-intake destination is already provider-visible. Planner-owned

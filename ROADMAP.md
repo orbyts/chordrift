@@ -555,6 +555,19 @@ and later Chordrift refactor begin.
     exactly the two expected Inbox `remove_track` effects while preserving the
     already-observed Neon Affection placements; it was not authorized, so no
     Spotify write occurred.
+
+    Follow-up private-beta patch `v0.2.1-beta.17` hardens database dependency
+    outages discovered when Neon quota was exhausted. Identity-store failures
+    now remain HTTP 503 instead of masquerading as access-denied HTTP 403, and
+    the worker uses bounded exponential backoff across connection,
+    schema-readiness, and queue failures instead of restarting continuously.
+    Contract 1.6 and schema 52 remain unchanged. Exact tagged commit
+    `d1bcd136b6d783c359cc54ddf00182fdbe7336cc` passed main CI run
+    `36026386780`, is published and installed locally, and runs on both Vortex
+    services as manifest digest
+    `sha256:ead492bf842a38361045ac5efaf319d02b8cddf1d354915ef00eb1257d0feaaf`.
+    Public liveness/readiness and authenticated CLI compatibility pass with
+    zero container restarts and no Spotify write.
   - [x] **Provider-behavior acceptance matrix.** Run a deterministic synthetic
     provider account through the wrapper-neutral Rust maintenance contract on
     every CI push. Keep single-gesture cases for add, remove, move, reorder,
